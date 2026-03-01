@@ -137,15 +137,16 @@ export const SECTIONS: Section[] = [
             questions: [
               {
                 id: 'q14',
-                type: 'multiple-choice',
-                prompt: '¿Qué parte del auto es la única que toca el suelo?',
-                options: [
-                  { id: 'o141', text: 'Neumáticos', isCorrect: true },
-                  { id: 'o142', text: 'Llantas', isCorrect: false },
-                  { id: 'o143', text: 'Suspensión', isCorrect: false },
-                  { id: 'o144', text: 'Chasis', isCorrect: false },
+                type: 'part-pointing',
+                prompt: 'Toca el Neumático en el diagrama:',
+                diagramImage: 'https://images.unsplash.com/photo-1511919884226-fd3cad34687c?q=80&w=800&auto=format&fit=crop',
+                hotspots: [
+                  { id: 'spot-1', x: 25, y: 55, label: 'Guardabarros Delantero', isCorrect: false },
+                  { id: 'spot-2', x: 50, y: 40, label: 'Puerta', isCorrect: false },
+                  { id: 'spot-3', x: 75, y: 55, label: 'Guardabarros Trasero', isCorrect: false },
+                  { id: 'spot-4', x: 30, y: 75, label: 'Neumático', isCorrect: true },
                 ],
-                explanation: 'Los neumáticos proporcionan tracción y amortiguación sobre la carretera.'
+                explanation: 'Los neumáticos son el único punto de contacto entre el auto y el suelo.'
               }
             ]
           }
@@ -181,15 +182,17 @@ export const SECTIONS: Section[] = [
             questions: [
               {
                 id: 'q22',
-                type: 'multiple-choice',
-                prompt: 'Si ves una aceitera roja en el tablero, ¿qué significa?',
+                type: 'diagnostic',
+                prompt: 'Analiza los síntomas y selecciona la causa:',
+                scenario: 'El conductor nota una luz roja con forma de lámpara de aceite y escucha un ruido metálico leve del motor.',
+                symptoms: ['Luz roja de aceite', 'Sonido metálico', 'Motor caliente'],
                 options: [
-                  { id: 'o221', text: 'Baja presión de aceite', isCorrect: true },
-                  { id: 'o222', text: 'Nivel de gasolina bajo', isCorrect: false },
-                  { id: 'o223', text: 'Puerta abierta', isCorrect: false },
-                  { id: 'o224', text: 'Luces encendidas', isCorrect: false },
+                  { id: 'diag-1', text: 'Falta de presión de aceite', isCorrect: true },
+                  { id: 'diag-2', text: 'Batería descargada', isCorrect: false },
+                  { id: 'diag-3', text: 'Líquido limpiaparabrisas bajo', isCorrect: false },
+                  { id: 'diag-4', text: 'Neumático pinchado', isCorrect: false },
                 ],
-                explanation: 'Es una advertencia crítica; debes detener el motor de inmediato para evitar daños.'
+                explanation: 'La luz de aceite roja indica una pérdida crítica de presión, lo que puede destruir el motor en segundos.'
               }
             ]
           },
@@ -1084,6 +1087,53 @@ export const SECTIONS: Section[] = [
                   { id: 'o17114', text: 'Honda', isCorrect: false },
                 ],
                 explanation: 'Mazda utilizó rotores triangulares en lugar de pistones para generar potencia.'
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'section-6',
+    title: 'Sección 6: Futuro y Rendimiento',
+    description: 'Electrificación y Optimización Extrema',
+    units: [
+      {
+        id: 'unit-18',
+        title: 'Movilidad Eléctrica',
+        description: 'Baterías, Inversores y Frenado Regenerativo',
+        color: 'bg-duo-blue',
+        lessons: [
+          {
+            id: 'lesson-18-1',
+            title: 'Vehículos Eléctricos (EV)',
+            questions: [
+              {
+                id: 'q1811',
+                type: 'multiple-choice',
+                prompt: '¿Qué componente reemplaza al motor de combustión en un EV?',
+                options: [
+                  { id: 'o18111', text: 'Motor Eléctrico', isCorrect: true },
+                  { id: 'o18112', text: 'Generador de Vapor', isCorrect: false },
+                  { id: 'o18113', text: 'Pila de combustible', isCorrect: false },
+                  { id: 'o18114', text: 'Turbina de gas', isCorrect: false },
+                ],
+                explanation: 'Los motores eléctricos son mucho más eficientes y entregan torque instantáneo.'
+              },
+              {
+                id: 'q1812',
+                type: 'diagnostic',
+                prompt: 'Analiza el sistema de carga:',
+                scenario: 'Un auto eléctrico recupera energía al levantar el pie del acelerador sin usar los frenos físicos.',
+                symptoms: ['Desaceleración suave', 'Aumento de carga en batería', 'Sin calor en discos'],
+                options: [
+                  { id: 'diag-ev1', text: 'Frenado Regenerativo', isCorrect: true },
+                  { id: 'diag-ev2', text: 'Frenado de Motor (Compresión)', isCorrect: false },
+                  { id: 'diag-ev3', text: 'Falla en el inversor', isCorrect: false },
+                  { id: 'diag-ev4', text: 'Modo vela (Coasting)', isCorrect: false },
+                ],
+                explanation: 'El frenado regenerativo usa el motor como generador para recargar la batería mientras desaceleras.'
               }
             ]
           }

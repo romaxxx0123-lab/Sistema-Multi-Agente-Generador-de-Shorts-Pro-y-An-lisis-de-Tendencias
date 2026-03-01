@@ -113,3 +113,8 @@ export const useStore = create<GameState>()(
     }
   )
 );
+
+// For debugging in browser console
+if (typeof window !== 'undefined') {
+  (window as any).useStore = useStore;
+}

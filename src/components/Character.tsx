@@ -35,6 +35,11 @@ export const Character: React.FC<CharacterProps> = ({
         <ellipse cx="50" cy="60" rx="35" ry="45" fill="#1e293b" />
         <ellipse cx="50" cy="65" rx="25" ry="35" fill="white" />
 
+        {/* Mechanic Goggles (Headband) */}
+        <rect x="25" y="32" width="50" height="4" rx="2" fill="#475569" />
+        <circle cx="38" cy="34" r="8" fill="#94a3b8" stroke="#475569" strokeWidth="2" />
+        <circle cx="62" cy="34" r="8" fill="#94a3b8" stroke="#475569" strokeWidth="2" />
+
         {/* Wings */}
         <motion.path
           d="M15 60C10 70 5 80 10 90"
@@ -76,6 +81,25 @@ export const Character: React.FC<CharacterProps> = ({
           d="M45 52L55 52L50 60Z"
           fill="#fbbf24"
         />
+
+        {/* Grease stains if sad */}
+        {expression === 'sad' && (
+          <g opacity="0.6">
+             <circle cx="30" cy="70" r="3" fill="#0f172a" />
+             <circle cx="65" cy="80" r="4" fill="#0f172a" />
+             <path d="M40 75Q42 77 44 75" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+          </g>
+        )}
+
+        {/* Wrench (Holding) */}
+        <motion.g
+          animate={expression === 'happy' ? { rotate: [0, 45, 0] } : {}}
+          style={{ transformOrigin: '20px 80px' }}
+        >
+           <rect x="15" y="75" width="4" height="20" rx="2" fill="#94a3b8" />
+           <circle cx="17" cy="75" r="5" fill="#94a3b8" />
+           <rect x="15" y="73" width="4" height="4" fill="white" />
+        </motion.g>
 
         {/* Feet */}
         <path d="M35 100Q30 105 25 100" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" />

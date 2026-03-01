@@ -10,6 +10,8 @@ import { ImageSelectionExercise } from './exercises/ImageSelectionExercise';
 import { MatchingExercise } from './exercises/MatchingExercise';
 import { SentenceBuilderExercise } from './exercises/SentenceBuilderExercise';
 import { TrueFalseExercise } from './exercises/TrueFalseExercise';
+import { PartPointingExercise } from './exercises/PartPointingExercise';
+import { DiagnosticExercise } from './exercises/DiagnosticExercise';
 
 export const LessonScreen: React.FC = () => {
   const {
@@ -107,6 +109,17 @@ export const LessonScreen: React.FC = () => {
 
     if (!selectedOption) return;
 
+    if (currentQuestion.type === 'part-pointing') {
+      const spot = currentQuestion.hotspots?.find(s => s.id === selectedOption);
+      if (spot?.isCorrect) {
+        setStatus('correct');
+      } else {
+        setStatus('incorrect');
+        loseHeart(isReviewPhase ? missedQuestionIndices[currentQuestionIndex] : currentQuestionIndex);
+      }
+      return;
+    }
+
     const option = currentQuestion.options?.find(o => o.id === selectedOption);
     if (option?.isCorrect) {
       setStatus('correct');
@@ -175,6 +188,27 @@ export const LessonScreen: React.FC = () => {
                     options={currentQuestion.options || []}
                     selectedId={selectedOption}
                     onSelect={setSelectedOption}
+                    status={status as any}
+                  />
+               )}
+               {currentQuestion.type === 'diagnostic' && (
+                  <DiagnosticExercise
+                    key="diag"
+                    scenario={currentQuestion.scenario || ''}
+                    symptoms={currentQuestion.symptoms || []}
+                    options={currentQuestion.options || []}
+                    onSelect={setSelectedOption}
+                    selectedId={selectedOption}
+                    status={status as any}
+                  />
+               )}
+               {currentQuestion.type === 'part-pointing' && (
+                  <PartPointingExercise
+                    key="pp"
+                    image={currentQuestion.diagramImage || ''}
+                    hotspots={currentQuestion.hotspots || []}
+                    onSelect={setSelectedOption}
+                    selectedId={selectedOption}
                     status={status as any}
                   />
                )}
@@ -256,6 +290,8 @@ export const LessonScreen: React.FC = () => {
                   <p className="font-medium">
                     {currentQuestion.type === 'true-false'
                       ? `Era ${currentQuestion.isTrue ? 'Verdadero' : 'Falso'}`
+                      : currentQuestion.type === 'part-pointing'
+                      ? `Esa parte es: ${currentQuestion.hotspots?.find(h => h.id === selectedOption)?.label}`
                       : `La respuesta correcta era: ${currentQuestion.options?.find(o => o.isCorrect)?.text || 'otra'}`
                     }
                   </p>

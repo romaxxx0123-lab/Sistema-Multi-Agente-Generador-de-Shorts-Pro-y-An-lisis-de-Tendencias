@@ -17,7 +17,20 @@ function App() {
   const currentStage = Math.floor(currentSectionIndex / 2) + 1;
 
   if (activeLesson) {
-    return <LessonScreen />;
+    return (
+      <div className="fixed inset-0 overflow-hidden">
+        {/* Retro Grid Background for Lessons */}
+        <div className="absolute inset-0 bg-[#f0f0f0] opacity-30"
+             style={{
+               backgroundImage: 'linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px)',
+               backgroundSize: '40px 40px',
+               transform: 'perspective(500px) rotateX(60deg) translateY(-100px) translateZ(-100px)',
+               transformOrigin: 'top'
+             }}
+        />
+        <LessonScreen />
+      </div>
+    );
   }
 
   return (
