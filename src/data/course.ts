@@ -394,6 +394,227 @@ export const SECTIONS: Section[] = [
     id: 'section-2',
     title: 'Sección 2: Intermedio',
     description: 'Bajo el capó y mantenimiento',
-    units: []
+    units: [
+      {
+        id: 'unit-6',
+        title: 'El Corazón del Auto',
+        description: 'Cómo funciona el motor y sus componentes principales',
+        color: 'bg-duo-green',
+        lessons: [
+          {
+            id: 'lesson-6-1',
+            title: 'El Ciclo del Motor',
+            questions: [
+              {
+                id: 'q611',
+                type: 'multiple-choice',
+                prompt: '¿Cuántos "tiempos" tiene el ciclo de combustión más común?',
+                options: [
+                  { id: 'o6111', text: '4 tiempos', isCorrect: true },
+                  { id: 'o6112', text: '2 tiempos', isCorrect: false },
+                  { id: 'o6113', text: '6 tiempos', isCorrect: false },
+                  { id: 'o6114', text: '8 tiempos', isCorrect: false },
+                ],
+                explanation: 'El ciclo de Otto (Admisión, Compresión, Explosión y Escape) es el estándar en la industria.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-6-2',
+            title: 'Pistones y Cilindros',
+            questions: [
+              {
+                id: 'q621',
+                type: 'multiple-choice',
+                prompt: '¿Qué pieza se mueve arriba y abajo dentro del cilindro?',
+                options: [
+                  { id: 'o6211', text: 'Pistón', isCorrect: true },
+                  { id: 'o6212', text: 'Biela', isCorrect: false },
+                  { id: 'o6213', text: 'Cigüeñal', isCorrect: false },
+                  { id: 'o6214', text: 'Válvula', isCorrect: false },
+                ],
+                explanation: 'El pistón comprime la mezcla y recibe la fuerza de la explosión.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-7',
+        title: 'Líquidos Vitales',
+        description: 'Aceite, refrigerante y frenos',
+        color: 'bg-duo-blue',
+        lessons: [
+          {
+            id: 'lesson-7-1',
+            title: 'Lubricación',
+            questions: [
+              {
+                id: 'q711',
+                type: 'multiple-choice',
+                prompt: '¿Cuál es la función principal del aceite del motor?',
+                options: [
+                  { id: 'o7111', text: 'Reducir la fricción', isCorrect: true },
+                  { id: 'o7112', text: 'Dar más potencia', isCorrect: false },
+                  { id: 'o7113', text: 'Limpiar los inyectores', isCorrect: false },
+                  { id: 'o7114', text: 'Enfriar el aire', isCorrect: false },
+                ],
+                explanation: 'El aceite crea una película protectora entre las piezas móviles del motor.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-7-2',
+            title: 'Sistema de Enfriamiento',
+            questions: [
+              {
+                id: 'q721',
+                type: 'multiple-choice',
+                prompt: '¿Cómo se llama el componente que enfría el líquido del motor?',
+                options: [
+                  { id: 'o7211', text: 'Radiador', isCorrect: true },
+                  { id: 'o7212', text: 'Alternador', isCorrect: false },
+                  { id: 'o7213', text: 'Condensador', isCorrect: false },
+                  { id: 'o7214', text: 'Carburador', isCorrect: false },
+                ],
+                explanation: 'El radiador usa el aire exterior para bajar la temperatura del líquido refrigerante.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-8',
+        title: 'Transmisión y Fuerza',
+        description: 'Llevando la potencia a las ruedas',
+        color: 'bg-duo-purple',
+        lessons: [
+          {
+            id: 'lesson-8-1',
+            title: 'Caja de Cambios',
+            questions: [
+              {
+                id: 'q811',
+                type: 'multiple-choice',
+                prompt: '¿Qué componente permite desconectar el motor de la caja en autos manuales?',
+                options: [
+                  { id: 'o8111', text: 'Embrague / Clutch', isCorrect: true },
+                  { id: 'o8112', text: 'Convertidor de par', isCorrect: false },
+                  { id: 'o8113', text: 'Sincronizador', isCorrect: false },
+                  { id: 'o8114', text: 'Diferencial', isCorrect: false },
+                ],
+                explanation: 'El embrague es fundamental para realizar cambios de marcha sin dañar los engranajes.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-8-2',
+            title: 'Tracción',
+            questions: [
+              {
+                id: 'q821',
+                type: 'multiple-choice',
+                prompt: '¿Qué significa AWD?',
+                options: [
+                  { id: 'o8211', text: 'Tracción en las 4 ruedas', isCorrect: true },
+                  { id: 'o8212', text: 'Tracción Delantera', isCorrect: false },
+                  { id: 'o8213', text: 'Tracción Trasera', isCorrect: false },
+                  { id: 'o8214', text: 'Tracción Asistida', isCorrect: false },
+                ],
+                explanation: 'All Wheel Drive distribuye la potencia a todas las ruedas según sea necesario.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-9',
+        title: 'Frenos y Suspensión',
+        description: 'Control y confort en la marcha',
+        color: 'bg-duo-orange',
+        lessons: [
+          {
+            id: 'lesson-9-1',
+            title: 'Sistema de Frenado',
+            questions: [
+              {
+                id: 'q911',
+                type: 'multiple-choice',
+                prompt: '¿Qué pieza presiona el disco de freno para detener el auto?',
+                options: [
+                  { id: 'o9111', text: 'Pastillas de freno', isCorrect: true },
+                  { id: 'o9112', text: 'Tambores', isCorrect: false },
+                  { id: 'o9113', text: 'Amortiguadores', isCorrect: false },
+                  { id: 'o9114', text: 'Bujías', isCorrect: false },
+                ],
+                explanation: 'Las pastillas generan la fricción necesaria contra el disco para detener el giro.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-9-2',
+            title: 'Amortiguación',
+            questions: [
+              {
+                id: 'q921',
+                type: 'multiple-choice',
+                prompt: '¿Cuál es la función principal de la suspensión?',
+                options: [
+                  { id: 'o9211', text: 'Absorber irregularidades del terreno', isCorrect: true },
+                  { id: 'o9212', text: 'Enfriar el motor', isCorrect: false },
+                  { id: 'o9213', text: 'Cambiar de dirección', isCorrect: false },
+                  { id: 'o9214', text: 'Acelerar más rápido', isCorrect: false },
+                ],
+                explanation: 'La suspensión mantiene las ruedas pegadas al suelo y brinda confort a los pasajeros.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-10',
+        title: 'Sistema Eléctrico',
+        description: 'La energía que mueve los sistemas auxiliares',
+        color: 'bg-duo-yellow',
+        lessons: [
+          {
+            id: 'lesson-10-1',
+            title: 'La Batería',
+            questions: [
+              {
+                id: 'q1011',
+                type: 'multiple-choice',
+                prompt: '¿Qué componente carga la batería mientras el motor está encendido?',
+                options: [
+                  { id: 'o10111', text: 'Alternador', isCorrect: true },
+                  { id: 'o10112', text: 'Motor de arranque', isCorrect: false },
+                  { id: 'o10113', text: 'Bujía', isCorrect: false },
+                  { id: 'o10114', text: 'Bobina', isCorrect: false },
+                ],
+                explanation: 'El alternador convierte la energía mecánica del motor en energía eléctrica.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-10-2',
+            title: 'Encendido',
+            questions: [
+              {
+                id: 'q1021',
+                type: 'multiple-choice',
+                prompt: '¿Qué pieza genera la chispa inicial en motores de gasolina?',
+                options: [
+                  { id: 'o10211', text: 'Bujía', isCorrect: true },
+                  { id: 'o10212', text: 'Inyector', isCorrect: false },
+                  { id: 'o10213', text: 'Fusible', isCorrect: false },
+                  { id: 'o10214', text: 'Cables de alta', isCorrect: false },
+                ],
+                explanation: 'La bujía crea el arco eléctrico que detona la mezcla de aire y combustible.'
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];

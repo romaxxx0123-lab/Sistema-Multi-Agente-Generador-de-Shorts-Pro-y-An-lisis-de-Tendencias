@@ -1,3 +1,4 @@
+import React from 'react';
 import { Sidebar } from './components/Sidebar';
 import { UnitSection } from './components/UnitSection';
 import { LessonScreen } from './components/LessonScreen';
@@ -8,6 +9,7 @@ import { Heart, Trophy, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 function App() {
   const activeLesson = useStore(state => state.activeLesson);
   const hearts = useStore(state => state.hearts);
+  const [currentSectionIndex, setCurrentSectionIndex] = React.useState(0);
 
   if (activeLesson) {
     return <LessonScreen />;
@@ -41,16 +43,28 @@ function App() {
 
       <main className="pt-24 pb-12 px-4 md:ml-64">
         <div className="max-w-4xl mx-auto">
-          {SECTIONS.map(section => (
-            <div key={section.id} className="mb-12">
+          {SECTIONS.map((section, idx) => (
+            <div key={section.id} className={idx === currentSectionIndex ? 'block' : 'hidden'}>
               <div className="bg-duo-green-dark text-white p-6 rounded-2xl mb-8 flex items-center justify-between shadow-lg">
                 <div>
                    <h1 className="text-2xl font-bold uppercase tracking-tight">{section.title}</h1>
                    <p className="opacity-90 font-medium">{section.description}</p>
                 </div>
                 <div className="flex gap-2">
-                   <button className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ChevronLeft /></button>
-                   <button className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ChevronRight /></button>
+                   <button
+                    onClick={() => setCurrentSectionIndex(Math.max(0, idx - 1))}
+                    disabled={idx === 0}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                   >
+                    <ChevronLeft />
+                   </button>
+                   <button
+                    onClick={() => setCurrentSectionIndex(Math.min(SECTIONS.length - 1, idx + 1))}
+                    disabled={idx === SECTIONS.length - 1}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                   >
+                    <ChevronRight />
+                   </button>
                 </div>
               </div>
 
