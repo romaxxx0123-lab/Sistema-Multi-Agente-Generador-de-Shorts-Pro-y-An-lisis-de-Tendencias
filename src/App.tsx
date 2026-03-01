@@ -11,6 +11,9 @@ function App() {
   const hearts = useStore(state => state.hearts);
   const [currentSectionIndex, setCurrentSectionIndex] = React.useState(0);
 
+  // Calculate current stage (every 2 sections = 1 stage for UI purposes)
+  const currentStage = Math.floor(currentSectionIndex / 2) + 1;
+
   if (activeLesson) {
     return <LessonScreen />;
   }
@@ -47,6 +50,7 @@ function App() {
             <div key={section.id} className={idx === currentSectionIndex ? 'block' : 'hidden'}>
               <div className="bg-duo-green-dark text-white p-6 rounded-2xl mb-8 flex items-center justify-between shadow-lg">
                 <div>
+                   <div className="text-xs font-bold opacity-70 mb-1">ETAPA {currentStage}</div>
                    <h1 className="text-2xl font-bold uppercase tracking-tight">{section.title}</h1>
                    <p className="opacity-90 font-medium">{section.description}</p>
                 </div>

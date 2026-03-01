@@ -1,4 +1,4 @@
-import type { Section } from '../types';
+import type { Section, Lesson } from '../types';
 
 export const SECTIONS: Section[] = [
   {
@@ -825,7 +825,148 @@ export const SECTIONS: Section[] = [
             ]
           }
         ]
+      },
+      {
+        id: 'unit-14',
+        title: 'Superdeportivos Modernos',
+        description: 'La cima de la ingeniería actual',
+        color: 'bg-duo-green',
+        lessons: [
+          {
+            id: 'lesson-14-1',
+            title: 'La Trilogía Sagrada',
+            questions: [
+              {
+                id: 'q1411',
+                type: 'multiple-choice',
+                prompt: '¿Cuál de estos NO forma parte de la "Trilogía Sagrada" de 2013?',
+                options: [
+                  { id: 'o14111', text: 'Bugatti Veyron', isCorrect: true },
+                  { id: 'o14112', text: 'Ferrari LaFerrari', isCorrect: false },
+                  { id: 'o14113', text: 'McLaren P1', isCorrect: false },
+                  { id: 'o14114', text: 'Porsche 918 Spyder', isCorrect: false },
+                ],
+                explanation: 'La trilogía se refiere a los tres hiperdeportivos híbridos que revolucionaron la industria en 2013.'
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'section-4',
+    title: 'Sección 4: Avanzado',
+    description: 'Tuning, Geometría y Competición',
+    units: [
+      {
+        id: 'unit-15',
+        title: 'Geometría de Suspensión',
+        description: 'Camber, Toe y Caster',
+        color: 'bg-duo-blue',
+        lessons: [
+          {
+            id: 'lesson-15-1',
+            title: 'Camber (Caída)',
+            questions: [
+              {
+                id: 'q1511',
+                type: 'multiple-choice',
+                prompt: '¿Qué es el "Camber Negativo"?',
+                options: [
+                  { id: 'o15111', text: 'La parte superior de la rueda se inclina hacia adentro', isCorrect: true },
+                  { id: 'o15112', text: 'La parte delantera de las ruedas se cierra', isCorrect: false },
+                  { id: 'o15113', text: 'El auto está demasiado bajo', isCorrect: false },
+                  { id: 'o15114', text: 'Las ruedas están desalineadas', isCorrect: false },
+                ],
+                explanation: 'El camber negativo mejora el apoyo de la rueda exterior en curvas de alta velocidad.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-16',
+        title: 'Tuning de Motor',
+        description: 'Reprogramaciones y Mezcla',
+        color: 'bg-duo-orange',
+        lessons: [
+          {
+            id: 'lesson-16-1',
+            title: 'La ECU',
+            questions: [
+              {
+                id: 'q1611',
+                type: 'multiple-choice',
+                prompt: '¿Qué significa "Reprogramación Stage 1"?',
+                options: [
+                  { id: 'o16111', text: 'Optimización de software sin cambiar piezas', isCorrect: true },
+                  { id: 'o16112', text: 'Cambiar el turbo por uno más grande', isCorrect: false },
+                  { id: 'o16113', text: 'Cambiar los pistones', isCorrect: false },
+                  { id: 'o16114', text: 'Pintar el motor de rojo', isCorrect: false },
+                ],
+                explanation: 'La Stage 1 ajusta parámetros como presión de turbo e inyección mediante software.'
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'section-5',
+    title: 'Sección 5: Experto',
+    description: 'Diagnóstico Forense y Motores Exóticos',
+    units: [
+      {
+        id: 'unit-17',
+        title: 'Motores Poco Comunes',
+        description: 'Wankel, W16 y Camless',
+        color: 'bg-duo-purple',
+        lessons: [
+          {
+            id: 'lesson-17-1',
+            title: 'El Motor Rotativo Wankel',
+            questions: [
+              {
+                id: 'q1711',
+                type: 'multiple-choice',
+                prompt: '¿Qué marca es famosa por perfeccionar el motor rotativo en el RX-7?',
+                options: [
+                  { id: 'o17111', text: 'Mazda', isCorrect: true },
+                  { id: 'o17112', text: 'Toyota', isCorrect: false },
+                  { id: 'o17113', text: 'Nissan', isCorrect: false },
+                  { id: 'o17114', text: 'Honda', isCorrect: false },
+                ],
+                explanation: 'Mazda utilizó rotores triangulares en lugar de pistones para generar potencia.'
+              }
+            ]
+          }
+        ]
       }
     ]
   }
 ];
+
+export const getAllLessons = (): Lesson[] => {
+  const lessons: Lesson[] = [];
+  SECTIONS.forEach(section => {
+    section.units.forEach(unit => {
+      lessons.push(...unit.lessons);
+    });
+  });
+  return lessons;
+};
+
+export const getLessonStatus = (lessonId: string, completedLessons: string[]) => {
+  const allLessons = getAllLessons();
+  const lessonIndex = allLessons.findIndex(l => l.id === lessonId);
+
+  if (lessonIndex <= 0) return { isLocked: false, isCompleted: completedLessons.includes(lessonId) };
+
+  const prevLesson = allLessons[lessonIndex - 1];
+  const isLocked = !completedLessons.includes(prevLesson.id);
+  const isCompleted = completedLessons.includes(lessonId);
+
+  return { isLocked, isCompleted };
+};

@@ -2,6 +2,7 @@ import React from 'react';
 import type { Unit } from '../types';
 import { LessonButton } from './LessonButton';
 import { useStore } from '../store/useStore';
+import { getLessonStatus } from '../data/course';
 
 interface UnitSectionProps {
   unit: Unit;
@@ -19,8 +20,7 @@ export const UnitSection: React.FC<UnitSectionProps> = ({ unit }) => {
 
       <div className="flex flex-col items-center">
         {unit.lessons.map((lesson, index) => {
-          const isCompleted = completedLessons.includes(lesson.id);
-          const isLocked = index > 0 && !completedLessons.includes(unit.lessons[index-1].id) && !isCompleted;
+          const { isLocked, isCompleted } = getLessonStatus(lesson.id, completedLessons);
 
           return (
             <LessonButton
