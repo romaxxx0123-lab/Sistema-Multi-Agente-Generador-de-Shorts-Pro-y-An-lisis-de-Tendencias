@@ -9,6 +9,8 @@ import { Heart, Trophy, Zap, ChevronLeft, ChevronRight, Flame } from 'lucide-rea
 function App() {
   const activeLesson = useStore(state => state.activeLesson);
   const hearts = useStore(state => state.hearts);
+  const xp = useStore(state => state.xp);
+  const streak = useStore(state => state.streak);
   const [currentSectionIndex, setCurrentSectionIndex] = React.useState(0);
 
   // Calculate current stage (every 2 sections = 1 stage for UI purposes)
@@ -27,11 +29,11 @@ function App() {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 font-bold text-duo-orange">
             <Flame fill="currentColor" />
-            <span>3</span>
+            <span>{streak}</span>
           </div>
           <div className="flex items-center gap-2 font-bold text-duo-blue">
             <Zap fill="currentColor" />
-            <span>150</span>
+            <span>{xp}</span>
           </div>
           <div className="flex items-center gap-2 font-bold text-duo-red">
             <Heart fill="currentColor" />

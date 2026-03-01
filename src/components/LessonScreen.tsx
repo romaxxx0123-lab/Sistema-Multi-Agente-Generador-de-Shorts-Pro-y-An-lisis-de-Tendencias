@@ -19,7 +19,9 @@ export const LessonScreen: React.FC = () => {
     loseHeart,
     nextQuestion,
     finishLesson,
-    exitLesson
+    exitLesson,
+    isReviewPhase,
+    missedQuestionIndices
   } = useStore();
 
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -79,8 +81,13 @@ export const LessonScreen: React.FC = () => {
     );
   }
 
-  const currentQuestion = activeLesson.questions[currentQuestionIndex];
-  const progress = (currentQuestionIndex) / activeLesson.questions.length;
+  const currentQuestion = isReviewPhase
+    ? activeLesson.questions[missedQuestionIndices[currentQuestionIndex]]
+    : activeLesson.questions[currentQuestionIndex];
+
+  const progress = isReviewPhase
+    ? 0.9 + (currentQuestionIndex / (missedQuestionIndices.length || 1)) * 0.1
+    : (currentQuestionIndex) / activeLesson.questions.length;
 
   const handleCheck = () => {
     if (currentQuestion.type === 'matching') {
@@ -105,12 +112,19 @@ export const LessonScreen: React.FC = () => {
       setStatus('correct');
     } else {
       setStatus('incorrect');
-      loseHeart();
+      loseHeart(isReviewPhase ? missedQuestionIndices[currentQuestionIndex] : currentQuestionIndex);
     }
   };
 
   const handleContinue = () => {
-    if (currentQuestionIndex + 1 < activeLesson.questions.length) {
+    const totalQuestions = isReviewPhase ? missedQuestionIndices.length : activeLesson.questions.length;
+
+    if (currentQuestionIndex + 1 < totalQuestions) {
+      setSelectedOption(null);
+      setStatus('idle');
+      nextQuestion();
+    } else if (!isReviewPhase && missedQuestionIndices.length > 0) {
+      // Transition to review phase handled by nextQuestion in store
       setSelectedOption(null);
       setStatus('idle');
       nextQuestion();
@@ -178,6 +192,7 @@ export const LessonScreen: React.FC = () => {
                     key="me"
                     pairs={currentQuestion.pairs || []}
                     onComplete={() => setStatus('correct')}
+                    onIncorrect={() => loseHeart(isReviewPhase ? missedQuestionIndices[currentQuestionIndex] : currentQuestionIndex)}
                   />
                )}
                {currentQuestion.type === 'sentence-builder' && (
@@ -189,7 +204,7 @@ export const LessonScreen: React.FC = () => {
                        if (isCorrect) setStatus('correct');
                        else {
                          setStatus('incorrect');
-                         loseHeart();
+                         loseHeart(isReviewPhase ? missedQuestionIndices[currentQuestionIndex] : currentQuestionIndex);
                        }
                     }}
                     status={status as any}
@@ -203,7 +218,7 @@ export const LessonScreen: React.FC = () => {
                        if (userChoice === currentQuestion.isTrue) setStatus('correct');
                        else {
                          setStatus('incorrect');
-                         loseHeart();
+                         loseHeart(isReviewPhase ? missedQuestionIndices[currentQuestionIndex] : currentQuestionIndex);
                        }
                     }}
                     status={status as any}
@@ -226,7 +241,9 @@ export const LessonScreen: React.FC = () => {
               <div className="flex items-center gap-3 text-duo-green-dark">
                 <div className="bg-white rounded-full p-1"><CheckCircle2 size={40} /></div>
                 <div>
-                  <h3 className="text-2xl font-bold">¡Buen trabajo!</h3>
+                  <h3 className="text-2xl font-bold">
+                    {isReviewPhase ? '¡Corregido!' : '¡Buen trabajo!'}
+                  </h3>
                   <p className="font-medium">{currentQuestion.explanation}</p>
                 </div>
               </div>
@@ -237,7 +254,10 @@ export const LessonScreen: React.FC = () => {
                 <div>
                   <h3 className="text-2xl font-bold">Respuesta incorrecta</h3>
                   <p className="font-medium">
-                    La respuesta correcta era: {currentQuestion.options?.find(o => o.isCorrect)?.text}
+                    {currentQuestion.type === 'true-false'
+                      ? `Era ${currentQuestion.isTrue ? 'Verdadero' : 'Falso'}`
+                      : `La respuesta correcta era: ${currentQuestion.options?.find(o => o.isCorrect)?.text || 'otra'}`
+                    }
                   </p>
                 </div>
               </div>

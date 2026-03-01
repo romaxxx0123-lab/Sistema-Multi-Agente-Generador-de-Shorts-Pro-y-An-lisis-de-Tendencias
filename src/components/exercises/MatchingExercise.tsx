@@ -16,9 +16,10 @@ interface MatchingPair {
 interface MatchingExerciseProps {
   pairs: MatchingPair[];
   onComplete: () => void;
+  onIncorrect: () => void;
 }
 
-export const MatchingExercise: React.FC<MatchingExerciseProps> = ({ pairs, onComplete }) => {
+export const MatchingExercise: React.FC<MatchingExerciseProps> = ({ pairs, onComplete, onIncorrect }) => {
   const [leftItems, setLeftItems] = useState<PairItem[]>([]);
   const [rightItems, setRightItems] = useState<PairItem[]>([]);
 
@@ -46,6 +47,7 @@ export const MatchingExercise: React.FC<MatchingExerciseProps> = ({ pairs, onCom
         // Play success sound logic here if we had one
       } else {
         setMismatched(true);
+        onIncorrect();
         setTimeout(() => {
           setMismatched(false);
           setSelectedLeft(null);

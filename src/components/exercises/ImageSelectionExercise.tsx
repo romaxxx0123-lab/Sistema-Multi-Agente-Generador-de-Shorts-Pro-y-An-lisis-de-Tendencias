@@ -20,12 +20,15 @@ export const ImageSelectionExercise: React.FC<ImageSelectionExerciseProps> = ({
       {options.map((option) => (
         <motion.button
           whileTap={{ y: 4 }}
+          animate={status === 'incorrect' && selectedId === option.id ? { x: [-10, 10, -10, 10, 0] } : {}}
           key={option.id}
           onClick={() => status === 'idle' && onSelect(option.id)}
           className={`
             p-2 border-2 rounded-2xl flex flex-col items-center gap-4 transition-all
             ${selectedId === option.id
-              ? 'border-duo-blue bg-blue-50 text-duo-blue shadow-[0_4px_0_0_#1cb0f6]'
+              ? status === 'correct' ? 'border-duo-green bg-green-50 text-duo-green shadow-[0_4px_0_0_#58cc02]' :
+                status === 'incorrect' ? 'border-duo-red bg-red-50 text-duo-red shadow-[0_4px_0_0_#ff4b4b]' :
+                'border-duo-blue bg-blue-50 text-duo-blue shadow-[0_4px_0_0_#1cb0f6]'
               : 'border-duo-gray-light hover:bg-gray-50 shadow-[0_4px_0_0_#e5e5e5]'}
             active:translate-y-1 active:shadow-none h-full
           `}
