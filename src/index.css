@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-duo-green: #58cc02;
+  --color-duo-green-dark: #46a302;
+  --color-duo-blue: #1cb0f6;
+  --color-duo-blue-dark: #1899d6;
+  --color-duo-yellow: #ffc800;
+  --color-duo-yellow-dark: #e5b300;
+  --color-duo-orange: #ff9600;
+  --color-duo-orange-dark: #e68700;
+  --color-duo-red: #ff4b4b;
+  --color-duo-red-dark: #e54343;
+  --color-duo-purple: #ce82ff;
+  --color-duo-purple-dark: #b975e6;
+  --color-duo-gray: #afafaf;
+  --color-duo-gray-light: #e5e5e5;
+  --color-duo-gray-dark: #777777;
+}
+
+:root {
+  font-family: 'Din Round', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: white;
+  color: #4b4b4b;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button {
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+button:active {
+  transform: translateY(2px);
+}
