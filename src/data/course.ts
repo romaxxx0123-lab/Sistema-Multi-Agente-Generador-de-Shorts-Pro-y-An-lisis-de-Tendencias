@@ -452,6 +452,30 @@ export const SECTIONS: Section[] = [
                   { id: 'o6114', text: '8 tiempos', isCorrect: false },
                 ],
                 explanation: 'El ciclo de Otto (Admisión, Compresión, Explosión y Escape) es el estándar en la industria.'
+              },
+              {
+                id: 'q612',
+                type: 'multiple-choice',
+                prompt: '¿En qué tiempo se genera la chispa de la bujía?',
+                options: [
+                  { id: 'o6121', text: 'Admisión', isCorrect: false },
+                  { id: 'o6122', text: 'Compresión / Explosión', isCorrect: true },
+                  { id: 'o6123', text: 'Escape', isCorrect: false },
+                  { id: 'o6124', text: 'Reposo', isCorrect: false },
+                ],
+                explanation: 'Justo antes de que el pistón llegue arriba en la compresión, la chispa inicia la explosión.'
+              },
+              {
+                id: 'q613',
+                type: 'multiple-choice',
+                prompt: '¿Qué sucede durante el tiempo de "Admisión"?',
+                options: [
+                  { id: 'o6131', text: 'Entra aire y combustible', isCorrect: true },
+                  { id: 'o6132', text: 'Salen los humos', isCorrect: false },
+                  { id: 'o6133', text: 'El auto frena', isCorrect: false },
+                  { id: 'o6134', text: 'Se carga la batería', isCorrect: false },
+                ],
+                explanation: 'El motor aspira la mezcla necesaria para la combustión.'
               }
             ]
           },
@@ -470,6 +494,36 @@ export const SECTIONS: Section[] = [
                   { id: 'o6214', text: 'Válvula', isCorrect: false },
                 ],
                 explanation: 'El pistón comprime la mezcla y recibe la fuerza de la explosión.'
+              },
+              {
+                id: 'q622',
+                type: 'multiple-choice',
+                prompt: '¿Qué pieza une el pistón con el cigüeñal?',
+                options: [
+                  { id: 'o6221', text: 'Biela', isCorrect: true },
+                  { id: 'o6222', text: 'Correa', isCorrect: false },
+                  { id: 'o6223', text: 'Eje', isCorrect: false },
+                  { id: 'o6224', text: 'Bujía', isCorrect: false },
+                ],
+                explanation: 'La biela transmite el movimiento lineal del pistón al movimiento rotativo del cigüeñal.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-6-4',
+            title: 'Válvulas y Respiración',
+            questions: [
+              {
+                id: 'q641',
+                type: 'multiple-choice',
+                prompt: '¿Cómo se llama el eje que abre y cierra las válvulas?',
+                options: [
+                  { id: 'o6411', text: 'Árbol de levas', isCorrect: true },
+                  { id: 'o6412', text: 'Cigüeñal', isCorrect: false },
+                  { id: 'o6413', text: 'Cardán', isCorrect: false },
+                  { id: 'o6414', text: 'Semieje', isCorrect: false },
+                ],
+                explanation: 'El árbol de levas está sincronizado con el cigüeñal para que el motor "respire" a tiempo.'
               }
             ]
           },
@@ -596,6 +650,24 @@ export const SECTIONS: Section[] = [
                 explanation: 'All Wheel Drive distribuye la potencia a todas las ruedas según sea necesario.'
               }
             ]
+          },
+          {
+            id: 'lesson-8-3',
+            title: 'El Diferencial',
+            questions: [
+              {
+                id: 'q831',
+                type: 'multiple-choice',
+                prompt: '¿Qué componente permite que las ruedas de un mismo eje giren a diferentes velocidades en una curva?',
+                options: [
+                  { id: 'o8311', text: 'Diferencial', isCorrect: true },
+                  { id: 'o8312', text: 'Caja de cambios', isCorrect: false },
+                  { id: 'o8313', text: 'Semieje', isCorrect: false },
+                  { id: 'o8314', text: 'Volante motor', isCorrect: false },
+                ],
+                explanation: 'Sin el diferencial, las ruedas chirriarían y el auto sería muy difícil de controlar al girar.'
+              }
+            ]
           }
         ]
       },
@@ -640,6 +712,24 @@ export const SECTIONS: Section[] = [
                 explanation: 'La suspensión mantiene las ruedas pegadas al suelo y brinda confort a los pasajeros.'
               }
             ]
+          },
+          {
+            id: 'lesson-9-3',
+            title: 'Geometría y Estabilidad',
+            questions: [
+              {
+                id: 'q931',
+                type: 'multiple-choice',
+                prompt: '¿Qué pieza del sistema de dirección permite que el auto mantenga su trayectoria recta?',
+                options: [
+                  { id: 'o9311', text: 'Alineación (Camber/Toe)', isCorrect: true },
+                  { id: 'o9312', text: 'Frenos ABS', isCorrect: false },
+                  { id: 'o9313', text: 'Caja de cambios', isCorrect: false },
+                  { id: 'o9314', text: 'Radiador', isCorrect: false },
+                ],
+                explanation: 'Una correcta alineación evita el desgaste irregular de neumáticos y mejora la seguridad.'
+              }
+            ]
           }
         ]
       },
@@ -682,6 +772,24 @@ export const SECTIONS: Section[] = [
                   { id: 'o10214', text: 'Cables de alta', isCorrect: false },
                 ],
                 explanation: 'La bujía crea el arco eléctrico que detona la mezcla de aire y combustible.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-10-3',
+            title: 'Sensores y Computadora',
+            questions: [
+              {
+                id: 'q1031',
+                type: 'multiple-choice',
+                prompt: '¿Cómo se llama el puerto estándar para diagnosticar fallas en autos modernos?',
+                options: [
+                  { id: 'o10311', text: 'Puerto OBD-II', isCorrect: true },
+                  { id: 'o10312', text: 'Puerto USB-C', isCorrect: false },
+                  { id: 'o10313', text: 'HDMI', isCorrect: false },
+                  { id: 'o10314', text: 'VGA', isCorrect: false },
+                ],
+                explanation: 'El puerto OBD-II permite a los mecánicos leer códigos de falla directamente de la computadora del auto.'
               }
             ]
           }
