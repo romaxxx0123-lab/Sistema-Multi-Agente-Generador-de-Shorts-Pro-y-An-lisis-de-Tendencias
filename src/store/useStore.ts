@@ -27,7 +27,7 @@ export const useStore = create<GameState>((set) => ({
   }),
 
   finishLesson: () => set((state) => ({
-    completedLessons: state.activeLesson
+    completedLessons: state.activeLesson && !state.completedLessons.includes(state.activeLesson.id)
       ? [...state.completedLessons, state.activeLesson.id]
       : state.completedLessons,
     activeLesson: null,

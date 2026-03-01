@@ -22,6 +22,28 @@ export const LessonScreen: React.FC = () => {
 
   if (!activeLesson) return null;
 
+  if (hearts === 0) {
+    return (
+      <div className="fixed inset-0 bg-white z-[60] flex flex-col items-center justify-center p-6 text-center">
+        <Character size={150} expression="sad" />
+        <h1 className="text-4xl font-bold mt-8 text-duo-gray-dark">¡Te quedaste sin vidas!</h1>
+        <p className="text-xl text-duo-gray mt-4 max-w-md">
+          ¡No te rindas! Los mejores mecánicos también cometen errores. Recupera tus vidas y vuelve a intentarlo.
+        </p>
+        <div className="mt-12 flex flex-col gap-4 w-full max-w-xs">
+          <Button variant="primary" size="lg" onClick={() => {
+            useStore.getState().resetHearts();
+          }}>
+            Recargar vidas
+          </Button>
+          <Button variant="secondary" size="lg" onClick={exitLesson}>
+            Salir por ahora
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const currentQuestion = activeLesson.questions[currentQuestionIndex];
   const progress = (currentQuestionIndex) / activeLesson.questions.length;
 
