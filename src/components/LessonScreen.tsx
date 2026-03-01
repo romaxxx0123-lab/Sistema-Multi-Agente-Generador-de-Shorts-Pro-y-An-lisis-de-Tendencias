@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { CheckCircle2, XCircle, Heart, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Character } from './Character';
+import { PorscheTransition } from './PorscheTransition';
 import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise';
 import { ImageSelectionExercise } from './exercises/ImageSelectionExercise';
 import { MatchingExercise } from './exercises/MatchingExercise';
@@ -28,8 +29,13 @@ export const LessonScreen: React.FC = () => {
 
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'correct' | 'incorrect' | 'completed'>('idle');
+  const [showTransition, setShowTransition] = useState(true);
 
   if (!activeLesson) return null;
+
+  if (showTransition) {
+    return <PorscheTransition onComplete={() => setShowTransition(false)} />;
+  }
 
   if (status === 'completed') {
     return (

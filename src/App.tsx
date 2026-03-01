@@ -13,8 +13,8 @@ function App() {
   const streak = useStore(state => state.streak);
   const [currentSectionIndex, setCurrentSectionIndex] = React.useState(0);
 
-  // Licenses: B, A, S
-  const licenses = ['LICENCIA B', 'LICENCIA A', 'LICENCIA S-PRO'];
+  // Licenses: 0, B, A, S
+  const licenses = ['ETAPA 0', 'LICENCIA B', 'LICENCIA A', 'LICENCIA S-PRO'];
   const currentLicense = licenses[currentSectionIndex] || 'LICENCIA PRO';
 
   if (activeLesson) {

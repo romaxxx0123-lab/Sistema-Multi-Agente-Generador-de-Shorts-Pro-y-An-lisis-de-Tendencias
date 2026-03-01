@@ -13,19 +13,19 @@ export const Sidebar: React.FC = () => {
 
   return (
     <div className="fixed left-0 top-0 h-full w-64 border-r-2 border-duo-gray-light bg-white p-4 hidden md:flex flex-col">
-      <div className="mb-10 px-4 flex items-center gap-2">
+      <div className="mb-8 px-4 flex items-center gap-2 py-4">
         <Character size={40} expression="wink" />
         <h1 className="text-3xl font-bold text-duo-green tracking-tighter">autolingo</h1>
       </div>
 
-      <nav className="flex-1 space-y-2">
+      <nav className="flex-1 space-y-2 px-2">
         {menuItems.map((item, index) => (
           <button
             key={index}
-            className={`flex items-center w-full gap-4 px-4 py-3 rounded-xl font-bold uppercase tracking-wide transition-colors ${
+            className={`flex items-center w-full gap-4 px-4 py-3 rounded-xl font-bold uppercase tracking-wide transition-all border-2 ${
               item.active
-                ? 'bg-blue-100 text-duo-blue border-2 border-duo-blue'
-                : 'text-duo-gray hover:bg-gray-100'
+                ? 'bg-[#ddf4ff] text-[#1cb0f6] border-[#84d8ff]'
+                : 'text-[#777] border-transparent hover:bg-[#f7f7f7]'
             }`}
           >
             {item.icon}

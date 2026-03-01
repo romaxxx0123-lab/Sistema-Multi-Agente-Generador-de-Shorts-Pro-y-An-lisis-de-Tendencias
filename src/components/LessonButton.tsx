@@ -19,7 +19,6 @@ export const LessonButton: React.FC<LessonButtonProps> = ({
   isLocked
 }) => {
   const startLesson = useStore(state => state.startLesson);
-  const hearts = useStore(state => state.hearts);
 
   // Calculate horizontal offset for the "zig-zag" path
   const offset = Math.sin(index * 1.5) * 60;

@@ -25,7 +25,13 @@ export const SentenceBuilderExercise: React.FC<SentenceBuilderProps> = ({
   const handleWordSelect = (word: string, index: number) => {
     if (status !== 'idle') return;
     setAvailableWords(prev => prev.filter((_, i) => i !== index));
-    setSelectedWords(prev => [...prev, word]);
+    const newSelected = [...selectedWords, word];
+    setSelectedWords(newSelected);
+
+    if (newSelected.length === correctOrder.length) {
+      const isCorrect = newSelected.every((w, i) => w === correctOrder[i]);
+      onCorrect(isCorrect);
+    }
   };
 
   const handleWordRemove = (word: string, index: number) => {
@@ -33,14 +39,6 @@ export const SentenceBuilderExercise: React.FC<SentenceBuilderProps> = ({
     setSelectedWords(prev => prev.filter((_, i) => i !== index));
     setAvailableWords(prev => [...prev, word]);
   };
-
-  // Check correctness when selectedWords length equals correctOrder length
-  useEffect(() => {
-    if (selectedWords.length === correctOrder.length && selectedWords.length > 0) {
-      const isCorrect = selectedWords.every((word, i) => word === correctOrder[i]);
-      onCorrect(isCorrect);
-    }
-  }, [selectedWords, correctOrder, onCorrect]);
 
   return (
     <div className="flex flex-col gap-12 w-full max-w-2xl mx-auto py-8">

@@ -2,6 +2,207 @@ import type { Section, Lesson } from '../types';
 
 export const SECTIONS: Section[] = [
   {
+    id: 'etapa-0',
+    title: 'ETAPA 0: MARCAS Y COMPETICIÓN',
+    description: 'Conceptos básicos, marcas icónicas y la historia de las carreras.',
+    units: [
+      {
+        id: 'unit-0',
+        title: 'Cultura Automotriz 101',
+        description: 'Conoce los logos y las leyendas del asfalto',
+        color: 'bg-duo-blue',
+        lessons: [
+          {
+            id: 'lesson-0-1',
+            title: 'Marcas Emblemáticas',
+            questions: [
+              {
+                id: 'q0-1',
+                type: 'multiple-choice',
+                prompt: '¿Qué animal aparece en el logo de Ferrari?',
+                options: [
+                  { id: 'o1', text: 'Un caballo rampante', isCorrect: true },
+                  { id: 'o2', text: 'Un toro bravo', isCorrect: false },
+                  { id: 'o3', text: 'Un jaguar', isCorrect: false },
+                  { id: 'o4', text: 'Un león', isCorrect: false },
+                ],
+                explanation: 'El "Cavallino Rampante" es el símbolo icónico de Ferrari desde sus inicios.'
+              },
+              {
+                id: 'q0-1-2',
+                type: 'image-selection',
+                prompt: 'Selecciona el logo de Toyota',
+                options: [
+                  { id: 'o1', text: 'Toyota', image: 'https://www.car-logos.org/wp-content/uploads/2011/09/toyota.png', isCorrect: true },
+                  { id: 'o2', text: 'Honda', image: 'https://www.car-logos.org/wp-content/uploads/2011/09/honda.png', isCorrect: false },
+                  { id: 'o3', text: 'Mazda', image: 'https://www.car-logos.org/wp-content/uploads/2011/09/mazda.png', isCorrect: false },
+                ],
+                explanation: 'El logo de Toyota representa tres elipses entrelazadas que forman una "T".'
+              },
+              {
+                id: 'q0-1-3',
+                type: 'matching',
+                prompt: 'Une la marca con su país de origen',
+                pairs: [
+                  { id: 'p1', left: 'Toyota', right: 'Japón' },
+                  { id: 'p2', left: 'BMW', right: 'Alemania' },
+                  { id: 'p3', left: 'Ferrari', right: 'Italia' },
+                ],
+                explanation: 'Cada marca tiene raíces profundas en la ingeniería de su país de origen.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-0-2',
+            title: 'Historia y Carreras',
+            questions: [
+              {
+                id: 'q0-2-1',
+                type: 'multiple-choice',
+                prompt: '¿Cuánto dura la carrera de resistencia más famosa del mundo?',
+                options: [
+                  { id: 'o1', text: '24 horas', isCorrect: true },
+                  { id: 'o2', text: '12 horas', isCorrect: false },
+                  { id: 'o3', text: '500 millas', isCorrect: false },
+                  { id: 'o4', text: '1000 kilómetros', isCorrect: false },
+                ],
+                explanation: 'Le Mans es la prueba definitiva de resistencia durante un día completo.'
+              },
+              {
+                id: 'q0-2-2',
+                type: 'true-false',
+                prompt: '¿La Fórmula 1 es la categoría más rápida de autos de circuito?',
+                isTrue: true,
+                explanation: 'La F1 es considerada la "categoría reina" por su avanzada tecnología y velocidad en curvas.'
+              },
+              {
+                id: 'q0-2-3',
+                type: 'multiple-choice',
+                prompt: '¿De qué color es tradicionalmente un Ferrari de carreras?',
+                options: [
+                  { id: 'o1', text: 'Rojo', isCorrect: true },
+                  { id: 'o2', text: 'Azul', isCorrect: false },
+                  { id: 'o3', text: 'Verde', isCorrect: false },
+                  { id: 'o4', text: 'Plateado', isCorrect: false },
+                ],
+                explanation: 'El color "Rosso Corsa" es el color nacional de carreras de Italia y el sello de Ferrari.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-0-3',
+            title: 'Anatomía del Auto',
+            questions: [
+              {
+                id: 'q0-3-1',
+                type: 'part-pointing',
+                prompt: '¿Dónde se encuentran los faros delanteros?',
+                diagramImage: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?q=80&w=1000&auto=format&fit=crop',
+                hotspots: [
+                  { id: 'h1', x: 20, y: 60, label: 'Faro Izquierdo', isCorrect: true },
+                  { id: 'h2', x: 80, y: 60, label: 'Faro Derecho', isCorrect: true },
+                  { id: 'h3', x: 50, y: 40, label: 'Parabrisas', isCorrect: false },
+                  { id: 'h4', x: 50, y: 80, label: 'Parachoques', isCorrect: false },
+                ],
+                explanation: 'Los faros delanteros iluminan el camino y permiten que otros te vean.'
+              },
+              {
+                id: 'q0-3-2',
+                type: 'multiple-choice',
+                prompt: '¿Cómo se llama la pieza que cubre el motor en la parte delantera?',
+                options: [
+                  { id: 'o1', text: 'Capó (Bonnet)', isCorrect: true },
+                  { id: 'o2', text: 'Maletero (Trunk)', isCorrect: false },
+                  { id: 'o3', text: 'Chasis', isCorrect: false },
+                  { id: 'o4', text: 'Guardabarros', isCorrect: false },
+                ],
+                explanation: 'El capó protege el motor y permite el acceso para mantenimiento.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-0-4',
+            title: 'Los Mandos',
+            questions: [
+              {
+                id: 'q0-4-1',
+                type: 'matching',
+                prompt: 'Une el pedal con su función principal',
+                pairs: [
+                  { id: 'p1', left: 'Acelerador', right: 'Aumentar velocidad' },
+                  { id: 'p2', left: 'Freno', right: 'Reducir velocidad' },
+                  { id: 'p3', left: 'Embrague (Clutch)', right: 'Cambiar de marcha' },
+                ],
+                explanation: 'Dominar los tres pedales es esencial para conducir un auto manual.'
+              },
+              {
+                id: 'q0-4-2',
+                type: 'true-false',
+                prompt: '¿El pedal del freno suele ser el más ancho en un auto automático?',
+                isTrue: true,
+                explanation: 'En los automáticos, el pedal de freno es más grande para facilitar su uso con el pie derecho.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-0-5',
+            title: 'Siluetas',
+            questions: [
+              {
+                id: 'q0-5-1',
+                type: 'multiple-choice',
+                prompt: '¿Qué tipo de auto tiene 4 puertas y un maletero separado?',
+                options: [
+                  { id: 'o1', text: 'Sedán', isCorrect: true },
+                  { id: 'o2', text: 'Coupé', isCorrect: false },
+                  { id: 'o3', text: 'Hatchback', isCorrect: false },
+                  { id: 'o4', text: 'Convertible', isCorrect: false },
+                ],
+                explanation: 'El sedán es la forma más clásica de automóvil familiar.'
+              },
+              {
+                id: 'q0-5-2',
+                type: 'image-selection',
+                prompt: 'Selecciona el vehículo tipo SUV',
+                options: [
+                  { id: 'o1', text: 'SUV', image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?q=80&w=500&auto=format&fit=crop', isCorrect: true },
+                  { id: 'o2', text: 'Deportivo', image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=500&auto=format&fit=crop', isCorrect: false },
+                  { id: 'o3', text: 'Compacto', image: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?q=80&w=500&auto=format&fit=crop', isCorrect: false },
+                ],
+                explanation: 'Un SUV (Sport Utility Vehicle) destaca por su mayor altura y espacio.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-0-6',
+            title: 'El Tablero',
+            questions: [
+              {
+                id: 'q0-6-1',
+                type: 'multiple-choice',
+                prompt: '¿Qué significa esta luz roja: 🛢️?',
+                options: [
+                  { id: 'o1', text: 'Baja presión de aceite', isCorrect: true },
+                  { id: 'o2', text: 'Falta de combustible', isCorrect: false },
+                  { id: 'o3', text: 'Puerta abierta', isCorrect: false },
+                  { id: 'o4', text: 'Freno de mano puesto', isCorrect: false },
+                ],
+                explanation: '¡Peligro! Si esta luz se enciende, debes apagar el motor inmediatamente para evitar daños graves.'
+              },
+              {
+                id: 'q0-6-2',
+                type: 'true-false',
+                prompt: '¿La luz "Check Engine" siempre significa que el auto va a explotar?',
+                isTrue: false,
+                explanation: 'Indica un problema en el sistema de emisiones o motor, pero no siempre es una emergencia inmediata (aunque debe revisarse pronto).'
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
     id: 'licencia-b',
     title: 'LICENCIA B: FUNDAMENTOS DINÁMICOS',
     description: 'Control de masas, transferencia de peso y física básica de conducción.',

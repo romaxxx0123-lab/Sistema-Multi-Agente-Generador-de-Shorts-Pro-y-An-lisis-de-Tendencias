@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 interface PairItem {
@@ -37,31 +37,35 @@ export const MatchingExercise: React.FC<MatchingExerciseProps> = ({ pairs, onCom
     setRightItems([...rights].sort(() => Math.random() - 0.5));
   }, [pairs]);
 
-  useEffect(() => {
-    if (selectedLeft && selectedRight) {
-      if (selectedLeft === selectedRight) {
-        setMatchedIds(prev => new Set([...prev, selectedLeft]));
+  const checkMatch = useCallback((leftId: string, rightId: string) => {
+    if (leftId === rightId) {
+      setMatchedIds(prev => new Set([...prev, leftId]));
+      setSelectedLeft(null);
+      setSelectedRight(null);
+    } else {
+      setMismatched(true);
+      onIncorrect();
+      setTimeout(() => {
+        setMismatched(false);
         setSelectedLeft(null);
         setSelectedRight(null);
-
-        // Play success sound logic here if we had one
-      } else {
-        setMismatched(true);
-        onIncorrect();
-        setTimeout(() => {
-          setMismatched(false);
-          setSelectedLeft(null);
-          setSelectedRight(null);
-        }, 1000);
-      }
+      }, 1000);
     }
-  }, [selectedLeft, selectedRight]);
+  }, [onIncorrect]);
 
   useEffect(() => {
-    if (matchedIds.size === pairs.length && pairs.length > 0) {
+    if (selectedLeft && selectedRight) {
+      checkMatch(selectedLeft, selectedRight);
+    }
+  }, [selectedLeft, selectedRight, checkMatch]);
+
+  const isAllMatched = useMemo(() => matchedIds.size === pairs.length && pairs.length > 0, [matchedIds, pairs.length]);
+
+  useEffect(() => {
+    if (isAllMatched) {
       onComplete();
     }
-  }, [matchedIds, pairs.length, onComplete]);
+  }, [isAllMatched, onComplete]);
 
   const handleSelect = (id: string, side: 'left' | 'right') => {
     if (matchedIds.has(id)) return;
