@@ -17,6 +17,18 @@ export const SECTIONS: Section[] = [
             title: 'Partes Exteriores',
             questions: [
               {
+                id: 'q1-1-img',
+                type: 'image-selection',
+                prompt: 'Selecciona el "Capó"',
+                options: [
+                  { id: 'o1-1', text: 'Capó', isCorrect: true },
+                  { id: 'o1-2', text: 'Maletero', isCorrect: false },
+                  { id: 'o1-3', text: 'Puerta', isCorrect: false },
+                  { id: 'o1-4', text: 'Rueda', isCorrect: false },
+                ],
+                explanation: 'El capó es la cubierta que protege el motor.'
+              },
+              {
                 id: 'q1',
                 type: 'multiple-choice',
                 prompt: '¿Cómo se llama la parte que cubre el motor?',
@@ -29,16 +41,15 @@ export const SECTIONS: Section[] = [
                 explanation: 'El capó es la cubierta con bisagras que protege el motor del vehículo.'
               },
               {
-                id: 'q1-2',
-                type: 'multiple-choice',
-                prompt: '¿Dónde se guarda normalmente el equipaje?',
-                options: [
-                  { id: 'o121', text: 'Maletero / Cajuela', isCorrect: true },
-                  { id: 'o122', text: 'Guantera', isCorrect: false },
-                  { id: 'o123', text: 'Radiador', isCorrect: false },
-                  { id: 'o124', text: 'Techo', isCorrect: false },
-                ],
-                explanation: 'El maletero es el compartimento principal para carga en un vehículo.'
+                id: 'q1-match',
+                type: 'matching',
+                prompt: 'Une las partes con su ubicación',
+                pairs: [
+                  { id: 'p1', left: 'Capó', right: 'Frente' },
+                  { id: 'p2', left: 'Maletero', right: 'Atrás' },
+                  { id: 'p3', left: 'Volante', right: 'Interior' },
+                  { id: 'p4', left: 'Neumático', right: 'Suelo' },
+                ]
               },
               {
                 id: 'q3',
@@ -59,6 +70,17 @@ export const SECTIONS: Section[] = [
             title: 'Interior y Control',
             questions: [
               {
+                id: 'q10-match',
+                type: 'matching',
+                prompt: 'Combina el control con su función',
+                pairs: [
+                  { id: 'pm1', left: 'Volante', right: 'Dirección' },
+                  { id: 'pm2', left: 'Pedal Derecho', right: 'Aceleración' },
+                  { id: 'pm3', left: 'Pedal Central', right: 'Frenado' },
+                  { id: 'pm4', left: 'Palanca', right: 'Marchas' },
+                ]
+              },
+              {
                 id: 'q10',
                 type: 'multiple-choice',
                 prompt: '¿Cómo se llama el pedal que se usa para cambiar de marcha en autos manuales?',
@@ -71,16 +93,16 @@ export const SECTIONS: Section[] = [
                 explanation: 'El embrague desconecta el motor de la transmisión para permitir el cambio de marcha.'
               },
               {
-                id: 'q10-2',
-                type: 'multiple-choice',
-                prompt: '¿Qué instrumento indica la velocidad del vehículo?',
+                id: 'q10-img',
+                type: 'image-selection',
+                prompt: '¿Cuál indica las RPM del motor?',
                 options: [
-                  { id: 'o1021', text: 'Velocímetro', isCorrect: true },
-                  { id: 'o1022', text: 'Tacómetro', isCorrect: false },
-                  { id: 'o1023', text: 'Odómetro', isCorrect: false },
-                  { id: 'o1024', text: 'Manómetro', isCorrect: false },
+                  { id: 'o1021-i', text: 'Tacómetro', isCorrect: true },
+                  { id: 'o1022-i', text: 'Velocímetro', isCorrect: false },
+                  { id: 'o1023-i', text: 'Odómetro', isCorrect: false },
+                  { id: 'o1024-i', text: 'Manómetro', isCorrect: false },
                 ],
-                explanation: 'El velocímetro muestra la velocidad actual de desplazamiento en km/h o mph.'
+                explanation: 'El tacómetro mide las revoluciones por minuto (RPM) del motor.'
               }
             ]
           },

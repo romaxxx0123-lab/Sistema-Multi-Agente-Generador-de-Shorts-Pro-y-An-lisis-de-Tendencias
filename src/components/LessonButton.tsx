@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Star, Check } from 'lucide-react';
 import type { Lesson } from '../types';
 import { useStore } from '../store/useStore';
@@ -23,15 +24,20 @@ export const LessonButton: React.FC<LessonButtonProps> = ({
   const offset = Math.sin(index * 1.5) * 60;
 
   return (
-    <div
+    <motion.div
       className="flex flex-col items-center mb-8 relative"
-      style={{ transform: `translateX(${offset}px)` }}
+      style={{ x: offset }}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: index * 0.1 }}
     >
-      <button
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ y: 8, transition: { duration: 0.1 } }}
         onClick={() => !isLocked && startLesson(lesson)}
         disabled={isLocked}
         className={`
-          relative w-20 h-20 rounded-full flex items-center justify-center transition-all active:translate-y-1
+          relative w-20 h-20 rounded-full flex items-center justify-center transition-all
           ${isCompleted
             ? 'bg-duo-yellow border-b-8 border-duo-yellow-dark shadow-duo-yellow-dark'
             : isLocked
@@ -46,11 +52,11 @@ export const LessonButton: React.FC<LessonButtonProps> = ({
         ) : (
           <Star size={36} className="text-white" fill="currentColor" />
         )}
-      </button>
+      </motion.button>
 
       <div className="mt-2 bg-white border-2 border-duo-gray-light px-3 py-1 rounded-xl font-bold text-sm uppercase">
         {lesson.title}
       </div>
-    </div>
+    </motion.div>
   );
 };

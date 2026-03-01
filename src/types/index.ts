@@ -7,11 +7,18 @@ export interface Option {
   isCorrect: boolean;
 }
 
+export interface MatchingPair {
+  id: string;
+  left: string;
+  right: string;
+}
+
 export interface Question {
   id: string;
   type: QuestionType;
   prompt: string;
-  options: Option[];
+  options?: Option[];
+  pairs?: MatchingPair[];
   explanation?: string;
 }
 

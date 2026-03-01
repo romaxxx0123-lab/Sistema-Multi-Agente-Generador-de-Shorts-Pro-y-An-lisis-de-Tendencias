@@ -13,12 +13,23 @@ export const Character: React.FC<CharacterProps> = ({
   size = 150
 }) => {
   return (
-    <div className={`relative ${className}`} style={{ width: size, height: size * 1.1 }}>
+    <motion.div
+      className={`relative ${className}`}
+      style={{ width: size, height: size * 1.1 }}
+      animate={{
+        y: [0, -4, 0],
+        rotate: expression === 'happy' ? [0, -2, 2, -2, 0] : 0
+      }}
+      transition={{
+        y: { duration: 3, repeat: Infinity, ease: "easeInOut" },
+        rotate: { duration: 0.5, repeat: expression === 'happy' ? Infinity : 0 }
+      }}
+    >
       <svg
         viewBox="0 0 100 110"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className="w-full h-full"
+        className="w-full h-full drop-shadow-md"
       >
         {/* Body */}
         <ellipse cx="50" cy="60" rx="35" ry="45" fill="#1e293b" />
@@ -70,6 +81,6 @@ export const Character: React.FC<CharacterProps> = ({
         <path d="M35 100Q30 105 25 100" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" />
         <path d="M65 100Q70 105 75 100" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" />
       </svg>
-    </div>
+    </motion.div>
   );
 };

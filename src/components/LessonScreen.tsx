@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { ProgressBar } from './ProgressBar';
 import { Button } from './Button';
-import { CheckCircle2, XCircle, Heart } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { CheckCircle2, XCircle, Heart, Trophy } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Character } from './Character';
+import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise';
+import { ImageSelectionExercise } from './exercises/ImageSelectionExercise';
+import { MatchingExercise } from './exercises/MatchingExercise';
 
 export const LessonScreen: React.FC = () => {
   const {
@@ -18,9 +21,39 @@ export const LessonScreen: React.FC = () => {
   } = useStore();
 
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'correct' | 'incorrect'>('idle');
+  const [status, setStatus] = useState<'idle' | 'correct' | 'incorrect' | 'completed'>('idle');
 
   if (!activeLesson) return null;
+
+  if (status === 'completed') {
+    return (
+      <div className="fixed inset-0 bg-white z-[60] flex flex-col items-center justify-center p-6 text-center">
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="bg-duo-yellow p-8 rounded-3xl shadow-xl flex flex-col items-center mb-8 border-b-8 border-duo-yellow-dark"
+        >
+          <div className="bg-white rounded-full p-6 mb-4 shadow-lg border-b-4 border-duo-gray-light">
+             <Trophy size={80} className="text-duo-yellow" fill="currentColor" />
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-2 uppercase tracking-tight">Lección Completada</h1>
+          <p className="text-white font-bold opacity-80 text-xl">+15 XP • 100% Precisión</p>
+        </motion.div>
+
+        <Character size={180} expression="wink" />
+        <h2 className="text-3xl font-bold mt-8 text-duo-gray-dark">¡Impresionante!</h2>
+        <p className="text-xl text-duo-gray mt-4 max-w-md">
+          Has dominado esta lección. Cada paso te acerca más a ser un experto mecánico.
+        </p>
+
+        <div className="mt-12 w-full max-w-xs">
+          <Button variant="primary" size="lg" className="w-full" onClick={finishLesson}>
+            CONTINUAR
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (hearts === 0) {
     return (
@@ -48,9 +81,14 @@ export const LessonScreen: React.FC = () => {
   const progress = (currentQuestionIndex) / activeLesson.questions.length;
 
   const handleCheck = () => {
+    if (currentQuestion.type === 'matching') {
+        // Matching is handled by onComplete internal logic
+        return;
+    }
+
     if (!selectedOption) return;
 
-    const option = currentQuestion.options.find(o => o.id === selectedOption);
+    const option = currentQuestion.options?.find(o => o.id === selectedOption);
     if (option?.isCorrect) {
       setStatus('correct');
     } else {
@@ -65,7 +103,7 @@ export const LessonScreen: React.FC = () => {
       setStatus('idle');
       nextQuestion();
     } else {
-      finishLesson();
+      setStatus('completed');
     }
   };
 
@@ -79,43 +117,58 @@ export const LessonScreen: React.FC = () => {
         </div>
       </div>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-4 max-w-3xl mx-auto w-full">
-        <div className="flex flex-col md:flex-row items-center gap-8 w-full">
-          <Character size={120} expression={status === 'incorrect' ? 'sad' : status === 'correct' ? 'happy' : 'neutral'} />
+      <main className="flex-1 flex flex-col items-center justify-center p-4 max-w-5xl mx-auto w-full overflow-y-auto">
+        <div className="w-full flex flex-col gap-8">
+          <div className="flex flex-col md:flex-row items-center gap-8 w-full">
+            <div className="relative group shrink-0">
+               <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-white border-2 border-duo-gray-light px-4 py-2 rounded-2xl font-bold text-lg shadow-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                  ¡Vamos, tú puedes!
+                  <div className="absolute bottom-[-10px] left-1/2 -translate-x-1/2 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[10px] border-t-duo-gray-light"></div>
+               </div>
+               <Character size={120} expression={status === 'incorrect' ? 'sad' : status === 'correct' ? 'happy' : 'neutral'} />
+            </div>
+
+            <h2 className="text-3xl font-bold text-center md:text-left text-duo-gray-dark flex-1">
+              {currentQuestion.prompt}
+            </h2>
+          </div>
 
           <motion.div
             key={currentQuestion.id}
-            initial={{ opacity: 0, x: 20 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={status === 'incorrect' ? {
               x: [0, -10, 10, -10, 10, 0],
               transition: { duration: 0.4 }
-            } : { opacity: 1, x: 0 }}
-            className="flex-1 w-full"
+            } : { opacity: 1, y: 0 }}
+            className="w-full"
           >
-            <h2 className="text-3xl font-bold mb-8 text-center md:text-left">
-              {currentQuestion.prompt}
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {currentQuestion.options.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => status === 'idle' && setSelectedOption(option.id)}
-                  className={`
-                    p-4 border-2 rounded-2xl text-left font-bold text-lg transition-all
-                    ${selectedOption === option.id
-                      ? 'border-duo-blue bg-blue-50 text-duo-blue shadow-[0_4px_0_0_#1cb0f6]'
-                      : 'border-duo-gray-light hover:bg-gray-50 shadow-[0_4px_0_0_#e5e5e5]'}
-                    active:translate-y-1 active:shadow-none
-                  `}
-                >
-                  <span className="inline-block w-8 h-8 border-2 rounded-lg mr-4 text-center leading-7 text-sm">
-                    {option.id.slice(-1)}
-                  </span>
-                  {option.text}
-                </button>
-              ))}
-            </div>
+            <AnimatePresence mode="wait">
+               {currentQuestion.type === 'multiple-choice' && (
+                  <MultipleChoiceExercise
+                    key="mc"
+                    options={currentQuestion.options || []}
+                    selectedId={selectedOption}
+                    onSelect={setSelectedOption}
+                    status={status as any}
+                  />
+               )}
+               {currentQuestion.type === 'image-selection' && (
+                  <ImageSelectionExercise
+                    key="is"
+                    options={currentQuestion.options || []}
+                    selectedId={selectedOption}
+                    onSelect={setSelectedOption}
+                    status={status as any}
+                  />
+               )}
+               {currentQuestion.type === 'matching' && (
+                  <MatchingExercise
+                    key="me"
+                    pairs={currentQuestion.pairs || []}
+                    onComplete={() => setStatus('correct')}
+                  />
+               )}
+            </AnimatePresence>
           </motion.div>
         </div>
       </main>
@@ -143,7 +196,7 @@ export const LessonScreen: React.FC = () => {
                 <div>
                   <h3 className="text-2xl font-bold">Respuesta incorrecta</h3>
                   <p className="font-medium">
-                    La respuesta correcta era: {currentQuestion.options.find(o => o.isCorrect)?.text}
+                    La respuesta correcta era: {currentQuestion.options?.find(o => o.isCorrect)?.text}
                   </p>
                 </div>
               </div>

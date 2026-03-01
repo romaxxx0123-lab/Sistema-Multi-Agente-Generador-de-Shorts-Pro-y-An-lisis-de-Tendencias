@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -36,11 +37,14 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   return (
-    <button
+    <motion.button
+      whileTap={{ y: 4 }}
       className={cn(baseStyles, variants[variant], sizes[size], className)}
-      {...props}
+      onClick={props.onClick}
+      disabled={props.disabled}
+      type={props.type}
     >
       {children}
-    </button>
+    </motion.button>
   );
 };
