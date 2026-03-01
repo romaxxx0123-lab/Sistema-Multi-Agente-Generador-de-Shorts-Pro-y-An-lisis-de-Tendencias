@@ -279,6 +279,24 @@ export const SECTIONS: Section[] = [
                 explanation: 'Toyota es uno de los mayores fabricantes del mundo y tiene su sede en Japón.'
               }
             ]
+          },
+          {
+            id: 'lesson-3-5',
+            title: 'Logos con Historia',
+            questions: [
+              {
+                id: 'q35',
+                type: 'multiple-choice',
+                prompt: '¿Qué representan los colores azul y blanco en el logo de BMW?',
+                options: [
+                  { id: 'o351', text: 'Una hélice de avión', isCorrect: false },
+                  { id: 'o352', text: 'La bandera de Baviera', isCorrect: true },
+                  { id: 'o353', text: 'El cielo y las nubes', isCorrect: false },
+                  { id: 'o354', text: 'La velocidad y pureza', isCorrect: false },
+                ],
+                explanation: 'Aunque se cree que es una hélice, los colores representan al estado de Baviera, Alemania.'
+              }
+            ]
           }
         ]
       },
@@ -385,6 +403,24 @@ export const SECTIONS: Section[] = [
                 explanation: 'El punto ciego es el área alrededor del vehículo que no es visible directamente.'
               }
             ]
+          },
+          {
+            id: 'lesson-5-3',
+            title: 'Visión Nocturna',
+            questions: [
+              {
+                id: 'q53',
+                type: 'multiple-choice',
+                prompt: '¿Qué posición del espejo retrovisor evita el deslumbramiento nocturno?',
+                options: [
+                  { id: 'o531', text: 'Modo día', isCorrect: false },
+                  { id: 'o532', text: 'Modo noche / Anti-reflejo', isCorrect: true },
+                  { id: 'o533', text: 'Modo parking', isCorrect: false },
+                  { id: 'o534', text: 'Modo cerrado', isCorrect: false },
+                ],
+                explanation: 'La palanca inferior del espejo retrovisor desvía la luz intensa de los autos que vienen detrás.'
+              }
+            ]
           }
         ]
       }
@@ -436,6 +472,24 @@ export const SECTIONS: Section[] = [
                 explanation: 'El pistón comprime la mezcla y recibe la fuerza de la explosión.'
               }
             ]
+          },
+          {
+            id: 'lesson-6-3',
+            title: 'Configuraciones de Motor',
+            questions: [
+              {
+                id: 'q631',
+                type: 'multiple-choice',
+                prompt: '¿Qué configuración de motor es famosa en los Porsche 911 y Subaru?',
+                options: [
+                  { id: 'o6311', text: 'Motor en V', isCorrect: false },
+                  { id: 'o6312', text: 'Motor Bóxer (Plano)', isCorrect: true },
+                  { id: 'o6313', text: 'Motor en Línea', isCorrect: false },
+                  { id: 'o6314', text: 'Motor Rotativo', isCorrect: false },
+                ],
+                explanation: 'El motor Bóxer tiene cilindros opuestos horizontalmente, bajando el centro de gravedad.'
+              }
+            ]
           }
         ]
       },
@@ -478,6 +532,24 @@ export const SECTIONS: Section[] = [
                   { id: 'o7214', text: 'Carburador', isCorrect: false },
                 ],
                 explanation: 'El radiador usa el aire exterior para bajar la temperatura del líquido refrigerante.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-7-3',
+            title: 'Mantenimiento Preventivo',
+            questions: [
+              {
+                id: 'q731',
+                type: 'multiple-choice',
+                prompt: '¿Cada cuánto tiempo se recomienda generalmente cambiar el aceite sintético?',
+                options: [
+                  { id: 'o7311', text: 'Cada 1,000 km', isCorrect: false },
+                  { id: 'o7312', text: 'Entre 10,000 y 15,000 km', isCorrect: true },
+                  { id: 'o7313', text: 'Cada 50,000 km', isCorrect: false },
+                  { id: 'o7314', text: 'Nunca se cambia', isCorrect: false },
+                ],
+                explanation: 'Un mantenimiento regular es la clave para que un motor dure cientos de miles de kilómetros.'
               }
             ]
           }
@@ -610,6 +682,145 @@ export const SECTIONS: Section[] = [
                   { id: 'o10214', text: 'Cables de alta', isCorrect: false },
                 ],
                 explanation: 'La bujía crea el arco eléctrico que detona la mezcla de aire y combustible.'
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'section-3',
+    title: 'Sección 3: Entusiasta',
+    description: 'Cultura, performance y leyendas',
+    units: [
+      {
+        id: 'unit-11',
+        title: 'Leyendas del Asfalto',
+        description: 'Conoce los autos que definieron la historia',
+        color: 'bg-duo-green',
+        lessons: [
+          {
+            id: 'lesson-11-1',
+            title: 'BMW M: La Letra más Poderosa',
+            questions: [
+              {
+                id: 'q1111',
+                type: 'multiple-choice',
+                prompt: '¿Cuál fue el primer auto de calle desarrollado completamente por BMW M?',
+                options: [
+                  { id: 'o11111', text: 'BMW M1', isCorrect: true },
+                  { id: 'o11112', text: 'BMW M3 E30', isCorrect: false },
+                  { id: 'o11113', text: 'BMW M5 E28', isCorrect: false },
+                  { id: 'o11114', text: 'BMW 2002 Turbo', isCorrect: false },
+                ],
+                explanation: 'El M1 es un superdeportivo con motor central que lanzó la leyenda de la división M.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-11-2',
+            title: 'Porsche 911: Evolución Pura',
+            questions: [
+              {
+                id: 'q1121',
+                type: 'multiple-choice',
+                prompt: '¿Dónde se ubica el motor en un Porsche 911?',
+                options: [
+                  { id: 'o11211', text: 'Delantero', isCorrect: false },
+                  { id: 'o11212', text: 'Central', isCorrect: false },
+                  { id: 'o11213', text: 'Trasero (detrás del eje)', isCorrect: true },
+                  { id: 'o11214', text: 'En el maletero delantero', isCorrect: false },
+                ],
+                explanation: 'La disposición del motor trasero es la firma característica que define al 911 desde 1963.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-12',
+        title: 'Performance y Potencia',
+        description: 'Turbo, Nitro y Aerodinámica',
+        color: 'bg-duo-orange',
+        lessons: [
+          {
+            id: 'lesson-12-1',
+            title: 'Sobrealimentación',
+            questions: [
+              {
+                id: 'q1211',
+                type: 'multiple-choice',
+                prompt: '¿Qué utiliza un turbocompresor para generar más potencia?',
+                options: [
+                  { id: 'o12111', text: 'Gases de escape', isCorrect: true },
+                  { id: 'o12112', text: 'Una correa conectada al motor', isCorrect: false },
+                  { id: 'o12113', text: 'Electricidad de la batería', isCorrect: false },
+                  { id: 'o12114', text: 'Inyección de agua', isCorrect: false },
+                ],
+                explanation: 'El turbo aprovecha la energía de los gases de escape para comprimir el aire de admisión.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-12-2',
+            title: 'Aerodinámica',
+            questions: [
+              {
+                id: 'q1221',
+                type: 'multiple-choice',
+                prompt: '¿Cuál es la función principal de un alerón trasero en un auto deportivo?',
+                options: [
+                  { id: 'o12211', text: 'Hacer que el auto sea más ligero', isCorrect: false },
+                  { id: 'o12212', text: 'Generar carga aerodinámica (Downforce)', isCorrect: true },
+                  { id: 'o12213', text: 'Enfriar el motor', isCorrect: false },
+                  { id: 'o12214', text: 'Reducir el consumo de combustible', isCorrect: false },
+                ],
+                explanation: 'El alerón empuja el auto contra el suelo para mejorar la tracción a altas velocidades.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-13',
+        title: 'Cultura Automotriz',
+        description: 'JDM, Muscle Cars y más',
+        color: 'bg-duo-purple',
+        lessons: [
+          {
+            id: 'lesson-13-1',
+            title: 'JDM: El Sol Naciente',
+            questions: [
+              {
+                id: 'q1311',
+                type: 'multiple-choice',
+                prompt: '¿Qué significan las siglas JDM?',
+                options: [
+                  { id: 'o13111', text: 'Japanese Domestic Market', isCorrect: true },
+                  { id: 'o13112', text: 'Just Drift More', isCorrect: false },
+                  { id: 'o13113', text: 'Joint Design Motor', isCorrect: false },
+                  { id: 'o13114', text: 'Junior Dragster Modified', isCorrect: false },
+                ],
+                explanation: 'Se refiere a vehículos fabricados específicamente para el mercado interno japonés.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-13-2',
+            title: 'Muscle Cars Americanos',
+            questions: [
+              {
+                id: 'q1321',
+                type: 'multiple-choice',
+                prompt: '¿Cuál de estos es considerado el primer "Muscle Car" de la historia?',
+                options: [
+                  { id: 'o13211', text: 'Ford Mustang', isCorrect: false },
+                  { id: 'o13212', text: 'Pontiac GTO', isCorrect: true },
+                  { id: 'o13213', text: 'Dodge Challenger', isCorrect: false },
+                  { id: 'o13214', text: 'Chevrolet Camaro', isCorrect: false },
+                ],
+                explanation: 'Aunque el Mustang es más famoso, el GTO de 1964 definió la fórmula del Muscle Car.'
               }
             ]
           }
