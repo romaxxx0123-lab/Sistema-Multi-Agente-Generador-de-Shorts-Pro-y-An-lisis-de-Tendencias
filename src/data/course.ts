@@ -3,8 +3,8 @@ import type { Unit } from '../types';
 export const UNITS: Unit[] = [
   {
     id: 'unit-1',
-    title: 'Fundamentos de los Autos',
-    description: 'Aprende las partes básicas y cómo funciona un motor',
+    title: 'Fundamentos: Las Bases',
+    description: 'Aprende las partes esenciales que todo conductor debe conocer',
     color: 'bg-duo-green',
     lessons: [
       {
@@ -24,18 +24,6 @@ export const UNITS: Unit[] = [
             explanation: 'El capó es la cubierta con bisagras que protege el motor del vehículo.'
           },
           {
-            id: 'q2',
-            type: 'multiple-choice',
-            prompt: '¿Cuál es la función principal del radiador?',
-            options: [
-              { id: 'o21', text: 'Enfriar el motor', isCorrect: true },
-              { id: 'o22', text: 'Dar energía a las luces', isCorrect: false },
-              { id: 'o23', text: 'Filtrar el aceite', isCorrect: false },
-              { id: 'o24', text: 'Limpiar el parabrisas', isCorrect: false },
-            ],
-            explanation: 'El radiador disipa el calor del líquido refrigerante para que el motor no se sobrecaliente.'
-          },
-          {
             id: 'q3',
             type: 'multiple-choice',
             prompt: '¿Qué componente limpia el agua del parabrisas?',
@@ -51,7 +39,77 @@ export const UNITS: Unit[] = [
       },
       {
         id: 'lesson-1-2',
-        title: 'El Motor',
+        title: 'Interior y Control',
+        questions: [
+          {
+            id: 'q10',
+            type: 'multiple-choice',
+            prompt: '¿Cómo se llama el pedal que se usa para cambiar de marcha en autos manuales?',
+            options: [
+              { id: 'o101', text: 'Embrague', isCorrect: true },
+              { id: 'o102', text: 'Acelerador', isCorrect: false },
+              { id: 'o103', text: 'Freno de mano', isCorrect: false },
+              { id: 'o104', text: 'Diferencial', isCorrect: false },
+            ],
+            explanation: 'El embrague desconecta el motor de la transmisión para permitir el cambio de marcha.'
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'unit-2',
+    title: 'Marcas y Emblemas',
+    description: 'Identifica los fabricantes más famosos del mundo',
+    color: 'bg-duo-blue',
+    lessons: [
+      {
+        id: 'lesson-2-1',
+        title: 'Gigantes Alemanes',
+        questions: [
+          {
+            id: 'q11',
+            type: 'multiple-choice',
+            prompt: '¿Qué marca tiene un logo con cuatro anillos entrelazados?',
+            options: [
+              { id: 'o111', text: 'Audi', isCorrect: true },
+              { id: 'o112', text: 'BMW', isCorrect: false },
+              { id: 'o113', text: 'Mercedes-Benz', isCorrect: false },
+              { id: 'o114', text: 'Volkswagen', isCorrect: false },
+            ],
+            explanation: 'Los cuatro anillos representan la unión de cuatro fabricantes independientes en 1932.'
+          }
+        ]
+      },
+      {
+        id: 'lesson-2-2',
+        title: 'Marcas de Lujo',
+        questions: [
+          {
+            id: 'q12',
+            type: 'multiple-choice',
+            prompt: '¿Cuál es el animal que aparece en el logo de Ferrari?',
+            options: [
+              { id: 'o121', text: 'Un caballo (Cavallino Rampante)', isCorrect: true },
+              { id: 'o122', text: 'Un toro', isCorrect: false },
+              { id: 'o123', text: 'Un jaguar', isCorrect: false },
+              { id: 'o124', text: 'Un león', isCorrect: false },
+            ],
+            explanation: 'El "Cavallino Rampante" era originalmente el símbolo de un as de la aviación italiana.'
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'unit-3',
+    title: '¿Cómo Funciona?',
+    description: 'Sumérgete en la mecánica y el corazón del auto',
+    color: 'bg-duo-purple',
+    lessons: [
+      {
+        id: 'lesson-3-1',
+        title: 'Ciclo del Motor',
         questions: [
           {
             id: 'q4',
@@ -82,14 +140,14 @@ export const UNITS: Unit[] = [
     ]
   },
   {
-    id: 'unit-2',
-    title: 'Mantenimiento Básico',
-    description: 'Cambio de aceite, llantas y fluidos',
-    color: 'bg-duo-blue',
+    id: 'unit-4',
+    title: 'Mantenimiento Experto',
+    description: 'Cuida tu auto como un profesional',
+    color: 'bg-duo-orange',
     lessons: [
       {
-        id: 'lesson-2-1',
-        title: 'Aceite y Fluidos',
+        id: 'lesson-4-1',
+        title: 'Líquidos Vitales',
         questions: [
           {
             id: 'q6',
@@ -108,26 +166,70 @@ export const UNITS: Unit[] = [
     ]
   },
   {
-    id: 'unit-3',
-    title: 'Seguridad y Frenos',
-    description: 'Sistemas de frenado y seguridad activa',
-    color: 'bg-duo-orange',
+    id: 'unit-5',
+    title: 'Autos Icónicos',
+    description: 'Historias de leyendas sobre ruedas',
+    color: 'bg-duo-red',
     lessons: [
       {
-        id: 'lesson-3-1',
-        title: 'Sistema de Frenos',
+        id: 'lesson-5-1',
+        title: 'El Auto del Pueblo',
         questions: [
           {
-            id: 'q7',
+            id: 'q20',
             type: 'multiple-choice',
-            prompt: '¿Qué significa el sistema ABS?',
+            prompt: '¿Qué modelo de Volkswagen es conocido como "Escarabajo" o "Vocho"?',
             options: [
-              { id: 'o71', text: 'Sistema antibloqueo', isCorrect: true },
-              { id: 'o72', text: 'Aceleración bajo suelo', isCorrect: false },
-              { id: 'o73', text: 'Aire bajo suspensión', isCorrect: false },
-              { id: 'o74', text: 'Arranque básico suave', isCorrect: false },
+              { id: 'o201', text: 'Beetle / Type 1', isCorrect: true },
+              { id: 'o202', text: 'Golf', isCorrect: false },
+              { id: 'o203', text: 'Passat', isCorrect: false },
+              { id: 'o204', text: 'Jetta', isCorrect: false },
             ],
-            explanation: 'El ABS evita que las ruedas se bloqueen durante una frenada de emergencia.'
+            explanation: 'Fue diseñado en los años 30 y se convirtió en uno de los autos más vendidos de la historia.'
+          }
+        ]
+      },
+      {
+        id: 'lesson-5-2',
+        title: 'Muscle Cars',
+        questions: [
+          {
+            id: 'q21',
+            type: 'multiple-choice',
+            prompt: '¿Cuál de estos es un famoso "Muscle Car" americano?',
+            options: [
+              { id: 'o211', text: 'Ford Mustang', isCorrect: true },
+              { id: 'o212', text: 'Fiat 500', isCorrect: false },
+              { id: 'o213', text: 'Mini Cooper', isCorrect: false },
+              { id: 'o214', text: 'Toyota Prius', isCorrect: false },
+            ],
+            explanation: 'El Mustang popularizó la categoría de autos deportivos americanos con motores potentes.'
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'unit-6',
+    title: 'El Futuro Eléctrico',
+    description: 'La nueva era de la movilidad',
+    color: 'bg-duo-yellow',
+    lessons: [
+      {
+        id: 'lesson-6-1',
+        title: 'Baterías y Voltaje',
+        questions: [
+          {
+            id: 'q30',
+            type: 'multiple-choice',
+            prompt: '¿Qué unidad mide la capacidad de la batería de un auto eléctrico?',
+            options: [
+              { id: 'o301', text: 'kWh (Kilovatios-hora)', isCorrect: true },
+              { id: 'o302', text: 'Caballos de fuerza', isCorrect: false },
+              { id: 'o303', text: 'Litros', isCorrect: false },
+              { id: 'o304', text: 'Octanaje', isCorrect: false },
+            ],
+            explanation: 'Los kWh determinan cuánta energía puede almacenar la batería y cuánta autonomía tendrá el auto.'
           }
         ]
       }
