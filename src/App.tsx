@@ -13,8 +13,9 @@ function App() {
   const streak = useStore(state => state.streak);
   const [currentSectionIndex, setCurrentSectionIndex] = React.useState(0);
 
-  // Calculate current stage (every 2 sections = 1 stage for UI purposes)
-  const currentStage = Math.floor(currentSectionIndex / 2) + 1;
+  // Licenses: B, A, S
+  const licenses = ['LICENCIA B', 'LICENCIA A', 'LICENCIA S-PRO'];
+  const currentLicense = licenses[currentSectionIndex] || 'LICENCIA PRO';
 
   if (activeLesson) {
     return (
@@ -34,7 +35,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white font-['DIN_Next_Rounded_OT']">
       <Sidebar />
 
       {/* Top Header for Mobile & Stats */}
@@ -58,7 +59,7 @@ function App() {
           </div>
         </div>
 
-        <div className="w-10 h-10 rounded-full bg-duo-purple flex items-center justify-center text-white font-bold">
+        <div className="w-10 h-10 rounded-full bg-duo-purple flex items-center justify-center text-white font-bold border-2 border-white shadow-md">
           J
         </div>
       </header>
@@ -67,24 +68,24 @@ function App() {
         <div className="max-w-4xl mx-auto">
           {SECTIONS.map((section, idx) => (
             <div key={section.id} className={idx === currentSectionIndex ? 'block' : 'hidden'}>
-              <div className="bg-duo-green-dark text-white p-6 rounded-2xl mb-8 flex items-center justify-between shadow-lg">
+              <div className="bg-gradient-to-br from-duo-green-dark to-emerald-700 text-white p-6 rounded-2xl mb-8 flex items-center justify-between shadow-xl border-b-4 border-emerald-900">
                 <div>
-                   <div className="text-xs font-bold opacity-70 mb-1">ETAPA {currentStage}</div>
-                   <h1 className="text-2xl font-bold uppercase tracking-tight">{section.title}</h1>
-                   <p className="opacity-90 font-medium">{section.description}</p>
+                   <div className="text-xs font-black opacity-80 mb-1 tracking-widest">{currentLicense}</div>
+                   <h1 className="text-2xl font-black uppercase tracking-tight">{section.title}</h1>
+                   <p className="opacity-90 font-medium italic">{section.description}</p>
                 </div>
                 <div className="flex gap-2">
                    <button
                     onClick={() => setCurrentSectionIndex(Math.max(0, idx - 1))}
                     disabled={idx === 0}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 bg-black/20"
                    >
                     <ChevronLeft />
                    </button>
                    <button
                     onClick={() => setCurrentSectionIndex(Math.min(SECTIONS.length - 1, idx + 1))}
                     disabled={idx === SECTIONS.length - 1}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 bg-black/20"
                    >
                     <ChevronRight />
                    </button>

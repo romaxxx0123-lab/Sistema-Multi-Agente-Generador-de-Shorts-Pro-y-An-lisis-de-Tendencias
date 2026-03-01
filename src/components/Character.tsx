@@ -15,95 +15,96 @@ export const Character: React.FC<CharacterProps> = ({
   return (
     <motion.div
       className={`relative ${className}`}
-      style={{ width: size, height: size * 1.1 }}
+      style={{ width: size, height: size * 1.2 }}
       animate={{
-        y: [0, -4, 0],
-        rotate: expression === 'happy' ? [0, -2, 2, -2, 0] : 0
+        y: [0, -6, 0],
+        scale: expression === 'happy' ? [1, 1.05, 1] : 1
       }}
       transition={{
-        y: { duration: 3, repeat: Infinity, ease: "easeInOut" },
-        rotate: { duration: 0.5, repeat: expression === 'happy' ? Infinity : 0 }
+        y: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+        scale: { duration: 0.3, repeat: expression === 'happy' ? Infinity : 0 }
       }}
     >
       <svg
-        viewBox="0 0 100 110"
+        viewBox="0 0 100 120"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className="w-full h-full drop-shadow-md"
+        className="w-full h-full drop-shadow-2xl"
       >
-        {/* Body */}
-        <ellipse cx="50" cy="60" rx="35" ry="45" fill="#1e293b" />
-        <ellipse cx="50" cy="65" rx="25" ry="35" fill="white" />
+        {/* Racing Suit Body */}
+        <ellipse cx="50" cy="70" rx="38" ry="48" fill="#e11d48" /> {/* Red Suit */}
+        <path d="M30 30 Q50 20 70 30 L70 110 Q50 120 30 110 Z" fill="#e11d48" />
 
-        {/* Mechanic Goggles (Headband) */}
-        <rect x="25" y="32" width="50" height="4" rx="2" fill="#475569" />
-        <circle cx="38" cy="34" r="8" fill="#94a3b8" stroke="#475569" strokeWidth="2" />
-        <circle cx="62" cy="34" r="8" fill="#94a3b8" stroke="#475569" strokeWidth="2" />
+        {/* Racing Stripes */}
+        <rect x="42" y="35" width="6" height="80" fill="white" opacity="0.9" />
+        <rect x="52" y="35" width="6" height="80" fill="white" opacity="0.9" />
 
-        {/* Wings */}
-        <motion.path
-          d="M15 60C10 70 5 80 10 90"
-          stroke="#1e293b"
-          strokeWidth="10"
-          strokeLinecap="round"
-          animate={expression === 'happy' ? { rotate: [0, -20, 0] } : {}}
-        />
-        <motion.path
-          d="M85 60C90 70 95 80 90 90"
-          stroke="#1e293b"
-          strokeWidth="10"
-          strokeLinecap="round"
-          animate={expression === 'happy' ? { rotate: [0, 20, 0] } : {}}
-        />
+        {/* Penguin Belly (Suit Opening) */}
+        <ellipse cx="50" cy="75" rx="22" ry="32" fill="white" />
 
-        {/* Eyes */}
+        {/* Pro Racing Helmet */}
+        <circle cx="50" cy="40" r="32" fill="#1e293b" /> {/* Dark Helmet */}
+        <rect x="25" y="35" width="50" height="20" rx="10" fill="#0f172a" stroke="#38bdf8" strokeWidth="2" /> {/* Visor */}
+
+        {/* Visor Reflection */}
+        <rect x="30" y="38" width="15" height="4" rx="2" fill="white" opacity="0.3" />
+
+        {/* Eyes (Visible through visor) */}
         <g>
           {expression === 'wink' ? (
              <>
-               <path d="M35 45L45 45" stroke="#1e293b" strokeWidth="3" strokeLinecap="round" />
-               <circle cx="65" cy="45" r="4" fill="#1e293b" />
+               <path d="M40 45L45 45" stroke="white" strokeWidth="2" strokeLinecap="round" />
+               <circle cx="60" cy="45" r="3" fill="white" />
              </>
           ) : expression === 'sad' ? (
             <>
-              <path d="M35 48Q40 43 45 48" stroke="#1e293b" strokeWidth="3" fill="none" />
-              <path d="M55 48Q60 43 65 48" stroke="#1e293b" strokeWidth="3" fill="none" />
+              <path d="M38 47Q41 44 44 47" stroke="white" strokeWidth="2" fill="none" />
+              <path d="M56 47Q59 44 62 47" stroke="white" strokeWidth="2" fill="none" />
             </>
           ) : (
             <>
-              <circle cx="40" cy="45" r="4" fill="#1e293b" />
-              <circle cx="60" cy="45" r="4" fill="#1e293b" />
+              <circle cx="42" cy="45" r="3" fill="white" />
+              <circle cx="58" cy="45" r="3" fill="white" />
             </>
           )}
         </g>
 
-        {/* Beak */}
-        <path
-          d="M45 52L55 52L50 60Z"
-          fill="#fbbf24"
+        {/* Beak (Outside visor) */}
+        <path d="M46 54L54 54L50 62Z" fill="#fbbf24" />
+
+        {/* Racing Gloves/Wings */}
+        <motion.path
+          d="M15 70C5 80 0 95 10 105"
+          stroke="#1e293b"
+          strokeWidth="12"
+          strokeLinecap="round"
+          animate={expression === 'happy' ? { rotate: [0, -30, 0] } : {}}
+        />
+        <motion.path
+          d="M85 70C95 80 100 95 90 105"
+          stroke="#1e293b"
+          strokeWidth="12"
+          strokeLinecap="round"
+          animate={expression === 'happy' ? { rotate: [0, 30, 0] } : {}}
         />
 
-        {/* Grease stains if sad */}
-        {expression === 'sad' && (
-          <g opacity="0.6">
-             <circle cx="30" cy="70" r="3" fill="#0f172a" />
-             <circle cx="65" cy="80" r="4" fill="#0f172a" />
-             <path d="M40 75Q42 77 44 75" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
-          </g>
-        )}
-
-        {/* Wrench (Holding) */}
+        {/* Steering Wheel (Epic Accessory) */}
         <motion.g
-          animate={expression === 'happy' ? { rotate: [0, 45, 0] } : {}}
-          style={{ transformOrigin: '20px 80px' }}
+          animate={{ rotate: [-5, 5, -5] }}
+          transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
+          style={{ transformOrigin: '50px 85px' }}
         >
-           <rect x="15" y="75" width="4" height="20" rx="2" fill="#94a3b8" />
-           <circle cx="17" cy="75" r="5" fill="#94a3b8" />
-           <rect x="15" y="73" width="4" height="4" fill="white" />
+          <circle cx="50" cy="85" r="18" fill="none" stroke="#334155" strokeWidth="5" />
+          <rect x="48" y="70" width="4" height="30" fill="#334155" />
+          <rect x="35" y="83" width="30" height="4" fill="#334155" />
+          {/* Shift Paddles */}
+          <rect x="32" y="75" width="4" height="10" rx="1" fill="#ef4444" />
+          <rect x="64" y="75" width="4" height="10" rx="1" fill="#ef4444" />
         </motion.g>
 
-        {/* Feet */}
-        <path d="M35 100Q30 105 25 100" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" />
-        <path d="M65 100Q70 105 75 100" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" />
+        {/* Boots */}
+        <path d="M35 110Q30 115 25 110" stroke="#0f172a" strokeWidth="6" strokeLinecap="round" />
+        <path d="M65 110Q70 115 75 110" stroke="#0f172a" strokeWidth="6" strokeLinecap="round" />
       </svg>
     </motion.div>
   );
