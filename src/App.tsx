@@ -1,9 +1,9 @@
 import { Sidebar } from './components/Sidebar';
 import { UnitSection } from './components/UnitSection';
 import { LessonScreen } from './components/LessonScreen';
-import { UNITS } from './data/course';
+import { SECTIONS } from './data/course';
 import { useStore } from './store/useStore';
-import { Heart, Trophy, Zap } from 'lucide-react';
+import { Heart, Trophy, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 
 function App() {
   const activeLesson = useStore(state => state.activeLesson);
@@ -41,8 +41,23 @@ function App() {
 
       <main className="pt-24 pb-12 px-4 md:ml-64">
         <div className="max-w-4xl mx-auto">
-          {UNITS.map(unit => (
-            <UnitSection key={unit.id} unit={unit} />
+          {SECTIONS.map(section => (
+            <div key={section.id} className="mb-12">
+              <div className="bg-duo-green-dark text-white p-6 rounded-2xl mb-8 flex items-center justify-between shadow-lg">
+                <div>
+                   <h1 className="text-2xl font-bold uppercase tracking-tight">{section.title}</h1>
+                   <p className="opacity-90 font-medium">{section.description}</p>
+                </div>
+                <div className="flex gap-2">
+                   <button className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ChevronLeft /></button>
+                   <button className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ChevronRight /></button>
+                </div>
+              </div>
+
+              {section.units.map(unit => (
+                <UnitSection key={unit.id} unit={unit} />
+              ))}
+            </div>
           ))}
         </div>
       </main>

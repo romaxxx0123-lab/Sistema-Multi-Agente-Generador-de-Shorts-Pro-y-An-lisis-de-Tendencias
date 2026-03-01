@@ -28,3 +28,10 @@ export interface Unit {
   lessons: Lesson[];
   color: string;
 }
+
+export interface Section {
+  id: string;
+  title: string;
+  description: string;
+  units: Unit[];
+}
