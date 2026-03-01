@@ -1,4 +1,4 @@
-export type QuestionType = 'multiple-choice' | 'image-selection' | 'translation' | 'matching';
+export type QuestionType = 'multiple-choice' | 'image-selection' | 'translation' | 'matching' | 'sentence-builder' | 'true-false';
 
 export interface Option {
   id: string;
@@ -19,6 +19,9 @@ export interface Question {
   prompt: string;
   options?: Option[];
   pairs?: MatchingPair[];
+  sentence?: string[]; // For sentence-builder
+  correctOrder?: string[]; // For sentence-builder
+  isTrue?: boolean; // For true-false
   explanation?: string;
 }
 

@@ -111,6 +111,13 @@ export const SECTIONS: Section[] = [
             title: 'Iluminación Básica',
             questions: [
               {
+                id: 'q10-3-tf',
+                type: 'true-false',
+                prompt: '¿Es obligatorio usar las luces intermitentes para cambiar de carril?',
+                isTrue: true,
+                explanation: 'Las luces intermitentes son obligatorias para comunicar tus maniobras y mejorar la seguridad.'
+              },
+              {
                 id: 'q10-3',
                 type: 'multiple-choice',
                 prompt: '¿Qué luces se usan para indicar un giro?',
@@ -590,6 +597,14 @@ export const SECTIONS: Section[] = [
                   { id: 'o7114', text: 'Enfriar el aire', isCorrect: false },
                 ],
                 explanation: 'El aceite crea una película protectora entre las piezas móviles del motor.'
+              },
+              {
+                id: 'q711-sb',
+                type: 'sentence-builder',
+                prompt: 'Ordena los pasos para revisar el nivel de aceite:',
+                sentence: ['Limpiar varilla', 'Sacar varilla', 'Insertar varilla', 'Ver nivel'],
+                correctOrder: ['Sacar varilla', 'Limpiar varilla', 'Insertar varilla', 'Ver nivel'],
+                explanation: 'Para una lectura precisa, primero debes limpiar la varilla y volverla a insertar.'
               }
             ]
           },

@@ -8,6 +8,8 @@ import { Character } from './Character';
 import { MultipleChoiceExercise } from './exercises/MultipleChoiceExercise';
 import { ImageSelectionExercise } from './exercises/ImageSelectionExercise';
 import { MatchingExercise } from './exercises/MatchingExercise';
+import { SentenceBuilderExercise } from './exercises/SentenceBuilderExercise';
+import { TrueFalseExercise } from './exercises/TrueFalseExercise';
 
 export const LessonScreen: React.FC = () => {
   const {
@@ -83,6 +85,16 @@ export const LessonScreen: React.FC = () => {
   const handleCheck = () => {
     if (currentQuestion.type === 'matching') {
         // Matching is handled by onComplete internal logic
+        return;
+    }
+
+    if (currentQuestion.type === 'sentence-builder') {
+        // Already checked internally or waiting for button press?
+        // Let's assume the button press triggers the check for sentence-builder
+        return;
+    }
+
+    if (currentQuestion.type === 'true-false') {
         return;
     }
 
@@ -166,6 +178,35 @@ export const LessonScreen: React.FC = () => {
                     key="me"
                     pairs={currentQuestion.pairs || []}
                     onComplete={() => setStatus('correct')}
+                  />
+               )}
+               {currentQuestion.type === 'sentence-builder' && (
+                  <SentenceBuilderExercise
+                    key="sb"
+                    sentence={currentQuestion.sentence || []}
+                    correctOrder={currentQuestion.correctOrder || []}
+                    onCorrect={(isCorrect) => {
+                       if (isCorrect) setStatus('correct');
+                       else {
+                         setStatus('incorrect');
+                         loseHeart();
+                       }
+                    }}
+                    status={status as any}
+                  />
+               )}
+               {currentQuestion.type === 'true-false' && (
+                  <TrueFalseExercise
+                    key="tf"
+                    isTrue={currentQuestion.isTrue || false}
+                    onSelect={(userChoice) => {
+                       if (userChoice === currentQuestion.isTrue) setStatus('correct');
+                       else {
+                         setStatus('incorrect');
+                         loseHeart();
+                       }
+                    }}
+                    status={status as any}
                   />
                )}
             </AnimatePresence>

@@ -4,7 +4,7 @@ import { UnitSection } from './components/UnitSection';
 import { LessonScreen } from './components/LessonScreen';
 import { SECTIONS } from './data/course';
 import { useStore } from './store/useStore';
-import { Heart, Trophy, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, Trophy, Zap, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 
 function App() {
   const activeLesson = useStore(state => state.activeLesson);
@@ -26,8 +26,12 @@ function App() {
       <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b-2 border-duo-gray-light z-40 flex items-center justify-between px-6 md:left-64">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 font-bold text-duo-orange">
+            <Flame fill="currentColor" />
+            <span>3</span>
+          </div>
+          <div className="flex items-center gap-2 font-bold text-duo-blue">
             <Zap fill="currentColor" />
-            <span>12</span>
+            <span>150</span>
           </div>
           <div className="flex items-center gap-2 font-bold text-duo-red">
             <Heart fill="currentColor" />
