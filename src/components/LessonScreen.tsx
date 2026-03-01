@@ -60,7 +60,10 @@ export const LessonScreen: React.FC = () => {
         <motion.div
           key={currentQuestion.id}
           initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
+          animate={status === 'incorrect' ? {
+            x: [0, -10, 10, -10, 10, 0],
+            transition: { duration: 0.4 }
+          } : { opacity: 1, x: 0 }}
           className="w-full"
         >
           <h2 className="text-3xl font-bold mb-8 text-center md:text-left">
