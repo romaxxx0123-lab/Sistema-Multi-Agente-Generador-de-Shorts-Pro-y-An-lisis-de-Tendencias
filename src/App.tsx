@@ -1,26 +1,28 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { UnitSection } from './components/UnitSection';
 import { LessonScreen } from './components/LessonScreen';
 import { SECTIONS } from './data/course';
 import { useStore } from './store/useStore';
-import { Heart, Trophy, Zap, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
+import { Heart, Trophy, Zap, Flame, ChevronDown, ListChecks } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function App() {
   const activeLesson = useStore(state => state.activeLesson);
   const hearts = useStore(state => state.hearts);
   const xp = useStore(state => state.xp);
   const streak = useStore(state => state.streak);
-  const [currentSectionIndex, setCurrentSectionIndex] = React.useState(0);
 
-  // Licenses: 0, B, A, S
-  const licenses = ['ETAPA 0', 'LICENCIA B', 'LICENCIA A', 'LICENCIA S-PRO'];
-  const currentLicense = licenses[currentSectionIndex] || 'LICENCIA PRO';
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+  const [showSectionSelector, setShowSectionSelector] = useState(false);
+
+  useEffect(() => {
+    // Sync currentSectionIndex with scroll position if needed
+  }, []);
 
   if (activeLesson) {
     return (
       <div className="fixed inset-0 overflow-hidden">
-        {/* Retro Grid Background for Lessons */}
         <div className="absolute inset-0 bg-[#f0f0f0] opacity-30"
              style={{
                backgroundImage: 'linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px)',
@@ -34,69 +36,119 @@ function App() {
     );
   }
 
+  const currentSection = SECTIONS[currentSectionIndex];
+
   return (
     <div className="min-h-screen bg-white font-['DIN_Next_Rounded_OT']">
       <Sidebar />
 
-      {/* Top Header for Mobile & Stats */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b-2 border-duo-gray-light z-40 flex items-center justify-between px-6 md:left-64">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 font-bold text-duo-orange">
-            <Flame fill="currentColor" />
-            <span>{streak}</span>
-          </div>
-          <div className="flex items-center gap-2 font-bold text-duo-blue">
-            <Zap fill="currentColor" />
-            <span>{xp}</span>
-          </div>
-          <div className="flex items-center gap-2 font-bold text-duo-red">
-            <Heart fill="currentColor" />
-            <span>{hearts}</span>
-          </div>
-          <div className="flex items-center gap-2 font-bold text-duo-yellow">
-            <Trophy fill="currentColor" />
-            <span>500</span>
-          </div>
+        <div className="flex items-center gap-2 md:gap-4">
+          <button
+            onClick={() => setShowSectionSelector(!showSectionSelector)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-duo-gray-light transition-colors group"
+          >
+            <span className="font-black text-duo-gray-dark text-sm uppercase tracking-wider">
+              {currentSection.title.split(':')[0]}
+            </span>
+            <ChevronDown size={18} className={`text-duo-gray transition-transform ${showSectionSelector ? 'rotate-180' : ''}`} />
+          </button>
         </div>
 
-        <div className="w-10 h-10 rounded-full bg-duo-purple flex items-center justify-center text-white font-bold border-2 border-white shadow-md">
-          J
+        <div className="flex items-center gap-4 md:gap-6">
+          <div className="flex items-center gap-1.5 font-bold text-duo-orange">
+            <Flame size={22} fill="currentColor" />
+            <span>{streak}</span>
+          </div>
+          <div className="flex items-center gap-1.5 font-bold text-duo-blue">
+            <Zap size={22} fill="currentColor" />
+            <span>{xp}</span>
+          </div>
+          <div className="flex items-center gap-1.5 font-bold text-duo-red">
+            <Heart size={22} fill="currentColor" />
+            <span>{hearts}</span>
+          </div>
+          <div className="flex items-center gap-1.5 font-bold text-duo-yellow">
+            <Trophy size={22} fill="currentColor" />
+            <span>500</span>
+          </div>
+          <div className="w-9 h-9 rounded-full bg-duo-purple flex items-center justify-center text-white font-bold border-2 border-white shadow-sm shrink-0">
+            J
+          </div>
         </div>
       </header>
 
-      <main className="pt-24 pb-12 px-4 md:ml-64">
-        <div className="max-w-4xl mx-auto">
-          {SECTIONS.map((section, idx) => (
-            <div key={section.id} className={idx === currentSectionIndex ? 'block' : 'hidden'}>
-              <div className="bg-gradient-to-br from-duo-green-dark to-emerald-700 text-white p-6 rounded-2xl mb-8 flex items-center justify-between shadow-xl border-b-4 border-emerald-900">
-                <div>
-                   <div className="text-xs font-black opacity-80 mb-1 tracking-widest">{currentLicense}</div>
-                   <h1 className="text-2xl font-black uppercase tracking-tight">{section.title}</h1>
-                   <p className="opacity-90 font-medium italic">{section.description}</p>
-                </div>
-                <div className="flex gap-2">
-                   <button
-                    onClick={() => setCurrentSectionIndex(Math.max(0, idx - 1))}
-                    disabled={idx === 0}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 bg-black/20"
-                   >
-                    <ChevronLeft />
-                   </button>
-                   <button
-                    onClick={() => setCurrentSectionIndex(Math.min(SECTIONS.length - 1, idx + 1))}
-                    disabled={idx === SECTIONS.length - 1}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 bg-black/20"
-                   >
-                    <ChevronRight />
-                   </button>
-                </div>
+      <AnimatePresence>
+        {showSectionSelector && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSectionSelector(false)}
+              className="fixed inset-0 bg-black/20 z-40 md:left-64"
+            />
+            <motion.div
+              initial={{ y: -100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -100, opacity: 0 }}
+              className="fixed top-16 left-0 right-0 bg-white border-b-2 border-duo-gray-light z-40 shadow-xl md:left-64 p-4"
+            >
+              <div className="max-w-xl mx-auto grid gap-2">
+                {SECTIONS.map((section, idx) => (
+                  <button
+                    key={section.id}
+                    onClick={() => {
+                      setCurrentSectionIndex(idx);
+                      setShowSectionSelector(false);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className={`
+                      flex items-center justify-between p-4 rounded-2xl border-2 transition-all
+                      ${idx === currentSectionIndex
+                        ? 'border-duo-blue bg-duo-blue/5 text-duo-blue'
+                        : 'border-duo-gray-light hover:border-duo-gray text-duo-gray-dark'}
+                    `}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-lg ${idx === currentSectionIndex ? 'bg-duo-blue text-white' : 'bg-duo-gray-light'}`}>
+                        <ListChecks size={20} />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-xs font-black uppercase opacity-60">Sección {idx + 1}</div>
+                        <div className="font-bold">{section.title}</div>
+                      </div>
+                    </div>
+                    {idx === currentSectionIndex && (
+                       <div className="w-2 h-2 rounded-full bg-duo-blue shadow-[0_0_8px_rgba(28,176,246,0.6)]" />
+                    )}
+                  </button>
+                ))}
               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-              {section.units.map(unit => (
+      <main className="pt-24 pb-20 px-4 md:ml-64 min-h-screen">
+        <div className="max-w-2xl mx-auto relative">
+          <motion.div
+            key={currentSection.id}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+          >
+             {currentSection.units.map((unit) => (
                 <UnitSection key={unit.id} unit={unit} />
-              ))}
-            </div>
-          ))}
+             ))}
+          </motion.div>
+
+          {/* Infinite-like scroll footer */}
+          <div className="py-20 flex flex-col items-center opacity-20 pointer-events-none">
+             <div className="w-1 h-20 bg-gradient-to-b from-duo-gray to-transparent rounded-full" />
+             <Trophy size={48} className="mt-4 text-duo-gray" />
+             <p className="mt-4 font-bold text-duo-gray uppercase tracking-widest">Fin de la sección</p>
+          </div>
         </div>
       </main>
     </div>

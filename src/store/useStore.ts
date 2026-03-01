@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Lesson } from '../types';
 
 interface GameState {
-  completedLessons: string[];
+  completedLessons: Record<string, number>; // lessonId -> level (0 to 3)
   hearts: number;
   xp: number;
   streak: number;
@@ -25,7 +25,7 @@ interface GameState {
 export const useStore = create<GameState>()(
   persist(
     (set) => ({
-      completedLessons: [],
+      completedLessons: {},
       hearts: 5,
       xp: 0,
       streak: 0,
@@ -44,18 +44,21 @@ export const useStore = create<GameState>()(
 
       finishLesson: () => set((state) => {
         const today = new Date().toISOString().split('T')[0];
-        const alreadyCompleted = state.activeLesson && state.completedLessons.includes(state.activeLesson.id);
+        const lessonId = state.activeLesson?.id;
 
         let newStreak = state.streak;
         if (state.lastCompletedDate !== today) {
            newStreak += 1;
         }
 
+        const currentLevel = (lessonId && state.completedLessons[lessonId]) || 0;
+        const newLevel = Math.min(3, currentLevel + 1);
+
         return {
-          completedLessons: state.activeLesson && !alreadyCompleted
-            ? [...state.completedLessons, state.activeLesson.id]
+          completedLessons: lessonId
+            ? { ...state.completedLessons, [lessonId]: newLevel }
             : state.completedLessons,
-          xp: state.xp + 15,
+          xp: state.xp + 25,
           streak: newStreak,
           lastCompletedDate: today,
           activeLesson: null,
@@ -114,7 +117,6 @@ export const useStore = create<GameState>()(
   )
 );
 
-// For debugging in browser console
 if (typeof window !== 'undefined') {
   (window as any).useStore = useStore;
 }

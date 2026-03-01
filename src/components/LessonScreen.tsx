@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { ProgressBar } from './ProgressBar';
 import { Button } from './Button';
-import { CheckCircle2, XCircle, Heart, Trophy } from 'lucide-react';
+import { CheckCircle2, XCircle, Heart, Trophy, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Character } from './Character';
 import { PorscheTransition } from './PorscheTransition';
@@ -24,17 +24,50 @@ export const LessonScreen: React.FC = () => {
     finishLesson,
     exitLesson,
     isReviewPhase,
-    missedQuestionIndices
+    missedQuestionIndices,
+    completedLessons
   } = useStore();
 
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'correct' | 'incorrect' | 'completed'>('idle');
   const [showTransition, setShowTransition] = useState(true);
+  const [showIntro, setShowIntro] = useState(false);
+
+  // Check if it's the first time doing this lesson (level 0)
+  const isFirstTime = activeLesson && (completedLessons[activeLesson.id] || 0) === 0;
 
   if (!activeLesson) return null;
 
   if (showTransition) {
-    return <PorscheTransition onComplete={() => setShowTransition(false)} />;
+    return <PorscheTransition onComplete={() => {
+      setShowTransition(false);
+      if (isFirstTime && currentQuestionIndex === 0) {
+        setShowIntro(true);
+      }
+    }} />;
+  }
+
+  if (showIntro) {
+    return (
+      <div className="fixed inset-0 bg-white z-[70] flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md w-full">
+           <div className="bg-duo-blue/10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+              <Info size={40} className="text-duo-blue" />
+           </div>
+           <h1 className="text-3xl font-black text-duo-gray-dark mb-4 uppercase">Nueva Lección</h1>
+           <p className="text-xl text-duo-gray font-bold mb-8">
+             En esta lección aprenderás sobre <span className="text-duo-blue">{activeLesson.title}</span>.
+             Presta atención a los detalles, ¡será divertido!
+           </p>
+           <Character size={150} expression="happy" />
+           <div className="mt-12">
+              <Button variant="primary" size="lg" className="w-full" onClick={() => setShowIntro(false)}>
+                 ¡ESTOY LISTO!
+              </Button>
+           </div>
+        </div>
+      </div>
+    );
   }
 
   if (status === 'completed') {
@@ -49,13 +82,13 @@ export const LessonScreen: React.FC = () => {
              <Trophy size={80} className="text-duo-yellow" fill="currentColor" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-2 uppercase tracking-tight">Lección Completada</h1>
-          <p className="text-white font-bold opacity-80 text-xl">+15 XP • 100% Precisión</p>
+          <p className="text-white font-bold opacity-80 text-xl">+25 XP • NIVEL {Math.min(3, (completedLessons[activeLesson.id] || 0) + 1)}</p>
         </motion.div>
 
         <Character size={180} expression="wink" />
         <h2 className="text-3xl font-bold mt-8 text-duo-gray-dark">¡Impresionante!</h2>
         <p className="text-xl text-duo-gray mt-4 max-w-md">
-          Has dominado esta lección. Cada paso te acerca más a ser un experto mecánico.
+          Has dominado esta etapa. Sigue así para obtener tu licencia profesional.
         </p>
 
         <div className="mt-12 w-full max-w-xs">
@@ -98,20 +131,9 @@ export const LessonScreen: React.FC = () => {
     : (currentQuestionIndex) / activeLesson.questions.length;
 
   const handleCheck = () => {
-    if (currentQuestion.type === 'matching') {
-        // Matching is handled by onComplete internal logic
-        return;
-    }
-
-    if (currentQuestion.type === 'sentence-builder') {
-        // Already checked internally or waiting for button press?
-        // Let's assume the button press triggers the check for sentence-builder
-        return;
-    }
-
-    if (currentQuestion.type === 'true-false') {
-        return;
-    }
+    if (currentQuestion.type === 'matching') return;
+    if (currentQuestion.type === 'sentence-builder') return;
+    if (currentQuestion.type === 'true-false') return;
 
     if (!selectedOption) return;
 
@@ -143,7 +165,6 @@ export const LessonScreen: React.FC = () => {
       setStatus('idle');
       nextQuestion();
     } else if (!isReviewPhase && missedQuestionIndices.length > 0) {
-      // Transition to review phase handled by nextQuestion in store
       setSelectedOption(null);
       setStatus('idle');
       nextQuestion();

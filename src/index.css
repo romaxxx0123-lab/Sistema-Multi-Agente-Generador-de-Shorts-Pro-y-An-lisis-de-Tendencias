@@ -31,9 +31,21 @@ body {
 
 button {
   cursor: pointer;
-  transition: filter 0.2s;
 }
 
 button:active {
   transform: translateY(2px);
+}
+
+.lesson-path-line {
+  position: absolute;
+  width: 8px;
+  background: var(--color-duo-gray-light);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+.lesson-path-line-active {
+  background: var(--color-duo-green);
 }
