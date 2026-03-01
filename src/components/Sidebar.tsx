@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Trophy, User, Settings, Info } from 'lucide-react';
+import { Character } from './Character';
 
 export const Sidebar: React.FC = () => {
   const menuItems = [
@@ -12,7 +13,8 @@ export const Sidebar: React.FC = () => {
 
   return (
     <div className="fixed left-0 top-0 h-full w-64 border-r-2 border-duo-gray-light bg-white p-4 hidden md:flex flex-col">
-      <div className="mb-10 px-4">
+      <div className="mb-10 px-4 flex items-center gap-2">
+        <Character size={40} expression="wink" />
         <h1 className="text-3xl font-bold text-duo-green tracking-tighter">autolingo</h1>
       </div>
 
@@ -31,6 +33,11 @@ export const Sidebar: React.FC = () => {
           </button>
         ))}
       </nav>
+
+      <div className="mt-auto p-4 bg-duo-gray-light/30 rounded-2xl flex flex-col items-center text-center">
+        <Character size={80} />
+        <p className="text-xs font-bold text-duo-gray-dark mt-2 uppercase">Tu guía automotriz</p>
+      </div>
     </div>
   );
 };

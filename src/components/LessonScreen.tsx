@@ -4,6 +4,7 @@ import { ProgressBar } from './ProgressBar';
 import { Button } from './Button';
 import { CheckCircle2, XCircle, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Character } from './Character';
 
 export const LessonScreen: React.FC = () => {
   const {
@@ -57,40 +58,44 @@ export const LessonScreen: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 max-w-3xl mx-auto w-full">
-        <motion.div
-          key={currentQuestion.id}
-          initial={{ opacity: 0, x: 20 }}
-          animate={status === 'incorrect' ? {
-            x: [0, -10, 10, -10, 10, 0],
-            transition: { duration: 0.4 }
-          } : { opacity: 1, x: 0 }}
-          className="w-full"
-        >
-          <h2 className="text-3xl font-bold mb-8 text-center md:text-left">
-            {currentQuestion.prompt}
-          </h2>
+        <div className="flex flex-col md:flex-row items-center gap-8 w-full">
+          <Character size={120} expression={status === 'incorrect' ? 'sad' : status === 'correct' ? 'happy' : 'neutral'} />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {currentQuestion.options.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => status === 'idle' && setSelectedOption(option.id)}
-                className={`
-                  p-4 border-2 rounded-2xl text-left font-bold text-lg transition-all
-                  ${selectedOption === option.id
-                    ? 'border-duo-blue bg-blue-50 text-duo-blue shadow-[0_4px_0_0_#1cb0f6]'
-                    : 'border-duo-gray-light hover:bg-gray-50 shadow-[0_4px_0_0_#e5e5e5]'}
-                  active:translate-y-1 active:shadow-none
-                `}
-              >
-                <span className="inline-block w-8 h-8 border-2 rounded-lg mr-4 text-center leading-7 text-sm">
-                  {option.id.slice(-1)}
-                </span>
-                {option.text}
-              </button>
-            ))}
-          </div>
-        </motion.div>
+          <motion.div
+            key={currentQuestion.id}
+            initial={{ opacity: 0, x: 20 }}
+            animate={status === 'incorrect' ? {
+              x: [0, -10, 10, -10, 10, 0],
+              transition: { duration: 0.4 }
+            } : { opacity: 1, x: 0 }}
+            className="flex-1 w-full"
+          >
+            <h2 className="text-3xl font-bold mb-8 text-center md:text-left">
+              {currentQuestion.prompt}
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {currentQuestion.options.map((option) => (
+                <button
+                  key={option.id}
+                  onClick={() => status === 'idle' && setSelectedOption(option.id)}
+                  className={`
+                    p-4 border-2 rounded-2xl text-left font-bold text-lg transition-all
+                    ${selectedOption === option.id
+                      ? 'border-duo-blue bg-blue-50 text-duo-blue shadow-[0_4px_0_0_#1cb0f6]'
+                      : 'border-duo-gray-light hover:bg-gray-50 shadow-[0_4px_0_0_#e5e5e5]'}
+                    active:translate-y-1 active:shadow-none
+                  `}
+                >
+                  <span className="inline-block w-8 h-8 border-2 rounded-lg mr-4 text-center leading-7 text-sm">
+                    {option.id.slice(-1)}
+                  </span>
+                  {option.text}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </div>
       </main>
 
       <footer className={`
