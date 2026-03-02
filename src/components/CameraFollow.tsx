@@ -6,13 +6,20 @@ import { GAME_CONFIG } from '../config';
 
 export const CameraFollow = () => {
   const playerRef = useGameStore((state) => state.playerRef);
+  const bossActive = useGameStore((state) => state.bossActive);
   const { camera } = useThree();
 
   // Follow parameters from config
-  const offset = new Vector3(
+  const normalOffset = new Vector3(
     GAME_CONFIG.CAMERA.OFFSET.x,
     GAME_CONFIG.CAMERA.OFFSET.y,
     GAME_CONFIG.CAMERA.OFFSET.z
+  );
+
+  const bossOffset = new Vector3(
+    GAME_CONFIG.CAMERA.BOSS_OFFSET.x,
+    GAME_CONFIG.CAMERA.BOSS_OFFSET.y,
+    GAME_CONFIG.CAMERA.BOSS_OFFSET.z
   );
   const smoothTime = GAME_CONFIG.CAMERA.SMOOTH_TIME;
 
@@ -29,7 +36,8 @@ export const CameraFollow = () => {
 
     // 2. Calculate the desired position in world space
     // We apply the player's rotation to the offset to stay behind them
-    const relativeOffset = offset.clone().applyQuaternion(playerQuat);
+    const currentOffset = bossActive ? bossOffset : normalOffset;
+    const relativeOffset = currentOffset.clone().applyQuaternion(playerQuat);
     targetPosition.current.copy(playerPos).add(relativeOffset);
 
     // 3. Smoothly move camera towards target position

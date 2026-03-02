@@ -42,6 +42,9 @@ export const usePlayerDash = (api: PublicApi) => {
     dashTimer.current = GAME_CONFIG.DASH.DURATION;
     cooldownTimer.current = GAME_CONFIG.DASH.COOLDOWN;
 
+    // SFX Hook
+    window.dispatchEvent(new CustomEvent('play-sfx', { detail: { type: 'dash' } }));
+
     // Apply high initial velocity
     const dashSpeed = GAME_CONFIG.DASH.DISTANCE / GAME_CONFIG.DASH.DURATION;
     api.velocity.set(

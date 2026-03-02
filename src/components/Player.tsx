@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useSphere } from '@react-three/cannon';
 import { Mesh, Vector3, Quaternion } from 'three';
@@ -38,12 +38,22 @@ export const Player = () => {
   const { performDash, isDashing, canDash } = usePlayerDash(api);
   const { attack, isAttacking } = usePlayerCombat(ref.current);
 
+  const [trail, setTrail] = useState<{ id: number; position: [number, number, number] }[]>([]);
+  const trailId = useRef(0);
+
   useFrame((_state, delta) => {
     if (status !== 'playing') return;
 
     // Handle Dash Trigger
     if (dash && canDash && !isDashing) {
       performDash(forward, backward, left, right, ref);
+    }
+
+    if (isDashing) {
+      const pos = ref.current!.position.toArray();
+      setTrail((prev: any[]) => [...prev.slice(-10), { id: trailId.current++, position: pos }]);
+    } else if (trail.length > 0) {
+      setTrail([]);
     }
 
     // Handle Attack Trigger
@@ -58,6 +68,13 @@ export const Player = () => {
   });
 
   return (
+    <group>
+      {trail.map((t: any, i: number) => (
+        <mesh key={t.id} position={t.position}>
+          <capsuleGeometry args={[GAME_CONFIG.PLAYER.CAPSULE_RADIUS, GAME_CONFIG.PLAYER.CAPSULE_HEIGHT, 4, 16]} />
+          <meshBasicMaterial color={GAME_CONFIG.PLAYER.DASH_COLOR} transparent opacity={0.3 * (i / trail.length)} />
+        </mesh>
+      ))}
     <mesh ref={ref} castShadow>
       {/* Visual representation: A Capsule */}
       <capsuleGeometry args={[GAME_CONFIG.PLAYER.CAPSULE_RADIUS, GAME_CONFIG.PLAYER.CAPSULE_HEIGHT, 4, 16]} />
@@ -76,5 +93,6 @@ export const Player = () => {
         </mesh>
       )}
     </mesh>
+    </group>
   );
 };

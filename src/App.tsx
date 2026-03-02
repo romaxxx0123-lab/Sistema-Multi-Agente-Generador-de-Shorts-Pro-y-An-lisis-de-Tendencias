@@ -5,9 +5,12 @@ import { Arena } from './components/Arena';
 import { Player } from './components/Player';
 import { CameraFollow } from './components/CameraFollow';
 import { EnemyManager } from './components/EnemyManager';
+import { AbilityManager } from './components/abilities/AbilityManager';
 import { HUD } from './components/HUD';
 import { LevelUpOverlay } from './components/LevelUpOverlay';
 import { GameOverOverlay } from './components/GameOverOverlay';
+import { GlobalVFX } from './components/GlobalVFX';
+import { DamageNumbers } from './components/DamageNumbers';
 import { useGameStore } from './store/useGameStore';
 
 export const RoninGame = () => {
@@ -29,10 +32,13 @@ export const RoninGame = () => {
           shadow-mapSize={[1024, 1024]}
         />
 
+        <GlobalVFX />
         <Physics gravity={[0, -9.81, 0]}>
           <Arena />
           <Player />
           <EnemyManager />
+          <AbilityManager />
+          <DamageNumbers />
         </Physics>
 
         {/* Visual environment */}
