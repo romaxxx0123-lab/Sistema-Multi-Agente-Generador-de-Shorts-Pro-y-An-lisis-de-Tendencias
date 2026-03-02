@@ -1,26 +1,30 @@
-# Autolingo: Aprende sobre Autos al estilo Duolingo
+# Ronin Survivor - Part 1B: Dash & Smooth Camera
 
-Una plataforma educativa profesional diseñada para entusiastas del automovilismo y la ingeniería mecánica, utilizando el exitoso sistema de aprendizaje gamificado de Duolingo.
+## Migración de 1A a 1B
+1. **Zustand**: Se añadió `zustand` para el manejo de estado global (GameManager).
+2. **Refactorización de Player**: El componente `Player.tsx` se ha convertido en un orquestador (`PlayerController`) que utiliza hooks modulares:
+   - `usePlayerMovement`: Maneja el input WASD.
+   - `usePlayerDash`: Maneja la lógica de dash y cooldown con SHIFT.
+3. **Cámara**: Se reemplazó la cámara estática por `CameraFollow.tsx`, que sigue al jugador con suavizado y mantiene la vista trasera al rotar.
+4. **Configuración Centralizada**: Todos los valores (velocidades, distancias, offsets) se encuentran ahora en `src/config.ts`.
 
-## Características
-
-- **Currículum Profesional**: Desde transferencia de peso hasta aerodinámica avanzada (DRS) y propulsión eléctrica.
-- **Mascota "Epic Pro"**: Nuestro pingüino corredor te guía con su traje de competencia y casco profesional.
-- **Race HUD**: El progreso se mide en RPM con un indicador de marchas (Gear Indicator) dinámico.
-- **Sistema de Licencias**: Completa desafíos para obtener tus licencias B, A y S-Pro.
-- **Feedback Inmediato**: Sonidos y animaciones táctiles para una experiencia inmersiva.
-
-## Tecnologías
-
-- **React 18** + **TypeScript**
-- **Tailwind CSS v4** (Estética Duolingo 3D)
-- **Framer Motion** (Animaciones fluidas)
-- **Zustand** (Gestión de estado persistente)
-- **Lucide React** (Iconografía)
-
-## Instalación
-
+## Configuración y Pruebas
+### Instalación
 ```bash
 npm install
 npm run dev
 ```
+
+### Controles
+- **WASD / Flechas**: Movimiento básico.
+- **SHIFT**: Dash (5m en 0.3s). Cooldown de 2s (indicado visualmente por un marcador rojo sobre el personaje).
+- **Botón Pausar**: Detiene el flujo del juego y la física.
+
+### Ajustes (config.ts)
+- `DASH.DISTANCE`: Cambia la potencia del dash.
+- `CAMERA.SMOOTH_TIME`: Ajusta qué tan rápido la cámara alcanza al jugador.
+
+## Preparación para Parte 2
+- **GameManager**: El `useGameStore` ya tiene estados `playing`, `paused` y `gameover`.
+- **Hooks de Combate**: El `PlayerController` (`Player.tsx`) está preparado para recibir un nuevo hook `usePlayerCombat`.
+- **Enemigos**: Se recomienda crear una carpeta `src/components/enemies` y un store dedicado para la gestión de oleadas.

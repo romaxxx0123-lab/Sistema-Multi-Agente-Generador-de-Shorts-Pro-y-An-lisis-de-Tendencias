@@ -1,0 +1,68 @@
+import { useRef, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useSphere } from '@react-three/cannon';
+import { Mesh, Vector3, Quaternion } from 'three';
+import { useControls } from '../hooks/useControls';
+import { useGameStore } from '../store/useGameStore';
+import { usePlayerMovement } from '../hooks/usePlayerMovement';
+import { usePlayerDash } from '../hooks/usePlayerDash';
+import { GAME_CONFIG } from '../config';
+
+export const Player = () => {
+  const { forward, backward, left, right, dash } = useControls();
+  const setPlayerRef = useGameStore((state) => state.setPlayerRef);
+  const status = useGameStore((state) => state.status);
+
+  // Constants
+  const moveSpeed = GAME_CONFIG.PLAYER.MOVE_SPEED;
+  const rotationSpeed = GAME_CONFIG.PLAYER.ROTATION_SPEED;
+
+  // Physics body
+  const [ref, api] = useSphere<Mesh>(() => ({
+    mass: GAME_CONFIG.PHYSICS.PLAYER_MASS,
+    position: [0, 1, 0],
+    fixedRotation: true,
+    args: [GAME_CONFIG.PLAYER.CAPSULE_RADIUS],
+  }));
+
+  // Update global ref for camera follow
+  useEffect(() => {
+    if (ref.current) {
+      setPlayerRef(ref.current);
+    }
+  }, [ref, setPlayerRef]);
+
+  // Hook modules
+  const { move } = usePlayerMovement(api, moveSpeed, rotationSpeed);
+  const { performDash, isDashing, canDash } = usePlayerDash(api);
+
+  useFrame((_state, delta) => {
+    if (status !== 'playing') return;
+
+    // Handle Dash Trigger
+    if (dash && canDash && !isDashing) {
+      performDash(forward, backward, left, right, ref);
+    }
+
+    // Only allow movement if not currently dashing
+    if (!isDashing) {
+      move(forward, backward, left, right, delta, ref);
+    }
+  });
+
+  return (
+    <mesh ref={ref} castShadow>
+      {/* Visual representation: A Capsule */}
+      <capsuleGeometry args={[GAME_CONFIG.PLAYER.CAPSULE_RADIUS, GAME_CONFIG.PLAYER.CAPSULE_HEIGHT, 4, 16]} />
+      <meshStandardMaterial color={isDashing ? GAME_CONFIG.PLAYER.DASH_COLOR : GAME_CONFIG.PLAYER.COLOR} />
+
+      {/* Visual feedback for dash availability (simple marker) */}
+      {!canDash && (
+        <mesh position={[0, 1.2, 0]}>
+          <boxGeometry args={[0.2, 0.1, 0.2]} />
+          <meshBasicMaterial color="red" />
+        </mesh>
+      )}
+    </mesh>
+  );
+};

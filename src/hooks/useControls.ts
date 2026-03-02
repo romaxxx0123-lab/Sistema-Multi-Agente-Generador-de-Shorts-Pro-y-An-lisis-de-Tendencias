@@ -6,6 +6,7 @@ export const useControls = () => {
     backward: false,
     left: false,
     right: false,
+    dash: false,
   });
 
   useEffect(() => {
@@ -27,6 +28,10 @@ export const useControls = () => {
         case 'ArrowRight':
           setMovement((m) => ({ ...m, right: true }));
           break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          setMovement((m) => ({ ...m, dash: true }));
+          break;
       }
     };
 
@@ -47,6 +52,10 @@ export const useControls = () => {
         case 'KeyD':
         case 'ArrowRight':
           setMovement((m) => ({ ...m, right: false }));
+          break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          setMovement((m) => ({ ...m, dash: false }));
           break;
       }
     };
