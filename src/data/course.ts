@@ -47,20 +47,20 @@ export const SECTIONS: Section[] = [
               {
                 id: 'q0-0-2-1',
                 type: 'multiple-choice',
-                prompt: '¿De qué material están hechos principalmente los neumáticos?',
+                prompt: '¿Cuál es el componente principal que da flexibilidad al neumático?',
                 options: [
-                  { id: 'o1', text: 'Metal', isCorrect: false },
-                  { id: 'o2', text: 'Caucho (Goma)', isCorrect: true },
-                  { id: 'o3', text: 'Plástico rígido', isCorrect: false },
+                  { id: 'o1', text: 'Acero trenzado', isCorrect: false },
+                  { id: 'o2', text: 'Caucho vulcanizado', isCorrect: true },
+                  { id: 'o3', text: 'Fibra de carbono', isCorrect: false },
                 ],
-                explanation: 'El caucho permite que el neumático se adhiera al pavimento.'
+                explanation: 'La vulcanización del caucho permite que sea elástico pero resistente al calor.'
               },
               {
                 id: 'q0-0-2-2',
                 type: 'true-false',
-                prompt: '¿Es importante revisar la presión de aire de las ruedas?',
+                prompt: '¿Los neumáticos tienen fecha de vencimiento?',
                 isTrue: true,
-                explanation: 'Una presión correcta mejora la seguridad y ahorra combustible.'
+                explanation: 'Sí, el caucho se degrada con el tiempo (desecación) y pierde agarre.'
               }
             ]
           },
@@ -89,6 +89,23 @@ export const SECTIONS: Section[] = [
                   { id: 'o3', text: 'Los guantes', isCorrect: false },
                 ],
                 explanation: 'El cinturón es el elemento que más vidas salva en el mundo.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-0-0-4',
+            title: 'Bajo el Capó',
+            questions: [
+              {
+                id: 'q0-0-4-1',
+                type: 'multiple-choice',
+                prompt: '¿Cuál es la función principal de la batería?',
+                options: [
+                  { id: 'o1', text: 'Enfriar el motor', isCorrect: false },
+                  { id: 'o2', text: 'Dar energía para el arranque', isCorrect: true },
+                  { id: 'o3', text: 'Almacenar gasolina', isCorrect: false },
+                ],
+                explanation: 'La batería proporciona la chispa inicial y energía a los sistemas eléctricos.'
               }
             ]
           }
@@ -131,6 +148,34 @@ export const SECTIONS: Section[] = [
                 explanation: 'Un SUV es un vehículo utilitario deportivo con mayor despeje del suelo.'
               }
             ]
+          },
+          {
+            id: 'lesson-0-3',
+            title: 'La Leyenda de Le Mans',
+            questions: [
+              {
+                id: 'q0-3-1',
+                type: 'multiple-choice',
+                prompt: '¿Cuánto tiempo dura la carrera principal de Le Mans?',
+                options: [
+                  { id: 'o1', text: '12 horas', isCorrect: false },
+                  { id: 'o2', text: '24 horas', isCorrect: true },
+                  { id: 'o3', text: '500 millas', isCorrect: false },
+                ],
+                explanation: 'Es la carrera de resistencia más famosa del mundo: 24 Horas de Le Mans.'
+              },
+              {
+                id: 'q0-3-2',
+                type: 'multiple-choice',
+                prompt: '¿Qué marca americana venció a Ferrari en 1966 con el GT40?',
+                options: [
+                  { id: 'o1', text: 'Chevrolet', isCorrect: false },
+                  { id: 'o2', text: 'Ford', isCorrect: true },
+                  { id: 'o3', text: 'Dodge', isCorrect: false },
+                ],
+                explanation: 'Ford logró el histórico 1-2-3 en 1966, rompiendo la racha de Ferrari.'
+              }
+            ]
           }
         ]
       }
@@ -160,6 +205,94 @@ export const SECTIONS: Section[] = [
                   { id: 'o2', text: 'Hacia atrás', isCorrect: false },
                 ],
                 explanation: 'La inercia empuja el peso del vehículo hacia el eje delantero al frenar.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-1-2',
+            title: 'El Apex Ideal',
+            questions: [
+              {
+                id: 'q1-2-1',
+                type: 'multiple-choice',
+                prompt: '¿Qué es el "Apex" de una curva?',
+                options: [
+                  { id: 'o1', text: 'El punto de inicio del frenado', isCorrect: false },
+                  { id: 'o2', text: 'El punto más interno de la trayectoria', isCorrect: true },
+                  { id: 'o3', text: 'La salida de la curva', isCorrect: false },
+                ],
+                explanation: 'El Apex (o vértice) es el punto donde el auto está más cerca del interior de la curva.'
+              }
+            ]
+          },
+          {
+            id: 'lesson-1-3',
+            title: 'Sobre vs Subviraje',
+            questions: [
+              {
+                id: 'q1-3-1',
+                type: 'multiple-choice',
+                prompt: '¿Qué sucede durante el "Subviraje" (Understeer)?',
+                options: [
+                  { id: 'o1', text: 'La parte trasera patina', isCorrect: false },
+                  { id: 'o2', text: 'El auto gira menos de lo que indica el volante', isCorrect: true },
+                ],
+                explanation: 'En el subviraje, las ruedas delanteras pierden agarre y el auto tiende a seguir recto.'
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'licencia-a',
+    title: 'LICENCIA A: INGENIERÍA Y PERFORMANCE',
+    description: 'Conceptos avanzados de mecánica y aerodinámica.',
+    units: [
+      {
+        id: 'unit-aero',
+        title: 'Aerodinámica Avanzada',
+        description: 'Vencer la resistencia del viento',
+        color: 'bg-duo-purple',
+        lessons: [
+          {
+            id: 'lesson-2-1',
+            title: 'Downforce y Drag',
+            questions: [
+              {
+                id: 'q2-1-1',
+                type: 'multiple-choice',
+                prompt: '¿Cuál es el objetivo principal del alerón trasero?',
+                options: [
+                  { id: 'o1', text: 'Que el auto sea más ligero', isCorrect: false },
+                  { id: 'o2', text: 'Generar carga aerodinámica (Downforce)', isCorrect: true },
+                ],
+                explanation: 'El alerón empuja el auto contra el suelo para aumentar el agarre en curvas.'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'unit-brakes',
+        title: 'Sistemas Críticos',
+        description: 'Frenado y Seguridad Activa',
+        color: 'bg-duo-red',
+        lessons: [
+          {
+            id: 'lesson-2-2',
+            title: 'Frenos de Disco',
+            questions: [
+              {
+                id: 'q2-2-1',
+                type: 'multiple-choice',
+                prompt: '¿Por qué los discos de freno deportivos suelen estar perforados?',
+                options: [
+                  { id: 'o1', text: 'Para ser más bonitos', isCorrect: false },
+                  { id: 'o2', text: 'Para disipar el calor y evacuar gases', isCorrect: true },
+                ],
+                explanation: 'Las perforaciones ayudan a mantener los discos frescos durante frenadas intensas.'
               }
             ]
           }
