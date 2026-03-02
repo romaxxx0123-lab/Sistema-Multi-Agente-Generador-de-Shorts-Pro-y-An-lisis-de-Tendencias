@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { UnitSection } from './components/UnitSection';
 import { LessonScreen } from './components/LessonScreen';
+import { CityGame } from './components/CityGame';
 import { SECTIONS } from './data/course';
 import { useStore } from './store/useStore';
 import { Heart, Trophy, Zap, Flame, ChevronDown, ListChecks } from 'lucide-react';
@@ -9,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 function App() {
   const activeLesson = useStore(state => state.activeLesson);
+  const view = useStore(state => state.view);
   const hearts = useStore(state => state.hearts);
   const xp = useStore(state => state.xp);
   const streak = useStore(state => state.streak);
@@ -32,6 +34,17 @@ function App() {
              }}
         />
         <LessonScreen />
+      </div>
+    );
+  }
+
+  if (view === 'city') {
+    return (
+      <div className="min-h-screen bg-white font-['DIN_Next_Rounded_OT']">
+        <Sidebar />
+        <main className="fixed inset-0 md:left-64">
+           <CityGame />
+        </main>
       </div>
     );
   }

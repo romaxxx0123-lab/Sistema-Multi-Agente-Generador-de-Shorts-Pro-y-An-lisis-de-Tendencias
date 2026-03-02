@@ -1,14 +1,19 @@
 import React from 'react';
-import { Home, Trophy, User, Settings, Info } from 'lucide-react';
+import { Home, Trophy, User, Settings, Info, Map } from 'lucide-react';
 import { Character } from './Character';
+import { useStore } from '../store/useStore';
 
 export const Sidebar: React.FC = () => {
+  const setView = useStore(state => state.setView);
+  const currentView = useStore(state => state.view);
+
   const menuItems = [
-    { icon: <Home size={32} />, label: 'Aprender', active: true },
-    { icon: <Trophy size={32} />, label: 'Ligas', active: false },
-    { icon: <User size={32} />, label: 'Perfil', active: false },
-    { icon: <Info size={32} />, label: 'Mecánica', active: false },
-    { icon: <Settings size={32} />, label: 'Configuración', active: false },
+    { id: 'learn', icon: <Home size={32} />, label: 'Aprender' },
+    { id: 'city', icon: <Map size={32} />, label: 'Metrópolis 3D' },
+    { id: 'leagues', icon: <Trophy size={32} />, label: 'Ligas' },
+    { id: 'profile', icon: <User size={32} />, label: 'Perfil' },
+    { id: 'mechanics', icon: <Info size={32} />, label: 'Mecánica' },
+    { id: 'settings', icon: <Settings size={32} />, label: 'Configuración' },
   ];
 
   return (
@@ -19,11 +24,16 @@ export const Sidebar: React.FC = () => {
       </div>
 
       <nav className="flex-1 space-y-2 px-2">
-        {menuItems.map((item, index) => (
+        {menuItems.map((item) => (
           <button
-            key={index}
+            key={item.id}
+            onClick={() => {
+              if (item.id === 'learn' || item.id === 'city') {
+                setView(item.id as 'learn' | 'city');
+              }
+            }}
             className={`flex items-center w-full gap-4 px-4 py-3 rounded-xl font-bold uppercase tracking-wide transition-all border-2 ${
-              item.active
+              currentView === item.id
                 ? 'bg-[#ddf4ff] text-[#1cb0f6] border-[#84d8ff]'
                 : 'text-[#777] border-transparent hover:bg-[#f7f7f7]'
             }`}
