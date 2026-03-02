@@ -64,7 +64,7 @@ function App() {
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium mb-4"
           >
             <Globe size={14} />
-            <span>Unity World Builder v4.0 - Enterprise Edition</span>
+            <span>Unity World Builder v5.0 - Ultimate Pro Engine</span>
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: -20 }}
@@ -127,6 +127,7 @@ function App() {
                       <option value="Medium">Mundo Estándar</option>
                       <option value="High">Entorno Completo</option>
                       <option value="Enterprise">Arquitectura Enterprise</option>
+                      <option value="UltimatePro">Ultimate Pro Engine</option>
                     </select>
                   </div>
                 </div>
@@ -228,6 +229,14 @@ function App() {
                          <div className="text-xs text-blue-400">ServiceLocator.cs</div>
                          <div className="text-xs text-blue-400">ObjectPooler.cs</div>
                          <div className="text-xs text-blue-400">SaveSystem.cs</div>
+                       </>
+                     )}
+                     {config.complexity === 'UltimatePro' && (
+                       <>
+                         <div className="text-xs text-blue-400">SaveSystem.cs</div>
+                         <div className="text-xs text-red-400">BehaviorTree.cs</div>
+                         <div className="text-xs text-green-400">Ability.cs</div>
+                         <div className="text-xs text-yellow-400">CoreSystemsTests.cs</div>
                        </>
                      )}
                   </div>

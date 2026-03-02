@@ -9,7 +9,7 @@ export interface ProjectConfig {
   useAsmDef: boolean;
   useURP: boolean;
   useNewInputSystem: boolean;
-  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise';
+  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro';
 }
 
 const generateGuid = () => {
@@ -96,7 +96,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
       core?.file("CameraController.cs", templates.cameraController(namespace));
       core?.file("CameraController.cs.meta", templates.meta(guids.cameraControllerScript));
 
-      if (config.complexity === 'Enterprise') {
+      if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
         core?.file("ServiceLocator.cs", templates.serviceLocator(namespace));
         core?.file("ServiceLocator.cs.meta", templates.meta(generateGuid()));
         core?.file("ObjectPooler.cs", templates.objectPooler(namespace));
@@ -113,7 +113,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
       managers?.file("WorldManager.cs", templates.worldManager(namespace));
       managers?.file("WorldManager.cs.meta", templates.meta(guids.worldManagerScript));
 
-      if (config.complexity === 'Enterprise') {
+      if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
         managers?.file("AudioManager.cs", templates.audioManager(namespace));
         managers?.file("AudioManager.cs.meta", templates.meta(generateGuid()));
       }
@@ -125,10 +125,17 @@ export const generateUnityProject = async (config: ProjectConfig) => {
       gameplay?.file("PlayerController.cs.meta", templates.meta(guids.playerControllerScript));
       gameplay?.file("Interactable.cs", templates.interactable(namespace));
       gameplay?.file("Interactable.cs.meta", templates.meta(generateGuid()));
+
+      if (config.complexity === 'UltimatePro') {
+        const abilities = gameplay?.folder("Abilities");
+        abilities?.file("Ability.cs", templates.abilitySystem(namespace));
+        abilities?.file("Ability.cs.meta", templates.meta(generateGuid()));
+      }
+
       if (config.useAsmDef) gameplay?.file(`${namespace}.Gameplay.asmdef`, templates.asmdef(`${namespace}.Gameplay`));
 
-      // Advanced Patterns for High/Enterprise Complexity
-      if (config.complexity === 'High' || config.complexity === 'Enterprise') {
+      // Advanced Patterns for High/Enterprise/UltimatePro Complexity
+      if (config.complexity === 'High' || config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
         const patterns = scripts.folder("Patterns");
         patterns?.file("StateMachine.cs", templates.stateMachine(namespace));
         patterns?.file("StateMachine.cs.meta", templates.meta(generateGuid()));
@@ -137,6 +144,26 @@ export const generateUnityProject = async (config: ProjectConfig) => {
         patterns?.file("GameEventListener.cs", templates.gameEventListener(namespace));
         patterns?.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
       }
+
+      if (config.complexity === 'UltimatePro') {
+        const ai = scripts.folder("AI");
+        ai?.file("BehaviorTree.cs", templates.behaviorTree(namespace));
+        ai?.file("BehaviorTree.cs.meta", templates.meta(generateGuid()));
+
+        const ui = scripts.folder("UI");
+        ui?.file("UIManager.cs", templates.uiView(namespace));
+        ui?.file("UIManager.cs.meta", templates.meta(generateGuid()));
+      }
+    }
+
+    if (config.complexity === 'UltimatePro') {
+      const editor = assets.folder("Editor");
+      editor?.file("ProToolsEditor.cs", templates.customEditor(namespace));
+      editor?.file("ProToolsEditor.cs.meta", templates.meta(generateGuid()));
+
+      const tests = assets.folder("Tests");
+      tests?.file("CoreSystemsTests.cs", templates.unitTest(namespace));
+      tests?.file("CoreSystemsTests.cs.meta", templates.meta(generateGuid()));
     }
 
     if (config.useURP) {
@@ -156,6 +183,8 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   }
 
   const content = await zip.generateAsync({ type: "blob" });
-  const version = config.complexity === 'Enterprise' ? 'v4_Enterprise' : 'v4';
+  let version = 'v4';
+  if (config.complexity === 'Enterprise') version = 'v4_Enterprise';
+  if (config.complexity === 'UltimatePro') version = 'v5_UltimatePro';
   saveAs(content, `${projectName.replace(/\s+/g, '_')}_UnityProject_${version}.zip`);
 };
