@@ -7,9 +7,13 @@ export const useControls = () => {
     left: false,
     right: false,
     dash: false,
+    attack: false,
   });
 
   useEffect(() => {
+    const handleMouseDown = () => setMovement((m) => ({ ...m, attack: true }));
+    const handleMouseUp = () => setMovement((m) => ({ ...m, attack: false }));
+
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.code) {
         case 'KeyW':
@@ -62,10 +66,14 @@ export const useControls = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
 

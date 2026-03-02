@@ -4,6 +4,10 @@ import { Environment } from '@react-three/drei';
 import { Arena } from './components/Arena';
 import { Player } from './components/Player';
 import { CameraFollow } from './components/CameraFollow';
+import { EnemyManager } from './components/EnemyManager';
+import { HUD } from './components/HUD';
+import { LevelUpOverlay } from './components/LevelUpOverlay';
+import { GameOverOverlay } from './components/GameOverOverlay';
 import { useGameStore } from './store/useGameStore';
 
 export const RoninGame = () => {
@@ -28,6 +32,7 @@ export const RoninGame = () => {
         <Physics gravity={[0, -9.81, 0]}>
           <Arena />
           <Player />
+          <EnemyManager />
         </Physics>
 
         {/* Visual environment */}
@@ -35,6 +40,10 @@ export const RoninGame = () => {
       </Canvas>
 
       {/* UI Layer */}
+      <HUD />
+      <LevelUpOverlay />
+      <GameOverOverlay />
+
       <div style={{
         position: 'absolute',
         top: '20px',
@@ -70,8 +79,8 @@ export const RoninGame = () => {
         userSelect: 'none',
         fontFamily: 'sans-serif'
       }}>
-        <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em' }}>Ronin Survivor - Demo 1B</h2>
-        <p style={{ margin: '8px 0 0 0', fontSize: '14px', opacity: 0.6, fontWeight: 'bold', textTransform: 'uppercase' }}>WASD: Mover | SHIFT: Dash (Cooldown 2s)</p>
+        <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em' }}>Ronin Survivor - Demo Parte 2</h2>
+        <p style={{ margin: '8px 0 0 0', fontSize: '14px', opacity: 0.6, fontWeight: 'bold', textTransform: 'uppercase' }}>WASD: Mover | SHIFT: Dash | CLICK: Atacar</p>
       </div>
 
       {status === 'paused' && (

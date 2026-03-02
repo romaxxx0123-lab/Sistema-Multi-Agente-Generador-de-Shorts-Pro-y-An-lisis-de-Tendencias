@@ -6,10 +6,11 @@ import { useControls } from '../hooks/useControls';
 import { useGameStore } from '../store/useGameStore';
 import { usePlayerMovement } from '../hooks/usePlayerMovement';
 import { usePlayerDash } from '../hooks/usePlayerDash';
+import { usePlayerCombat } from '../hooks/usePlayerCombat';
 import { GAME_CONFIG } from '../config';
 
 export const Player = () => {
-  const { forward, backward, left, right, dash } = useControls();
+  const { forward, backward, left, right, dash, attack: attackInput } = useControls();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
   const status = useGameStore((state) => state.status);
 
@@ -35,6 +36,7 @@ export const Player = () => {
   // Hook modules
   const { move } = usePlayerMovement(api, moveSpeed, rotationSpeed);
   const { performDash, isDashing, canDash } = usePlayerDash(api);
+  const { attack, isAttacking } = usePlayerCombat(ref.current);
 
   useFrame((_state, delta) => {
     if (status !== 'playing') return;
@@ -42,6 +44,11 @@ export const Player = () => {
     // Handle Dash Trigger
     if (dash && canDash && !isDashing) {
       performDash(forward, backward, left, right, ref);
+    }
+
+    // Handle Attack Trigger
+    if (attackInput) {
+      attack();
     }
 
     // Only allow movement if not currently dashing
@@ -54,7 +61,12 @@ export const Player = () => {
     <mesh ref={ref} castShadow>
       {/* Visual representation: A Capsule */}
       <capsuleGeometry args={[GAME_CONFIG.PLAYER.CAPSULE_RADIUS, GAME_CONFIG.PLAYER.CAPSULE_HEIGHT, 4, 16]} />
-      <meshStandardMaterial color={isDashing ? GAME_CONFIG.PLAYER.DASH_COLOR : GAME_CONFIG.PLAYER.COLOR} />
+      <meshStandardMaterial
+        color={
+          isAttacking ? "yellow" :
+          (isDashing ? GAME_CONFIG.PLAYER.DASH_COLOR : GAME_CONFIG.PLAYER.COLOR)
+        }
+      />
 
       {/* Visual feedback for dash availability (simple marker) */}
       {!canDash && (
