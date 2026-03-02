@@ -12,9 +12,7 @@ interface GameState {
   currentQuestionIndex: number;
   missedQuestionIndices: number[];
   isReviewPhase: boolean;
-  view: 'learn' | 'city';
 
-  setView: (view: 'learn' | 'city') => void;
   startLesson: (lesson: Lesson) => void;
   finishLesson: () => void;
   loseHeart: (questionIndex: number) => void;
@@ -36,9 +34,6 @@ export const useStore = create<GameState>()(
       currentQuestionIndex: 0,
       missedQuestionIndices: [],
       isReviewPhase: false,
-      view: 'learn',
-
-      setView: (view) => set({ view }),
 
       startLesson: (lesson) => set({
         activeLesson: lesson,
@@ -116,8 +111,7 @@ export const useStore = create<GameState>()(
         hearts: state.hearts,
         xp: state.xp,
         streak: state.streak,
-        lastCompletedDate: state.lastCompletedDate,
-        view: state.view
+        lastCompletedDate: state.lastCompletedDate
       }),
     }
   )
