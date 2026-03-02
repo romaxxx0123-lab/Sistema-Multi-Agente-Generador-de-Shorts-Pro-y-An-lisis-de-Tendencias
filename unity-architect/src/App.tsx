@@ -64,7 +64,7 @@ function App() {
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium mb-4"
           >
             <Globe size={14} />
-            <span>Unity World Builder v3.0 - Professional</span>
+            <span>Unity World Builder v4.0 - Enterprise Edition</span>
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: -20 }}
@@ -126,6 +126,7 @@ function App() {
                       <option value="Simple">Prototipo Rápido</option>
                       <option value="Medium">Mundo Estándar</option>
                       <option value="High">Entorno Completo</option>
+                      <option value="Enterprise">Arquitectura Enterprise</option>
                     </select>
                   </div>
                 </div>
@@ -152,6 +153,8 @@ function App() {
                       <option value="Action">Action Platformer</option>
                       <option value="RPG">RPG Adventure</option>
                       <option value="FPS">First Person Shooter</option>
+                      <option value="OpenWorld">Open World Sandbox</option>
+                      <option value="RTS">Real-Time Strategy</option>
                     </select>
                   </div>
                 </div>
@@ -210,6 +213,9 @@ function App() {
               <div className="flex-1 space-y-3 font-mono text-sm text-slate-400 text-left">
                 <div className="flex items-center gap-2"><span className="text-blue-500">📁</span> Assets</div>
                 <div className="pl-6 space-y-2 border-l border-slate-800 ml-2">
+                  {config.complexity === 'Enterprise' && (
+                    <div className="flex items-center gap-2 text-red-400"><Layers size={14}/> Data/ <span className="text-[10px] text-slate-600 italic">Items.asset</span></div>
+                  )}
                   <div className="flex items-center gap-2 text-yellow-400"><Box size={14}/> Prefabs/ <span className="text-[10px] text-slate-600 italic">Player.prefab</span></div>
                   <div className="flex items-center gap-2 text-indigo-400"><Monitor size={14}/> Materials/ <span className="text-[10px] text-slate-600 italic">Ground.mat</span></div>
                   <div className="flex items-center gap-2 text-purple-400"><Code size={14}/> Scripts/</div>
@@ -217,6 +223,13 @@ function App() {
                      <div className="text-xs text-slate-300">CameraController.cs</div>
                      <div className="text-xs text-slate-300">WorldManager.cs</div>
                      <div className="text-xs text-slate-300">PlayerController.cs</div>
+                     {config.complexity === 'Enterprise' && (
+                       <>
+                         <div className="text-xs text-blue-400">ServiceLocator.cs</div>
+                         <div className="text-xs text-blue-400">ObjectPooler.cs</div>
+                         <div className="text-xs text-blue-400">SaveSystem.cs</div>
+                       </>
+                     )}
                   </div>
                   <div className="flex items-center gap-2 text-green-400"><Globe size={14}/> Scenes/ <span className="text-[10px] text-slate-600 italic">Main.unity</span></div>
                 </div>
