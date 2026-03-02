@@ -145,6 +145,29 @@ export const NPC: React.FC<NPCProps> = ({ npc, onSelect, hour }) => {
             } else if (arrivedAt.type === 'theater') {
                 newStatus = 'entertaining';
                 activity = 'Viendo una función especial';
+            } else if (arrivedAt.type === 'hospital') {
+                newNeeds.stress = Math.max(0, newNeeds.stress - 40);
+                newStatus = state.profession === 'Surgeon' ? 'working' : 'healing';
+                activity = state.profession === 'Surgeon' ? 'Realizando cirugía' : 'En consulta médica';
+            } else if (arrivedAt.type === 'police') {
+                newStatus = state.profession === 'Police Officer' ? 'patrolling' : 'idle';
+                activity = state.profession === 'Police Officer' ? 'De guardia en central' : 'Trámite administrativo';
+            } else if (arrivedAt.type === 'school') {
+                newStatus = 'studying';
+                activity = state.profession === 'Professor' ? 'Dando clases' : 'Estudiando para exámenes';
+            } else if (arrivedAt.type === 'stadium') {
+                newNeeds.fitness = 100;
+                newNeeds.social = Math.min(100, newNeeds.social + 30);
+                newStatus = 'exercising';
+                activity = state.profession === 'Pro Athlete' ? 'Entrenamiento profesional' : 'Viendo el partido';
+            } else if (arrivedAt.type === 'mall') {
+                newNeeds.social = Math.min(100, newNeeds.social + 20);
+                newStatus = 'entertaining';
+                activity = 'De compras por el mall';
+            } else if (arrivedAt.type === 'library') {
+                newNeeds.stress = Math.max(0, newNeeds.stress - 20);
+                newStatus = 'studying';
+                activity = 'Leyendo en silencio';
             }
 
             setState(s => ({
@@ -191,6 +214,12 @@ export const NPC: React.FC<NPCProps> = ({ npc, onSelect, hour }) => {
       case 'park': return 'Paseando';
       case 'gym': return 'Entrenando';
       case 'theater': return 'Viendo una obra';
+      case 'hospital': return 'En el médico';
+      case 'police': return 'En la comisaría';
+      case 'school': return 'En clase';
+      case 'stadium': return 'En el estadio';
+      case 'mall': return 'De compras';
+      case 'library': return 'En la biblioteca';
       default: return 'Relajándose';
     }
   };
