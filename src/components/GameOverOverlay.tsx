@@ -27,7 +27,7 @@ export const GameOverOverlay = () => {
       </div>
 
       <button
-        onClick={resetGame}
+        onClick={() => useGameStore.getState().finishRun()}
         style={{
           padding: '15px 40px',
           backgroundColor: '#22c55e',

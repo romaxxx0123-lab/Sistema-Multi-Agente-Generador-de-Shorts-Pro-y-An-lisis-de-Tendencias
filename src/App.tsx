@@ -8,17 +8,46 @@ import { EnemyManager } from './components/EnemyManager';
 import { AbilityManager } from './components/abilities/AbilityManager';
 import { HUD } from './components/HUD';
 import { LevelUpOverlay } from './components/LevelUpOverlay';
+import { ShopOverlay } from './components/ShopOverlay';
 import { GameOverOverlay } from './components/GameOverOverlay';
 import { GlobalVFX } from './components/GlobalVFX';
 import { DamageNumbers } from './components/DamageNumbers';
+import { MainMenu } from './components/MainMenu';
+import { CharacterSelector } from './components/CharacterSelector';
+import { MetaUpgrades } from './components/MetaUpgrades';
+import { RunSummary } from './components/RunSummary';
 import { useGameStore } from './store/useGameStore';
 
 export const RoninGame = () => {
+  const view = useGameStore((state) => state.view);
   const status = useGameStore((state) => state.status);
   const togglePause = useGameStore((state) => state.togglePause);
+  const finishRun = useGameStore((state) => state.finishRun);
+
+  if (view === 'menu') return <MainMenu />;
+  if (view === 'characters') return <CharacterSelector />;
+  if (view === 'meta') return <MetaUpgrades />;
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#111111', overflow: 'hidden', position: 'relative' }}>
+      {status === 'paused' && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          color: 'white',
+          fontSize: '48px',
+          fontWeight: 'black',
+          textTransform: 'uppercase',
+          fontFamily: 'sans-serif',
+          zIndex: 400
+        }}>
+          Pausa
+        </div>
+      )}
       <Canvas shadows>
         {/* New Smooth Camera Follow */}
         <CameraFollow />
@@ -48,7 +77,9 @@ export const RoninGame = () => {
       {/* UI Layer */}
       <HUD />
       <LevelUpOverlay />
+      <ShopOverlay />
       <GameOverOverlay />
+      {status === 'run_summary' && <RunSummary />}
 
       <div style={{
         position: 'absolute',
@@ -85,27 +116,10 @@ export const RoninGame = () => {
         userSelect: 'none',
         fontFamily: 'sans-serif'
       }}>
-        <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em' }}>Ronin Survivor - Demo Parte 2</h2>
-        <p style={{ margin: '8px 0 0 0', fontSize: '14px', opacity: 0.6, fontWeight: 'bold', textTransform: 'uppercase' }}>WASD: Mover | SHIFT: Dash | CLICK: Atacar</p>
+        <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em' }}>Ronin Survivor - Roguelite Expanded</h2>
+        <p style={{ margin: '8px 0 0 0', fontSize: '14px', opacity: 0.6, fontWeight: 'bold', textTransform: 'uppercase' }}>WASD: Mover | SHIFT: Dash | CLICK: Atacar | Meta-XP Ganado al morir</p>
       </div>
 
-      {status === 'paused' && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          color: 'white',
-          fontSize: '48px',
-          fontWeight: 'black',
-          textTransform: 'uppercase',
-          fontFamily: 'sans-serif'
-        }}>
-          Pausa
-        </div>
-      )}
     </div>
   );
 };

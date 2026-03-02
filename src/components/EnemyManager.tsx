@@ -5,11 +5,13 @@ import { useGameStore } from '../store/useGameStore';
 import { GAME_CONFIG } from '../config';
 import { Enemy } from './Enemy';
 import { BossOni } from './BossOni';
+import { BossShogun } from './BossShogun';
 import { ExperienceGem } from './ExperienceGem';
+import { Coin } from './Coin';
 
 interface EnemyData {
   id: string;
-  type: 'slime' | 'skeleton' | 'bat' | 'ogre';
+  type: 'slime' | 'skeleton' | 'bat' | 'ogre' | 'ninja' | 'mage' | 'mini_oni';
   position: [number, number, number];
 }
 
@@ -19,13 +21,31 @@ interface GemData {
   amount: number;
 }
 
+interface CoinData {
+  id: string;
+  position: Vector3;
+  amount: number;
+}
+
+interface ProjectileData {
+  id: string;
+  position: Vector3;
+  direction: Vector3;
+  damage: number;
+  speed: number;
+}
+
 export const EnemyManager = () => {
   const [enemies, setEnemies] = useState<EnemyData[]>([]);
   const [gems, setGems] = useState<GemData[]>([]);
+  const [coins, setCoins] = useState<CoinData[]>([]);
+  const [projectiles, setProjectiles] = useState<ProjectileData[]>([]);
   const spawnTimer = useRef(0);
   const difficultyTimer = useRef(0);
   const enemyIdCounter = useRef(0);
   const gemIdCounter = useRef(0);
+  const coinIdCounter = useRef(0);
+  const projIdCounter = useRef(0);
 
   const status = useGameStore((state) => state.status);
   const playerRef = useGameStore((state) => state.playerRef);
@@ -73,11 +93,26 @@ export const EnemyManager = () => {
       setEnemies(prev => [...prev, ...newEnemies]);
     };
 
+    const handleProjectile = (e: any) => {
+        setProjectiles(prev => [...prev, { id: `proj-${projIdCounter.current++}`, ...e.detail }]);
+    };
+
+    const handleNearestEnemy = (e: any) => {
+        if (enemies.length === 0) return;
+        const { position, callback } = e.detail;
+        const sorted = [...enemies].sort((a,b) => new Vector3(...a.position).distanceTo(position) - new Vector3(...b.position).distanceTo(position));
+        callback(new Vector3(...sorted[0].position));
+    };
+
     window.addEventListener('request-lightning-target', handleLightningTarget);
     window.addEventListener('request-spawn-enemies', handleSpawnRequest);
+    window.addEventListener('enemy-projectile', handleProjectile);
+    window.addEventListener('request-nearest-enemy', handleNearestEnemy);
     return () => {
       window.removeEventListener('request-lightning-target', handleLightningTarget);
       window.removeEventListener('request-spawn-enemies', handleSpawnRequest);
+      window.removeEventListener('enemy-projectile', handleProjectile);
+      window.removeEventListener('request-nearest-enemy', handleNearestEnemy);
     };
   }, [enemies]);
 
@@ -85,8 +120,10 @@ export const EnemyManager = () => {
     if (!playerRef) return;
 
     const timeElapsed = difficultyTimer.current;
-    const waveSize = GAME_CONFIG.SPAWN.INITIAL_COUNT +
+    const diffCfg = (GAME_CONFIG.DIFFICULTIES as any)[useGameStore.getState().difficulty.toUpperCase()];
+    const baseWave = GAME_CONFIG.SPAWN.INITIAL_COUNT +
       Math.floor(timeElapsed / GAME_CONFIG.SPAWN.INCREASE_INTERVAL) * GAME_CONFIG.SPAWN.INCREASE_RATE;
+    const waveSize = Math.floor(baseWave * diffCfg.spawnMult);
 
     const newEnemies: EnemyData[] = [];
     for (let i = 0; i < waveSize; i++) {
@@ -118,9 +155,12 @@ export const EnemyManager = () => {
       let type: EnemyData['type'] = 'slime';
       const ratios = GAME_CONFIG.SPAWN.RATIOS;
 
-      if (rand < ratios.OGRE) type = 'ogre';
-      else if (rand < ratios.OGRE + ratios.BAT) type = 'bat';
-      else if (rand < ratios.OGRE + ratios.BAT + ratios.SKELETON) type = 'skeleton';
+      if (rand < ratios.MINI_ONI) type = 'mini_oni';
+      else if (rand < ratios.MINI_ONI + ratios.OGRE) type = 'ogre';
+      else if (rand < ratios.MINI_ONI + ratios.OGRE + ratios.MAGE) type = 'mage';
+      else if (rand < ratios.MINI_ONI + ratios.OGRE + ratios.MAGE + ratios.NINJA) type = 'ninja';
+      else if (rand < ratios.MINI_ONI + ratios.OGRE + ratios.MAGE + ratios.NINJA + ratios.BAT) type = 'bat';
+      else if (rand < ratios.MINI_ONI + ratios.OGRE + ratios.MAGE + ratios.NINJA + ratios.BAT + ratios.SKELETON) type = 'skeleton';
       newEnemies.push({
         id: `enemy-${enemyIdCounter.current++}`,
         type,
@@ -131,13 +171,20 @@ export const EnemyManager = () => {
     setEnemies((prev) => [...prev, ...newEnemies]);
   }, [playerRef]);
 
-  const handleEnemyDeath = useCallback((id: string, position: Vector3, xp: number) => {
+  const handleEnemyDeath = useCallback((id: string, position: Vector3, xp: number, coinsIn: number) => {
     setEnemies((prev) => prev.filter((e) => e.id !== id));
     setGems((prev) => [...prev, {
       id: `gem-${gemIdCounter.current++}`,
       position,
       amount: xp,
     }]);
+    if (coinsIn > 0) {
+        setCoins(prev => [...prev, {
+            id: `coin-${coinIdCounter.current++}`,
+            position,
+            amount: coinsIn
+        }]);
+    }
   }, []);
 
   const handleGemCollect = useCallback((id: string) => {
@@ -148,6 +195,24 @@ export const EnemyManager = () => {
     if (status !== 'playing') return;
 
     setGameTime(prev => prev + delta);
+
+    // Projectile Movement
+    setProjectiles(prev => {
+        const next = [];
+        for (const p of prev) {
+            const move = p.direction.clone().multiplyScalar(p.speed * delta);
+            const newPos = p.position.clone().add(move);
+
+            // Hit check
+            if (playerRef && newPos.distanceTo(playerRef.position) < 1.0) {
+                useGameStore.getState().takeDamage(p.damage);
+                continue; // Destroy
+            }
+            if (newPos.length() > 60) continue; // Cleanup
+            next.push({ ...p, position: newPos });
+        }
+        return next;
+    });
     difficultyTimer.current += delta;
     spawnTimer.current += delta;
 
@@ -159,16 +224,20 @@ export const EnemyManager = () => {
     }
 
     // Trigger Boss
-    if (!bossActive && difficultyTimer.current >= GAME_CONFIG.BOSS.SPAWN_TIME) {
-       spawnBossAction();
-       // Reset difficulty timer if we want to loop bosses or just to avoid multiple spawns
-       difficultyTimer.current = -999999; // Only one boss for now
+    if (!bossActive) {
+        if (difficultyTimer.current >= GAME_CONFIG.BOSS.SHOGUN.SPAWN_TIME && bossesDefeated === 1) {
+            spawnBossAction('SHOGUN');
+        } else if (difficultyTimer.current >= GAME_CONFIG.BOSS.ONI.SPAWN_TIME && bossesDefeated === 0) {
+            spawnBossAction('ONI');
+        }
     }
   });
 
+  const bossesDefeated = useGameStore(s => s.bossesDefeated);
+
   return (
     <>
-      {bossActive && <BossOni />}
+      {bossActive && (bossesDefeated === 0 ? <BossOni /> : <BossShogun />)}
       {enemies.map((enemy) => (
         <Enemy
           key={enemy.id}
@@ -186,6 +255,15 @@ export const EnemyManager = () => {
           amount={gem.amount}
           onCollect={handleGemCollect}
         />
+      ))}
+      {coins.map((c) => (
+          <Coin key={c.id} id={c.id} position={c.position} amount={c.amount} onCollect={(id) => setCoins(prev => prev.filter(x => x.id !== id))} />
+      ))}
+      {projectiles.map(p => (
+          <mesh key={p.id} position={[p.position.x, 1, p.position.z]}>
+              <sphereGeometry args={[0.2, 8, 8]} />
+              <meshBasicMaterial color="#ef4444" />
+          </mesh>
       ))}
     </>
   );

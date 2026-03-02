@@ -7,9 +7,9 @@ import { GAME_CONFIG } from '../config';
 
 interface EnemyProps {
   id: string;
-  type: 'slime' | 'skeleton' | 'bat' | 'ogre';
+  type: 'slime' | 'skeleton' | 'bat' | 'ogre' | 'ninja' | 'mage' | 'mini_oni';
   initialPosition: [number, number, number];
-  onDeath: (id: string, position: Vector3, xp: number) => void;
+  onDeath: (id: string, position: Vector3, xp: number, coins: number) => void;
 }
 
 export const Enemy = ({ id, type, initialPosition, onDeath }: EnemyProps) => {
@@ -50,6 +50,18 @@ export const Enemy = ({ id, type, initialPosition, onDeath }: EnemyProps) => {
       knockbackTimer.current = 0.5;
     }
   }, [type, config]);
+
+  const shootProjectile = useCallback((targetPos: Vector3) => {
+    const dir = new Vector3().subVectors(targetPos, ref.current!.position).normalize();
+    window.dispatchEvent(new CustomEvent('enemy-projectile', {
+      detail: {
+        position: ref.current!.position.clone(),
+        direction: dir,
+        damage: config.PROJ_DAMAGE,
+        speed: 8
+      }
+    }));
+  }, [config]);
 
   const applyBurn = useCallback((damage: number, duration: number) => {
     burnTimer.current = duration;
@@ -98,6 +110,10 @@ export const Enemy = ({ id, type, initialPosition, onDeath }: EnemyProps) => {
     };
   }, [hp, id, takeDamage, applyBurn, ref]);
 
+  const dashTimer = useRef(0);
+  const projTimer = useRef(0);
+  const aoeTimer = useRef(0);
+
   useFrame((_state, delta) => {
     if (status !== 'playing' || hp <= 0 || !playerRef || !ref.current) return;
 
@@ -127,6 +143,37 @@ export const Enemy = ({ id, type, initialPosition, onDeath }: EnemyProps) => {
     if (knockbackTimer.current > 0) {
       knockbackTimer.current -= delta;
       velocity = direction.clone().multiplyScalar(-config.KNOCKBACK_DISTANCE * 2);
+    }
+
+    // Ninja Dash
+    if (type === 'ninja') {
+        dashTimer.current += delta;
+        if (dashTimer.current >= config.DASH_COOLDOWN) {
+            velocity.multiplyScalar(5);
+            if (dashTimer.current >= config.DASH_COOLDOWN + 0.5) dashTimer.current = 0;
+        }
+    }
+
+    // Mage Shooting
+    if (type === 'mage' && distance <= config.RANGE) {
+        projTimer.current += delta;
+        if (projTimer.current >= 2.0) {
+            shootProjectile(playerPos);
+            projTimer.current = 0;
+        }
+        velocity.multiplyScalar(0.2); // Slow down while shooting
+    }
+
+    // Mini Oni AOE
+    if (type === 'mini_oni') {
+        aoeTimer.current += delta;
+        if (aoeTimer.current >= config.AOE_COOLDOWN) {
+            if (distance <= config.AOE_RADIUS) {
+                takeDamageAction(config.DAMAGE);
+                window.dispatchEvent(new CustomEvent('screen-shake', { detail: { intensity: 3 } }));
+            }
+            aoeTimer.current = 0;
+        }
     }
 
     // Apply velocity
@@ -170,21 +217,24 @@ export const Enemy = ({ id, type, initialPosition, onDeath }: EnemyProps) => {
     if (hp <= 0 && ref.current) {
       const pos = ref.current.position.clone();
       const xp = Math.floor(Math.random() * (config.XP_DROP.max - config.XP_DROP.min + 1)) + config.XP_DROP.min;
+
+      let coins = 0;
+      if (type === 'ogre') coins = Math.floor(Math.random() * 6) + 5;
+      else if (Math.random() < 0.3) coins = Math.floor(Math.random() * 3) + 1;
+
       addKill();
-      onDeath(id, pos, xp);
+      onDeath(id, pos, xp, coins);
     }
-  }, [hp, id, onDeath, config.XP_DROP, addKill, config.RADIUS]);
+  }, [hp, id, onDeath, config.XP_DROP, addKill, config.RADIUS, type]);
 
   if (hp <= 0) return null;
 
   return (
     <mesh ref={ref} castShadow>
-      {type === 'slime' ? (
+      {type === 'slime' || type === 'bat' ? (
         <sphereGeometry args={[config.RADIUS, 16, 16]} />
-      ) : type === 'bat' ? (
-        <sphereGeometry args={[config.RADIUS, 8, 8]} />
-      ) : type === 'ogre' ? (
-        <boxGeometry args={[config.RADIUS * 2, config.HEIGHT, config.RADIUS * 2]} />
+      ) : type === 'ogre' || type === 'mini_oni' ? (
+        <boxGeometry args={[config.RADIUS * 2, config.HEIGHT || config.RADIUS * 2, config.RADIUS * 2]} />
       ) : (
         <capsuleGeometry args={[config.RADIUS, config.HEIGHT || 1.5, 4, 16]} />
       )}

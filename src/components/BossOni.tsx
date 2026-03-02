@@ -9,7 +9,7 @@ type BossState = 'idle' | 'charging' | 'slamming' | 'summoning' | 'jumping';
 
 export const BossOni = () => {
   const [state, setState] = useState<BossState>('idle');
-  const [hp, setHp] = useState(GAME_CONFIG.BOSS.HP);
+  const [hp, setHp] = useState(GAME_CONFIG.BOSS.ONI.HP);
   const [isHit, setIsHit] = useState(false);
   const hitFlashTimer = useRef(0);
 
@@ -25,18 +25,19 @@ export const BossOni = () => {
     jump: 0
   });
 
+  const config = GAME_CONFIG.BOSS.ONI;
+
   const [ref, api] = useSphere<Mesh>(() => ({
     mass: 100,
     position: [0, 2, 0],
-    args: [GAME_CONFIG.BOSS.SCALE / 2],
+    args: [config.SCALE / 2],
     fixedRotation: true,
   }));
 
-  const isF2 = hp < GAME_CONFIG.BOSS.HP / 2;
-  const config = GAME_CONFIG.BOSS;
+  const isF2 = hp < config.HP / 2;
 
   const takeDamage = useCallback((amount: number) => {
-    setHp((prev) => Math.max(0, prev - amount));
+    setHp((prev: number) => Math.max(0, prev - amount));
     damageBossAction(amount);
     setIsHit(true);
     hitFlashTimer.current = 0.1;
@@ -75,6 +76,16 @@ export const BossOni = () => {
       api.velocity.set(0, 0, 0);
 
       // Choose next move
+      // Note: In Part 4 config, Boss stats are nested under ONI/SHOGUN
+      // To keep BossOni simple, we'll hardcode the Part 3 attack params or pass them
+      // Since I changed the config, I need to update these references
+      const atk = (GAME_CONFIG.BOSS as any).ONI_ATTACKS || { // Fallback or use local constants
+         CHARGE: { COOLDOWN_F1: 8, COOLDOWN_F2: 5, SPEED: 8, DURATION: 2, DAMAGE: 30 },
+         SLAM: { COOLDOWN_F1: 10, COOLDOWN_F2: 5, RADIUS: 5, DAMAGE: 40, WARNING_TIME: 1 },
+         SUMMON: { COOLDOWN_F1: 15, COOLDOWN_F2: 12, COUNT_F1: 5, COUNT_F2: 10 },
+         JUMP: { COOLDOWN_F2: 20, HEIGHT: 3, RADIUS: 8, DAMAGE: 50 }
+      };
+
       if (isF2 && cooldowns.current.jump <= 0) {
         startJump();
       } else if (cooldowns.current.charge <= 0) {
@@ -92,29 +103,28 @@ export const BossOni = () => {
       timer.current -= delta;
       if (timer.current <= 0) {
         setState('idle');
-        cooldowns.current.charge = isF2 ? config.ATTACKS.CHARGE.COOLDOWN_F2 : config.ATTACKS.CHARGE.COOLDOWN_F1;
+        cooldowns.current.charge = isF2 ? 5 : 8;
       }
-      // Physics handled by impulse/velocity set once or continuous
     } else if (state === 'slamming') {
       timer.current -= delta;
       if (timer.current <= 0) {
         executeSlam();
         setState('idle');
-        cooldowns.current.slam = isF2 ? config.ATTACKS.SLAM.COOLDOWN_F2 : config.ATTACKS.SLAM.COOLDOWN_F1;
+        cooldowns.current.slam = isF2 ? 5 : 10;
       }
     } else if (state === 'summoning') {
       timer.current -= delta;
       if (timer.current <= 0) {
         executeSummon();
         setState('idle');
-        cooldowns.current.summon = isF2 ? config.ATTACKS.SUMMON.COOLDOWN_F2 : config.ATTACKS.SUMMON.COOLDOWN_F1;
+        cooldowns.current.summon = isF2 ? 12 : 15;
       }
     } else if (state === 'jumping') {
       timer.current -= delta;
       if (timer.current <= 0) {
         executeJumpLand();
         setState('idle');
-        cooldowns.current.jump = config.ATTACKS.JUMP.COOLDOWN_F2;
+        cooldowns.current.jump = 20;
       }
     }
 
@@ -126,21 +136,21 @@ export const BossOni = () => {
 
   const startCharge = () => {
     setState('charging');
-    timer.current = config.ATTACKS.CHARGE.DURATION;
+    timer.current = 2; // duration
     const dir = new Vector3().subVectors(playerRef!.position, ref.current!.position).normalize();
-    api.velocity.set(dir.x * config.ATTACKS.CHARGE.SPEED, 0, dir.z * config.ATTACKS.CHARGE.SPEED);
+    api.velocity.set(dir.x * 8, 0, dir.z * 8);
   };
 
   const startSlam = () => {
     setState('slamming');
-    timer.current = config.ATTACKS.SLAM.WARNING_TIME;
+    timer.current = 1; // warning time
     api.velocity.set(0, 0, 0);
   };
 
   const executeSlam = () => {
     const dist = new Vector3().subVectors(playerRef!.position, ref.current!.position).length();
-    if (dist < config.ATTACKS.SLAM.RADIUS + config.SCALE / 2) {
-      useGameStore.getState().takeDamage(config.ATTACKS.SLAM.DAMAGE);
+    if (dist < 5 + config.SCALE / 2) {
+      useGameStore.getState().takeDamage(40);
       window.dispatchEvent(new CustomEvent('screen-shake', { detail: { intensity: 10 } }));
     }
   };
@@ -152,7 +162,7 @@ export const BossOni = () => {
   };
 
   const executeSummon = () => {
-    const count = isF2 ? config.ATTACKS.SUMMON.COUNT_F2 : config.ATTACKS.SUMMON.COUNT_F1;
+    const count = isF2 ? 10 : 5;
     window.dispatchEvent(new CustomEvent('request-spawn-enemies', { detail: { count, type: 'slime', position: ref.current!.position.clone() } }));
   };
 
@@ -164,8 +174,8 @@ export const BossOni = () => {
 
   const executeJumpLand = () => {
     const dist = new Vector3().subVectors(playerRef!.position, ref.current!.position).length();
-    if (dist < config.ATTACKS.JUMP.RADIUS + config.SCALE / 2) {
-      useGameStore.getState().takeDamage(config.ATTACKS.JUMP.DAMAGE);
+    if (dist < 8 + config.SCALE / 2) {
+      useGameStore.getState().takeDamage(50);
       window.dispatchEvent(new CustomEvent('screen-shake', { detail: { intensity: 15 } }));
     }
     api.position.set(playerRef!.position.x, 2, playerRef!.position.z);
@@ -181,7 +191,7 @@ export const BossOni = () => {
       {/* Visual Indicator for AOE Slam/Jump */}
       {(state === 'slamming' || state === 'jumping') && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -config.SCALE / 2 + 0.1, 0]}>
-          <ringGeometry args={[0, state === 'slamming' ? config.ATTACKS.SLAM.RADIUS : config.ATTACKS.JUMP.RADIUS, 32]} />
+          <ringGeometry args={[0, state === 'slamming' ? 5 : 8, 32]} />
           <meshBasicMaterial color="red" transparent opacity={0.3} />
         </mesh>
       )}

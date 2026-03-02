@@ -1,16 +1,16 @@
-# Ronin Survivor - Part 2: Combat, Enemies & Level Up
+# Ronin Survivor - Part 4: Roguelite Expansion
 
-## Implementación Parte 2
-1. **Sistema de Combate**: Ataque melee con Click Izquierdo. Detecta enemigos en un cono frontal de 90° y 2m de rango.
-2. **Enemigos**:
-   - **Slimes**: Lentos, poca vida, sueltan poca XP.
-   - **Esqueletos**: Rápidos, más resistentes, sueltan más XP.
-3. **Spawning**: Sistema de oleadas automáticas que escala en cantidad cada 30 segundos.
-4. **Progresión**:
-   - Recolección de XP (Gemas verdes con efecto magnético).
-   - Sistema de Niveles (XP necesaria = Nivel * 10).
-   - Pantalla de Level Up con 3 mejoras aleatorias (Daño, Velocidad, Vida, Cooldowns).
-5. **HUD**: Barras de vida y experiencia, contador de nivel y bajas.
+## Implementación Parte 4
+1. **Contenido Expandido**: 10 Habilidades automáticas totales y 6 Evoluciones únicas.
+2. **Meta-Progresión**: Sistema persistente de Meta-XP. Menú para desbloquear personajes (Ronin, Samurai, Kunoichi, Monje), habilidades y mejoras permanentes.
+3. **Tienda**: Aparece cada 5 niveles. Permite comprar armas temporales, consumibles y mejoras de run usando Monedas.
+4. **Sistema de Monedas**: Los enemigos sueltan monedas. Recogida magnética. Persisten entre runs para la meta-progresión.
+5. **Jefes**:
+   - **Oni Rojo** (5 min): 2 fases, ataques AOE e invocaciones.
+   - **Shogun Corrompido** (10 min): 3 fases, combo katana, tornado y teletransporte.
+6. **Enemigos Avanzados**: Ninjas (dash), Magos (proyectiles), y Mini-Onis (elite).
+7. **Dificultades**: Selección de Normal, Difícil y Pesadilla antes de la run.
+8. **Feedback Visual**: Números de daño flotantes, screen shake, trails de dash y flashes de nivel.
 
 ## Migración de 1A a 1B
 1. **Zustand**: Se añadió `zustand` para el manejo de estado global (GameManager).
