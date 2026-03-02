@@ -6,7 +6,6 @@ export const templates = {
     "com.unity.feature.2d": "2.0.0",
     "com.unity.ide.visualstudio": "2.0.22",
     "com.unity.modules.ai": "1.0.0",
-    "com.unity.modules.androiddeviceprowler": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
     "com.unity.modules.assetbundle": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
@@ -48,31 +47,20 @@ export const templates = {
 
 namespace ${namespace}.Core
 {
-    /// <summary>
-    /// Thread-safe Singleton implementation for MonoBehaviours.
-    /// </summary>
     public abstract class Singleton<T> : MonoBehaviour where T : MonoBehaviour
     {
         private static T _instance;
         private static readonly object _lock = new object();
-        private static bool _applicationIsQuitting = false;
 
         public static T Instance
         {
             get
             {
-                if (_applicationIsQuitting)
-                {
-                    Debug.LogWarning("[Singleton] Instance '" + typeof(T) + "' already destroyed on application quit. Won't create again - returning null.");
-                    return null;
-                }
-
                 lock (_lock)
                 {
                     if (_instance == null)
                     {
                         _instance = (T)FindFirstObjectByType(typeof(T));
-
                         if (_instance == null)
                         {
                             var singletonObject = new GameObject();
@@ -91,138 +79,210 @@ namespace ${namespace}.Core
             if (_instance == null)
             {
                 _instance = this as T;
-                if (transform.parent == null)
-                {
-                    DontDestroyOnLoad(gameObject);
-                }
+                if (transform.parent == null) DontDestroyOnLoad(gameObject);
             }
             else if (_instance != this)
             {
                 Destroy(gameObject);
             }
         }
-
-        private void OnApplicationQuit()
-        {
-            _applicationIsQuitting = true;
-        }
-
-        private void OnDestroy()
-        {
-            // Reset instance if this specific object is destroyed (and it was the instance)
-            if (_instance == this)
-            {
-                _instance = null;
-            }
-        }
     }
 }`,
 
-  gameEvent: (namespace: string) => `using System.Collections.Generic;
-using UnityEngine;
+  cameraController: (namespace: string) => `using UnityEngine;
 
-namespace ${namespace}.Events
+namespace ${namespace}.Core
 {
-    [CreateAssetMenu(fileName = "New Game Event", menuName = "Events/Game Event")]
-    public class GameEvent : ScriptableObject
+    public class CameraController : MonoBehaviour
     {
-        private readonly List<GameEventListener> _listeners = new List<GameEventListener>();
+        public Transform target;
+        public Vector3 offset = new Vector3(0, 5, -10);
+        public float smoothSpeed = 0.125f;
 
-        public void Raise()
+        void LateUpdate()
         {
-            for (int i = _listeners.Count - 1; i >= 0; i--)
-            {
-                _listeners[i].OnEventRaised();
-            }
-        }
+            if (target == null) return;
 
-        public void RegisterListener(GameEventListener listener)
-        {
-            if (!_listeners.Contains(listener))
-                _listeners.Add(listener);
-        }
+            Vector3 desiredPosition = target.position + offset;
+            Vector3 smoothedPosition = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed);
+            transform.position = smoothedPosition;
 
-        public void UnregisterListener(GameEventListener listener)
-        {
-            if (_listeners.Contains(listener))
-                _listeners.Remove(listener);
+            transform.LookAt(target);
         }
     }
 }`,
 
-  eventListener: (namespace: string) => `using UnityEngine;
+  worldManager: (namespace: string) => `using UnityEngine;
+using ${namespace}.Core;
+
+namespace ${namespace}.Managers
+{
+    public class WorldManager : Singleton<WorldManager>
+    {
+        [Header("World Settings")]
+        public float gravityMultiplier = 1.0f;
+        public int currentLevel = 1;
+
+        void Start()
+        {
+            Debug.Log("World Manager active. Gravity: " + Physics.gravity);
+        }
+
+        public void NextLevel()
+        {
+            currentLevel++;
+            Debug.Log("Proceeding to level " + currentLevel);
+        }
+    }
+}`,
+
+  interactable: (namespace: string) => `using UnityEngine;
 using UnityEngine.Events;
 
-namespace ${namespace}.Events
+namespace ${namespace}.Gameplay
 {
-    public class GameEventListener : MonoBehaviour
+    public class Interactable : MonoBehaviour
     {
-        [Tooltip("Event to register with.")]
-        public GameEvent Event;
+        public UnityEvent onInteract;
+        public float interactDistance = 2.0f;
 
-        [Tooltip("Response to raise when Event is raised.")]
-        public UnityEvent Response;
-
-        private void OnEnable()
+        public void Interact()
         {
-            if (Event != null)
-                Event.RegisterListener(this);
-        }
-
-        private void OnDisable()
-        {
-            if (Event != null)
-                Event.UnregisterListener(this);
-        }
-
-        public void OnEventRaised()
-        {
-            Response.Invoke();
+            onInteract.Invoke();
+            Debug.Log("Interacted with " + gameObject.name);
         }
     }
 }`,
 
-  stateMachine: (namespace: string) => `using System.Collections.Generic;
-using UnityEngine;
+  material: (r: number, g: number, b: number) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: New Material
+  m_Shader: {fileID: 4800000, guid: 933532a4fcc9b51438d90b4d6d3c03ad, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _BaseMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Smoothness: 0.5
+    m_Colors:
+    - _BaseColor: {r: ${r}, g: ${g}, b: ${b}, a: 1}
+  m_BuildTextureStacks: []
+`,
 
-namespace ${namespace}.StateMachine
-{
-    public abstract class State
-    {
-        protected StateMachine machine;
-        public State(StateMachine machine) { this.machine = machine; }
+  prefab: (_meshGuid: string, matGuid: string, name: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 400000}
+  - component: {fileID: 3300000}
+  - component: {fileID: 2300000}
+  - component: {fileID: 6500000}
+  m_Layer: 0
+  m_Name: ${name}
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &400000
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &3300000
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300000
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_CheckSelfOcclusion: 1
+--- !u!65 &6500000
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_Material: {fileID: 0}
+  m_IsTrigger: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+`,
 
-        public virtual void Enter() { }
-        public virtual void Update() { }
-        public virtual void Exit() { }
-    }
-
-    public class StateMachine : MonoBehaviour
-    {
-        protected State currentState;
-
-        public void SetState(State newState)
-        {
-            if (currentState != null)
-                currentState.Exit();
-
-            currentState = newState;
-
-            if (currentState != null)
-                currentState.Enter();
-        }
-
-        protected virtual void Update()
-        {
-            if (currentState != null)
-                currentState.Update();
-        }
-    }
-}`,
+  meta: (guid: string) => `fileFormatVersion: 2
+guid: ${guid}
+DefaultImporter:
+  externalObjects: {}
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+`,
 
   asmdef: (name: string) => `{
     "name": "${name}",
-    "rootNamespace": "",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -235,130 +295,138 @@ namespace ${namespace}.StateMachine
     "noEngineReferences": false
 }`,
 
-  readme: (config: {projectName: string, genre: string}) => `# ${config.projectName}
+  readme: (config: {projectName: string, genre: string}) => `# ${config.projectName} - Pro World
 
-Generated by **Unity Project Architect Pro**.
+Generated by **Unity Project Architect Pro v3.0**.
 
 ## Genre: ${config.genre}
 
-## Project Structure
-This project follows professional Unity standards with modular Assembly Definitions and a robust ScriptableObject-based event system.
+## Functional Assets Included:
+- **Player Prefab**: Fully set up with CharacterController and Material.
+- **Ground Prefab**: Modular ground piece.
+- **CameraController**: Smooth target tracking.
+- **WorldManager**: Singleton level and environment controller.
 
-### Architecture Highlights
-- **Core Singleton Pattern**: Thread-safe implementation for managers.
-- **ScriptableObject Events**: Decoupled communication between systems.
-- **State Machine**: Clean logic for character and game states.
-- **AsmDefs**: Modularized codebase for faster compilation and clean dependencies.
-
-## Setup Instructions
-1. Open this folder in **Unity 2022.3 LTS**.
-2. Go to \`Assets/Scenes/MainScene.unity\`.
-3. Press Play!
-
-## Technical Stack
-- **Render Pipeline**: URP (Universal Render Pipeline)
-- **Input System**: New Input System (Package)
-- **UI Framework**: UGUI + TextMeshPro
+## Features:
+- GUID-matched assets for immediate link persistence.
+- Layered architecture (Core, Managers, Gameplay).
+- Scene pre-populated with basic world elements.
 `,
+
+  gameEvent: (namespace: string) => `using System.Collections.Generic;
+using UnityEngine;
+
+namespace ${namespace}.Events
+{
+    [CreateAssetMenu(fileName = "New Game Event", menuName = "Events/Game Event")]
+    public class GameEvent : ScriptableObject
+    {
+        private readonly List<GameEventListener> _listeners = new List<GameEventListener>();
+        public void Raise() { for (int i = _listeners.Count - 1; i >= 0; i--) _listeners[i].OnEventRaised(); }
+        public void RegisterListener(GameEventListener listener) { if (!_listeners.Contains(listener)) _listeners.Add(listener); }
+        public void UnregisterListener(GameEventListener listener) { if (_listeners.Contains(listener)) _listeners.Remove(listener); }
+    }
+}`,
+
+  gameEventListener: (namespace: string) => `using UnityEngine;
+using UnityEngine.Events;
+
+namespace ${namespace}.Events
+{
+    public class GameEventListener : MonoBehaviour
+    {
+        public GameEvent Event;
+        public UnityEvent Response;
+        private void OnEnable() { if (Event != null) Event.RegisterListener(this); }
+        private void OnDisable() { if (Event != null) Event.UnregisterListener(this); }
+        public void OnEventRaised() { Response.Invoke(); }
+    }
+}`,
+
+  stateMachine: (namespace: string) => `using UnityEngine;
+
+namespace ${namespace}.StateMachine
+{
+    public abstract class State
+    {
+        protected StateMachine machine;
+        public State(StateMachine machine) { this.machine = machine; }
+        public virtual void Enter() { }
+        public virtual void Update() { }
+        public virtual void Exit() { }
+    }
+
+    public class StateMachine : MonoBehaviour
+    {
+        protected State currentState;
+        public void SetState(State newState) { if (currentState != null) currentState.Exit(); currentState = newState; if (currentState != null) currentState.Enter(); }
+        protected virtual void Update() { if (currentState != null) currentState.Update(); }
+    }
+}`,
 
   gameManager: (namespace: string) => `using UnityEngine;
 using ${namespace}.Core;
-using ${namespace}.Events;
 
 namespace ${namespace}.Managers
 {
     public class GameManager : Singleton<GameManager>
     {
-        [Header("Global Events")]
-        public GameEvent onGameStart;
-        public GameEvent onGameOver;
-
-        [Header("Game State")]
         public bool isGameOver = false;
         public float score = 0;
-
-        protected override void Awake()
-        {
-            base.Awake();
-            Debug.Log("GameManager Initialized");
-        }
-
-        public void StartGame()
-        {
-            isGameOver = false;
-            score = 0;
-            if (onGameStart != null) onGameStart.Raise();
-        }
-
-        public void AddScore(float amount)
-        {
-            score += amount;
-        }
-
-        public void GameOver()
-        {
-            isGameOver = true;
-            Debug.Log("Game Over!");
-            if (onGameOver != null) onGameOver.Raise();
-        }
+        public void AddScore(float amount) { score += amount; }
+        public void GameOver() { isGameOver = true; Debug.Log("Game Over!"); }
     }
 }`,
 
   playerController: (namespace: string) => `using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
-using UnityEngine.InputSystem;
-#endif
 
-namespace ${namespace}.Player
+namespace ${namespace}.Gameplay
 {
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
-        [Header("Movement Settings")]
         public float moveSpeed = 5f;
         public float rotationSpeed = 10f;
-
         private CharacterController _controller;
-        private Vector2 _moveInput;
 
-        void Start()
-        {
-            _controller = GetComponent<CharacterController>();
-        }
+        void Start() { _controller = GetComponent<CharacterController>(); }
 
         void Update()
         {
-#if ENABLE_INPUT_SYSTEM
-            // Logic handled via Input System callbacks if enabled
-#else
             float horizontal = Input.GetAxis("Horizontal");
             float vertical = Input.GetAxis("Vertical");
-            _moveInput = new Vector2(horizontal, vertical);
-#endif
-            HandleMovement();
-        }
-
-        private void HandleMovement()
-        {
-            Vector3 direction = new Vector3(_moveInput.x, 0, _moveInput.y).normalized;
+            Vector3 direction = new Vector3(horizontal, 0, vertical).normalized;
 
             if (direction.magnitude >= 0.1f)
             {
                 float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.Euler(0, targetAngle, 0), rotationSpeed * Time.deltaTime);
-
                 _controller.Move(direction * moveSpeed * Time.deltaTime);
             }
         }
-
-#if ENABLE_INPUT_SYSTEM
-        public void OnMove(InputValue value)
-        {
-            _moveInput = value.Get<Vector2>();
-        }
-#endif
     }
 }`,
+
+  tagManager: `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1
+TagManager:
+  serializedVersion: 2
+  tags:
+  - Player
+  - Interactable
+  - Obstacle
+  layers:
+  - Default
+  - TransparentFX
+  - Ignore Raycast
+  -
+  - Water
+  - UI
+  -
+  -
+  - PostProcessing
+`,
 
   sceneTemplate: `%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
@@ -382,91 +450,34 @@ RenderSettings:
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
-  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
-  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 0
-  m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
-  m_HaloStrength: 0.5
-  m_FlareStrength: 1
-  m_FlareFadeSpeed: 3
-  m_HaloTexture: {fileID: 0}
-  m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
-  m_DefaultReflectionMode: 0
-  m_DefaultReflectionResolution: 128
-  m_ReflectionIntensity: 1
-  m_CustomReflection: {fileID: 0}
-  m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.44657844, g: 0.49641222, b: 0.57481694, a: 1}
-  m_UseRadianceAmbientProbe: 0
---- !u!157 &3
-LightmapSettings:
+--- !u!1 &100
+GameObject:
   m_ObjectHideFlags: 0
-  serializedVersion: 12
-  m_GIWorkflowMode: 1
-  m_GISettings:
-    predictedCPUUsage: 80
-    realtimeResolution: 2
-    bakedResolution: 40
-    atlasSize: 1024
-    compressionQuality: 1
-    ambientOcclusion: 0
-    ambientOcclusionMaxDistance: 6
-    lightprobeSampleCountMultiplier: 4
-    showResolutionOverlay: 1
-    profitAndLoss: 0
-    bootstrapResolution: 2
-    fullImageResolution: 256
-    samplingMethod: 1
-    indirectPUPoissonSamplingMultiplier: 1
-    indirectPUPoissonSamplingStrength: 1
-    directPUPoissonSamplingMultiplier: 1
-    directPUPoissonSamplingStrength: 1
-    aoPUPoissonSamplingMultiplier: 1
-    aoPUPoissonSamplingStrength: 1
-    bouncePUPoissonSamplingMultiplier: 1
-    bouncePUPoissonSamplingStrength: 1
-    irradianceSampleCount: 1024
-    irradianceSampleMethod: 1
-    indirectSampleCount: 1024
-    directSampleCount: 1024
-    atlasPackingMethod: 0
-    aoResolution: 1
-    aoTextureResolution: 256
-    aoBakeTexture: {fileID: 0}
-    aoPUPoissonSampleCount: 1024
-    irradiancePUPoissonSampleCount: 1024
-    bouncePUPoissonSampleCount: 1024
-    aoSampleMethod: 1
-    irradiancePUPoissonSamplingStrength: 1
-    directPUPoissonSampleCount: 1024
-    indirectPUPoissonSampleCount: 1024
-    aoPUPoissonSampleCount: 1024
-    irradiancePUPoissonSampleCount: 1024
-    bouncePUPoissonSampleCount: 1024
-    aoSampleMethod: 1
-    irradiancePUPoissonSamplingStrength: 1
-  m_LightProbeAsset: {fileID: 0}
-  m_LightingDataAsset: {fileID: 0}
-  m_LightingSettings: {fileID: 0}
---- !u!196 &4
-NavMeshSettings:
-  serializedVersion: 2
-  m_ObjectHideFlags: 0
-  m_BuildSettings:
-    serializedVersion: 3
-    agentRadius: 0.5
-    agentHeight: 2
-    agentSlope: 45
-    agentClimb: 0.4
-    ledgeDropHeight: 0
-    maxJumpAcrossDistance: 0
-    accuratePlacement: 0
-    numTilesX: 0
-    numTilesY: 0
-    debug:
-      m_Flags: 0
-  m_NavMeshData: {fileID: 0}
+  m_Name: Main Camera
+  m_TagString: MainCamera
+  m_Component:
+  - component: {fileID: 101}
+  - component: {fileID: 102}
+--- !u!4 &101
+Transform:
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 5, z: -10}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+--- !u!20 &102
+Camera:
+  m_ClearFlags: 1
+  m_BackgroundColor: {r: 0.19, g: 0.3, b: 0.47, a: 0}
+--- !u!1 &200
+GameObject:
+  m_Name: Player
+  m_TagString: Player
+  m_Component:
+  - component: {fileID: 201}
+--- !u!4 &201
+Transform:
+  m_LocalPosition: {x: 0, y: 1, z: 0}
 `
 };
