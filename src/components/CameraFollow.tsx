@@ -35,18 +35,15 @@ export const CameraFollow = () => {
     const playerQuat = playerRef.quaternion;
 
     // 2. Calculate the desired position in world space
-    // We apply the player's rotation to the offset to stay behind them
+    // Standard survival style: Camera is at a fixed offset from the player (not rotating with them)
     const currentOffset = bossActive ? bossOffset : normalOffset;
-    const relativeOffset = currentOffset.clone().applyQuaternion(playerQuat);
-    targetPosition.current.copy(playerPos).add(relativeOffset);
+    targetPosition.current.copy(playerPos).add(currentOffset);
 
     // 3. Smoothly move camera towards target position
-    // Lerp is fine for now, we'll refine damping if needed in Part 2
     camera.position.lerp(targetPosition.current, delta / smoothTime);
 
-    // 4. Look slightly ahead of the player
-    const lookAheadOffset = new Vector3(0, 0, -GAME_CONFIG.CAMERA.LOOK_AHEAD).applyQuaternion(playerQuat);
-    targetLookAt.current.copy(playerPos).add(lookAheadOffset);
+    // 4. Always look at the player
+    targetLookAt.current.copy(playerPos);
 
     // Smoothly interpolate the lookAt point
     currentLookAt.current.lerp(targetLookAt.current, delta / smoothTime);

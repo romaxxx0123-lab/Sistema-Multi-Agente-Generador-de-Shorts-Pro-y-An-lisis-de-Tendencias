@@ -41,12 +41,12 @@ export const Player = () => {
   const [trail, setTrail] = useState<{ id: number; position: [number, number, number] }[]>([]);
   const trailId = useRef(0);
 
-  useFrame((_state, delta) => {
+  useFrame((state, delta) => {
     if (status !== 'playing') return;
 
     // Handle Dash Trigger
     if (dash && canDash && !isDashing) {
-      performDash(forward, backward, left, right, ref);
+      performDash(forward, backward, left, right, ref, state.camera);
     }
 
     if (isDashing) {
@@ -63,7 +63,7 @@ export const Player = () => {
 
     // Only allow movement if not currently dashing
     if (!isDashing) {
-      move(forward, backward, left, right, delta, ref);
+      move(forward, backward, left, right, delta, ref, state.camera);
     }
   });
 

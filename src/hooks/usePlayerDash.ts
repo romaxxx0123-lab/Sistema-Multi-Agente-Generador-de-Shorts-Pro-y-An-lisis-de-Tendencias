@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Vector3, Quaternion } from 'three';
+import { Vector3, Quaternion, Camera } from 'three';
 import { PublicApi } from '@react-three/cannon';
 import { useFrame } from '@react-three/fiber';
 import { GAME_CONFIG } from '../config';
@@ -13,27 +13,49 @@ export const usePlayerDash = (api: PublicApi) => {
   const currentDashDirection = useRef(new Vector3());
 
   // Trigger dash from input
-  const performDash = useCallback((forward: boolean, backward: boolean, left: boolean, right: boolean, playerRef: any) => {
+  const performDash = useCallback((
+      forward: boolean,
+      backward: boolean,
+      left: boolean,
+      right: boolean,
+      playerRef: any,
+      camera?: Camera
+  ) => {
     if (!canDash || isDashing) return;
 
     // 1. Calculate direction from movement input
-    const inputDir = new Vector3();
-    if (forward) inputDir.z -= 1;
-    if (backward) inputDir.z += 1;
-    if (left) inputDir.x -= 1;
-    if (right) inputDir.x += 1;
+    const input = new Vector3();
+    if (forward) input.z -= 1;
+    if (backward) input.z += 1;
+    if (left) input.x -= 1;
+    if (right) input.x += 1;
 
-    if (inputDir.length() === 0) {
+    if (input.length() === 0) {
       // 2. Stationary Dash: Use character's current forward facing
-      // We get it from the player's world orientation
       const forwardDir = new Vector3(0, 0, -1);
       if (playerRef.current) {
         forwardDir.applyQuaternion(playerRef.current.quaternion);
       }
       currentDashDirection.current.copy(forwardDir).normalize();
     } else {
-      // Use movement direction
-      currentDashDirection.current.copy(inputDir).normalize();
+      input.normalize();
+
+      if (camera) {
+          const camForward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+          camForward.y = 0;
+          camForward.normalize();
+
+          const camRight = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+          camRight.y = 0;
+          camRight.normalize();
+
+          currentDashDirection.current.set(0,0,0)
+            .add(camRight.multiplyScalar(input.x))
+            .add(camForward.multiplyScalar(input.z));
+          currentDashDirection.current.normalize();
+      } else {
+          currentDashDirection.current.copy(input);
+      }
     }
 
     // 3. Initiate dash state
