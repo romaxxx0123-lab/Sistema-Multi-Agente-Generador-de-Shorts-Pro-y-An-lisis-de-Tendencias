@@ -6,6 +6,7 @@ import { useControls } from "../hooks/useControls";
 import { usePlayerMovement } from "../hooks/usePlayerMovement";
 import { useGameStore } from "../store/useGameStore";
 import { CONFIG } from "../config";
+import { RoninModel } from "./RoninModel";
 
 /**
  * OPTIMIZED PLAYER COMPONENT
@@ -59,17 +60,10 @@ export const Player = () => {
       {/* Physics Collider */}
       <CapsuleCollider args={[CONFIG.PLAYER.COLLIDER_HEIGHT / 2 - CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_RADIUS]} />
 
-      {/* Visual Mesh */}
-      <mesh ref={meshRef} castShadow>
-        <capsuleGeometry args={[CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_HEIGHT - CONFIG.PLAYER.COLLIDER_RADIUS * 2, 4, 8]} />
-        <meshStandardMaterial color="#1cb0f6" />
-
-        {/* Directional Indicator */}
-        <mesh position={[0, 0.4, -0.4]}>
-          <boxGeometry args={[0.6, 0.2, 0.2]} />
-          <meshStandardMaterial color="white" />
-        </mesh>
-      </mesh>
+      {/* Visual Mesh Group */}
+      <group ref={meshRef}>
+        <RoninModel />
+      </group>
     </RigidBody>
   );
 };

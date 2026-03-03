@@ -1,6 +1,7 @@
 import { RigidBody, CuboidCollider } from "@react-three/rapier";
 import { Grid } from "@react-three/drei";
 import { CONFIG } from "../config";
+import { EnvironmentProps } from "./EnvironmentProps";
 
 /**
  * OPTIMIZED ARENA COMPONENT
@@ -51,6 +52,9 @@ export const Arena = () => {
         <circleGeometry args={[0.5, 32]} />
         <meshBasicMaterial color="#ffffff" transparent opacity={0.2} />
       </mesh>
+
+      {/* Stylized Props */}
+      <EnvironmentProps />
     </>
   );
 };

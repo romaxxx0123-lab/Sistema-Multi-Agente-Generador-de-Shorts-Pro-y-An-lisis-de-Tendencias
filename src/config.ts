@@ -7,7 +7,7 @@ export const CONFIG = {
   PERFORMANCE: {
     TARGET_FPS: 60,
     MAX_DELTA: 0.1, // Limit physics step to avoid tunneling
-    ENABLE_SHADOWS: false, // Shadows are expensive, disabled for optimization
+    ENABLE_SHADOWS: true, // Enabled for the visual upgrade
   },
 
   // Physics (Rapier Specific)
