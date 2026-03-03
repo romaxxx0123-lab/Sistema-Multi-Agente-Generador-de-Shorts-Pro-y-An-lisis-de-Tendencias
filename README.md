@@ -1,73 +1,30 @@
-# React + TypeScript + Vite
+# Unity World Architect Pro v6.0
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A high-fidelity project generator that produces ready-to-use Unity 2022.3.10f1+ projects with professional C# architecture and persistent asset linking.
 
-Currently, two official plugins are available:
+## 🚀 Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Hyper-Detailed Engine**: Generates complete Unity projects including `Assets`, `ProjectSettings`, `Packages`, `Plugins`, and `Docs`.
+- **Professional Architecture**: Includes Event Bus, Service Locator, Singleton, State Machines, and Localization patterns.
+- **GUID Persistence**: Every file and folder includes a corresponding `.meta` file to ensure Unity recognizes linked assets (Scripts on Prefabs, Materials on Meshes) immediately.
+- **Enterprise Templates**: Select between `Simple`, `Enterprise`, and `UltimatePro` complexity levels to scaffold advanced systems like AI Behavior Trees and Custom Editor Tools.
+- **URP & Input System Integration**: Pre-configured Universal Render Pipeline and New Input System assets.
 
-## React Compiler
+## 🛠️ Built With
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **React 19**
+- **TypeScript 5**
+- **Tailwind CSS v4**
+- **JSZip** & **File-Saver**
+- **Framer Motion**
 
-## Expanding the ESLint configuration
+## 📦 Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. Configure your project name and namespace.
+2. Select the complexity level and desired feature toggles (URP, Input System, AsmDefs).
+3. Click **"Desplegar Proyecto Hyper-Detallado"**.
+4. Extract the generated ZIP and open the folder with **Unity Hub** (Unity 2022.3.10f1 or newer recommended).
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Developed as a standalone architectural tool for Unity Developers.

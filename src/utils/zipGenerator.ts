@@ -23,19 +23,20 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   const { projectName, namespace } = config;
 
   // Root folders
-  const assets = zip.folder("Assets");
-  const projectSettings = zip.folder("ProjectSettings");
-  const packages = zip.folder("Packages");
+  const assets = zip.folder("Assets")!;
+  const projectSettings = zip.folder("ProjectSettings")!;
+  const packages = zip.folder("Packages")!;
+  zip.folder("Plugins")!;
+  zip.file("Plugins.meta", templates.meta(generateGuid()));
+  zip.folder("Docs")!;
+  zip.file("Docs.meta", templates.meta(generateGuid()));
+  zip.folder("UserSettings")!;
+  zip.folder("Builds")!;
 
   zip.file("README.md", templates.readme(config));
+  zip.file("README.md.meta", templates.meta(generateGuid()));
   zip.file("LICENSE", "MIT License\n\nCopyright (c) 2025 " + namespace);
-
-  // Project Settings
-  projectSettings?.file("ProjectVersion.txt", templates.projectVersion);
-  projectSettings?.file("TagManager.asset", templates.tagManager);
-
-  // Packages
-  packages?.file("manifest.json", templates.manifest);
+  zip.file("LICENSE.meta", templates.meta(generateGuid()));
 
   // Guids for Assets
   const guids = {
@@ -49,142 +50,175 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     playerControllerScript: generateGuid(),
     cameraControllerScript: generateGuid(),
     worldManagerScript: generateGuid(),
+    urpAsset: generateGuid(),
   };
 
+  // Project Settings
+  projectSettings.file("ProjectVersion.txt", templates.projectVersion);
+  projectSettings.file("TagManager.asset", templates.tagManager);
+  projectSettings.file("TagManager.asset.meta", templates.meta(generateGuid()));
+  projectSettings.file("QualitySettings.asset", templates.qualitySettings);
+  projectSettings.file("QualitySettings.asset.meta", templates.meta(generateGuid()));
+  projectSettings.file("GraphicsSettings.asset", templates.graphicsSettings(config.useURP ? guids.urpAsset : undefined));
+  projectSettings.file("GraphicsSettings.asset.meta", templates.meta(generateGuid()));
+  projectSettings.file("InputManager.asset", templates.inputManager);
+  projectSettings.file("InputManager.asset.meta", templates.meta(generateGuid()));
+
+  // Packages
+  packages.file("manifest.json", templates.manifest(config.useNewInputSystem));
+  packages.file("manifest.json.meta", templates.meta(generateGuid()));
+
   // Assets Structure
-  if (assets) {
-    assets.folder("Animations");
-    assets.folder("Editor");
+  assets.file(".meta", templates.meta(generateGuid()));
 
-    const materials = assets.folder("Materials");
-    if (materials) {
-      materials.file("PlayerMat.mat", templates.material(0.2, 0.5, 0.9));
-      materials.file("PlayerMat.mat.meta", templates.meta(guids.playerMat));
-      materials.file("GroundMat.mat", templates.material(0.3, 0.3, 0.3));
-      materials.file("GroundMat.mat.meta", templates.meta(guids.groundMat));
-    }
+  // Standard Assets Subfolders with Metas
+  const subfolders = ["Animations", "Audio", "Editor", "Models", "Resources", "Textures", "Settings", "Input", "Docs"];
+  subfolders.forEach(folder => {
+    assets.folder(folder);
+    assets.file(`${folder}.meta`, templates.meta(generateGuid()));
+  });
 
-    assets.folder("Models");
+  const materials = assets.folder("Materials")!;
+  assets.file("Materials.meta", templates.meta(generateGuid()));
+  materials.file("PlayerMat.mat", templates.material(0.2, 0.5, 0.9));
+  materials.file("PlayerMat.mat.meta", templates.meta(guids.playerMat));
+  materials.file("GroundMat.mat", templates.material(0.3, 0.3, 0.3));
+  materials.file("GroundMat.mat.meta", templates.meta(guids.groundMat));
 
-    const prefabs = assets.folder("Prefabs");
-    if (prefabs) {
-      prefabs.file("Player.prefab", templates.prefab("", guids.playerMat, "Player"));
-      prefabs.file("Player.prefab.meta", templates.meta(guids.playerPrefab));
-      prefabs.file("Ground.prefab", templates.prefab("", guids.groundMat, "Ground"));
-      prefabs.file("Ground.prefab.meta", templates.meta(guids.groundPrefab));
-    }
+  const prefabs = assets.folder("Prefabs")!;
+  assets.file("Prefabs.meta", templates.meta(generateGuid()));
+  prefabs.file("Player.prefab", templates.prefab("", guids.playerMat, "Player"));
+  prefabs.file("Player.prefab.meta", templates.meta(guids.playerPrefab));
+  prefabs.file("Ground.prefab", templates.prefab("", guids.groundMat, "Ground"));
+  prefabs.file("Ground.prefab.meta", templates.meta(guids.groundPrefab));
 
-    assets.folder("Resources");
+  const scenes = assets.folder("Scenes")!;
+  assets.file("Scenes.meta", templates.meta(generateGuid()));
+  scenes.file("MainScene.unity", templates.sceneTemplate);
+  scenes.file("MainScene.unity.meta", templates.meta(guids.mainScene));
 
-    const scenes = assets.folder("Scenes");
-    if (scenes) {
-      scenes.file("MainScene.unity", templates.sceneTemplate);
-      scenes.file("MainScene.unity.meta", templates.meta(guids.mainScene));
-    }
+  if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
+    const data = assets.folder("Data")!;
+    assets.file("Data.meta", templates.meta(generateGuid()));
+    data.file("ItemDatabase.asset", templates.itemData(namespace));
+    data.file("ItemDatabase.asset.meta", templates.meta(generateGuid()));
+  }
 
-    if (config.complexity === 'Enterprise') {
-      const data = assets.folder("Data");
-      data?.file("ItemDatabase.asset", templates.itemData(namespace));
-      data?.file("ItemDatabase.asset.meta", templates.meta(generateGuid()));
-    }
+  const scripts = assets.folder("Scripts")!;
+  assets.file("Scripts.meta", templates.meta(generateGuid()));
 
-    const scripts = assets.folder("Scripts");
-    if (scripts) {
-      const core = scripts.folder("Core");
-      core?.file("Singleton.cs", templates.singleton(namespace));
-      core?.file("Singleton.cs.meta", templates.meta(guids.singletonScript));
-      core?.file("CameraController.cs", templates.cameraController(namespace));
-      core?.file("CameraController.cs.meta", templates.meta(guids.cameraControllerScript));
+  const core = scripts.folder("Core")!;
+  scripts.file("Core.meta", templates.meta(generateGuid()));
+  core.file("Singleton.cs", templates.singleton(namespace));
+  core.file("Singleton.cs.meta", templates.meta(guids.singletonScript));
+  core.file("CameraController.cs", templates.cameraController(namespace));
+  core.file("CameraController.cs.meta", templates.meta(guids.cameraControllerScript));
+  core.file("EventBus.cs", templates.eventBus(namespace));
+  core.file("EventBus.cs.meta", templates.meta(generateGuid()));
 
-      if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
-        core?.file("ServiceLocator.cs", templates.serviceLocator(namespace));
-        core?.file("ServiceLocator.cs.meta", templates.meta(generateGuid()));
-        core?.file("ObjectPooler.cs", templates.objectPooler(namespace));
-        core?.file("ObjectPooler.cs.meta", templates.meta(generateGuid()));
-        core?.file("SaveSystem.cs", templates.saveSystem(namespace));
-        core?.file("SaveSystem.cs.meta", templates.meta(generateGuid()));
-      }
+  if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
+    core.file("ServiceLocator.cs", templates.serviceLocator(namespace));
+    core.file("ServiceLocator.cs.meta", templates.meta(generateGuid()));
+    core.file("ObjectPooler.cs", templates.objectPooler(namespace));
+    core.file("ObjectPooler.cs.meta", templates.meta(generateGuid()));
+    core.file("SaveSystem.cs", templates.saveSystem(namespace));
+    core.file("SaveSystem.cs.meta", templates.meta(generateGuid()));
+    core.file("LocalizationManager.cs", templates.localizationManager(namespace));
+    core.file("LocalizationManager.cs.meta", templates.meta(generateGuid()));
+  }
 
-      if (config.useAsmDef) core?.file(`${namespace}.Core.asmdef`, templates.asmdef(`${namespace}.Core`));
+  if (config.useAsmDef) {
+    core.file(`${namespace}.Core.asmdef`, templates.asmdef(`${namespace}.Core`));
+    core.file(`${namespace}.Core.asmdef.meta`, templates.meta(generateGuid()));
+  }
 
-      const managers = scripts.folder("Managers");
-      managers?.file("GameManager.cs", templates.gameManager(namespace));
-      managers?.file("GameManager.cs.meta", templates.meta(guids.gameManagerScript));
-      managers?.file("WorldManager.cs", templates.worldManager(namespace));
-      managers?.file("WorldManager.cs.meta", templates.meta(guids.worldManagerScript));
+  const managers = scripts.folder("Managers")!;
+  scripts.file("Managers.meta", templates.meta(generateGuid()));
+  managers.file("GameManager.cs", templates.gameManager(namespace));
+  managers.file("GameManager.cs.meta", templates.meta(guids.gameManagerScript));
+  managers.file("WorldManager.cs", templates.worldManager(namespace));
+  managers.file("WorldManager.cs.meta", templates.meta(guids.worldManagerScript));
 
-      if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
-        managers?.file("AudioManager.cs", templates.audioManager(namespace));
-        managers?.file("AudioManager.cs.meta", templates.meta(generateGuid()));
-      }
+  if (config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
+    managers.file("AudioManager.cs", templates.audioManager(namespace));
+    managers.file("AudioManager.cs.meta", templates.meta(generateGuid()));
+  }
 
-      if (config.useAsmDef) managers?.file(`${namespace}.Managers.asmdef`, templates.asmdef(`${namespace}.Managers`));
+  if (config.useAsmDef) {
+    managers.file(`${namespace}.Managers.asmdef`, templates.asmdef(`${namespace}.Managers`));
+    managers.file(`${namespace}.Managers.asmdef.meta`, templates.meta(generateGuid()));
+  }
 
-      const gameplay = scripts.folder("Gameplay");
-      gameplay?.file("PlayerController.cs", templates.playerController(namespace));
-      gameplay?.file("PlayerController.cs.meta", templates.meta(guids.playerControllerScript));
-      gameplay?.file("Interactable.cs", templates.interactable(namespace));
-      gameplay?.file("Interactable.cs.meta", templates.meta(generateGuid()));
+  const gameplay = scripts.folder("Gameplay")!;
+  scripts.file("Gameplay.meta", templates.meta(generateGuid()));
+  gameplay.file("PlayerController.cs", templates.playerController(namespace));
+  gameplay.file("PlayerController.cs.meta", templates.meta(guids.playerControllerScript));
+  gameplay.file("Interactable.cs", templates.interactable(namespace));
+  gameplay.file("Interactable.cs.meta", templates.meta(generateGuid()));
 
-      if (config.complexity === 'UltimatePro') {
-        const abilities = gameplay?.folder("Abilities");
-        abilities?.file("Ability.cs", templates.abilitySystem(namespace));
-        abilities?.file("Ability.cs.meta", templates.meta(generateGuid()));
-      }
+  if (config.complexity === 'UltimatePro') {
+    const abilities = gameplay.folder("Abilities")!;
+    gameplay.file("Abilities.meta", templates.meta(generateGuid()));
+    abilities.file("Ability.cs", templates.abilitySystem(namespace));
+    abilities.file("Ability.cs.meta", templates.meta(generateGuid()));
+  }
 
-      if (config.useAsmDef) gameplay?.file(`${namespace}.Gameplay.asmdef`, templates.asmdef(`${namespace}.Gameplay`));
+  if (config.useAsmDef) {
+    gameplay.file(`${namespace}.Gameplay.asmdef`, templates.asmdef(`${namespace}.Gameplay`));
+    gameplay.file(`${namespace}.Gameplay.asmdef.meta`, templates.meta(generateGuid()));
+  }
 
-      // Advanced Patterns for High/Enterprise/UltimatePro Complexity
-      if (config.complexity === 'High' || config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
-        const patterns = scripts.folder("Patterns");
-        patterns?.file("StateMachine.cs", templates.stateMachine(namespace));
-        patterns?.file("StateMachine.cs.meta", templates.meta(generateGuid()));
-        patterns?.file("GameEvent.cs", templates.gameEvent(namespace));
-        patterns?.file("GameEvent.cs.meta", templates.meta(generateGuid()));
-        patterns?.file("GameEventListener.cs", templates.gameEventListener(namespace));
-        patterns?.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
-      }
+  if (config.complexity === 'High' || config.complexity === 'Enterprise' || config.complexity === 'UltimatePro') {
+    const patterns = scripts.folder("Patterns")!;
+    scripts.file("Patterns.meta", templates.meta(generateGuid()));
+    patterns.file("StateMachine.cs", templates.stateMachine(namespace));
+    patterns.file("StateMachine.cs.meta", templates.meta(generateGuid()));
+    patterns.file("RobustStateMachine.cs", templates.robustStateMachine(namespace));
+    patterns.file("RobustStateMachine.cs.meta", templates.meta(generateGuid()));
+    patterns.file("GameEvent.cs", templates.gameEvent(namespace));
+    patterns.file("GameEvent.cs.meta", templates.meta(generateGuid()));
+    patterns.file("GameEventListener.cs", templates.gameEventListener(namespace));
+    patterns.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
+  }
 
-      if (config.complexity === 'UltimatePro') {
-        const ai = scripts.folder("AI");
-        ai?.file("BehaviorTree.cs", templates.behaviorTree(namespace));
-        ai?.file("BehaviorTree.cs.meta", templates.meta(generateGuid()));
+  if (config.complexity === 'UltimatePro') {
+    const ai = scripts.folder("AI")!;
+    scripts.file("AI.meta", templates.meta(generateGuid()));
+    ai.file("BehaviorTree.cs", templates.behaviorTree(namespace));
+    ai.file("BehaviorTree.cs.meta", templates.meta(generateGuid()));
 
-        const ui = scripts.folder("UI");
-        ui?.file("UIManager.cs", templates.uiView(namespace));
-        ui?.file("UIManager.cs.meta", templates.meta(generateGuid()));
-      }
-    }
+    const ui = scripts.folder("UI")!;
+    scripts.file("UI.meta", templates.meta(generateGuid()));
+    ui.file("UIManager.cs", templates.uiView(namespace));
+    ui.file("UIManager.cs.meta", templates.meta(generateGuid()));
+  }
 
-    if (config.complexity === 'UltimatePro') {
-      const editor = assets.folder("Editor");
-      editor?.file("ProToolsEditor.cs", templates.customEditor(namespace));
-      editor?.file("ProToolsEditor.cs.meta", templates.meta(generateGuid()));
+  if (config.complexity === 'UltimatePro') {
+    const editor = assets.folder("Editor")!;
+    editor.file("ProToolsEditor.cs", templates.customEditor(namespace));
+    editor.file("ProToolsEditor.cs.meta", templates.meta(generateGuid()));
 
-      const tests = assets.folder("Tests");
-      tests?.file("CoreSystemsTests.cs", templates.unitTest(namespace));
-      tests?.file("CoreSystemsTests.cs.meta", templates.meta(generateGuid()));
-    }
+    const tests = assets.folder("Tests")!;
+    assets.file("Tests.meta", templates.meta(generateGuid()));
+    tests.file("CoreSystemsTests.cs", templates.unitTest(namespace));
+    tests.file("CoreSystemsTests.cs.meta", templates.meta(generateGuid()));
+  }
 
-    if (config.useURP) {
-      const settings = assets.folder("Settings");
-      const urp = settings?.folder("URP");
-      urp?.file("HighQualitySettings.asset", templates.urpAsset);
-      urp?.file("HighQualitySettings.asset.meta", templates.meta(generateGuid()));
-    }
+  if (config.useURP) {
+    const settings = assets.folder("Settings")!;
+    const urp = settings.folder("URP")!;
+    settings.file("URP.meta", templates.meta(generateGuid()));
+    urp.file("HighQualitySettings.asset", templates.urpAsset);
+    urp.file("HighQualitySettings.asset.meta", templates.meta(guids.urpAsset));
+  }
 
-    if (config.useNewInputSystem) {
-      const input = assets.folder("Input");
-      input?.file("GameActions.inputactions", templates.inputActions);
-      input?.file("GameActions.inputactions.meta", templates.meta(generateGuid()));
-    }
-
-    assets.folder("Textures");
+  if (config.useNewInputSystem) {
+    const input = assets.folder("Input")!;
+    input.file("GameActions.inputactions", templates.inputActions);
+    input.file("GameActions.inputactions.meta", templates.meta(generateGuid()));
   }
 
   const content = await zip.generateAsync({ type: "blob" });
-  let version = 'v4';
-  if (config.complexity === 'Enterprise') version = 'v4_Enterprise';
-  if (config.complexity === 'UltimatePro') version = 'v5_UltimatePro';
+  let version = 'v6_HyperDetailed';
   saveAs(content, `${projectName.replace(/\s+/g, '_')}_UnityProject_${version}.zip`);
 };
