@@ -9,13 +9,16 @@ export interface ProjectConfig {
   useAsmDef: boolean;
   useURP: boolean;
   useNewInputSystem: boolean;
-  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect' | 'NexusPrime';
+  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect' | 'NexusPrime' | 'Aetheris';
   useInventory: boolean;
   useStats: boolean;
   useCICD: boolean;
   useNetworking?: boolean;
   useAddressables?: boolean;
   usePostProcessing?: boolean;
+  useGitIgnore?: boolean;
+  useEditorConfig?: boolean;
+  architecturePreset?: 'Modular' | 'Monolithic' | 'DataOriented';
 }
 
 const generateGuid = () => {
@@ -37,6 +40,15 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     const workflows = github.folder("workflows")!;
     workflows.file("unity-build.yml", templates.githubWorkflow(projectName));
   }
+
+  if (config.useGitIgnore || config.complexity === 'Aetheris') {
+    zip.file(".gitignore", templates.gitignore);
+  }
+
+  if (config.useEditorConfig || config.complexity === 'Aetheris') {
+    zip.file(".editorconfig", templates.editorConfig);
+  }
+
   const packages = zip.folder("Packages")!;
   zip.folder("Plugins")!;
   zip.file("Plugins.meta", templates.meta(generateGuid()));
@@ -148,6 +160,25 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     core.file(`${namespace}.Core.asmdef.meta`, templates.meta(generateGuid()));
   }
 
+  if (config.complexity === 'Aetheris') {
+    const arch = scripts.folder("Architecture")!;
+    scripts.file("Architecture.meta", templates.meta(generateGuid()));
+
+    const events = arch.folder("Events")!;
+    events.file("GameEvent.cs", templates.gameEvent(namespace));
+    events.file("GameEvent.cs.meta", templates.meta(generateGuid()));
+    events.file("GameEventListener.cs", templates.gameEventListener(namespace));
+    events.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
+
+    const variables = arch.folder("Variables")!;
+    variables.file("FloatVariable.cs", templates.gameVariable(namespace, "float"));
+    variables.file("FloatVariable.cs.meta", templates.meta(generateGuid()));
+    variables.file("IntVariable.cs", templates.gameVariable(namespace, "int"));
+    variables.file("IntVariable.cs.meta", templates.meta(generateGuid()));
+    variables.file("BoolVariable.cs", templates.gameVariable(namespace, "bool"));
+    variables.file("BoolVariable.cs.meta", templates.meta(generateGuid()));
+  }
+
   const managers = scripts.folder("Managers")!;
   scripts.file("Managers.meta", templates.meta(generateGuid()));
   managers.file("GameManager.cs", templates.gameManager(namespace));
@@ -197,7 +228,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     patterns.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime') {
+  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') {
     const ai = scripts.folder("AI")!;
     scripts.file("AI.meta", templates.meta(generateGuid()));
     ai.file("BehaviorTree.cs", templates.behaviorTree(namespace));
@@ -205,10 +236,20 @@ export const generateUnityProject = async (config: ProjectConfig) => {
 
     const ui = scripts.folder("UI")!;
     scripts.file("UI.meta", templates.meta(generateGuid()));
-    ui.file("UIManager.cs", templates.uiView(namespace));
-    ui.file("UIManager.cs.meta", templates.meta(generateGuid()));
-    ui.file("UIPresenter.cs", templates.uiPresenter(namespace));
-    ui.file("UIPresenter.cs.meta", templates.meta(generateGuid()));
+
+    if (config.complexity === 'Aetheris') {
+        ui.file("UIModel.cs", templates.uiModel(namespace));
+        ui.file("UIModel.cs.meta", templates.meta(generateGuid()));
+        ui.file("UIView.cs", templates.uiView(namespace));
+        ui.file("UIView.cs.meta", templates.meta(generateGuid()));
+        ui.file("UIPresenter.cs", templates.uiPresenter(namespace));
+        ui.file("UIPresenter.cs.meta", templates.meta(generateGuid()));
+    } else {
+        ui.file("UIManager.cs", templates.uiView(namespace));
+        ui.file("UIManager.cs.meta", templates.meta(generateGuid()));
+        ui.file("UIPresenter.cs", templates.uiPresenter(namespace));
+        ui.file("UIPresenter.cs.meta", templates.meta(generateGuid()));
+    }
   }
 
   if (config.useInventory || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime') {
@@ -273,13 +314,19 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     assets.file("AddressableAssetsData.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'NexusPrime') {
+  if (config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') {
     const shaders = assets.folder("Shaders")!;
     assets.file("Shaders.meta", templates.meta(generateGuid()));
     const vfx = assets.folder("VFX")!;
     assets.file("VFX.meta", templates.meta(generateGuid()));
     vfx.file("NexusExplosion.vfx", templates.vfxGraph("NexusExplosion"));
     vfx.file("NexusExplosion.vfx.meta", templates.meta(generateGuid()));
+  }
+
+  if (config.complexity === 'Aetheris') {
+    const editor = assets.folder("Editor")!;
+    editor.file("ProjectInitializer.cs", templates.projectInitializer(namespace));
+    editor.file("ProjectInitializer.cs.meta", templates.meta(generateGuid()));
   }
 
   if (config.useNewInputSystem) {
@@ -289,6 +336,9 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   }
 
   const content = await zip.generateAsync({ type: "blob" });
-  let version = config.complexity === 'NexusPrime' ? 'v8_NexusPrime' : 'v7_OmniArchitect';
+  let version = 'v7_Omni';
+  if (config.complexity === 'NexusPrime') version = 'v8_Nexus';
+  if (config.complexity === 'Aetheris') version = 'v9_Aetheris';
+
   saveAs(content, `${projectName.replace(/\s+/g, '_')}_UnityProject_${version}.zip`);
 };

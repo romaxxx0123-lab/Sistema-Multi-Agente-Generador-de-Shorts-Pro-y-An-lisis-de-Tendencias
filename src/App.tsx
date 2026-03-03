@@ -32,13 +32,16 @@ function App() {
     useAsmDef: true,
     useURP: true,
     useNewInputSystem: true,
-    complexity: 'UltimatePro',
+    complexity: 'Aetheris',
     useInventory: true,
     useStats: true,
     useCICD: false,
     useNetworking: true,
     useAddressables: true,
-    usePostProcessing: true
+    usePostProcessing: true,
+    useGitIgnore: true,
+    useEditorConfig: true,
+    architecturePreset: 'Modular'
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -70,7 +73,7 @@ function App() {
     }
   };
 
-  const toggleFeature = (key: keyof Pick<ProjectConfig, 'useAsmDef' | 'useURP' | 'useNewInputSystem' | 'useInventory' | 'useStats' | 'useCICD' | 'useNetworking' | 'useAddressables' | 'usePostProcessing'>) => {
+  const toggleFeature = (key: keyof Pick<ProjectConfig, 'useAsmDef' | 'useURP' | 'useNewInputSystem' | 'useInventory' | 'useStats' | 'useCICD' | 'useNetworking' | 'useAddressables' | 'usePostProcessing' | 'useGitIgnore' | 'useEditorConfig'>) => {
     setConfig(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -91,7 +94,7 @@ function App() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold mb-6 tracking-widest uppercase"
           >
             <Zap size={14} className="fill-indigo-400" />
-            <span>Unity World Architect v8.0 - Nexus Prime Engine</span>
+            <span>Unity World Architect v9.0 - Aetheris Engine</span>
           </motion.div>
 
           <motion.h1
@@ -171,6 +174,7 @@ function App() {
                         <option value="UltimatePro">Ultimate Pro Engine (V6.0)</option>
                         <option value="OmniArchitect">Omni-Architect (V7.0)</option>
                         <option value="NexusPrime">Nexus Prime (V8.0)</option>
+                        <option value="Aetheris">Aetheris Engine (V9.0)</option>
                       </select>
                     </div>
                   </div>
@@ -285,6 +289,22 @@ function App() {
                       desc="Post-Processing Pro"
                       color="emerald"
                     />
+                    <FeatureButton
+                      active={config.useGitIgnore}
+                      onClick={() => toggleFeature('useGitIgnore')}
+                      icon={<ShieldCheck size={20} />}
+                      label="GitIgnore"
+                      desc="VCS Optimization"
+                      color="indigo"
+                    />
+                    <FeatureButton
+                      active={config.useEditorConfig}
+                      onClick={() => toggleFeature('useEditorConfig')}
+                      icon={<Terminal size={20} />}
+                      label="EditorCfg"
+                      desc="Format Standard"
+                      color="purple"
+                    />
                   </div>
                 </div>
               </div>
@@ -357,6 +377,18 @@ function App() {
                 </div>
 
                 <div className="pl-6 space-y-3 border-l-2 border-slate-900/50 ml-2">
+                  {(config.useGitIgnore || config.complexity === 'Aetheris') && (
+                    <div className="flex items-center gap-3 text-slate-500 hover:text-white transition-colors cursor-default">
+                      <span className="text-sm">📄</span>
+                      <span className="text-xs font-bold uppercase">.gitignore</span>
+                    </div>
+                  )}
+                  {(config.useEditorConfig || config.complexity === 'Aetheris') && (
+                    <div className="flex items-center gap-3 text-slate-500 hover:text-white transition-colors cursor-default">
+                      <span className="text-sm">📄</span>
+                      <span className="text-xs font-bold uppercase">.editorconfig</span>
+                    </div>
+                  )}
                   {config.useCICD && (
                     <HierarchyFolder icon="📁" name=".github" color="slate">
                       <div className="pl-6 space-y-2 border-l border-white/5 ml-2 mt-2">
@@ -389,8 +421,11 @@ function App() {
                           {(config.useAddressables || config.complexity === 'NexusPrime') && (
                             <HierarchyFile name="Addressables/" color="purple" items={['AddressablesLoader.cs']} />
                           )}
-                          {(config.useNetworking || config.complexity === 'NexusPrime') && (
+                          {(config.useNetworking || config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') && (
                             <HierarchyFile name="Networking/" color="red" items={['NetworkManagerUI.cs', 'NetworkPlayer.cs']} />
+                          )}
+                          {config.complexity === 'Aetheris' && (
+                            <HierarchyFile name="Architecture/" color="indigo" items={['GameEvent.cs', 'FloatVariable.cs']} />
                           )}
                         </div>
                       </HierarchyFolder>
@@ -398,15 +433,18 @@ function App() {
                       <HierarchyFolder icon="📁" name="Prefabs" color="yellow" meta desc="Player/Environment" />
                       <HierarchyFolder icon="📁" name="Scenes" color="green" meta desc="MainScene.unity" />
 
-                      {(config.complexity === 'NexusPrime') && (
+                      {(config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') && (
                         <>
                           <HierarchyFolder icon="📁" name="Shaders" color="indigo" meta desc="HLSL/ShaderGraph" />
                           <HierarchyFolder icon="📁" name="VFX" color="purple" meta desc="VFXGraph Library" />
                         </>
                       )}
 
-                      {config.complexity === 'UltimatePro' && (
+                      {(config.complexity === 'UltimatePro' || config.complexity === 'Aetheris') && (
                         <HierarchyFolder icon="📁" name="Tests" color="red" meta desc="NUnit Core Tests" />
+                      )}
+                      {config.complexity === 'Aetheris' && (
+                        <HierarchyFolder icon="📁" name="Editor" color="slate" meta desc="Aetheris Tools" />
                       )}
                     </div>
                   </HierarchyFolder>
@@ -459,7 +497,7 @@ function App() {
          <div className="w-px h-4 bg-white/10" />
          <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Build</span>
-            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">8.0.0-NEXUS</span>
+            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">9.0.0-AETHERIS</span>
          </div>
          <div className="w-px h-4 bg-white/10" />
          <button className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors">
