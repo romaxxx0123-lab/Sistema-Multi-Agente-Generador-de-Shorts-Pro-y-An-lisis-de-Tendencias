@@ -75,6 +75,8 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     cameraControllerScript: generateGuid(),
     worldManagerScript: generateGuid(),
     urpAsset: generateGuid(),
+    enemyAiScript: generateGuid(),
+    enemyMat: generateGuid(),
   };
 
   // Project Settings
@@ -113,12 +115,24 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   materials.file("GroundMat.mat", templates.material(0.3, 0.3, 0.3));
   materials.file("GroundMat.mat.meta", templates.meta(guids.groundMat));
 
+  if (config.complexity === 'Cognitive') {
+    materials.file("EnemyMat.mat", templates.material(0.8, 0.1, 0.1));
+    materials.file("EnemyMat.mat.meta", templates.meta(guids.enemyMat));
+  }
+
   const prefabs = assets.folder("Prefabs")!;
   assets.file("Prefabs.meta", templates.meta(generateGuid()));
   prefabs.file("Player.prefab", templates.prefab("", guids.playerMat, "Player"));
   prefabs.file("Player.prefab.meta", templates.meta(guids.playerPrefab));
   prefabs.file("Ground.prefab", templates.prefab("", guids.groundMat, "Ground"));
   prefabs.file("Ground.prefab.meta", templates.meta(guids.groundPrefab));
+
+  if (config.complexity === 'Cognitive') {
+    prefabs.file("SlasherEnemy.prefab", templates.perfectedEnemyPrefab(guids.enemyMat, guids.enemyAiScript, "SlasherEnemy"));
+    prefabs.file("SlasherEnemy.prefab.meta", templates.meta(generateGuid()));
+    prefabs.file("DroneEnemy.prefab", templates.perfectedEnemyPrefab(guids.enemyMat, guids.enemyAiScript, "DroneEnemy"));
+    prefabs.file("DroneEnemy.prefab.meta", templates.meta(generateGuid()));
+  }
 
   const scenes = assets.folder("Scenes")!;
   assets.file("Scenes.meta", templates.meta(generateGuid()));
@@ -332,6 +346,11 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   if (config.complexity === 'Cognitive') {
     const cognitive = scripts.folder("Cognitive")!;
     scripts.file("Cognitive.meta", templates.meta(generateGuid()));
+
+    const ai = cognitive.folder("AI")!;
+    cognitive.file("AI.meta", templates.meta(generateGuid()));
+    ai.file("EnemyAI.cs", templates.enemyAI(namespace));
+    ai.file("EnemyAI.cs.meta", templates.meta(guids.enemyAiScript));
 
     switch(config.genre) {
       case 'FPS':

@@ -65,14 +65,17 @@ function App() {
         "[DATA] Injecting ScriptableObject Variable system...",
         "[UI] Mapping Model-View-Presenter delegates...",
         `[LOGIC] Generating Deep-Logic ${config.genre} Controller...`,
+        config.complexity === 'Cognitive' ? "[AI] Training perfected Enemy AI models..." : null,
         "[ASSETS] Linking persistent GUIDs to Meta files...",
         "[VCS] Optimizing Git ignore patterns...",
         "[FINALIZING] Compiling hyper-detailed structure..."
       ];
 
       for (let i = 0; i < reasoningSteps.length; i++) {
+        const step = reasoningSteps[i];
+        if (!step) continue;
         await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400));
-        addTerminalLine(reasoningSteps[i]);
+        addTerminalLine(step);
         setProgress(10 + (i * 10));
       }
 
@@ -469,12 +472,22 @@ function App() {
                             <HierarchyFile name="Architecture/" color="indigo" items={['GameEvent.cs', 'FloatVariable.cs']} />
                           )}
                           {config.complexity === 'Cognitive' && (
-                            <HierarchyFile name="Cognitive/" color="emerald" items={[`${config.genre}Controller.cs`]} />
+                            <>
+                              <HierarchyFile name="AI/" color="red" items={['EnemyAI.cs']} />
+                              <HierarchyFile name="Cognitive/" color="emerald" items={[`${config.genre}Controller.cs`]} />
+                            </>
                           )}
                         </div>
                       </HierarchyFolder>
 
-                      <HierarchyFolder icon="📁" name="Prefabs" color="yellow" meta desc="Player/Environment" />
+                      <HierarchyFolder icon="📁" name="Prefabs" color="yellow" meta desc="Player/Environment">
+                        {config.complexity === 'Cognitive' && (
+                          <div className="pl-6 space-y-1 mt-2">
+                             <div className="text-[11px] text-slate-500 font-bold uppercase tracking-tighter">SlasherEnemy.prefab</div>
+                             <div className="text-[11px] text-slate-500 font-bold uppercase tracking-tighter">DroneEnemy.prefab</div>
+                          </div>
+                        )}
+                      </HierarchyFolder>
                       <HierarchyFolder icon="📁" name="Scenes" color="green" meta desc="MainScene.unity" />
 
                       {(config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') && (
