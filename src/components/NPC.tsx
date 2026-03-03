@@ -1,11 +1,12 @@
 
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Sphere, Html, Box } from '@react-three/drei';
+import { Sphere, Html, Box, Cylinder } from '@react-three/drei';
 import * as THREE from 'three';
 import { POIS, decideNextAction, updateNeeds } from '../utils/cityLogic';
 import type { NPCState, POIType } from '../utils/cityLogic';
 import { Coffee, Home, Briefcase, Trees, Utensils, Moon, Users, Dumbbell, Ticket, Brain, DollarSign } from 'lucide-react';
+import { getFabricTexture } from '../utils/textures';
 
 interface NPCProps {
   npc: NPCState;
@@ -31,8 +32,12 @@ export const NPC: React.FC<NPCProps> = ({ npc, onSelect, hour }) => {
     const c = new THREE.Color(state.color);
     return {
       shirt: state.color,
+      shirtTex: getFabricTexture(state.color),
       pants: `#${c.clone().multiplyScalar(0.4).getHexString()}`,
-      shoes: '#111'
+      pantsTex: getFabricTexture(`#${c.clone().multiplyScalar(0.4).getHexString()}`),
+      shoes: '#111',
+      hasGlasses: Math.random() > 0.7,
+      hasHat: Math.random() > 0.8
     };
   }, [state.color]);
 
@@ -257,13 +262,26 @@ export const NPC: React.FC<NPCProps> = ({ npc, onSelect, hour }) => {
       }}
     >
       <Box args={[0.4, 0.6, 0.25]} position={[0, 0.45, 0]} castShadow>
-        <meshStandardMaterial color={clothes.shirt} />
+        <meshStandardMaterial color={clothes.shirt} map={clothes.shirtTex} />
       </Box>
 
       <group ref={headRef} position={[0, 0.85, 0]}>
         <Sphere args={[0.22]} castShadow>
             <meshStandardMaterial color={state.skinColor} />
         </Sphere>
+        {clothes.hasGlasses && (
+            <group position={[0, 0, 0.15]}>
+                <Box args={[0.1, 0.02, 0.1]} position={[-0.1, 0, 0]}><meshStandardMaterial color="#222" /></Box>
+                <Box args={[0.1, 0.02, 0.1]} position={[0.1, 0, 0]}><meshStandardMaterial color="#222" /></Box>
+                <Box args={[0.15, 0.02, 0.01]} position={[0, 0, 0]}><meshStandardMaterial color="#222" /></Box>
+            </group>
+        )}
+        {clothes.hasHat && (
+            <group position={[0, 0.2, 0]}>
+                <Cylinder args={[0.25, 0.25, 0.1]}><meshStandardMaterial color={clothes.shirt} /></Cylinder>
+                <Box args={[0.5, 0.02, 0.4]} position={[0, -0.05, 0.1]}><meshStandardMaterial color={clothes.shirt} /></Box>
+            </group>
+        )}
         {state.hairStyle === 'short' && (
             <Sphere args={[0.23]} position={[0, 0.05, 0]} scale={[1, 0.4, 1.1]}>
                 <meshStandardMaterial color={state.hairColor} />
@@ -284,7 +302,7 @@ export const NPC: React.FC<NPCProps> = ({ npc, onSelect, hour }) => {
       <group ref={leftLegRef} position={[-0.12, 0.2, 0]}>
         <mesh position={[0, -0.15, 0]} castShadow>
             <cylinderGeometry args={[0.08, 0.06, 0.5]} />
-            <meshStandardMaterial color={clothes.pants} />
+            <meshStandardMaterial color={clothes.pants} map={clothes.pantsTex} />
         </mesh>
         <Box args={[0.15, 0.08, 0.25]} position={[0, -0.4, 0.05]} castShadow>
             <meshStandardMaterial color={clothes.shoes} />
@@ -293,7 +311,7 @@ export const NPC: React.FC<NPCProps> = ({ npc, onSelect, hour }) => {
       <group ref={rightLegRef} position={[0.12, 0.2, 0]}>
         <mesh position={[0, -0.15, 0]} castShadow>
             <cylinderGeometry args={[0.08, 0.06, 0.5]} />
-            <meshStandardMaterial color={clothes.pants} />
+            <meshStandardMaterial color={clothes.pants} map={clothes.pantsTex} />
         </mesh>
         <Box args={[0.15, 0.08, 0.25]} position={[0, -0.4, 0.05]} castShadow>
             <meshStandardMaterial color={clothes.shoes} />

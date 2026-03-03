@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { POIS, createNPC } from '../utils/cityLogic';
 import { NPC } from './NPC';
 import { Player } from './Player';
-import { Sun, Moon, Info, Wallet, Star, Users } from 'lucide-react';
+import { Sun, Moon, Info, Wallet, Star, Users, Music } from 'lucide-react';
+import { getAsphaltTexture, getGrassTexture, getConcreteTexture, getWindowTexture } from '../utils/textures';
 
 const Tree = ({ position }: { position: [number, number, number] }) => (
   <group position={position}>
@@ -36,6 +37,42 @@ const LampPost = ({ position, isNight }: { position: [number, number, number], i
     </Box>
     {isNight && <pointLight position={[0, 6.5, 0]} intensity={3} distance={20} color="#fffde7" />}
   </group>
+);
+
+const Bench = ({ position, rotation = 0 }: { position: [number, number, number], rotation?: number }) => (
+    <group position={position} rotation={[0, rotation, 0]}>
+        <Box args={[4, 0.2, 1.2]} position={[0, 0.6, 0]} castShadow>
+            <meshStandardMaterial color="#78350f" roughness={0.9} />
+        </Box>
+        <Box args={[4, 0.8, 0.2]} position={[0, 1, -0.5]} castShadow>
+            <meshStandardMaterial color="#78350f" roughness={0.9} />
+        </Box>
+        <Box args={[0.2, 0.6, 1.2]} position={[-1.8, 0.3, 0]} castShadow><meshStandardMaterial color="#334155" /></Box>
+        <Box args={[0.2, 0.6, 1.2]} position={[1.8, 0.3, 0]} castShadow><meshStandardMaterial color="#334155" /></Box>
+    </group>
+);
+
+const BusStop = ({ position, rotation = 0 }: { position: [number, number, number], rotation?: number }) => (
+    <group position={position} rotation={[0, rotation, 0]}>
+        <Box args={[6, 0.2, 3]} position={[0, 4, 0]} castShadow><meshStandardMaterial color="#1e293b" /></Box>
+        <Box args={[0.2, 4, 3]} position={[-3, 2, 0]} castShadow><meshStandardMaterial color="#1e293b" /></Box>
+        <Plane args={[5.8, 3.8]} position={[0, 2, -1.45]}><meshStandardMaterial color="#38bdf8" transparent opacity={0.3} /></Plane>
+        <Box args={[4, 0.1, 1]} position={[0, 0.6, 0]}><meshStandardMaterial color="#334155" /></Box>
+    </group>
+);
+
+const FlowerBed = ({ position }: { position: [number, number, number] }) => (
+    <group position={position}>
+        <Box args={[4, 0.5, 4]} position={[0, 0.25, 0]} castShadow>
+            <meshStandardMaterial color="#475569" map={getConcreteTexture()} />
+        </Box>
+        <Box args={[3.6, 0.2, 3.6]} position={[0, 0.51, 0]}>
+            <meshStandardMaterial color="#15803d" map={getGrassTexture()} />
+        </Box>
+        <Sphere args={[0.2]} position={[1, 0.7, 1]}><meshStandardMaterial color="#ef4444" /></Sphere>
+        <Sphere args={[0.2]} position={[-1, 0.7, -1]}><meshStandardMaterial color="#fcd34d" /></Sphere>
+        <Sphere args={[0.2]} position={[1, 0.7, -1]}><meshStandardMaterial color="#f472b6" /></Sphere>
+    </group>
 );
 
 const TrafficLightModel = ({ position, rotation = 0, state = 'green' }: { position: [number, number, number], rotation?: number, state?: 'red' | 'yellow' | 'green' }) => (
@@ -235,11 +272,11 @@ export const CityGame: React.FC = () => {
             shadow-mapSize={[4096, 4096]} shadow-camera-left={-250} shadow-camera-right={250} shadow-camera-top={250} shadow-camera-bottom={-250}
         />
         <Plane args={[1000, 1000]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <meshStandardMaterial color={isNight ? "#0d1117" : "#1e293b"} roughness={0.9} />
+          <meshStandardMaterial color={isNight ? "#0d1117" : "#15803d"} map={getGrassTexture()} roughness={0.9} />
         </Plane>
         <group position={[0, 0.02, 0]}>
-            <Plane args={[1000, 18]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><meshStandardMaterial color="#0a0a0a" roughness={0.6} metalness={0.2} /></Plane>
-            <Plane args={[18, 1000]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><meshStandardMaterial color="#0a0a0a" roughness={0.6} metalness={0.2} /></Plane>
+            <Plane args={[1000, 18]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><meshStandardMaterial color="#1e293b" map={getAsphaltTexture()} roughness={0.6} metalness={0.2} /></Plane>
+            <Plane args={[18, 1000]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><meshStandardMaterial color="#1e293b" map={getAsphaltTexture()} roughness={0.6} metalness={0.2} /></Plane>
             <gridHelper args={[1000, 100, isNight ? '#1e293b' : '#334155', isNight ? '#020617' : '#0f172a']} />
         </group>
         <Sidewalk />
@@ -247,27 +284,29 @@ export const CityGame: React.FC = () => {
         <Rain active={isRaining} />
         <RoadInfrastructureModel trafficState={trafficState} />
         {scenery}
+        <Bench position={[18, 0, 18]} rotation={Math.PI / 4} />
+        <Bench position={[-18, 0, -18]} rotation={Math.PI / 4} />
+        <BusStop position={[0, 0, 25]} rotation={0} />
+        <BusStop position={[25, 0, 0]} rotation={Math.PI / 2} />
+        <FlowerBed position={[35, 0, 35]} />
+        <FlowerBed position={[-35, 0, -35]} />
         {POIS.map((poi) => (
           <group key={poi.id} position={poi.position}>
             {poi.type === 'home' && (
                 <group>
-                    <Box args={[16, 28, 16]} position={[0, 14, 0]} castShadow receiveShadow><meshStandardMaterial color="#475569" metalness={0.1} /></Box>
-                    {[...Array(10)].map((_, i) => (
-                        <Box key={i} args={[14, 1.8, 0.3]} position={[0, 4 + i * 2.5, 8.01]}>
-                            <meshStandardMaterial color="#0f172a" emissive={isNight && Math.random() > 0.3 ? "#fef08a" : "#000"} emissiveIntensity={3} />
-                        </Box>
-                    ))}
+                    <Box args={[16, 28, 16]} position={[0, 14, 0]} castShadow receiveShadow><meshStandardMaterial color="#475569" map={getConcreteTexture()} metalness={0.1} /></Box>
+                    <Box args={[16.2, 26, 16.2]} position={[0, 14, 0]}>
+                        <meshStandardMaterial map={getWindowTexture(isNight)} transparent opacity={0.6} />
+                    </Box>
                     <Box args={[18, 1, 18]} position={[0, 28, 0]}><meshStandardMaterial color="#1e293b" /></Box>
                 </group>
             )}
             {poi.type === 'work' && (
                 <group>
-                    <Box args={[20, 80, 20]} position={[0, 40, 0]} castShadow receiveShadow><meshStandardMaterial color="#0f172a" metalness={0.8} roughness={0.1} /></Box>
-                    {[...Array(25)].map((_, i) => (
-                        <Box key={i} args={[18, 1.2, 20.1]} position={[0, 8 + i * 2.8, 0]}>
-                            <meshStandardMaterial color="#1e293b" transparent opacity={0.9} emissive={isNight ? "#2dd4bf" : "#000"} emissiveIntensity={1.8} />
-                        </Box>
-                    ))}
+                    <Box args={[20, 80, 20]} position={[0, 40, 0]} castShadow receiveShadow><meshStandardMaterial color="#0f172a" map={getConcreteTexture()} metalness={0.8} roughness={0.1} /></Box>
+                    <Box args={[20.2, 78, 20.2]} position={[0, 40, 0]}>
+                        <meshStandardMaterial map={getWindowTexture(isNight)} transparent opacity={0.7} />
+                    </Box>
                 </group>
             )}
             {poi.type === 'hospital' && (
@@ -317,8 +356,13 @@ export const CityGame: React.FC = () => {
                   <span className="text-sm font-black uppercase tracking-[0.4em] opacity-60 mt-4">Metrópolis Pro Active</span>
               </div>
           </div>
-          <div className="bg-blue-600/90 backdrop-blur-2xl px-8 py-4 rounded-[2rem] border-2 border-blue-400 text-white text-sm font-black uppercase tracking-widest shadow-2xl flex items-center gap-4 animate-in slide-in-from-right-10 duration-1000">
-              <Info size={20} /> Canal de Noticias: {isRaining ? "Frente de tormenta sobre el Estadio" : "Día despejado en el Distrito Financiero"}
+          <div className="flex flex-col gap-3">
+              <div className="bg-blue-600/90 backdrop-blur-2xl px-8 py-4 rounded-[2rem] border-2 border-blue-400 text-white text-sm font-black uppercase tracking-widest shadow-2xl flex items-center gap-4 animate-in slide-in-from-right-10 duration-1000">
+                  <Info size={20} /> Canal de Noticias: {isRaining ? "Frente de tormenta sobre el Estadio" : "Día despejado en el Distrito Financiero"}
+              </div>
+              <div className="bg-slate-900/90 backdrop-blur-2xl px-8 py-4 rounded-[2rem] border-2 border-slate-700 text-white text-xs font-black uppercase tracking-[0.3em] shadow-2xl flex items-center gap-4 self-end">
+                  <Music size={16} className="text-indigo-400" /> Ambientes: {hour >= 6 && hour < 19 ? (isRaining ? "Lluvia urbana" : "Canto de pájaros") : "Grillos nocturnos"}
+              </div>
           </div>
       </div>
 
