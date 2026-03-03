@@ -55,7 +55,7 @@ function App() {
   const handleDownload = async () => {
     setIsGenerating(true);
     setProgress(5);
-    setTerminalLines(["[SYSTEM] Initializing Cognitive Engine v10.0..."]);
+    setTerminalLines(["[SYSTEM] Initializing Cognitive Engine v10.3..."]);
 
     try {
       const reasoningSteps = [
@@ -67,6 +67,7 @@ function App() {
         `[LOGIC] Generating Deep-Logic ${config.genre} Controller...`,
         config.complexity === 'Cognitive' ? "[AI] Training perfected Enemy AI models..." : null,
         config.complexity === 'Cognitive' ? "[MODELS] Constructing Ultra-Detailed Enemy Prefabs..." : null,
+        config.complexity === 'Cognitive' ? "[PRO] Synthesizing High-Fidelity Vehicles and Props..." : null,
         "[ASSETS] Linking persistent GUIDs to Meta files...",
         "[VCS] Optimizing Git ignore patterns...",
         "[FINALIZING] Compiling hyper-detailed structure..."
@@ -117,7 +118,7 @@ function App() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold mb-6 tracking-widest uppercase"
           >
             <Zap size={14} className="fill-indigo-400" />
-            <span>Unity World Architect v10.0 - Cognitive Engine</span>
+            <span>Unity World Architect v10.3 - Pro Architect</span>
           </motion.div>
 
           <motion.h1
@@ -198,7 +199,7 @@ function App() {
                         <option value="OmniArchitect">Omni-Architect (V7.0)</option>
                         <option value="NexusPrime">Nexus Prime (V8.0)</option>
                         <option value="Aetheris">Aetheris Engine (V9.0)</option>
-                        <option value="Cognitive">Cognitive Engine (V10.0)</option>
+                        <option value="Cognitive">Cognitive Pro (V10.3)</option>
                       </select>
                     </div>
                   </div>
@@ -494,6 +495,22 @@ function App() {
                                 <div>DroneEnemy.prefab</div>
                               </div>
                             </HierarchyFolder>
+                            <HierarchyFolder icon="📁" name="Vehicles" color="blue">
+                              <div className="pl-4 text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
+                                <div>ProVehicle_GT.prefab</div>
+                              </div>
+                            </HierarchyFolder>
+                            <HierarchyFolder icon="📁" name="Environment" color="green">
+                              <div className="pl-4 text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
+                                <div>ProBuilding_Modular.prefab</div>
+                                <div>ProNature_Oak.prefab</div>
+                              </div>
+                            </HierarchyFolder>
+                            <HierarchyFolder icon="📁" name="Props" color="yellow">
+                              <div className="pl-4 text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
+                                <div>ProProp_Crate.prefab</div>
+                              </div>
+                            </HierarchyFolder>
                           </div>
                         )}
                       </HierarchyFolder>
@@ -563,7 +580,7 @@ function App() {
          <div className="w-px h-4 bg-white/10" />
          <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Build</span>
-            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">10.0.0-COGNITIVE</span>
+            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">10.3.0-PRO</span>
          </div>
          <div className="w-px h-4 bg-white/10" />
          <button className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors">

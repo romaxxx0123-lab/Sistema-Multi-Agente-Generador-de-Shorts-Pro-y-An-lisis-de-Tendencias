@@ -10,7 +10,7 @@ test('verify unity-architect UI and generation', async ({ page }) => {
   await expect(projectNameInput).toHaveValue('HyperMegaGame');
 
   const complexitySelect = page.locator('#complexity');
-  await expect(complexitySelect).toHaveValue('UltimatePro');
+  await expect(complexitySelect).toHaveValue('Cognitive');
 
   // Verify professional systems toggles
   await expect(page.getByText('AsmDefs')).toBeVisible();

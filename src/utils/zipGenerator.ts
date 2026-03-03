@@ -81,6 +81,12 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     tankMat: generateGuid(),
     scoutMat: generateGuid(),
     sniperMat: generateGuid(),
+    carPaintMat: generateGuid(),
+    wheelMat: generateGuid(),
+    buildingMat: generateGuid(),
+    glassMat: generateGuid(),
+    woodMat: generateGuid(),
+    leafMat: generateGuid(),
   };
 
   // Project Settings
@@ -130,6 +136,20 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     materials.file("ScoutMat.mat.meta", templates.meta(guids.scoutMat));
     materials.file("SniperMat.mat", templates.material(0.5, 0, 0.5));
     materials.file("SniperMat.mat.meta", templates.meta(guids.sniperMat));
+
+    // Pro Materials
+    materials.file("CarPaint.mat", templates.carPaintMaterial());
+    materials.file("CarPaint.mat.meta", templates.meta(guids.carPaintMat));
+    materials.file("Wheel.mat", templates.material(0.1, 0.1, 0.1, 0.2, 0.0));
+    materials.file("Wheel.mat.meta", templates.meta(guids.wheelMat));
+    materials.file("BuildingBase.mat", templates.material(0.7, 0.7, 0.7, 0.1, 0.0));
+    materials.file("BuildingBase.mat.meta", templates.meta(guids.buildingMat));
+    materials.file("Glass.mat", templates.glassMaterial());
+    materials.file("Glass.mat.meta", templates.meta(guids.glassMat));
+    materials.file("Wood.mat", templates.woodMaterial());
+    materials.file("Wood.mat.meta", templates.meta(guids.woodMat));
+    materials.file("Leaves.mat", templates.leafMaterial());
+    materials.file("Leaves.mat.meta", templates.meta(guids.leafMat));
   }
 
   const prefabs = assets.folder("Prefabs")!;
@@ -155,6 +175,24 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     enemyFolder.file("PeregrineScout.prefab.meta", templates.meta(generateGuid()));
     enemyFolder.file("ShadowSniper.prefab", templates.sniperEnemyPrefab(guids.sniperMat, guids.enemyAiScript));
     enemyFolder.file("ShadowSniper.prefab.meta", templates.meta(generateGuid()));
+
+    // Pro Folders
+    const vehicleFolder = prefabs.folder("Vehicles")!;
+    prefabs.file("Vehicles.meta", templates.meta(generateGuid()));
+    vehicleFolder.file("ProVehicle_GT.prefab", templates.carPrefab(guids.carPaintMat, guids.wheelMat));
+    vehicleFolder.file("ProVehicle_GT.prefab.meta", templates.meta(generateGuid()));
+
+    const envFolder = prefabs.folder("Environment")!;
+    prefabs.file("Environment.meta", templates.meta(generateGuid()));
+    envFolder.file("ProBuilding_Modular.prefab", templates.buildingPrefab(guids.buildingMat, guids.glassMat));
+    envFolder.file("ProBuilding_Modular.prefab.meta", templates.meta(generateGuid()));
+    envFolder.file("ProNature_Oak.prefab", templates.treePrefab(guids.woodMat, guids.leafMat));
+    envFolder.file("ProNature_Oak.prefab.meta", templates.meta(generateGuid()));
+
+    const propFolder = prefabs.folder("Props")!;
+    prefabs.file("Props.meta", templates.meta(generateGuid()));
+    propFolder.file("ProProp_Crate.prefab", templates.cratePrefab(guids.woodMat));
+    propFolder.file("ProProp_Crate.prefab.meta", templates.meta(generateGuid()));
   }
 
   const scenes = assets.folder("Scenes")!;

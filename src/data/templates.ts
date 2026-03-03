@@ -157,7 +157,7 @@ namespace ${namespace}.Gameplay
     }
 }`,
 
-  material: (r: number, g: number, b: number) => `%YAML 1.1
+  material: (r: number, g: number, b: number, smoothness: number = 0.5, metallic: number = 0) => `%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
@@ -187,7 +187,8 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Smoothness: 0.5
+    - _Smoothness: ${smoothness}
+    - _Metallic: ${metallic}
     m_Colors:
     - _BaseColor: {r: ${r}, g: ${g}, b: ${b}, a: 1}
   m_BuildTextureStacks: []
@@ -1886,14 +1887,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
 `,
 
-  tankEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
+  carPrefab: (paintMat: string, wheelMat: string) => `%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!1 &100000
 GameObject:
-  m_Name: HeavyTank_Titan
+  m_Name: ProVehicle_GT
   m_Component:
   - component: {fileID: 400000}
-  - component: {fileID: 11400000}
 --- !u!4 &400000
 Transform:
   m_GameObject: {fileID: 100000}
@@ -1901,6 +1901,8 @@ Transform:
   - {fileID: 400001}
   - {fileID: 400002}
   - {fileID: 400003}
+  - {fileID: 400004}
+  - {fileID: 400005}
 --- !u!1 &100001
 GameObject:
   m_Name: Chassis
@@ -1912,7 +1914,7 @@ GameObject:
 Transform:
   m_GameObject: {fileID: 100001}
   m_Father: {fileID: 400000}
-  m_LocalScale: {x: 3, y: 1, z: 4}
+  m_LocalScale: {x: 2, y: 0.8, z: 4.5}
 --- !u!33 &3300001
 MeshFilter:
   m_GameObject: {fileID: 100001}
@@ -1921,10 +1923,10 @@ MeshFilter:
 MeshRenderer:
   m_GameObject: {fileID: 100001}
   m_Materials:
-  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+  - {fileID: 2100000, guid: ${paintMat}, type: 2}
 --- !u!1 &100002
 GameObject:
-  m_Name: Turret
+  m_Name: Wheel_FR
   m_Component:
   - component: {fileID: 400002}
   - component: {fileID: 3300002}
@@ -1933,8 +1935,137 @@ GameObject:
 Transform:
   m_GameObject: {fileID: 100002}
   m_Father: {fileID: 400000}
-  m_LocalPosition: {x: 0, y: 0.8, z: 0}
-  m_LocalScale: {x: 2, y: 0.8, z: 2}
+  m_LocalPosition: {x: 1, y: -0.2, z: 1.5}
+  m_LocalRotation: {x: 0, y: 0, z: 0.7071, w: 0.7071}
+  m_LocalScale: {x: 0.8, y: 0.3, z: 0.8}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${wheelMat}, type: 2}
+--- !u!1 &100003
+GameObject:
+  m_Name: Wheel_FL
+  m_Component:
+  - component: {fileID: 400003}
+  - component: {fileID: 3300003}
+  - component: {fileID: 2300003}
+--- !u!4 &400003
+Transform:
+  m_GameObject: {fileID: 100003}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: -1, y: -0.2, z: 1.5}
+  m_LocalRotation: {x: 0, y: 0, z: 0.7071, w: 0.7071}
+  m_LocalScale: {x: 0.8, y: 0.3, z: 0.8}
+--- !u!33 &3300003
+MeshFilter:
+  m_GameObject: {fileID: 100003}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300003
+MeshRenderer:
+  m_GameObject: {fileID: 100003}
+  m_Materials:
+  - {fileID: 2100000, guid: ${wheelMat}, type: 2}
+--- !u!1 &100004
+GameObject:
+  m_Name: Wheel_RR
+  m_Component:
+  - component: {fileID: 400004}
+  - component: {fileID: 3300004}
+  - component: {fileID: 2300004}
+--- !u!4 &400004
+Transform:
+  m_GameObject: {fileID: 100004}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 1, y: -0.2, z: -1.5}
+  m_LocalRotation: {x: 0, y: 0, z: 0.7071, w: 0.7071}
+  m_LocalScale: {x: 0.8, y: 0.3, z: 0.8}
+--- !u!33 &3300004
+MeshFilter:
+  m_GameObject: {fileID: 100004}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300004
+MeshRenderer:
+  m_GameObject: {fileID: 100004}
+  m_Materials:
+  - {fileID: 2100000, guid: ${wheelMat}, type: 2}
+--- !u!1 &100005
+GameObject:
+  m_Name: Wheel_RL
+  m_Component:
+  - component: {fileID: 400005}
+  - component: {fileID: 3300005}
+  - component: {fileID: 2300005}
+--- !u!4 &400005
+Transform:
+  m_GameObject: {fileID: 100005}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: -1, y: -0.2, z: -1.5}
+  m_LocalRotation: {x: 0, y: 0, z: 0.7071, w: 0.7071}
+  m_LocalScale: {x: 0.8, y: 0.3, z: 0.8}
+--- !u!33 &3300005
+MeshFilter:
+  m_GameObject: {fileID: 100005}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300005
+MeshRenderer:
+  m_GameObject: {fileID: 100005}
+  m_Materials:
+  - {fileID: 2100000, guid: ${wheelMat}, type: 2}
+`,
+
+  buildingPrefab: (baseMat: string, glassMat: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: ProBuilding_Modular
+  m_Component:
+  - component: {fileID: 400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+  - {fileID: 400003}
+--- !u!1 &100001
+GameObject:
+  m_Name: Base
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 10, y: 15, z: 10}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${baseMat}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Window_Strip
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 5, z: 5.1}
+  m_LocalScale: {x: 9, y: 2, z: 0.1}
 --- !u!33 &3300002
 MeshFilter:
   m_GameObject: {fileID: 100002}
@@ -1943,10 +2074,10 @@ MeshFilter:
 MeshRenderer:
   m_GameObject: {fileID: 100002}
   m_Materials:
-  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+  - {fileID: 2100000, guid: ${glassMat}, type: 2}
 --- !u!1 &100003
 GameObject:
-  m_Name: Cannon
+  m_Name: Roof_Structure
   m_Component:
   - component: {fileID: 400003}
   - component: {fileID: 3300003}
@@ -1954,9 +2085,9 @@ GameObject:
 --- !u!4 &400003
 Transform:
   m_GameObject: {fileID: 100003}
-  m_Father: {fileID: 400002}
-  m_LocalPosition: {x: 0, y: 0, z: 1.5}
-  m_LocalScale: {x: 0.3, y: 0.3, z: 2.5}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 7.5, z: 0}
+  m_LocalScale: {x: 10.5, y: 0.5, z: 10.5}
 --- !u!33 &3300003
 MeshFilter:
   m_GameObject: {fileID: 100003}
@@ -1965,13 +2096,129 @@ MeshFilter:
 MeshRenderer:
   m_GameObject: {fileID: 100003}
   m_Materials:
-  - {fileID: 2100000, guid: ${matGuid}, type: 2}
---- !u!114 &11400000
-MonoBehaviour:
-  m_GameObject: {fileID: 100000}
-  m_Enabled: 1
-  m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
+  - {fileID: 2100000, guid: ${baseMat}, type: 2}
 `,
+
+  treePrefab: (trunkMat: string, leafMat: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: ProNature_Oak
+  m_Component:
+  - component: {fileID: 400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+--- !u!1 &100001
+GameObject:
+  m_Name: Trunk
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 0.5, y: 4, z: 0.5}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${trunkMat}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Foliage
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 3.5, z: 0}
+  m_LocalScale: {x: 3, y: 3, z: 3}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${leafMat}, type: 2}
+`,
+
+  cratePrefab: (woodMat: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: ProProp_Crate
+  m_Component:
+  - component: {fileID: 400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+--- !u!1 &100001
+GameObject:
+  m_Name: Box
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${woodMat}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Lid
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 0.5, z: 0}
+  m_LocalScale: {x: 1.1, y: 0.1, z: 1.1}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${woodMat}, type: 2}
+`,
+
+  carPaintMaterial: () => templates.material(0.8, 0.1, 0.1, 0.9, 0.8), // Glossy Red Metallic
+  glassMaterial: () => templates.material(0.8, 0.9, 1.0, 1.0, 0.1),    // Clear Blueish
+  woodMaterial: () => templates.material(0.4, 0.2, 0.1, 0.2, 0.0),     // Matte Brown
+  leafMaterial: () => templates.material(0.1, 0.6, 0.1, 0.3, 0.0),     // Dark Green
 
   bossEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
