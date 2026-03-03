@@ -35,7 +35,10 @@ function App() {
     complexity: 'UltimatePro',
     useInventory: true,
     useStats: true,
-    useCICD: false
+    useCICD: false,
+    useNetworking: true,
+    useAddressables: true,
+    usePostProcessing: true
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -67,7 +70,7 @@ function App() {
     }
   };
 
-  const toggleFeature = (key: keyof Pick<ProjectConfig, 'useAsmDef' | 'useURP' | 'useNewInputSystem' | 'useInventory' | 'useStats' | 'useCICD'>) => {
+  const toggleFeature = (key: keyof Pick<ProjectConfig, 'useAsmDef' | 'useURP' | 'useNewInputSystem' | 'useInventory' | 'useStats' | 'useCICD' | 'useNetworking' | 'useAddressables' | 'usePostProcessing'>) => {
     setConfig(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -88,7 +91,7 @@ function App() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold mb-6 tracking-widest uppercase"
           >
             <Zap size={14} className="fill-indigo-400" />
-            <span>Unity World Architect v7.0 - Omni Architect Engine</span>
+            <span>Unity World Architect v8.0 - Nexus Prime Engine</span>
           </motion.div>
 
           <motion.h1
@@ -167,6 +170,7 @@ function App() {
                         <option value="Enterprise">Arquitectura Enterprise</option>
                         <option value="UltimatePro">Ultimate Pro Engine (V6.0)</option>
                         <option value="OmniArchitect">Omni-Architect (V7.0)</option>
+                        <option value="NexusPrime">Nexus Prime (V8.0)</option>
                       </select>
                     </div>
                   </div>
@@ -255,6 +259,30 @@ function App() {
                       icon={<ShieldCheck size={20} />}
                       label="CI/CD"
                       desc="GitHub Actions"
+                      color="emerald"
+                    />
+                    <FeatureButton
+                      active={config.useNetworking}
+                      onClick={() => toggleFeature('useNetworking')}
+                      icon={<Cpu size={20} />}
+                      label="Netcode"
+                      desc="Nexus Multiplayer"
+                      color="indigo"
+                    />
+                    <FeatureButton
+                      active={config.useAddressables}
+                      onClick={() => toggleFeature('useAddressables')}
+                      icon={<Database size={20} />}
+                      label="Assets"
+                      desc="Addressables V2"
+                      color="purple"
+                    />
+                    <FeatureButton
+                      active={config.usePostProcessing}
+                      onClick={() => toggleFeature('usePostProcessing')}
+                      icon={<Zap size={20} />}
+                      label="Render"
+                      desc="Post-Processing Pro"
                       color="emerald"
                     />
                   </div>
@@ -355,14 +383,27 @@ function App() {
                           {(config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect') && (
                             <HierarchyFile name="UI/" color="green" items={['UIManager.cs', 'UIPresenter.cs']} />
                           )}
-                          {(config.useInventory || config.useStats || config.complexity === 'OmniArchitect') && (
+                          {(config.useInventory || config.useStats || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime') && (
                             <HierarchyFile name="Systems/" color="blue" items={['InventorySystem.cs', 'StatSystem.cs']} />
+                          )}
+                          {(config.useAddressables || config.complexity === 'NexusPrime') && (
+                            <HierarchyFile name="Addressables/" color="purple" items={['AddressablesLoader.cs']} />
+                          )}
+                          {(config.useNetworking || config.complexity === 'NexusPrime') && (
+                            <HierarchyFile name="Networking/" color="red" items={['NetworkManagerUI.cs', 'NetworkPlayer.cs']} />
                           )}
                         </div>
                       </HierarchyFolder>
 
                       <HierarchyFolder icon="📁" name="Prefabs" color="yellow" meta desc="Player/Environment" />
                       <HierarchyFolder icon="📁" name="Scenes" color="green" meta desc="MainScene.unity" />
+
+                      {(config.complexity === 'NexusPrime') && (
+                        <>
+                          <HierarchyFolder icon="📁" name="Shaders" color="indigo" meta desc="HLSL/ShaderGraph" />
+                          <HierarchyFolder icon="📁" name="VFX" color="purple" meta desc="VFXGraph Library" />
+                        </>
+                      )}
 
                       {config.complexity === 'UltimatePro' && (
                         <HierarchyFolder icon="📁" name="Tests" color="red" meta desc="NUnit Core Tests" />
@@ -418,7 +459,7 @@ function App() {
          <div className="w-px h-4 bg-white/10" />
          <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Build</span>
-            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">7.0.0-OMNI</span>
+            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">8.0.0-NEXUS</span>
          </div>
          <div className="w-px h-4 bg-white/10" />
          <button className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors">

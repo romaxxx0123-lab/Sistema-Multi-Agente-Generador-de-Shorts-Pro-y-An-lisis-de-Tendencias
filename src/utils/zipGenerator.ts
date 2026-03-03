@@ -9,10 +9,13 @@ export interface ProjectConfig {
   useAsmDef: boolean;
   useURP: boolean;
   useNewInputSystem: boolean;
-  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect';
+  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect' | 'NexusPrime';
   useInventory: boolean;
   useStats: boolean;
   useCICD: boolean;
+  useNetworking?: boolean;
+  useAddressables?: boolean;
+  usePostProcessing?: boolean;
 }
 
 const generateGuid = () => {
@@ -78,7 +81,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   projectSettings.file("EditorBuildSettings.asset.meta", templates.meta(generateGuid()));
 
   // Packages
-  packages.file("manifest.json", templates.manifest(config.useNewInputSystem));
+  packages.file("manifest.json", templates.manifest(config.useNewInputSystem, config.useNetworking, config.useAddressables));
   packages.file("manifest.json.meta", templates.meta(generateGuid()));
 
   // Assets Structure
@@ -194,7 +197,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     patterns.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect') {
+  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime') {
     const ai = scripts.folder("AI")!;
     scripts.file("AI.meta", templates.meta(generateGuid()));
     ai.file("BehaviorTree.cs", templates.behaviorTree(namespace));
@@ -208,7 +211,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     ui.file("UIPresenter.cs.meta", templates.meta(generateGuid()));
   }
 
-  if (config.useInventory || config.complexity === 'OmniArchitect') {
+  if (config.useInventory || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime') {
     const systems = scripts.folder("Systems")!;
     scripts.file("Systems.meta", templates.meta(generateGuid()));
     const inventory = systems.folder("Inventory")!;
@@ -218,7 +221,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     inventory.file("ItemDefinition.cs.meta", templates.meta(generateGuid()));
   }
 
-  if (config.useStats || config.complexity === 'OmniArchitect') {
+  if (config.useStats || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime') {
     const systems = zip.folder("Assets/Scripts/Systems") || scripts.folder("Systems")!;
     const stats = systems.folder("Stats")!;
     stats.file("StatSystem.cs", templates.statSystem(namespace));
@@ -242,6 +245,41 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     settings.file("URP.meta", templates.meta(generateGuid()));
     urp.file("HighQualitySettings.asset", templates.urpAsset);
     urp.file("HighQualitySettings.asset.meta", templates.meta(guids.urpAsset));
+
+    if (config.usePostProcessing || config.complexity === 'NexusPrime') {
+      const profiles = urp.folder("Profiles")!;
+      urp.file("Profiles.meta", templates.meta(generateGuid()));
+      profiles.file("MainScenePostProcess.asset", templates.postProcessProfile);
+      profiles.file("MainScenePostProcess.asset.meta", templates.meta(generateGuid()));
+    }
+  }
+
+  if (config.useNetworking || config.complexity === 'NexusPrime') {
+    const networking = scripts.folder("Networking")!;
+    scripts.file("Networking.meta", templates.meta(generateGuid()));
+    networking.file("NetworkManagerUI.cs", templates.networkManager(namespace));
+    networking.file("NetworkManagerUI.cs.meta", templates.meta(generateGuid()));
+    networking.file("NetworkPlayer.cs", templates.networkPlayer(namespace));
+    networking.file("NetworkPlayer.cs.meta", templates.meta(generateGuid()));
+  }
+
+  if (config.useAddressables || config.complexity === 'NexusPrime') {
+    const systems = zip.folder("Assets/Scripts/Systems") || scripts.folder("Systems")!;
+    const addressables = systems.folder("Addressables")!;
+    addressables.file("AddressablesLoader.cs", templates.addressablesManager(namespace));
+    addressables.file("AddressablesLoader.cs.meta", templates.meta(generateGuid()));
+
+    const addrData = assets.folder("AddressableAssetsData")!;
+    assets.file("AddressableAssetsData.meta", templates.meta(generateGuid()));
+  }
+
+  if (config.complexity === 'NexusPrime') {
+    const shaders = assets.folder("Shaders")!;
+    assets.file("Shaders.meta", templates.meta(generateGuid()));
+    const vfx = assets.folder("VFX")!;
+    assets.file("VFX.meta", templates.meta(generateGuid()));
+    vfx.file("NexusExplosion.vfx", templates.vfxGraph("NexusExplosion"));
+    vfx.file("NexusExplosion.vfx.meta", templates.meta(generateGuid()));
   }
 
   if (config.useNewInputSystem) {
@@ -251,6 +289,6 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   }
 
   const content = await zip.generateAsync({ type: "blob" });
-  let version = 'v7_OmniArchitect';
+  let version = config.complexity === 'NexusPrime' ? 'v8_NexusPrime' : 'v7_OmniArchitect';
   saveAs(content, `${projectName.replace(/\s+/g, '_')}_UnityProject_${version}.zip`);
 };
