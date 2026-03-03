@@ -9,7 +9,7 @@ export interface ProjectConfig {
   useAsmDef: boolean;
   useURP: boolean;
   useNewInputSystem: boolean;
-  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect' | 'NexusPrime' | 'Aetheris';
+  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect' | 'NexusPrime' | 'Aetheris' | 'Cognitive';
   useInventory: boolean;
   useStats: boolean;
   useCICD: boolean;
@@ -41,11 +41,11 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     workflows.file("unity-build.yml", templates.githubWorkflow(projectName));
   }
 
-  if (config.useGitIgnore || config.complexity === 'Aetheris') {
+  if (config.useGitIgnore || config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
     zip.file(".gitignore", templates.gitignore);
   }
 
-  if (config.useEditorConfig || config.complexity === 'Aetheris') {
+  if (config.useEditorConfig || config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
     zip.file(".editorconfig", templates.editorConfig);
   }
 
@@ -160,7 +160,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     core.file(`${namespace}.Core.asmdef.meta`, templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'Aetheris') {
+  if (config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
     const arch = scripts.folder("Architecture")!;
     scripts.file("Architecture.meta", templates.meta(generateGuid()));
 
@@ -228,7 +228,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     patterns.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') {
+  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect' || config.complexity === 'NexusPrime' || config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
     const ai = scripts.folder("AI")!;
     scripts.file("AI.meta", templates.meta(generateGuid()));
     ai.file("BehaviorTree.cs", templates.behaviorTree(namespace));
@@ -237,7 +237,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     const ui = scripts.folder("UI")!;
     scripts.file("UI.meta", templates.meta(generateGuid()));
 
-    if (config.complexity === 'Aetheris') {
+    if (config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
         ui.file("UIModel.cs", templates.uiModel(namespace));
         ui.file("UIModel.cs.meta", templates.meta(generateGuid()));
         ui.file("UIView.cs", templates.uiView(namespace));
@@ -314,7 +314,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     assets.file("AddressableAssetsData.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') {
+  if (config.complexity === 'NexusPrime' || config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
     const shaders = assets.folder("Shaders")!;
     assets.file("Shaders.meta", templates.meta(generateGuid()));
     const vfx = assets.folder("VFX")!;
@@ -323,10 +323,38 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     vfx.file("NexusExplosion.vfx.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'Aetheris') {
+  if (config.complexity === 'Aetheris' || config.complexity === 'Cognitive') {
     const editor = assets.folder("Editor")!;
     editor.file("ProjectInitializer.cs", templates.projectInitializer(namespace));
     editor.file("ProjectInitializer.cs.meta", templates.meta(generateGuid()));
+  }
+
+  if (config.complexity === 'Cognitive') {
+    const cognitive = scripts.folder("Cognitive")!;
+    scripts.file("Cognitive.meta", templates.meta(generateGuid()));
+
+    switch(config.genre) {
+      case 'FPS':
+        cognitive.file("FPSController.cs", templates.fpsController(namespace));
+        cognitive.file("FPSController.cs.meta", templates.meta(generateGuid()));
+        break;
+      case 'RPG':
+        cognitive.file("RPGSystem.cs", templates.rpgSystem(namespace));
+        cognitive.file("RPGSystem.cs.meta", templates.meta(generateGuid()));
+        break;
+      case 'Action':
+        cognitive.file("PlatformerController.cs", templates.platformerController(namespace));
+        cognitive.file("PlatformerController.cs.meta", templates.meta(generateGuid()));
+        break;
+      case 'Horror':
+        cognitive.file("HorrorSystem.cs", templates.horrorSystem(namespace));
+        cognitive.file("HorrorSystem.cs.meta", templates.meta(generateGuid()));
+        break;
+      case 'OpenWorld':
+        cognitive.file("OpenWorldSystem.cs", templates.openWorldSystem(namespace));
+        cognitive.file("OpenWorldSystem.cs.meta", templates.meta(generateGuid()));
+        break;
+    }
   }
 
   if (config.useNewInputSystem) {
@@ -339,6 +367,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   let version = 'v7_Omni';
   if (config.complexity === 'NexusPrime') version = 'v8_Nexus';
   if (config.complexity === 'Aetheris') version = 'v9_Aetheris';
+  if (config.complexity === 'Cognitive') version = 'v10_Cognitive';
 
   saveAs(content, `${projectName.replace(/\s+/g, '_')}_UnityProject_${version}.zip`);
 };

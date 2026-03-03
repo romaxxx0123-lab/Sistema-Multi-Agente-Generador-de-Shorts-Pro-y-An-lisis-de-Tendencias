@@ -32,7 +32,7 @@ function App() {
     useAsmDef: true,
     useURP: true,
     useNewInputSystem: true,
-    complexity: 'Aetheris',
+    complexity: 'Cognitive',
     useInventory: true,
     useStats: true,
     useCICD: false,
@@ -46,26 +46,45 @@ function App() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [terminalLines, setTerminalLines] = useState<string[]>([]);
+
+  const addTerminalLine = (line: string) => {
+    setTerminalLines(prev => [...prev.slice(-5), line]);
+  };
 
   const handleDownload = async () => {
     setIsGenerating(true);
-    setProgress(10);
+    setProgress(5);
+    setTerminalLines(["[SYSTEM] Initializing Cognitive Engine v10.0..."]);
+
     try {
-      // Simulate "thinking/generating" for a hyper-detailed project
-      const timer = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(timer);
-            return 90;
-          }
-          return prev + Math.floor(Math.random() * 15);
-        });
-      }, 400);
+      const reasoningSteps = [
+        `[COGNITIVE] Analyzing ${config.genre} mechanics...`,
+        `[ARCHITECT] Designing core architecture for ${config.projectName}...`,
+        `[SYSTEM] Calculating physics constants for ${config.genre}...`,
+        "[DATA] Injecting ScriptableObject Variable system...",
+        "[UI] Mapping Model-View-Presenter delegates...",
+        `[LOGIC] Generating Deep-Logic ${config.genre} Controller...`,
+        "[ASSETS] Linking persistent GUIDs to Meta files...",
+        "[VCS] Optimizing Git ignore patterns...",
+        "[FINALIZING] Compiling hyper-detailed structure..."
+      ];
+
+      for (let i = 0; i < reasoningSteps.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400));
+        addTerminalLine(reasoningSteps[i]);
+        setProgress(10 + (i * 10));
+      }
 
       await generateUnityProject(config);
+      addTerminalLine("[SUCCESS] Project deployed successfully.");
       setProgress(100);
-      setTimeout(() => setProgress(0), 2000);
+      setTimeout(() => {
+        setProgress(0);
+        setTerminalLines([]);
+      }, 3000);
     } catch (error) {
+      addTerminalLine("[ERROR] Deployment failed.");
       console.error('Failed to generate project:', error);
       setProgress(0);
     } finally {
@@ -94,7 +113,7 @@ function App() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold mb-6 tracking-widest uppercase"
           >
             <Zap size={14} className="fill-indigo-400" />
-            <span>Unity World Architect v9.0 - Aetheris Engine</span>
+            <span>Unity World Architect v10.0 - Cognitive Engine</span>
           </motion.div>
 
           <motion.h1
@@ -175,6 +194,7 @@ function App() {
                         <option value="OmniArchitect">Omni-Architect (V7.0)</option>
                         <option value="NexusPrime">Nexus Prime (V8.0)</option>
                         <option value="Aetheris">Aetheris Engine (V9.0)</option>
+                        <option value="Cognitive">Cognitive Engine (V10.0)</option>
                       </select>
                     </div>
                   </div>
@@ -198,6 +218,7 @@ function App() {
                     <div className="relative group">
                       <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-green-400 transition-colors" size={20} />
                       <select
+                        id="genre"
                         value={config.genre}
                         onChange={(e) => setConfig({ ...config, genre: e.target.value })}
                         className="w-full bg-slate-950/40 border border-white/5 rounded-2xl py-5 pl-12 pr-4 focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500/40 transition-all text-white font-bold text-lg appearance-none shadow-inner"
@@ -311,12 +332,32 @@ function App() {
 
               <div className="mt-12 space-y-4">
                 {progress > 0 && (
-                  <div className="w-full bg-slate-950/50 rounded-full h-2 mb-4 overflow-hidden border border-white/5">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${progress}%` }}
-                      className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500"
-                    />
+                  <div className="space-y-4 mb-6">
+                    <div className="bg-slate-950 rounded-2xl p-4 border border-white/5 font-mono text-[10px] space-y-1 h-32 flex flex-col justify-end overflow-hidden shadow-inner">
+                      {terminalLines.map((line, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: -5 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className={cn(
+                            "flex items-center gap-2",
+                            line.includes('[ERROR]') ? "text-red-400" :
+                            line.includes('[SUCCESS]') ? "text-emerald-400" :
+                            line.includes('[COGNITIVE]') ? "text-indigo-400" : "text-slate-500"
+                          )}
+                        >
+                          <div className="w-1 h-1 rounded-full bg-current opacity-50" />
+                          {line}
+                        </motion.div>
+                      ))}
+                    </div>
+                    <div className="w-full bg-slate-950/50 rounded-full h-2 overflow-hidden border border-white/5">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progress}%` }}
+                        className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500"
+                      />
+                    </div>
                   </div>
                 )}
                 <motion.button
@@ -421,11 +462,14 @@ function App() {
                           {(config.useAddressables || config.complexity === 'NexusPrime') && (
                             <HierarchyFile name="Addressables/" color="purple" items={['AddressablesLoader.cs']} />
                           )}
-                          {(config.useNetworking || config.complexity === 'NexusPrime' || config.complexity === 'Aetheris') && (
+                          {(config.useNetworking || config.complexity === 'NexusPrime' || config.complexity === 'Aetheris' || config.complexity === 'Cognitive') && (
                             <HierarchyFile name="Networking/" color="red" items={['NetworkManagerUI.cs', 'NetworkPlayer.cs']} />
                           )}
-                          {config.complexity === 'Aetheris' && (
+                          {(config.complexity === 'Aetheris' || config.complexity === 'Cognitive') && (
                             <HierarchyFile name="Architecture/" color="indigo" items={['GameEvent.cs', 'FloatVariable.cs']} />
+                          )}
+                          {config.complexity === 'Cognitive' && (
+                            <HierarchyFile name="Cognitive/" color="emerald" items={[`${config.genre}Controller.cs`]} />
                           )}
                         </div>
                       </HierarchyFolder>
@@ -440,11 +484,11 @@ function App() {
                         </>
                       )}
 
-                      {(config.complexity === 'UltimatePro' || config.complexity === 'Aetheris') && (
+                      {(config.complexity === 'UltimatePro' || config.complexity === 'Aetheris' || config.complexity === 'Cognitive') && (
                         <HierarchyFolder icon="📁" name="Tests" color="red" meta desc="NUnit Core Tests" />
                       )}
-                      {config.complexity === 'Aetheris' && (
-                        <HierarchyFolder icon="📁" name="Editor" color="slate" meta desc="Aetheris Tools" />
+                      {(config.complexity === 'Aetheris' || config.complexity === 'Cognitive') && (
+                        <HierarchyFolder icon="📁" name="Editor" color="slate" meta desc="Architect Tools" />
                       )}
                     </div>
                   </HierarchyFolder>
@@ -497,7 +541,7 @@ function App() {
          <div className="w-px h-4 bg-white/10" />
          <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Build</span>
-            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">9.0.0-AETHERIS</span>
+            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">10.0.0-COGNITIVE</span>
          </div>
          <div className="w-px h-4 bg-white/10" />
          <button className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors">
