@@ -1044,5 +1044,141 @@ namespace ${namespace}.Patterns
         public void Update() => CurrentState?.Update();
         public void FixedUpdate() => CurrentState?.FixedUpdate();
     }
-}`
+}
+`,
+
+  inventorySystem: (namespace: string) => `using System.Collections.Generic;
+using UnityEngine;
+
+namespace ${namespace}.Systems.Inventory
+{
+    [CreateAssetMenu(fileName = "New Inventory", menuName = "Systems/Inventory/Inventory Holder")]
+    public class InventorySystem : ScriptableObject
+    {
+        public List<InventorySlot> slots = new List<InventorySlot>();
+        public int capacity = 20;
+
+        public bool AddItem(ItemDefinition item, int amount)
+        {
+            var slot = slots.Find(s => s.item == item);
+            if (slot != null) { slot.amount += amount; return true; }
+            if (slots.Count < capacity) { slots.Add(new InventorySlot { item = item, amount = amount }); return true; }
+            return false;
+        }
+    }
+
+    [System.Serializable]
+    public class InventorySlot { public ItemDefinition item; public int amount; }
+}`,
+
+  itemDefinition: (namespace: string) => `using UnityEngine;
+
+namespace ${namespace}.Systems.Inventory
+{
+    [CreateAssetMenu(fileName = "New Item", menuName = "Systems/Inventory/Item Definition")]
+    public class ItemDefinition : ScriptableObject
+    {
+        public string id;
+        public string displayName;
+        public Sprite icon;
+        public GameObject prefab;
+    }
+}`,
+
+  statSystem: (namespace: string) => `using UnityEngine;
+using System.Collections.Generic;
+
+namespace ${namespace}.Systems.Stats
+{
+    public class StatSystem : MonoBehaviour
+    {
+        public List<Stat> stats = new List<Stat>();
+        public float GetValue(string id) => stats.Find(s => s.id == id)?.Value ?? 0;
+    }
+
+    [System.Serializable]
+    public class Stat
+    {
+        public string id;
+        public float baseValue;
+        public float Value => baseValue; // Expansion point for modifiers
+    }
+}`,
+
+  uiPresenter: (namespace: string) => `using UnityEngine;
+
+namespace ${namespace}.UI
+{
+    public abstract class UIPresenter<TView> : MonoBehaviour where TView : UIView
+    {
+        [SerializeField] protected TView view;
+        protected virtual void OnEnable() => view?.Show();
+        protected virtual void OnDisable() => view?.Hide();
+    }
+}`,
+
+  githubWorkflow: (projectName: string) => `name: Build Project
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build for StandaloneWindows64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          lfs: true
+      - name: Cache Library
+        uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-\${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+      - name: Build project
+        uses: game-ci/unity-builder@v2
+        env:
+          UNITY_LICENSE: \${{ secrets.UNITY_LICENSE }}
+        with:
+          targetPlatform: StandaloneWindows64
+          projectName: ${projectName}
+`,
+
+  physics2DSettings: `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!19 &1
+Physics2DSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 3
+  m_Gravity: {x: 0, y: -9.81}
+  m_DefaultMaterial: {fileID: 0}
+  m_VelocityThreshold: 0.01
+  m_PositionIterations: 8
+  m_VelocityIterations: 3
+  m_QueriesHitTriggers: 1
+  m_QueriesStartInColliders: 1
+  m_CallbacksOnDisable: 1
+  m_AutoSimulation: 1
+  m_AutoSyncTransforms: 0
+  m_JobOptions:
+    m_UseMultithreading: 0
+    m_UseWarmStarting: 0
+`,
+
+  editorBuildSettings: `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!232 &1
+EditorBuildSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Scenes:
+  - m_Path: Assets/Scenes/MainScene.unity
+    m_Enabled: 1
+`
 };

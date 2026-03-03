@@ -9,7 +9,10 @@ export interface ProjectConfig {
   useAsmDef: boolean;
   useURP: boolean;
   useNewInputSystem: boolean;
-  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro';
+  complexity: 'Simple' | 'Medium' | 'High' | 'Enterprise' | 'UltimatePro' | 'OmniArchitect';
+  useInventory: boolean;
+  useStats: boolean;
+  useCICD: boolean;
 }
 
 const generateGuid = () => {
@@ -25,6 +28,12 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   // Root folders
   const assets = zip.folder("Assets")!;
   const projectSettings = zip.folder("ProjectSettings")!;
+
+  if (config.useCICD) {
+    const github = zip.folder(".github")!;
+    const workflows = github.folder("workflows")!;
+    workflows.file("unity-build.yml", templates.githubWorkflow(projectName));
+  }
   const packages = zip.folder("Packages")!;
   zip.folder("Plugins")!;
   zip.file("Plugins.meta", templates.meta(generateGuid()));
@@ -63,6 +72,10 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   projectSettings.file("GraphicsSettings.asset.meta", templates.meta(generateGuid()));
   projectSettings.file("InputManager.asset", templates.inputManager);
   projectSettings.file("InputManager.asset.meta", templates.meta(generateGuid()));
+  projectSettings.file("Physics2DSettings.asset", templates.physics2DSettings);
+  projectSettings.file("Physics2DSettings.asset.meta", templates.meta(generateGuid()));
+  projectSettings.file("EditorBuildSettings.asset", templates.editorBuildSettings);
+  projectSettings.file("EditorBuildSettings.asset.meta", templates.meta(generateGuid()));
 
   // Packages
   packages.file("manifest.json", templates.manifest(config.useNewInputSystem));
@@ -181,7 +194,7 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     patterns.file("GameEventListener.cs.meta", templates.meta(generateGuid()));
   }
 
-  if (config.complexity === 'UltimatePro') {
+  if (config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect') {
     const ai = scripts.folder("AI")!;
     scripts.file("AI.meta", templates.meta(generateGuid()));
     ai.file("BehaviorTree.cs", templates.behaviorTree(namespace));
@@ -191,6 +204,25 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     scripts.file("UI.meta", templates.meta(generateGuid()));
     ui.file("UIManager.cs", templates.uiView(namespace));
     ui.file("UIManager.cs.meta", templates.meta(generateGuid()));
+    ui.file("UIPresenter.cs", templates.uiPresenter(namespace));
+    ui.file("UIPresenter.cs.meta", templates.meta(generateGuid()));
+  }
+
+  if (config.useInventory || config.complexity === 'OmniArchitect') {
+    const systems = scripts.folder("Systems")!;
+    scripts.file("Systems.meta", templates.meta(generateGuid()));
+    const inventory = systems.folder("Inventory")!;
+    inventory.file("InventorySystem.cs", templates.inventorySystem(namespace));
+    inventory.file("InventorySystem.cs.meta", templates.meta(generateGuid()));
+    inventory.file("ItemDefinition.cs", templates.itemDefinition(namespace));
+    inventory.file("ItemDefinition.cs.meta", templates.meta(generateGuid()));
+  }
+
+  if (config.useStats || config.complexity === 'OmniArchitect') {
+    const systems = zip.folder("Assets/Scripts/Systems") || scripts.folder("Systems")!;
+    const stats = systems.folder("Stats")!;
+    stats.file("StatSystem.cs", templates.statSystem(namespace));
+    stats.file("StatSystem.cs.meta", templates.meta(generateGuid()));
   }
 
   if (config.complexity === 'UltimatePro') {
@@ -219,6 +251,6 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   }
 
   const content = await zip.generateAsync({ type: "blob" });
-  let version = 'v6_HyperDetailed';
+  let version = 'v7_OmniArchitect';
   saveAs(content, `${projectName.replace(/\s+/g, '_')}_UnityProject_${version}.zip`);
 };

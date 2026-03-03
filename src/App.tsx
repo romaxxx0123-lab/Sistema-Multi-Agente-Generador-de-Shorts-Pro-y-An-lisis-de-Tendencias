@@ -32,7 +32,10 @@ function App() {
     useAsmDef: true,
     useURP: true,
     useNewInputSystem: true,
-    complexity: 'UltimatePro'
+    complexity: 'UltimatePro',
+    useInventory: true,
+    useStats: true,
+    useCICD: false
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -64,7 +67,7 @@ function App() {
     }
   };
 
-  const toggleFeature = (key: keyof Pick<ProjectConfig, 'useAsmDef' | 'useURP' | 'useNewInputSystem'>) => {
+  const toggleFeature = (key: keyof Pick<ProjectConfig, 'useAsmDef' | 'useURP' | 'useNewInputSystem' | 'useInventory' | 'useStats' | 'useCICD'>) => {
     setConfig(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -85,7 +88,7 @@ function App() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold mb-6 tracking-widest uppercase"
           >
             <Zap size={14} className="fill-indigo-400" />
-            <span>Unity World Architect v6.0 - Hyper Detailed Engine</span>
+            <span>Unity World Architect v7.0 - Omni Architect Engine</span>
           </motion.div>
 
           <motion.h1
@@ -163,6 +166,7 @@ function App() {
                         <option value="High">Entorno Completo</option>
                         <option value="Enterprise">Arquitectura Enterprise</option>
                         <option value="UltimatePro">Ultimate Pro Engine (V6.0)</option>
+                        <option value="OmniArchitect">Omni-Architect (V7.0)</option>
                       </select>
                     </div>
                   </div>
@@ -227,6 +231,30 @@ function App() {
                       icon={<Cpu size={20} />}
                       label="Inputs V2"
                       desc="Acciones Dinámicas"
+                      color="emerald"
+                    />
+                    <FeatureButton
+                      active={config.useInventory}
+                      onClick={() => toggleFeature('useInventory')}
+                      icon={<Database size={20} />}
+                      label="Inventory"
+                      desc="Scriptable System"
+                      color="indigo"
+                    />
+                    <FeatureButton
+                      active={config.useStats}
+                      onClick={() => toggleFeature('useStats')}
+                      icon={<Zap size={20} />}
+                      label="Stats"
+                      desc="Modulable Stats"
+                      color="purple"
+                    />
+                    <FeatureButton
+                      active={config.useCICD}
+                      onClick={() => toggleFeature('useCICD')}
+                      icon={<ShieldCheck size={20} />}
+                      label="CI/CD"
+                      desc="GitHub Actions"
                       color="emerald"
                     />
                   </div>
@@ -301,6 +329,14 @@ function App() {
                 </div>
 
                 <div className="pl-6 space-y-3 border-l-2 border-slate-900/50 ml-2">
+                  {config.useCICD && (
+                    <HierarchyFolder icon="📁" name=".github" color="slate">
+                      <div className="pl-6 space-y-2 border-l border-white/5 ml-2 mt-2">
+                         <HierarchyFile name="workflows/" color="blue" items={['unity-build.yml']} />
+                      </div>
+                    </HierarchyFolder>
+                  )}
+
                   <HierarchyFolder icon="📁" name="Assets" color="blue" meta>
                     <div className="pl-6 space-y-2 border-l border-white/5 ml-2 mt-2">
                       <HierarchyFolder icon="📁" name="Plugins" color="slate" meta desc="Librerías externas" />
@@ -310,11 +346,17 @@ function App() {
                         <div className="pl-6 space-y-1.5 border-l border-purple-500/20 ml-2 mt-2">
                           <HierarchyFile name="Core/" color="blue" items={['EventBus.cs', 'Singleton.cs', 'Localization.cs']} />
                           <HierarchyFile name="Managers/" color="yellow" items={['GameManager.cs', 'AudioManager.cs']} />
-                          {config.complexity === 'UltimatePro' && (
+                          {(config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect' || config.complexity === 'Enterprise') && (
                             <>
                               <HierarchyFile name="AI/" color="red" items={['BehaviorTree.cs']} />
                               <HierarchyFile name="Patterns/" color="green" items={['RobustStateMachine.cs']} />
                             </>
+                          )}
+                          {(config.complexity === 'UltimatePro' || config.complexity === 'OmniArchitect') && (
+                            <HierarchyFile name="UI/" color="green" items={['UIManager.cs', 'UIPresenter.cs']} />
+                          )}
+                          {(config.useInventory || config.useStats || config.complexity === 'OmniArchitect') && (
+                            <HierarchyFile name="Systems/" color="blue" items={['InventorySystem.cs', 'StatSystem.cs']} />
                           )}
                         </div>
                       </HierarchyFolder>
@@ -376,7 +418,7 @@ function App() {
          <div className="w-px h-4 bg-white/10" />
          <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Build</span>
-            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">6.0.0-PRO</span>
+            <span className="text-[10px] font-black text-white px-1.5 py-0.5 bg-white/5 rounded">7.0.0-OMNI</span>
          </div>
          <div className="w-px h-4 bg-white/10" />
          <button className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors">
