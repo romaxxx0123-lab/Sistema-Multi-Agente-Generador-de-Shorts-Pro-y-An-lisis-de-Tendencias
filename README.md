@@ -1,40 +1,44 @@
-# Ronin Survivor - Part 4: Roguelite Expansion
+# RONIN SURVIVOR - PARTE 1A: MOVIMIENTO BÁSICO
 
-## Implementación Parte 4
-1. **Contenido Expandido**: 10 Habilidades automáticas totales y 6 Evoluciones únicas.
-2. **Meta-Progresión**: Sistema persistente de Meta-XP. Menú para desbloquear personajes (Ronin, Samurai, Kunoichi, Monje), habilidades y mejoras permanentes.
-3. **Tienda**: Aparece cada 5 niveles. Permite comprar armas temporales, consumibles y mejoras de run usando Monedas.
-4. **Sistema de Monedas**: Los enemigos sueltan monedas. Recogida magnética. Persisten entre runs para la meta-progresión.
-5. **Jefes**:
-   - **Oni Rojo** (5 min): 2 fases, ataques AOE e invocaciones.
-   - **Shogun Corrompido** (10 min): 3 fases, combo katana, tornado y teletransporte.
-6. **Enemigos Avanzados**: Ninjas (dash), Magos (proyectiles), y Mini-Onis (elite).
-7. **Dificultades**: Selección de Normal, Difícil y Pesadilla antes de la run.
-8. **Feedback Visual**: Números de daño flotantes, screen shake, trails de dash y flashes de nivel.
+## Descripción
+Demo mínima jugable de un juego 3D tipo Vampire Survivors con combate manual (próximamente). Esta entrega se centra en el movimiento físico del personaje y la configuración de la arena.
 
-## Migración de 1A a 1B
-1. **Zustand**: Se añadió `zustand` para el manejo de estado global (GameManager).
-2. **Refactorización de Player**: El componente `Player.tsx` se ha convertido en un orquestador (`PlayerController`) que utiliza hooks modulares.
-3. **Cámara**: Se reemplazó la cámara estática por `CameraFollow.tsx`, que sigue al jugador con suavizado.
-4. **Configuración Centralizada**: Todos los valores se encuentran ahora en `src/config.ts`.
+## Características (Parte 1A)
+- **Personaje**: Cápsula 3D con física real y rotación suave.
+- **Movimiento**: WASD / Flechas. Movimiento relativo a la cámara.
+- **Arena**: Plano de 50x50m con paredes físicas invisibles que evitan que el jugador salga.
+- **Cámara**: Perspectiva en tercera persona fija (~8m detrás, ~4m arriba).
+- **Parámetros**: Configuración centralizada en `src/config.ts`.
 
-## Configuración y Pruebas
-### Instalación
-```bash
-npm install
-npm run dev
-```
+## Stack Técnico
+- **React 18** + **Vite**
+- **Three.js** (@react-three/fiber) para el renderizado 3D.
+- **Cannon.js** (@react-three/cannon) para el motor de física.
+- **Zustand** para la gestión de estado.
 
-### Controles
-- **WASD / Flechas**: Movimiento básico.
-- **SHIFT**: Dash (5m en 0.3s). Cooldown de 2s (indicado visualmente por un marcador rojo sobre el personaje).
-- **Botón Pausar**: Detiene el flujo del juego y la física.
+## Instalación y Ejecución
+1. Instalar dependencias:
+   ```bash
+   npm install
+   ```
+2. Iniciar servidor de desarrollo:
+   ```bash
+   npm run dev
+   ```
 
-### Ajustes (config.ts)
-- `DASH.DISTANCE`: Cambia la potencia del dash.
-- `CAMERA.SMOOTH_TIME`: Ajusta qué tan rápido la cámara alcanza al jugador.
+## Controles
+- **W / Flecha Arriba**: Mover hacia adelante.
+- **S / Flecha Abajo**: Mover hacia atrás.
+- **A / Flecha Izquierda**: Mover a la izquierda.
+- **D / Flecha Derecha**: Mover a la derecha.
 
-## Preparación para Parte 2
-- **GameManager**: El `useGameStore` ya tiene estados `playing`, `paused` y `gameover`.
-- **Hooks de Combate**: El `PlayerController` (`Player.tsx`) está preparado para recibir un nuevo hook `usePlayerCombat`.
-- **Enemigos**: Se recomienda crear una carpeta `src/components/enemies` y un store dedicado para la gestión de oleadas.
+## Parámetros Ajustables (`src/config.ts`)
+- `PLAYER.MOVE_SPEED`: Velocidad de traslación (default: 5m/s).
+- `PLAYER.ROTATION_SPEED`: Velocidad de rotación suave.
+- `ARENA.SIZE`: Tamaño del plano de juego.
+- `CAMERA.OFFSET`: Posición de la cámara respecto al jugador.
+
+## Próximamente (Parte 1B)
+- Dash / Esquiva con trail visual.
+- Cámara con seguimiento suave (lerp).
+- Pulido de movimiento y feedback visual.

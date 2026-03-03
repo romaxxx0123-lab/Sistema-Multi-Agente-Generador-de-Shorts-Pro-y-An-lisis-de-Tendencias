@@ -1,53 +1,64 @@
-import { usePlane, useBox } from '@react-three/cannon';
-import { Mesh } from 'three';
-import { GAME_CONFIG } from '../config';
+import { usePlane, useBox } from "@react-three/cannon";
+import { Grid } from "@react-three/drei";
+import { Mesh } from "three";
+import { GAME_CONFIG } from "../config";
 
 export const Arena = () => {
-  // Config
-  const { SIZE, WALL_HEIGHT, WALL_THICKNESS, COLOR, GRID_COLOR } = GAME_CONFIG.ARENA;
-  const halfSize = SIZE / 2;
+  const size = GAME_CONFIG.ARENA.SIZE;
+  const halfSize = size / 2;
+  const wallHeight = GAME_CONFIG.ARENA.WALL_HEIGHT;
 
-  // Main floor
-  const [floorRef] = usePlane<Mesh>(() => ({
+  // Ground physical body
+  const [groundRef] = usePlane<Mesh>(() => ({
     rotation: [-Math.PI / 2, 0, 0],
     position: [0, 0, 0],
   }));
 
-  // Walls
-  // North wall
+  // Invisible Walls
+  // North
   useBox(() => ({
-    position: [0, WALL_HEIGHT / 2, -halfSize],
-    args: [SIZE, WALL_HEIGHT, WALL_THICKNESS],
+    position: [0, wallHeight / 2, -halfSize],
+    args: [size, wallHeight, 1],
   }));
-
-  // South wall
+  // South
   useBox(() => ({
-    position: [0, WALL_HEIGHT / 2, halfSize],
-    args: [SIZE, WALL_HEIGHT, WALL_THICKNESS],
+    position: [0, wallHeight / 2, halfSize],
+    args: [size, wallHeight, 1],
   }));
-
-  // West wall
+  // East
   useBox(() => ({
-    position: [-halfSize, WALL_HEIGHT / 2, 0],
-    args: [WALL_THICKNESS, WALL_HEIGHT, SIZE],
+    position: [halfSize, wallHeight / 2, 0],
+    args: [1, wallHeight, size],
   }));
-
-  // East wall
+  // West
   useBox(() => ({
-    position: [halfSize, WALL_HEIGHT / 2, 0],
-    args: [WALL_THICKNESS, WALL_HEIGHT, SIZE],
+    position: [-halfSize, wallHeight / 2, 0],
+    args: [1, wallHeight, size],
   }));
 
   return (
-    <group>
-      {/* Floor Visual */}
-      <mesh ref={floorRef} receiveShadow>
-        <planeGeometry args={[SIZE, SIZE]} />
-        <meshStandardMaterial color={COLOR} />
+    <>
+      {/* Visual Ground */}
+      <mesh ref={groundRef} receiveShadow>
+        <planeGeometry args={[size, size]} />
+        <meshStandardMaterial color={GAME_CONFIG.ARENA.COLOR} />
       </mesh>
 
-      {/* Grid helper for better perspective */}
-      <gridHelper args={[SIZE, SIZE, GRID_COLOR, "#222222"]} rotation={[0, 0, 0]} position={[0, 0.01, 0]} />
-    </group>
+      {/* Helper Grid */}
+      <Grid
+        args={[size, size]}
+        sectionColor={GAME_CONFIG.ARENA.GRID_COLOR}
+        cellColor={GAME_CONFIG.ARENA.GRID_COLOR}
+        infiniteGrid
+        fadeDistance={50}
+        fadeStrength={5}
+      />
+
+      {/* Decorative center marker */}
+      <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.5, 32]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.2} />
+      </mesh>
+    </>
   );
 };

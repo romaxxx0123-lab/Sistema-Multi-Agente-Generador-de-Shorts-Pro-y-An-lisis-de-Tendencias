@@ -1,98 +1,64 @@
-import { useRef, useEffect, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { useSphere } from '@react-three/cannon';
-import { Mesh, Vector3, Quaternion } from 'three';
-import { useControls } from '../hooks/useControls';
-import { useGameStore } from '../store/useGameStore';
-import { usePlayerMovement } from '../hooks/usePlayerMovement';
-import { usePlayerDash } from '../hooks/usePlayerDash';
-import { usePlayerCombat } from '../hooks/usePlayerCombat';
-import { GAME_CONFIG } from '../config';
+import { useRef, useEffect } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useSphere } from "@react-three/cannon";
+import { Mesh, Vector3 } from "three";
+import { useControls } from "../hooks/useControls";
+import { usePlayerMovement } from "../hooks/usePlayerMovement";
+import { useGameStore } from "../store/useGameStore";
+import { GAME_CONFIG } from "../config";
 
 export const Player = () => {
-  const { forward, backward, left, right, dash, attack: attackInput } = useControls();
+  const { camera } = useThree();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
-  const status = useGameStore((state) => state.status);
 
-  // Constants
-  const moveSpeed = GAME_CONFIG.PLAYER.MOVE_SPEED;
-  const rotationSpeed = GAME_CONFIG.PLAYER.ROTATION_SPEED;
+  // Controls & Movement hooks
+  const controls = useControls();
 
-  // Physics body
+  // Physics body (using sphere for simpler survivor-like collisions)
   const [ref, api] = useSphere<Mesh>(() => ({
     mass: GAME_CONFIG.PHYSICS.PLAYER_MASS,
     position: [0, 1, 0],
-    fixedRotation: true,
-    args: [GAME_CONFIG.PLAYER.CAPSULE_RADIUS],
+    args: [GAME_CONFIG.PLAYER.RADIUS],
+    fixedRotation: true, // We handle rotation manually for visual mesh
   }));
 
-  // Update global ref for camera follow
+  const { move } = usePlayerMovement(
+    api,
+    GAME_CONFIG.PLAYER.MOVE_SPEED,
+    GAME_CONFIG.PLAYER.ROTATION_SPEED
+  );
+
+  // Sync ref with store
   useEffect(() => {
-    if (ref.current) {
-      setPlayerRef(ref.current);
-    }
+    if (ref.current) setPlayerRef(ref.current);
   }, [ref, setPlayerRef]);
 
-  // Hook modules
-  const { move } = usePlayerMovement(api, moveSpeed, rotationSpeed);
-  const { performDash, isDashing, canDash } = usePlayerDash(api);
-  const { attack, isAttacking } = usePlayerCombat(ref.current);
+  useFrame((_state, delta) => {
+    if (!ref.current) return;
 
-  const [trail, setTrail] = useState<{ id: number; position: [number, number, number] }[]>([]);
-  const trailId = useRef(0);
-
-  useFrame((state, delta) => {
-    if (status !== 'playing') return;
-
-    // Handle Dash Trigger
-    if (dash && canDash && !isDashing) {
-      performDash(forward, backward, left, right, ref, state.camera);
-    }
-
-    if (isDashing) {
-      const pos = ref.current!.position.toArray();
-      setTrail((prev: any[]) => [...prev.slice(-10), { id: trailId.current++, position: pos }]);
-    } else if (trail.length > 0) {
-      setTrail([]);
-    }
-
-    // Handle Attack Trigger
-    if (attackInput) {
-      attack();
-    }
-
-    // Only allow movement if not currently dashing
-    if (!isDashing) {
-      move(forward, backward, left, right, delta, ref, state.camera);
-    }
+    // Execute movement logic
+    move(
+      controls.forward,
+      controls.backward,
+      controls.left,
+      controls.right,
+      delta,
+      ref,
+      camera
+    );
   });
 
   return (
-    <group>
-      {trail.map((t: any, i: number) => (
-        <mesh key={t.id} position={t.position}>
-          <capsuleGeometry args={[GAME_CONFIG.PLAYER.CAPSULE_RADIUS, GAME_CONFIG.PLAYER.CAPSULE_HEIGHT, 4, 16]} />
-          <meshBasicMaterial color={GAME_CONFIG.PLAYER.DASH_COLOR} transparent opacity={0.3 * (i / trail.length)} />
-        </mesh>
-      ))}
     <mesh ref={ref} castShadow>
-      {/* Visual representation: A Capsule */}
-      <capsuleGeometry args={[GAME_CONFIG.PLAYER.CAPSULE_RADIUS, GAME_CONFIG.PLAYER.CAPSULE_HEIGHT, 4, 16]} />
-      <meshStandardMaterial
-        color={
-          isAttacking ? "yellow" :
-          (isDashing ? GAME_CONFIG.PLAYER.DASH_COLOR : GAME_CONFIG.PLAYER.COLOR)
-        }
-      />
+      {/* Simple Capsule Placeholder */}
+      <capsuleGeometry args={[GAME_CONFIG.PLAYER.RADIUS, GAME_CONFIG.PLAYER.HEIGHT, 4, 8]} />
+      <meshStandardMaterial color={GAME_CONFIG.PLAYER.COLOR} />
 
-      {/* Visual feedback for dash availability (simple marker) */}
-      {!canDash && (
-        <mesh position={[0, 1.2, 0]}>
-          <boxGeometry args={[0.2, 0.1, 0.2]} />
-          <meshBasicMaterial color="red" />
-        </mesh>
-      )}
+      {/* Forward indicator (eyes/nose) */}
+      <mesh position={[0, 0.4, -0.4]}>
+        <boxGeometry args={[0.6, 0.2, 0.2]} />
+        <meshStandardMaterial color="white" />
+      </mesh>
     </mesh>
-    </group>
   );
 };
