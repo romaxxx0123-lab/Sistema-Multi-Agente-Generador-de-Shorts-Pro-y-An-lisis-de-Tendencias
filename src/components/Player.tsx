@@ -6,7 +6,7 @@ import { useControls } from "../hooks/useControls";
 import { usePlayerMovement } from "../hooks/usePlayerMovement";
 import { useGameStore } from "../store/useGameStore";
 import { CONFIG } from "../config";
-import { RoninModel } from "./RoninModel";
+import { RoninV2 } from "./models/RoninV2";
 
 /**
  * OPTIMIZED PLAYER COMPONENT
@@ -62,7 +62,7 @@ export const Player = () => {
 
       {/* Visual Mesh Group */}
       <group ref={meshRef}>
-        <RoninModel />
+        <RoninV2 />
       </group>
     </RigidBody>
   );

@@ -37,7 +37,7 @@ export function MainMenu() {
       <div className="flex flex-col gap-4 z-10">
         <UIButton onClick={startRun} className="!w-[350px]">▶️ Nueva Run</UIButton>
         <UIButton onClick={() => setView('characters')} variant="secondary" className="!w-[350px]">👤 Personajes</UIButton>
-        <UIButton variant="secondary" className="!w-[350px]">📈 Progresión</UIButton>
+        <UIButton onClick={() => setView('gallery')} variant="secondary" className="!w-[350px]">🏛️ Galería Assets</UIButton>
         <UIButton variant="secondary" className="!w-[350px]">⚙️ Opciones</UIButton>
         <UIButton variant="danger" className="!w-[350px]">🚪 Salir</UIButton>
       </div>

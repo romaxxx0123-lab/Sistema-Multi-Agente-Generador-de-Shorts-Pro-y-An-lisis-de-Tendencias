@@ -6,11 +6,13 @@ import { Environment } from '@react-three/drei';
 import { Arena } from './components/Arena';
 import { Player } from './components/Player';
 import { CameraFollow } from './components/CameraFollow';
+import { Effects } from './components/Effects';
 import { DebugPanel } from './components/DebugPanel';
 
 // UI Components
 import { MainMenu } from './components/menus/MainMenu';
 import { CharacterSelector } from './components/menus/CharacterSelector';
+import { AssetGallery } from './components/AssetGallery';
 import { HUD } from './components/HUD';
 import { LevelUpOverlay } from './components/LevelUpOverlay';
 import { PauseOverlay } from './components/overlays/PauseOverlay';
@@ -72,6 +74,7 @@ export const RoninGame = () => {
             </Physics>
 
             <Environment preset="city" />
+            <Effects />
             <GameLogicLoop updateTime={updateTime} status={status} />
           </Suspense>
         </Canvas>
@@ -80,6 +83,7 @@ export const RoninGame = () => {
       {/* UI LAYERS */}
       {view === 'menu' && <MainMenu />}
       {view === 'characters' && <CharacterSelector />}
+      {view === 'gallery' && <AssetGallery />}
 
       {view === 'game' && (
           <>

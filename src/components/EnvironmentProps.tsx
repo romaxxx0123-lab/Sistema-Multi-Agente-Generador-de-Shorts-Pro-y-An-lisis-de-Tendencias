@@ -1,48 +1,61 @@
+import { SakuraTree } from "./models/SakuraTree";
+import { ZenRock } from "./models/ZenRock";
+import { StoneLantern } from "./models/StoneLantern";
+import { JizoStatue } from "./models/JizoStatue";
+import { ToriiGate } from "./models/ToriiGate";
+import { WoodenFence } from "./models/WoodenFence";
+
 /**
- * STYLIZED ENVIRONMENT PROPS
- * Procedural low-poly props to enrich the arena.
+ * HIGH QUALITY ENVIRONMENT PROPS
+ * Uses stylized Japanese-themed assets to enrich the arena.
  */
-
-export const StylizedRock = ({ position, scale = 1, rotation = [0, 0, 0] }: any) => (
-  <mesh position={position} scale={scale} rotation={rotation} castShadow receiveShadow>
-    <dodecahedronGeometry args={[1, 0]} />
-    <meshStandardMaterial color="#555555" flatShading />
-  </mesh>
-);
-
-export const StylizedTree = ({ position, scale = 1 }: any) => (
-  <group position={position} scale={scale}>
-    {/* Trunk */}
-    <mesh position={[0, 1, 0]} castShadow>
-      <cylinderGeometry args={[0.2, 0.3, 2, 6]} />
-      <meshStandardMaterial color="#442211" />
-    </mesh>
-    {/* Foliage */}
-    <mesh position={[0, 2.5, 0]} castShadow>
-      <coneGeometry args={[1, 2, 6]} />
-      <meshStandardMaterial color="#113311" flatShading />
-    </mesh>
-    <mesh position={[0, 3.5, 0]} castShadow>
-      <coneGeometry args={[0.8, 1.5, 6]} />
-      <meshStandardMaterial color="#114411" flatShading />
-    </mesh>
-  </group>
-);
 
 export const EnvironmentProps = () => {
   return (
     <group>
-      {/* Scattering some rocks */}
-      <StylizedRock position={[-10, 0.5, -15]} scale={1.2} rotation={[0.4, 0.2, 0.5]} />
-      <StylizedRock position={[12, 0.4, -8]} scale={0.8} rotation={[0.1, 0.8, 0.2]} />
-      <StylizedRock position={[-15, 0.6, 12]} scale={1.5} rotation={[0.5, 0.1, 0.9]} />
-      <StylizedRock position={[8, 0.3, 18]} scale={1.0} rotation={[0.9, 0.4, 0.1]} />
+      {/* 1. Landmark: Torii Gate at the spawn */}
+      <group position={[0, 0, -12]}>
+        <ToriiGate scale={1.8} />
+      </group>
 
-      {/* Scattering some trees near boundaries */}
-      <StylizedTree position={[-20, 0, -20]} scale={1.5} />
-      <StylizedTree position={[20, 0, -20]} scale={1.2} />
-      <StylizedTree position={[-22, 0, 22]} scale={1.8} />
-      <StylizedTree position={[22, 0, 18]} scale={1.3} />
+      {/* 2. Sakura Trees scattered around (clearing center) */}
+      <SakuraTree position={[-20, 0, -20]} scale={1.5} />
+      <SakuraTree position={[20, 0, -22]} scale={1.8} />
+      <SakuraTree position={[-22, 0, 18]} scale={1.6} />
+      <SakuraTree position={[24, 0, 15]} scale={1.7} />
+
+      {/* 3. Zen Rocks */}
+      <ZenRock position={[-15, 0.5, -12]} scale={0.8} />
+      <ZenRock position={[18, 0.5, 12]} scale={1.2} />
+      <ZenRock position={[-12, 0.5, 20]} scale={1.0} />
+
+      {/* 4. Stone Lanterns (Light sources) */}
+      <StoneLantern position={[-8, 0, -15]} scale={0.8} />
+      <StoneLantern position={[8, 0, -15]} scale={0.8} />
+      <StoneLantern position={[18, 0, 0]} scale={0.9} />
+      <StoneLantern position={[-18, 0, 0]} scale={0.9} />
+
+      {/* 5. Jizo Statues */}
+      <JizoStatue position={[10, 0, 20]} scale={0.8} />
+      <JizoStatue position={[-20, 0, -8]} scale={0.7} />
+
+      {/* 6. Boundary Fences (Visual only, collision is in Arena.tsx) */}
+      {/* North */}
+      {[...Array(25)].map((_, i) => (
+        <WoodenFence key={`n-${i}`} position={[i * 2 - 24, 0, -25]} />
+      ))}
+      {/* South */}
+      {[...Array(25)].map((_, i) => (
+        <WoodenFence key={`s-${i}`} position={[i * 2 - 24, 0, 25]} />
+      ))}
+      {/* East */}
+      {[...Array(25)].map((_, i) => (
+        <WoodenFence key={`e-${i}`} position={[25, 0, i * 2 - 24]} rotation={[0, Math.PI / 2, 0]} />
+      ))}
+      {/* West */}
+      {[...Array(25)].map((_, i) => (
+        <WoodenFence key={`w-${i}`} position={[-25, 0, i * 2 - 24]} rotation={[0, Math.PI / 2, 0]} />
+      ))}
     </group>
   );
 };

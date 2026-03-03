@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { RigidBody, CuboidCollider } from "@react-three/rapier";
 import { Grid } from "@react-three/drei";
 import { CONFIG } from "../config";
 import { EnvironmentProps } from "./EnvironmentProps";
+import { TextureGenerator } from "../utils/textures";
 
 /**
  * OPTIMIZED ARENA COMPONENT
@@ -13,6 +15,13 @@ export const Arena = () => {
   const halfSize = size / 2;
   const wallHeight = CONFIG.ARENA.WALL_HEIGHT;
 
+  // Generate high-quality floor texture
+  const floorTexture = useMemo(() => {
+    const tex = TextureGenerator.createCobblestone(1024);
+    tex.repeat.set(10, 10);
+    return tex;
+  }, []);
+
   return (
     <>
       {/* Physical Ground & Boundaries Group */}
@@ -20,7 +29,11 @@ export const Arena = () => {
         {/* Visual Ground Plane */}
         <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[size, size]} />
-          <meshStandardMaterial color="#333333" />
+          <meshStandardMaterial
+            map={floorTexture}
+            roughness={0.8}
+            metalness={0.2}
+          />
         </mesh>
 
         {/* Physical Ground Collider */}

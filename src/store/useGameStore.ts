@@ -21,7 +21,7 @@ export interface RunStats {
 
 interface GameState {
   // Navigation & Status
-  view: 'menu' | 'characters' | 'game';
+  view: 'menu' | 'characters' | 'game' | 'gallery';
   status: 'playing' | 'paused' | 'levelup' | 'gameover' | 'victory';
 
   // Player Reference (for camera/physics)
