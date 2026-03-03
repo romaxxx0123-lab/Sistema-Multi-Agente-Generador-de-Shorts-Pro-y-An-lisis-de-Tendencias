@@ -1,64 +1,75 @@
 import { useRef, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useSphere } from "@react-three/cannon";
-import { Mesh, Vector3 } from "three";
+import { RigidBody, CapsuleCollider, RapierRigidBody } from "@react-three/rapier";
+import { Mesh } from "three";
 import { useControls } from "../hooks/useControls";
 import { usePlayerMovement } from "../hooks/usePlayerMovement";
 import { useGameStore } from "../store/useGameStore";
-import { GAME_CONFIG } from "../config";
+import { CONFIG } from "../config";
 
+/**
+ * OPTIMIZED PLAYER COMPONENT
+ * Implements a physics-driven character using Rapier.
+ * Performance optimized for scaling in Part 2.
+ */
 export const Player = () => {
   const { camera } = useThree();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
 
-  // Controls & Movement hooks
+  // Controls & Movement state
   const controls = useControls();
-
-  // Physics body (using sphere for simpler survivor-like collisions)
-  const [ref, api] = useSphere<Mesh>(() => ({
-    mass: GAME_CONFIG.PHYSICS.PLAYER_MASS,
-    position: [0, 1, 0],
-    args: [GAME_CONFIG.PLAYER.RADIUS],
-    fixedRotation: true, // We handle rotation manually for visual mesh
-  }));
+  const rb = useRef<RapierRigidBody>(null);
+  const meshRef = useRef<Mesh>(null);
 
   const { move } = usePlayerMovement(
-    api,
-    GAME_CONFIG.PLAYER.MOVE_SPEED,
-    GAME_CONFIG.PLAYER.ROTATION_SPEED
+    rb,
+    CONFIG.PLAYER.MOVE_SPEED,
+    CONFIG.PLAYER.ROTATION_SPEED
   );
 
-  // Sync ref with store
+  // Sync mesh reference with store for camera following
   useEffect(() => {
-    if (ref.current) setPlayerRef(ref.current);
-  }, [ref, setPlayerRef]);
+    if (meshRef.current) setPlayerRef(meshRef.current);
+  }, [setPlayerRef]);
 
   useFrame((_state, delta) => {
-    if (!ref.current) return;
+    if (!rb.current || !meshRef.current) return;
 
-    // Execute movement logic
+    // Execute physics movement logic
     move(
       controls.forward,
       controls.backward,
       controls.left,
       controls.right,
       delta,
-      ref,
+      meshRef as any, // Visual rotation on mesh only
       camera
     );
   });
 
   return (
-    <mesh ref={ref} castShadow>
-      {/* Simple Capsule Placeholder */}
-      <capsuleGeometry args={[GAME_CONFIG.PLAYER.RADIUS, GAME_CONFIG.PLAYER.HEIGHT, 4, 8]} />
-      <meshStandardMaterial color={GAME_CONFIG.PLAYER.COLOR} />
+    <RigidBody
+      ref={rb}
+      position={[0, 2, 0]}
+      enabledRotations={[false, false, false]} // Physics doesn't rotate, we rotate mesh
+      colliders={false}
+      mass={CONFIG.PLAYER.MASS}
+      friction={0} // Smooth movement without sticking
+    >
+      {/* Physics Collider */}
+      <CapsuleCollider args={[CONFIG.PLAYER.COLLIDER_HEIGHT / 2 - CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_RADIUS]} />
 
-      {/* Forward indicator (eyes/nose) */}
-      <mesh position={[0, 0.4, -0.4]}>
-        <boxGeometry args={[0.6, 0.2, 0.2]} />
-        <meshStandardMaterial color="white" />
+      {/* Visual Mesh */}
+      <mesh ref={meshRef} castShadow>
+        <capsuleGeometry args={[CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_HEIGHT - CONFIG.PLAYER.COLLIDER_RADIUS * 2, 4, 8]} />
+        <meshStandardMaterial color="#1cb0f6" />
+
+        {/* Directional Indicator */}
+        <mesh position={[0, 0.4, -0.4]}>
+          <boxGeometry args={[0.6, 0.2, 0.2]} />
+          <meshStandardMaterial color="white" />
+        </mesh>
       </mesh>
-    </mesh>
+    </RigidBody>
   );
 };

@@ -1,20 +1,27 @@
-# RONIN SURVIVOR - PARTE 1A: MOVIMIENTO BÁSICO
+# RONIN SURVIVOR - PARTE 1A OPTIMIZADA
 
 ## Descripción
-Demo mínima jugable de un juego 3D tipo Vampire Survivors con combate manual (próximamente). Esta entrega se centra en el movimiento físico del personaje y la configuración de la arena.
+Versión optimizada de la PARTE 1A, migrada a un stack de alto rendimiento para soportar 100+ enemigos en el futuro.
+
+## Cambios Clave (Optimización)
+- **Física de Alto Rendimiento**: Migración completa de Cannon.js a **Rapier.js**.
+- **Object Pooling System**: Implementado y listo para reutilizar enemigos y proyectiles.
+- **Instanced Rendering**: Componente preparado para renderizar hordas en un solo draw call.
+- **Monitoring**: Añadido **DebugPanel** (F3) para monitorear FPS en tiempo real.
+- **React 19**: Actualizado para aprovechar mejoras de rendimiento y estabilidad en R3F.
 
 ## Características (Parte 1A)
-- **Personaje**: Cápsula 3D con física real y rotación suave.
+- **Personaje**: Cápsula 3D con física Rapier y rotación suave.
 - **Movimiento**: WASD / Flechas. Movimiento relativo a la cámara.
 - **Arena**: Plano de 50x50m con paredes físicas invisibles que evitan que el jugador salga.
 - **Cámara**: Perspectiva en tercera persona fija (~8m detrás, ~4m arriba).
-- **Parámetros**: Configuración centralizada en `src/config.ts`.
+- **Parámetros**: Configuración centralizada y optimizada en `src/config.ts`.
 
-## Stack Técnico
-- **React 18** + **Vite**
-- **Three.js** (@react-three/fiber) para el renderizado 3D.
-- **Cannon.js** (@react-three/cannon) para el motor de física.
-- **Zustand** para la gestión de estado.
+## Stack Técnico (Optimizado)
+- **React 19** + **Vite**
+- **Three.js** (@react-three/fiber v9) para el renderizado 3D.
+- **Rapier.js** (@react-three/rapier) para el motor de física (WASM).
+- **Zustand** para la gestión de estado global.
 
 ## Instalación y Ejecución
 1. Instalar dependencias:
@@ -27,16 +34,12 @@ Demo mínima jugable de un juego 3D tipo Vampire Survivors con combate manual (p
    ```
 
 ## Controles
-- **W / Flecha Arriba**: Mover hacia adelante.
-- **S / Flecha Abajo**: Mover hacia atrás.
-- **A / Flecha Izquierda**: Mover a la izquierda.
-- **D / Flecha Derecha**: Mover a la derecha.
+- **WASD / Flechas**: Movimiento básico.
+- **F3**: Activar/Desactivar Panel de Rendimiento (FPS).
 
-## Parámetros Ajustables (`src/config.ts`)
-- `PLAYER.MOVE_SPEED`: Velocidad de traslación (default: 5m/s).
-- `PLAYER.ROTATION_SPEED`: Velocidad de rotación suave.
-- `ARENA.SIZE`: Tamaño del plano de juego.
-- `CAMERA.OFFSET`: Posición de la cámara respecto al jugador.
+## Parámetros de Optimización (`src/config.ts`)
+- `PERFORMANCE.ENABLE_SHADOWS`: Activar/desactivar sombras para ganar FPS.
+- `PHYSICS.TIME_STEP`: Ajuste del paso de simulación física.
 
 ## Próximamente (Parte 1B)
 - Dash / Esquiva con trail visual.

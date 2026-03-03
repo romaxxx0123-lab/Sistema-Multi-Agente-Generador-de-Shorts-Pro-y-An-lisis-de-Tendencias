@@ -1,34 +1,50 @@
 /**
- * RONIN SURVIVOR - CONFIGURATION (Part 1A)
- * Adjustable parameters for the core game loop.
+ * RONIN SURVIVOR - OPTIMIZED CONFIGURATION
+ * Centralized parameters for performance, physics, and gameplay.
  */
-export const GAME_CONFIG = {
-  // Arena Settings
+export const CONFIG = {
+  // Performance & Rendering
+  PERFORMANCE: {
+    TARGET_FPS: 60,
+    MAX_DELTA: 0.1, // Limit physics step to avoid tunneling
+    ENABLE_SHADOWS: false, // Shadows are expensive, disabled for optimization
+  },
+
+  // Physics (Rapier Specific)
+  PHYSICS: {
+    GRAVITY: [0, -9.81, 0] as [number, number, number],
+    TIME_STEP: 1/60,
+    MAX_SUBSTEPS: 1, // Minimize sub-steps for maximum performance
+  },
+
+  // Player Stats & Physical Properties
+  PLAYER: {
+    MOVE_SPEED: 5.0,
+    ROTATION_SPEED: 12.5, // ~720 deg/s
+    COLLIDER_RADIUS: 0.5,
+    COLLIDER_HEIGHT: 2.0,
+    MASS: 1.0,
+  },
+
+  // Arena Dimensions
   ARENA: {
     SIZE: 50,
     WALL_HEIGHT: 5,
-    COLOR: "#333333",
-    GRID_COLOR: "#444444",
   },
 
-  // Player Stats
-  PLAYER: {
-    MOVE_SPEED: 5,         // meters/second
-    ROTATION_SPEED: 12.56, // ~720 degrees in radians per second
-    RADIUS: 0.5,
-    HEIGHT: 1.0,
-    COLOR: "#1cb0f6",
-  },
-
-  // Camera Settings
+  // Camera Perspective
   CAMERA: {
-    OFFSET: { x: 0, y: 4, z: 8 }, // 4m up, 8m behind
-    FOV: 50,
+    OFFSET: { x: 0, y: 4, z: 8 }, // Note: Adjusted Z for 3rd person follow
+    FOV: 75,
+    NEAR: 0.1,
+    FAR: 1000,
   },
 
-  // Physics
-  PHYSICS: {
-    GRAVITY: -9.81,
-    PLAYER_MASS: 1,
-  }
-};
+  // Future: Object Pooling Sizes (Part 2 Preparation)
+  POOLS: {
+    ENEMY_SLIME: 50,
+    ENEMY_SKELETON: 30,
+    PROJECTILES: 100,
+    PARTICLES: 200,
+  },
+} as const;
