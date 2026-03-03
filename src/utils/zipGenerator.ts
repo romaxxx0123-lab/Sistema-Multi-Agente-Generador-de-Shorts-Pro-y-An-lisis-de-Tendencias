@@ -77,6 +77,10 @@ export const generateUnityProject = async (config: ProjectConfig) => {
     urpAsset: generateGuid(),
     enemyAiScript: generateGuid(),
     enemyMat: generateGuid(),
+    bossMat: generateGuid(),
+    tankMat: generateGuid(),
+    scoutMat: generateGuid(),
+    sniperMat: generateGuid(),
   };
 
   // Project Settings
@@ -118,6 +122,14 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   if (config.complexity === 'Cognitive') {
     materials.file("EnemyMat.mat", templates.material(0.8, 0.1, 0.1));
     materials.file("EnemyMat.mat.meta", templates.meta(guids.enemyMat));
+    materials.file("BossMat.mat", templates.material(1, 0.8, 0));
+    materials.file("BossMat.mat.meta", templates.meta(guids.bossMat));
+    materials.file("TankMat.mat", templates.material(0.2, 0.2, 0.2));
+    materials.file("TankMat.mat.meta", templates.meta(guids.tankMat));
+    materials.file("ScoutMat.mat", templates.material(0, 0.8, 0.8));
+    materials.file("ScoutMat.mat.meta", templates.meta(guids.scoutMat));
+    materials.file("SniperMat.mat", templates.material(0.5, 0, 0.5));
+    materials.file("SniperMat.mat.meta", templates.meta(guids.sniperMat));
   }
 
   const prefabs = assets.folder("Prefabs")!;
@@ -128,10 +140,21 @@ export const generateUnityProject = async (config: ProjectConfig) => {
   prefabs.file("Ground.prefab.meta", templates.meta(guids.groundPrefab));
 
   if (config.complexity === 'Cognitive') {
-    prefabs.file("SlasherEnemy.prefab", templates.perfectedEnemyPrefab(guids.enemyMat, guids.enemyAiScript, "SlasherEnemy"));
-    prefabs.file("SlasherEnemy.prefab.meta", templates.meta(generateGuid()));
-    prefabs.file("DroneEnemy.prefab", templates.perfectedEnemyPrefab(guids.enemyMat, guids.enemyAiScript, "DroneEnemy"));
-    prefabs.file("DroneEnemy.prefab.meta", templates.meta(generateGuid()));
+    const enemyFolder = prefabs.folder("Enemies")!;
+    prefabs.file("Enemies.meta", templates.meta(generateGuid()));
+
+    enemyFolder.file("SlasherEnemy.prefab", templates.perfectedEnemyPrefab(guids.enemyMat, guids.enemyAiScript, "SlasherEnemy"));
+    enemyFolder.file("SlasherEnemy.prefab.meta", templates.meta(generateGuid()));
+    enemyFolder.file("DroneEnemy.prefab", templates.perfectedEnemyPrefab(guids.enemyMat, guids.enemyAiScript, "DroneEnemy"));
+    enemyFolder.file("DroneEnemy.prefab.meta", templates.meta(generateGuid()));
+    enemyFolder.file("OmegaBoss.prefab", templates.bossEnemyPrefab(guids.bossMat, guids.enemyAiScript));
+    enemyFolder.file("OmegaBoss.prefab.meta", templates.meta(generateGuid()));
+    enemyFolder.file("TitanTank.prefab", templates.tankEnemyPrefab(guids.tankMat, guids.enemyAiScript));
+    enemyFolder.file("TitanTank.prefab.meta", templates.meta(generateGuid()));
+    enemyFolder.file("PeregrineScout.prefab", templates.scoutEnemyPrefab(guids.scoutMat, guids.enemyAiScript));
+    enemyFolder.file("PeregrineScout.prefab.meta", templates.meta(generateGuid()));
+    enemyFolder.file("ShadowSniper.prefab", templates.sniperEnemyPrefab(guids.sniperMat, guids.enemyAiScript));
+    enemyFolder.file("ShadowSniper.prefab.meta", templates.meta(generateGuid()));
   }
 
   const scenes = assets.folder("Scenes")!;

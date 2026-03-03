@@ -66,6 +66,7 @@ function App() {
         "[UI] Mapping Model-View-Presenter delegates...",
         `[LOGIC] Generating Deep-Logic ${config.genre} Controller...`,
         config.complexity === 'Cognitive' ? "[AI] Training perfected Enemy AI models..." : null,
+        config.complexity === 'Cognitive' ? "[MODELS] Constructing Ultra-Detailed Enemy Prefabs..." : null,
         "[ASSETS] Linking persistent GUIDs to Meta files...",
         "[VCS] Optimizing Git ignore patterns...",
         "[FINALIZING] Compiling hyper-detailed structure..."
@@ -482,9 +483,17 @@ function App() {
 
                       <HierarchyFolder icon="📁" name="Prefabs" color="yellow" meta desc="Player/Environment">
                         {config.complexity === 'Cognitive' && (
-                          <div className="pl-6 space-y-1 mt-2">
-                             <div className="text-[11px] text-slate-500 font-bold uppercase tracking-tighter">SlasherEnemy.prefab</div>
-                             <div className="text-[11px] text-slate-500 font-bold uppercase tracking-tighter">DroneEnemy.prefab</div>
+                          <div className="pl-6 space-y-2 mt-2 border-l border-white/5 ml-2">
+                            <HierarchyFolder icon="📁" name="Enemies" color="red">
+                              <div className="pl-4 space-y-1 mt-1 text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
+                                <div>OmegaBoss.prefab</div>
+                                <div>TitanTank.prefab</div>
+                                <div>PeregrineScout.prefab</div>
+                                <div>ShadowSniper.prefab</div>
+                                <div>SlasherEnemy.prefab</div>
+                                <div>DroneEnemy.prefab</div>
+                              </div>
+                            </HierarchyFolder>
                           </div>
                         )}
                       </HierarchyFolder>

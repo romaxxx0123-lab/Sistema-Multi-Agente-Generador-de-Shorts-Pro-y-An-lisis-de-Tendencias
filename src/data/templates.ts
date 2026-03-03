@@ -1733,6 +1733,466 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
 `,
 
+  scoutEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: SwiftScout_Peregrine
+  m_Component:
+  - component: {fileID: 400000}
+  - component: {fileID: 11400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+  - {fileID: 400003}
+--- !u!1 &100001
+GameObject:
+  m_Name: Core
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 1.2}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Wing_R
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0.8, y: 0, z: 0}
+  m_LocalRotation: {x: 0, y: 0.2, z: 0.5, w: 0.866}
+  m_LocalScale: {x: 1.5, y: 0.1, z: 0.8}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100003
+GameObject:
+  m_Name: Wing_L
+  m_Component:
+  - component: {fileID: 400003}
+  - component: {fileID: 3300003}
+  - component: {fileID: 2300003}
+--- !u!4 &400003
+Transform:
+  m_GameObject: {fileID: 100003}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: -0.8, y: 0, z: 0}
+  m_LocalRotation: {x: 0, y: -0.2, z: -0.5, w: 0.866}
+  m_LocalScale: {x: 1.5, y: 0.1, z: 0.8}
+--- !u!33 &3300003
+MeshFilter:
+  m_GameObject: {fileID: 100003}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300003
+MeshRenderer:
+  m_GameObject: {fileID: 100003}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!114 &11400000
+MonoBehaviour:
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
+`,
+
+  sniperEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: GhostSniper_Shadow
+  m_Component:
+  - component: {fileID: 400000}
+  - component: {fileID: 11400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+--- !u!1 &100001
+GameObject:
+  m_Name: Body
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 0.8, y: 2, z: 0.8}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Railgun
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 1.5, z: 1}
+  m_LocalScale: {x: 0.2, y: 0.2, z: 3.5}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!114 &11400000
+MonoBehaviour:
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
+`,
+
+  tankEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: HeavyTank_Titan
+  m_Component:
+  - component: {fileID: 400000}
+  - component: {fileID: 11400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+  - {fileID: 400003}
+--- !u!1 &100001
+GameObject:
+  m_Name: Chassis
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 3, y: 1, z: 4}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Turret
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 0.8, z: 0}
+  m_LocalScale: {x: 2, y: 0.8, z: 2}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100003
+GameObject:
+  m_Name: Cannon
+  m_Component:
+  - component: {fileID: 400003}
+  - component: {fileID: 3300003}
+  - component: {fileID: 2300003}
+--- !u!4 &400003
+Transform:
+  m_GameObject: {fileID: 100003}
+  m_Father: {fileID: 400002}
+  m_LocalPosition: {x: 0, y: 0, z: 1.5}
+  m_LocalScale: {x: 0.3, y: 0.3, z: 2.5}
+--- !u!33 &3300003
+MeshFilter:
+  m_GameObject: {fileID: 100003}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300003
+MeshRenderer:
+  m_GameObject: {fileID: 100003}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!114 &11400000
+MonoBehaviour:
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
+`,
+
+  bossEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: UltraBoss_Omega
+  m_Component:
+  - component: {fileID: 400000}
+  - component: {fileID: 11400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+  - {fileID: 400003}
+  - {fileID: 400004}
+  - {fileID: 400005}
+--- !u!1 &100001
+GameObject:
+  m_Name: Torso
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 2, y: 2.5, z: 2}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: RightClaw
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 1.5, y: 1, z: 0}
+  m_LocalScale: {x: 0.8, y: 2, z: 0.8}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100003
+GameObject:
+  m_Name: LeftClaw
+  m_Component:
+  - component: {fileID: 400003}
+  - component: {fileID: 3300003}
+  - component: {fileID: 2300003}
+--- !u!4 &400003
+Transform:
+  m_GameObject: {fileID: 100003}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: -1.5, y: 1, z: 0}
+  m_LocalScale: {x: 0.8, y: 2, z: 0.8}
+--- !u!33 &3300003
+MeshFilter:
+  m_GameObject: {fileID: 100003}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300003
+MeshRenderer:
+  m_GameObject: {fileID: 100003}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100004
+GameObject:
+  m_Name: Crown
+  m_Component:
+  - component: {fileID: 400004}
+  - component: {fileID: 3300004}
+  - component: {fileID: 2300004}
+--- !u!4 &400004
+Transform:
+  m_GameObject: {fileID: 100004}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 2, z: 0}
+  m_LocalScale: {x: 1.2, y: 0.3, z: 1.2}
+--- !u!33 &3300004
+MeshFilter:
+  m_GameObject: {fileID: 100004}
+  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300004
+MeshRenderer:
+  m_GameObject: {fileID: 100004}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100005
+GameObject:
+  m_Name: ReactorCore
+  m_Component:
+  - component: {fileID: 400005}
+  - component: {fileID: 3300005}
+  - component: {fileID: 2300005}
+--- !u!4 &400005
+Transform:
+  m_GameObject: {fileID: 100005}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 0.8, z: 0.8}
+  m_LocalScale: {x: 0.6, y: 0.6, z: 0.6}
+--- !u!33 &3300005
+MeshFilter:
+  m_GameObject: {fileID: 100005}
+  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300005
+MeshRenderer:
+  m_GameObject: {fileID: 100005}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!114 &11400000
+MonoBehaviour:
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
+`,
+
+  tankEnemyPrefab: (matGuid: string, scriptGuid: string) => `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100000
+GameObject:
+  m_Name: HeavyTank_Titan
+  m_Component:
+  - component: {fileID: 400000}
+  - component: {fileID: 11400000}
+--- !u!4 &400000
+Transform:
+  m_GameObject: {fileID: 100000}
+  m_Children:
+  - {fileID: 400001}
+  - {fileID: 400002}
+  - {fileID: 400003}
+--- !u!1 &100001
+GameObject:
+  m_Name: Chassis
+  m_Component:
+  - component: {fileID: 400001}
+  - component: {fileID: 3300001}
+  - component: {fileID: 2300001}
+--- !u!4 &400001
+Transform:
+  m_GameObject: {fileID: 100001}
+  m_Father: {fileID: 400000}
+  m_LocalScale: {x: 3, y: 1, z: 4}
+--- !u!33 &3300001
+MeshFilter:
+  m_GameObject: {fileID: 100001}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300001
+MeshRenderer:
+  m_GameObject: {fileID: 100001}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100002
+GameObject:
+  m_Name: Turret
+  m_Component:
+  - component: {fileID: 400002}
+  - component: {fileID: 3300002}
+  - component: {fileID: 2300002}
+--- !u!4 &400002
+Transform:
+  m_GameObject: {fileID: 100002}
+  m_Father: {fileID: 400000}
+  m_LocalPosition: {x: 0, y: 0.8, z: 0}
+  m_LocalScale: {x: 2, y: 0.8, z: 2}
+--- !u!33 &3300002
+MeshFilter:
+  m_GameObject: {fileID: 100002}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300002
+MeshRenderer:
+  m_GameObject: {fileID: 100002}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!1 &100003
+GameObject:
+  m_Name: Cannon
+  m_Component:
+  - component: {fileID: 400003}
+  - component: {fileID: 3300003}
+  - component: {fileID: 2300003}
+--- !u!4 &400003
+Transform:
+  m_GameObject: {fileID: 100003}
+  m_Father: {fileID: 400002}
+  m_LocalPosition: {x: 0, y: 0, z: 1.5}
+  m_LocalScale: {x: 0.3, y: 0.3, z: 2.5}
+--- !u!33 &3300003
+MeshFilter:
+  m_GameObject: {fileID: 100003}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2300003
+MeshRenderer:
+  m_GameObject: {fileID: 100003}
+  m_Materials:
+  - {fileID: 2100000, guid: ${matGuid}, type: 2}
+--- !u!114 &11400000
+MonoBehaviour:
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: ${scriptGuid}, type: 3}
+`,
+
   readme: (config: { projectName: string; genre: string; complexity: string; useNewInputSystem: boolean }) => `# ${config.projectName} - Cognitive Architect
 
 Generated by **Unity World Architect v10.0 - Cognitive Engine**.
