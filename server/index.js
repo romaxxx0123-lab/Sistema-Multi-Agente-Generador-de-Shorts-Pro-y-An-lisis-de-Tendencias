@@ -46,12 +46,17 @@ async function callOllama(messages, model = 'qwen2.5-coder') {
       stream: false,
       format: 'json',
       options: {
-        temperature: 0.2
+        temperature: 0.1,
+        num_ctx: 32768,
+        num_predict: 8192
       }
+    }, {
+      timeout: 600000 // 10 minute timeout for large models/generations
     });
     return JSON.parse(response.data.message.content);
   } catch (error) {
     console.error("Ollama Call Error:", error.message);
+    if (error.code === 'ECONNABORTED') throw new Error("AI Generation timed out. The request was too large or the model is too slow.");
     throw new Error(error.code === 'ECONNREFUSED' ? "Ollama not running. Run 'ollama serve'." : "AI Generation failed.");
   }
 }
@@ -91,13 +96,35 @@ app.post('/api/generate-manifest', async (req, res) => {
 
     if (planData.reasoning) sendProgress("plan", planData.reasoning);
 
-    // Phase 3: Manifest Generation
-    sendProgress("manifest", ["[SYSTEM] Phase 3: Manifest Synthesis...", "[AI] Generating C# files and YAML assets..."]);
+    // Phase 3: Manifest Generation (Split into two phases to avoid truncation)
+    sendProgress("manifest", ["[SYSTEM] Phase 3.1: Manifest Synthesis (Infrastructure)...", "[AI] Generating Core Systems and Foundation..."]);
     const manifestPrompt = getPrompt('manifest').replace('{plan}', JSON.stringify(planData.architecturePlan));
-    let manifestRaw = await callOllama([
+    let manifestFoundation = await callOllama([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: manifestPrompt }
     ], model);
+
+    sendProgress("manifest", ["[SYSTEM] Phase 3.2: Manifest Synthesis (Content)...", "[AI] Generating Gameplay, Prefabs and Scenes..."]);
+    const manifestExtendedPrompt = getPrompt('manifest_extended')
+      .replace('{plan}', JSON.stringify(planData.architecturePlan))
+      .replace('{foundation}', JSON.stringify(manifestFoundation.files.map(f => f.path)));
+
+    let manifestContent = await callOllama([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: manifestExtendedPrompt }
+    ], model);
+
+    // Merge Manifests and Deduplicate Files by Path
+    const combinedFiles = [...manifestFoundation.files, ...manifestContent.files];
+    const uniqueFiles = Array.from(new Map(combinedFiles.map(f => [f.path, f])).values());
+
+    let manifestRaw = {
+      ...manifestFoundation,
+      folders: [...new Set([...manifestFoundation.folders, ...manifestContent.folders])],
+      files: uniqueFiles,
+      notes: [...new Set([...(manifestFoundation.notes || []), ...(manifestContent.notes || [])])],
+      warnings: [...new Set([...(manifestFoundation.warnings || []), ...(manifestContent.warnings || [])])]
+    };
 
     // Phase 4: Validation & Repair Loop
     sendProgress("validate", ["[SYSTEM] Phase 4: Validation & Quality Control...", "[AI] Verifying JSON schema and security constraints..."]);

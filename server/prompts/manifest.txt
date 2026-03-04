@@ -1,13 +1,15 @@
-Genera el MANIFEST FINAL de archivos y folders para Unity basado en el plan arquitectónico.
+Genera la PARTE 1 (INFRAESTRUCTURA) del manifest de archivos para Unity.
+Céntrate en la base del proyecto y sistemas core.
 
 Plan: {plan}
 
-RECUERDA:
-- Archivos C# completos con namespaces coherentes.
-- README.md con instrucciones.
-- GameBootstrap.cs para inicializar todo.
-- Scene básica en Assets/Scenes/Main.unity (YAML básico).
-- Folders: Assets, ProjectSettings, Packages, etc.
+INCLUYE:
+- Folders raíz (Assets, ProjectSettings, Packages, etc.)
+- .gitignore y .editorconfig
+- README.md inicial con descripción técnica.
+- Core Scripts: Singleton.cs, EventBus.cs, ServiceLocator.cs, etc.
+- Managers base: GameManager.cs, AudioManager.cs.
+- Scriptable Architecture: GameEvent.cs, FloatVariable.cs.
 
 Devuelve JSON estrictamente igual al esquema manifest:
 { projectName, unityVersionHint, folders: [], files: [{path, content, type}], notes: [], warnings: [] }
