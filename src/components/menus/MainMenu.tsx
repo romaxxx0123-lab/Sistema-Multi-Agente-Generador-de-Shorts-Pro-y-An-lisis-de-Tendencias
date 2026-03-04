@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Play, Users, LayoutGrid, Settings, LogOut } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
 
@@ -36,11 +37,21 @@ export function MainMenu() {
 
       {/* Button List */}
       <div className="flex flex-col gap-4 z-10">
-        <UIButton onClick={startRun} className="!w-[350px]">▶️ Nueva Run</UIButton>
-        <UIButton onClick={() => setView('characters')} variant="secondary" className="!w-[350px]">👤 Personajes</UIButton>
-        <UIButton onClick={() => setView('gallery')} variant="secondary" className="!w-[350px]">🏛️ Galería Assets</UIButton>
-        <UIButton variant="secondary" className="!w-[350px]">⚙️ Opciones</UIButton>
-        <UIButton variant="danger" className="!w-[350px]">🚪 Salir</UIButton>
+        <UIButton onClick={startRun} className="!w-[350px] flex items-center justify-center gap-3">
+          <Play size={18} fill="currentColor" /> Nueva Run
+        </UIButton>
+        <UIButton onClick={() => setView('characters')} variant="secondary" className="!w-[350px] flex items-center justify-center gap-3">
+          <Users size={18} /> Personajes
+        </UIButton>
+        <UIButton onClick={() => setView('gallery')} variant="secondary" className="!w-[350px] flex items-center justify-center gap-3">
+          <LayoutGrid size={18} /> Galería Assets
+        </UIButton>
+        <UIButton variant="secondary" className="!w-[350px] flex items-center justify-center gap-3">
+          <Settings size={18} /> Opciones
+        </UIButton>
+        <UIButton variant="danger" className="!w-[350px] flex items-center justify-center gap-3">
+          <LogOut size={18} /> Salir
+        </UIButton>
       </div>
 
       {/* Footer Metadata */}

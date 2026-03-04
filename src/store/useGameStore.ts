@@ -38,6 +38,7 @@ interface GameState {
 
   // Actions
   setView: (view: GameState['view']) => void;
+  setSelectedCharacter: (id: string) => void;
   setStatus: (status: GameState['status']) => void;
   setPlayerRef: (ref: Mesh | null) => void;
 
@@ -81,6 +82,7 @@ export const useGameStore = create<GameState>((set) => ({
   selectedCharacter: 'ronin',
 
   setView: (view) => set({ view }),
+  setSelectedCharacter: (selectedCharacter) => set({ selectedCharacter }),
   setStatus: (status) => set({ status }),
   setPlayerRef: (ref) => set({ playerRef: ref }),
 

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Sparkles, Sword, Zap, Flame, RotateCcw, FastForward } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { UIButton } from './ui/UIButton';
 
@@ -13,7 +14,7 @@ interface UpgradeOption {
     description: string;
     stats: string;
     rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
-    icon: string;
+    icon: React.ReactNode;
     level: string;
 }
 
@@ -33,7 +34,7 @@ const MOCK_OPTIONS: UpgradeOption[] = [
         stats: 'Daño: 15',
         level: 'Nivel 1/5',
         rarity: 'rare',
-        icon: '🔵'
+        icon: <Sword className="text-blue-400" />
     },
     {
         id: 'speed',
@@ -42,7 +43,7 @@ const MOCK_OPTIONS: UpgradeOption[] = [
         stats: 'Actual: 5.0 m/s\nNuevo: 5.75 m/s',
         level: 'Mejora Pasiva',
         rarity: 'uncommon',
-        icon: '🟢'
+        icon: <Zap className="text-green-400" />
     },
     {
         id: 'flame',
@@ -51,7 +52,7 @@ const MOCK_OPTIONS: UpgradeOption[] = [
         stats: 'Radio: 3m\nDaño: 5/s',
         level: 'Nivel 1/5',
         rarity: 'epic',
-        icon: '🔴'
+        icon: <Flame className="text-red-500" />
     }
 ];
 
@@ -75,11 +76,11 @@ export function LevelUpOverlay() {
       >
         <div className="text-center mb-10">
             <motion.h2
-                animate={{ scale: [1, 1.1, 1] }}
+                animate={{ scale: [1, 1.05, 1] }}
                 transition={{ repeat: Infinity, duration: 2 }}
-                className="text-4xl font-black text-[#F1C40F] uppercase tracking-tighter"
+                className="text-4xl font-black text-[#F1C40F] uppercase tracking-tighter flex items-center justify-center gap-4"
             >
-                ✨ ¡NIVEL {run.level}! ✨
+                <Sparkles size={32} /> ¡NIVEL {run.level}! <Sparkles size={32} />
             </motion.h2>
             <p className="text-white/60 font-bold uppercase text-sm mt-1">Elige una mejora para tu Ronin</p>
         </div>
@@ -93,13 +94,13 @@ export function LevelUpOverlay() {
                     transition={{ delay: 0.1 * (i + 1), type: 'spring', damping: 15 }}
                     whileHover={{ scale: 1.05 }}
                     onClick={handleSelect}
-                    className="w-[240px] h-[350px] bg-black/40 rounded-xl p-5 border-4 cursor-pointer flex flex-col justify-between"
+                    className="w-[240px] h-[350px] bg-black/40 rounded-xl p-5 border-4 cursor-pointer flex flex-col justify-between group"
                     style={{ borderColor: RARITY_COLORS[opt.rarity] }}
                 >
                     <div className="text-center">
-                        <div className="text-5xl mb-4">{opt.icon}</div>
-                        <h3 className="font-black text-white text-xl leading-none mb-1">{opt.title}</h3>
-                        <p className="text-white/70 text-xs font-bold uppercase">{opt.rarity}</p>
+                        <div className="text-5xl mb-4 flex justify-center scale-150 py-4 opacity-50 group-hover:opacity-100 transition-opacity">{opt.icon}</div>
+                        <h3 className="font-black text-white text-xl leading-none mb-1 group-hover:text-[#F1C40F] transition-colors">{opt.title}</h3>
+                        <p className="text-white/70 text-xs font-bold uppercase tracking-widest">{opt.rarity}</p>
                     </div>
 
                     <div className="flex-1 mt-4 space-y-2">
@@ -120,8 +121,12 @@ export function LevelUpOverlay() {
         </div>
 
         <div className="absolute bottom-8 right-8 flex gap-4">
-            <UIButton variant="secondary" className="!min-w-[150px]">🔄 Reroll (2)</UIButton>
-            <UIButton variant="ghost" className="!min-w-[100px] opacity-30 hover:opacity-100" onClick={handleSelect}>⏭️ Skip</UIButton>
+            <UIButton variant="secondary" className="!min-w-[180px] flex items-center justify-center gap-2">
+                <RotateCcw size={16} /> Reroll (2)
+            </UIButton>
+            <UIButton variant="ghost" className="!min-w-[120px] opacity-30 hover:opacity-100 flex items-center justify-center gap-2" onClick={handleSelect}>
+                <FastForward size={16} /> Skip
+            </UIButton>
         </div>
 
       </motion.div>

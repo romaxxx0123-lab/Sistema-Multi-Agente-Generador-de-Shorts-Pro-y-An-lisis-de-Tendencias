@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Pause, Play, Settings, Home, LogOut } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
 
@@ -26,15 +27,23 @@ export function PauseOverlay() {
         animate={{ scale: 1, opacity: 1 }}
         className="bg-[#2C3E50]/95 p-10 rounded-2xl border-2 border-white/20 w-[400px] text-center shadow-2xl"
       >
-        <h2 className="text-3xl font-black text-white uppercase italic mb-8 flex items-center justify-center gap-2">
-            <span>⏸️</span> PAUSA
+        <h2 className="text-3xl font-black text-white uppercase italic mb-8 flex items-center justify-center gap-3">
+            <Pause size={32} className="text-white/20" /> PAUSA
         </h2>
 
         <div className="flex flex-col gap-3 mb-10">
-            <UIButton onClick={() => setStatus('playing')}>▶️ Continuar</UIButton>
-            <UIButton variant="secondary">⚙️ Opciones</UIButton>
-            <UIButton variant="secondary" onClick={resetGame}>🏠 Menú Principal</UIButton>
-            <UIButton variant="danger">🚪 Salir</UIButton>
+            <UIButton onClick={() => setStatus('playing')} className="flex items-center justify-center gap-3">
+                <Play size={18} fill="currentColor" /> Continuar
+            </UIButton>
+            <UIButton variant="secondary" className="flex items-center justify-center gap-3">
+                <Settings size={18} /> Opciones
+            </UIButton>
+            <UIButton variant="secondary" onClick={resetGame} className="flex items-center justify-center gap-3">
+                <Home size={18} /> Menú Principal
+            </UIButton>
+            <UIButton variant="danger" className="flex items-center justify-center gap-3">
+                <LogOut size={18} /> Salir
+            </UIButton>
         </div>
 
         <div className="pt-6 border-t border-white/10 flex justify-between text-white/50 text-[10px] font-black uppercase tracking-widest">
