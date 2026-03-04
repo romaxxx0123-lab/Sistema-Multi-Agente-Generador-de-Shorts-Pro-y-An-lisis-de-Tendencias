@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier';
 import { Vector3, Quaternion, Color } from 'three';
@@ -20,7 +20,11 @@ interface EnemyProps {
 export function Enemy({ data }: EnemyProps) {
   const rbRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<any>(null);
+  const prevHp = useRef(data.hp);
   const [hitFlash, setHitFlash] = useState(0);
+  const [isDead, setIsDead] = useState(false);
+  const [dissolveProgress, setDissolveProgress] = useState(0);
+  const [hitStop, setHitStop] = useState(0);
 
   const playerRef = useGameStore((state) => state.playerRef);
   const status = useGameStore((state) => state.status);
@@ -36,6 +40,23 @@ export function Enemy({ data }: EnemyProps) {
   const enemyPos = useMemo(() => new Vector3(), []);
   const targetQuat = useMemo(() => new Quaternion(), []);
   const lookAtMat = useMemo(() => new Vector3(), []);
+
+  // Hit Detection & Knockback Feedback
+  useEffect(() => {
+    if (data.hp < prevHp.current) {
+      setHitFlash(1);
+      setHitStop(0.1); // 100ms hit stop
+      // Apply physical knockback
+      if (rbRef.current && playerRef) {
+        const pPos = new Vector3();
+        playerRef.getWorldPosition(pPos);
+        const { x, y, z } = rbRef.current.translation();
+        const kbDir = new Vector3(x - pPos.x, 0, z - pPos.z).normalize();
+        rbRef.current.applyImpulse({ x: kbDir.x * 10, y: 4, z: kbDir.z * 10 }, true);
+      }
+    }
+    prevHp.current = data.hp;
+  }, [data.hp, playerRef]);
 
   const stats = useMemo(() => {
     let s = {
@@ -56,6 +77,29 @@ export function Enemy({ data }: EnemyProps) {
 
   useFrame((_state, delta) => {
     if (status !== 'playing' || !playerRef || !rbRef.current) return;
+
+    // Hit Stop Logic
+    if (hitStop > 0) {
+      setHitStop(prev => Math.max(0, prev - delta));
+      return;
+    }
+
+    // Death Dissolve Logic
+    if (data.hp <= 0 && !isDead) {
+      setIsDead(true);
+      // Disable physics on death
+      rbRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    }
+
+    if (isDead) {
+      setDissolveProgress(prev => Math.min(1, prev + delta * 1.5));
+      if (dissolveProgress >= 1) {
+        addXp(stats.xp);
+        addKill();
+        removeEnemy(data.id);
+      }
+      return;
+    }
 
     // Hit flash cooldown
     if (hitFlash > 0) setHitFlash(prev => Math.max(0, prev - delta * 5));
@@ -94,15 +138,10 @@ export function Enemy({ data }: EnemyProps) {
       }
     }
 
-    // 5. Cleanup if dead (logic happens in store)
-    if (data.hp <= 0) {
-        addXp(stats.xp);
-        addKill();
-        removeEnemy(data.id);
-    }
   });
 
   const handleCollision = (e: any) => {
+    if (isDead) return;
       if (e.other.rigidBodyObject?.name === 'player') {
           takeDamage(stats.damage);
           setHitFlash(1);
@@ -132,7 +171,7 @@ export function Enemy({ data }: EnemyProps) {
             <meshBasicMaterial color="white" transparent opacity={hitFlash * 0.5} />
           </mesh>
 
-          <group scale={stats.scale}>
+          <group scale={stats.scale * (1 - dissolveProgress)}>
             {data.type === 'skeleton' && <Skeleton />}
             {data.type === 'ninja' && <Ninja />}
             {data.type === 'oni' && <Oni />}

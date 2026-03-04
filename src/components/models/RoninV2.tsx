@@ -1,8 +1,9 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Group } from "three";
 import { TextureGenerator } from "../../utils/textures";
+import { SlashTrail } from "../game/SlashTrail";
 
 /**
  * RONIN V2 - HIGH QUALITY STYLIZED PLAYER
@@ -13,6 +14,14 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
   const headRef = useRef<Group>(null);
   const tiltRef = useRef<Group>(null);
   const swordRef = useRef<Group>(null);
+  const rightArmRef = useRef<Group>(null);
+  const bodyGroupRef = useRef<Group>(null);
+
+  // Animation state
+  const attackTime = useRef(0);
+  const wasAttacking = useRef(false);
+  const [slashActive, setSlashActive] = useState(false);
+  const [slashProgress, setSlashProgress] = useState(0);
 
   const kimonoTextures = useMemo(() => TextureGenerator.createFabric('#2d3436'), []);
   const hakamaTextures = useMemo(() => TextureGenerator.createFabric('#1a1a1a'), []);
@@ -27,31 +36,91 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
     if (!groupRef.current) return;
     const t = state.clock.getElapsedTime();
 
-    // Breathing/Idle bobbing
-    groupRef.current.position.y = Math.sin(t * 2) * 0.05 + 0.9;
+    // --- RESPONSIVE LOCOMOTION ---
+    const speed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2);
+    const isMoving = speed > 0.1;
 
-    // Head slight tilt
+    // 1. Dynamic Bobbing (Idle vs Walk)
+    const bobFreq = isMoving ? speed * 2 : 2;
+    const bobAmp = isMoving ? 0.08 : 0.05;
+    groupRef.current.position.y = Math.sin(t * bobFreq) * bobAmp + 0.9;
+
+    // 2. Head Look/Tilt
     if (headRef.current) {
-      headRef.current.rotation.z = Math.sin(t * 1.5) * 0.05;
+      headRef.current.rotation.z = Math.sin(t * (isMoving ? bobFreq : 1.5)) * (isMoving ? 0.1 : 0.05);
+      // Look slightly in movement direction
+      headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, velocity.x * 0.1, 0.1);
     }
 
-    // Kinetic Lean based on velocity
+    // 3. Kinetic Lean (Refined)
     if (tiltRef.current) {
-      // Calculate speed in horizontal plane
-      const speed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2);
-      const leanAmount = speed * 0.02;
+      // Lean into the movement direction
+      const targetTiltZ = -velocity.x * 0.03;
+      const targetTiltX = velocity.z * 0.03;
+      tiltRef.current.rotation.z = THREE.MathUtils.lerp(tiltRef.current.rotation.z, targetTiltZ, 0.15);
+      tiltRef.current.rotation.x = THREE.MathUtils.lerp(tiltRef.current.rotation.x, targetTiltX, 0.15);
 
-      // Target rotation for tilt (pitch/roll)
-      tiltRef.current.rotation.z = THREE.MathUtils.lerp(tiltRef.current.rotation.z, -velocity.x * 0.015, 0.1);
-      tiltRef.current.rotation.x = THREE.MathUtils.lerp(tiltRef.current.rotation.x, velocity.z * 0.015, 0.1);
+      // Walk Sway
+      if (isMoving) {
+        tiltRef.current.rotation.y = Math.sin(t * bobFreq) * 0.05;
+      }
     }
 
-    // Sword Animation
-    if (swordRef.current) {
-      if (isAttacking) {
-        swordRef.current.rotation.x = THREE.MathUtils.lerp(swordRef.current.rotation.x, -Math.PI / 2, 0.3);
+    // --- ADVANCED ATTACK SYSTEM ---
+    const attackDuration = 0.5;
+    const anticipationTime = 0.1;
+    const strikeTime = 0.25;
+
+    if (isAttacking && !wasAttacking.current) {
+      attackTime.current = state.clock.getElapsedTime();
+    }
+    wasAttacking.current = isAttacking;
+
+    const timeSinceAttack = state.clock.getElapsedTime() - attackTime.current;
+    const isInsideAttackWindow = timeSinceAttack < attackDuration;
+
+    // Slash trail trigger
+    const slashIn = anticipationTime;
+    const slashOut = strikeTime;
+    if (timeSinceAttack >= slashIn && timeSinceAttack <= slashOut) {
+      setSlashActive(true);
+      setSlashProgress((timeSinceAttack - slashIn) / (slashOut - slashIn));
+    } else {
+      setSlashActive(false);
+    }
+
+    if (swordRef.current && rightArmRef.current && bodyGroupRef.current) {
+      if (isInsideAttackWindow) {
+        if (timeSinceAttack < anticipationTime) {
+          // 1. ANTICIPATION: Pull back
+          const p = timeSinceAttack / anticipationTime;
+          swordRef.current.rotation.x = THREE.MathUtils.lerp(0, Math.PI / 4, p);
+          rightArmRef.current.rotation.x = THREE.MathUtils.lerp(0, -Math.PI / 6, p);
+          bodyGroupRef.current.rotation.y = THREE.MathUtils.lerp(0, -Math.PI / 8, p);
+          bodyGroupRef.current.position.z = THREE.MathUtils.lerp(0, -0.1, p);
+        } else if (timeSinceAttack < strikeTime) {
+          // 2. STRIKE: Fast swing + Lunge
+          const p = (timeSinceAttack - anticipationTime) / (strikeTime - anticipationTime);
+          swordRef.current.rotation.x = THREE.MathUtils.lerp(Math.PI / 4, -Math.PI * 0.8, p);
+          rightArmRef.current.rotation.x = THREE.MathUtils.lerp(-Math.PI / 6, Math.PI / 3, p);
+          bodyGroupRef.current.rotation.y = THREE.MathUtils.lerp(-Math.PI / 8, Math.PI / 4, p);
+          bodyGroupRef.current.position.z = THREE.MathUtils.lerp(-0.1, 0.3, p);
+          // Shoulder twist
+          rightArmRef.current.position.z = THREE.MathUtils.lerp(0, 0.1, p);
+        } else {
+          // 3. RECOVERY: Return to idle
+          const p = (timeSinceAttack - strikeTime) / (attackDuration - strikeTime);
+          swordRef.current.rotation.x = THREE.MathUtils.lerp(-Math.PI * 0.8, 0, p);
+          rightArmRef.current.rotation.x = THREE.MathUtils.lerp(Math.PI / 3, 0, p);
+          bodyGroupRef.current.rotation.y = THREE.MathUtils.lerp(Math.PI / 4, 0, p);
+          bodyGroupRef.current.position.z = THREE.MathUtils.lerp(0.3, 0, p);
+          rightArmRef.current.position.z = THREE.MathUtils.lerp(0.1, 0, p);
+        }
       } else {
+        // IDLE STATE FOR SWORD/ARM
         swordRef.current.rotation.x = THREE.MathUtils.lerp(swordRef.current.rotation.x, 0, 0.1);
+        rightArmRef.current.rotation.x = THREE.MathUtils.lerp(rightArmRef.current.rotation.x, 0, 0.1);
+        bodyGroupRef.current.rotation.y = THREE.MathUtils.lerp(bodyGroupRef.current.rotation.y, 0, 0.1);
       }
     }
   });
@@ -59,6 +128,7 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
   return (
     <group {...props} ref={groupRef}>
       <group ref={tiltRef}>
+      <group ref={bodyGroupRef}>
       {/* 1. LOWER BODY (Hakama) */}
       <mesh position={[0, -0.4, 0]} castShadow>
         <cylinderGeometry args={[0.3, 0.4, 0.8, 8]} />
@@ -79,7 +149,7 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
 
       {/* 3. ARMS & SODE (Shoulder Armor) */}
       {/* Right Arm */}
-      <group position={[0.35, 0.3, 0]}>
+      <group ref={rightArmRef} position={[0.35, 0.3, 0]}>
         <mesh castShadow>
           <boxGeometry args={[0.15, 0.4, 0.15]} />
           <meshStandardMaterial color="#2d3436" />
@@ -137,6 +207,10 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
       </group>
 
       </group>
+      </group>
+
+      {/* SLASH EFFECT */}
+      <SlashTrail active={slashActive} progress={slashProgress} />
 
       {/* Shadow Blob */}
       <mesh position={[0, -0.85, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
