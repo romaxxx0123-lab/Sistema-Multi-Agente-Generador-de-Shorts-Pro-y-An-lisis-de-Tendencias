@@ -242,6 +242,7 @@ function App() {
                         className="bg-slate-950 border border-white/5 rounded-xl px-4 py-2 text-xs font-bold text-slate-400 focus:outline-none focus:border-indigo-500/40 disabled:opacity-50"
                       >
                         <option value="qwen2.5-coder">qwen2.5-coder</option>
+                        <option value="qwen3:30b">qwen3:30b</option>
                         <option value="llama3.2">llama3.2</option>
                         <option value="mistral">mistral</option>
                       </select>
