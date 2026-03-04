@@ -20,7 +20,7 @@ Versión optimizada de la PARTE 1A, migrada a un stack de alto rendimiento para 
 ## Stack Técnico (Optimizado)
 - **React 19** + **Vite**
 - **Three.js** (@react-three/fiber v9) para el renderizado 3D.
-- **Rapier.js** (@react-three/rapier) para el motor de física (WASM).
+* **Rapier.js** (@react-three/rapier) para el motor de física (optimizado para hordas).
 - **Zustand** para la gestión de estado global.
 
 ## Instalación y Ejecución
