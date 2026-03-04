@@ -6,6 +6,7 @@ import { Environment } from '@react-three/drei';
 import { Arena } from './components/Arena';
 import { Player } from './components/Player';
 import { CameraFollow } from './components/CameraFollow';
+import { SakuraParticles } from './components/Particles';
 import { Effects } from './components/Effects';
 import { DebugPanel } from './components/DebugPanel';
 
@@ -73,6 +74,8 @@ export const RoninGame = () => {
               <Player />
             </Physics>
 
+            <SakuraParticles count={200} />
+            <fog attach="fog" args={['#111111', 10, 50]} />
             <Environment preset="city" />
             <Effects />
             <GameLogicLoop updateTime={updateTime} status={status} />

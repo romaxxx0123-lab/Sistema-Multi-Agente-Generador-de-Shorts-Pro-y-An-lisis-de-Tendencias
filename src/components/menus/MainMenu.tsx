@@ -23,14 +23,15 @@ export function MainMenu() {
 
       {/* Title */}
       <motion.div
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="relative mb-20 text-center"
+        initial={{ opacity: 0, letterSpacing: '0.5em' }}
+        animate={{ opacity: 1, letterSpacing: '0.1em' }}
+        transition={{ duration: 1.5, ease: 'easeOut' }}
+        className="relative mb-24 text-center"
       >
-        <h1 className="text-7xl font-black italic tracking-tighter text-white drop-shadow-2xl">
-          ⚔️ <span className="bg-gradient-to-b from-[#F39C12] to-[#FFFFFF] bg-clip-text text-transparent">RONIN SURVIVOR</span> ⚔️
+        <h1 className="text-6xl font-black italic text-white drop-shadow-2xl font-mono">
+          RONIN <span className="text-[#F1C40F]">SURVIVOR</span>
         </h1>
-        <div className="w-full h-1 bg-[#F39C12] mt-2 scale-x-110" />
+        <div className="w-32 h-[1px] bg-white/20 mx-auto mt-6" />
       </motion.div>
 
       {/* Button List */}

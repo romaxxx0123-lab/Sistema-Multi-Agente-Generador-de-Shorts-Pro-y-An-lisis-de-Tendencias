@@ -5,10 +5,10 @@ import { TextureGenerator } from '../../utils/textures';
  * SAKURA TREE - STYLIZED
  */
 export const SakuraTree = ({  scale = 1 , ...props }: any) => {
-  const trunkTexture = useMemo(() => {
-    const tex = TextureGenerator.createWoodGrain('#4b3621', '#2d1b0d', 512);
-    tex.repeat.set(1, 2);
-    return tex;
+  const trunkTextures = useMemo(() => {
+    const texs = TextureGenerator.createWoodGrain('#4b3621', '#2d1b0d', 512);
+    Object.values(texs).forEach(t => t.repeat.set(1, 2));
+    return texs;
   }, []);
 
   return (
@@ -16,7 +16,7 @@ export const SakuraTree = ({  scale = 1 , ...props }: any) => {
       {/* Trunk */}
       <mesh position={[0, 1.5, 0]} castShadow>
         <cylinderGeometry args={[0.2, 0.4, 3, 6]} />
-        <meshStandardMaterial map={trunkTexture} roughness={1} />
+        <meshStandardMaterial {...trunkTextures} />
       </mesh>
 
       {/* Foliage (Sakura Blooms) */}

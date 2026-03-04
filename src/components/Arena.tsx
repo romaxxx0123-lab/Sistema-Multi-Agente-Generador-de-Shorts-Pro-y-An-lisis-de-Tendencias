@@ -16,10 +16,10 @@ export const Arena = () => {
   const wallHeight = CONFIG.ARENA.WALL_HEIGHT;
 
   // Generate high-quality floor texture
-  const floorTexture = useMemo(() => {
-    const tex = TextureGenerator.createCobblestone(1024);
-    tex.repeat.set(10, 10);
-    return tex;
+  const floorTextures = useMemo(() => {
+    const texs = TextureGenerator.createCobblestone(1024);
+    Object.values(texs).forEach(t => t.repeat.set(10, 10));
+    return texs;
   }, []);
 
   return (
@@ -30,9 +30,8 @@ export const Arena = () => {
         <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[size, size]} />
           <meshStandardMaterial
-            map={floorTexture}
-            roughness={0.8}
-            metalness={0.2}
+            {...floorTextures}
+            metalness={0.1}
           />
         </mesh>
 

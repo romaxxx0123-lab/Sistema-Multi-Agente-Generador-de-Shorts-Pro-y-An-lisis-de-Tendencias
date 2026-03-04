@@ -1,22 +1,24 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Group, MeshStandardMaterial } from "three";
+import * as THREE from "three";
+import { Group } from "three";
 import { TextureGenerator } from "../../utils/textures";
 
 /**
  * RONIN V2 - HIGH QUALITY STYLIZED PLAYER
  * Features: Kasa (Hat), Kimono with Obi, Sode (Armor), and detailed proportions.
  */
-export const RoninV2 = (props: any) => {
+export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, ...props }: any) => {
   const groupRef = useRef<Group>(null);
   const headRef = useRef<Group>(null);
+  const tiltRef = useRef<Group>(null);
 
-  const kimonoTexture = useMemo(() => TextureGenerator.createFabric('#2d3436'), []);
-  const hakamaTexture = useMemo(() => TextureGenerator.createFabric('#1a1a1a'), []);
-  const hatTexture = useMemo(() => {
-    const tex = TextureGenerator.createWoodGrain('#4b3621', '#2d1b0d', 256);
-    tex.repeat.set(4, 1);
-    return tex;
+  const kimonoTextures = useMemo(() => TextureGenerator.createFabric('#2d3436'), []);
+  const hakamaTextures = useMemo(() => TextureGenerator.createFabric('#1a1a1a'), []);
+  const hatTextures = useMemo(() => {
+    const texs = TextureGenerator.createWoodGrain('#4b3621', '#2d1b0d', 256);
+    Object.values(texs).forEach(t => t.repeat.set(4, 1));
+    return texs;
   }, []);
 
   // Procedural idle animation
@@ -31,20 +33,32 @@ export const RoninV2 = (props: any) => {
     if (headRef.current) {
       headRef.current.rotation.z = Math.sin(t * 1.5) * 0.05;
     }
+
+    // Kinetic Lean based on velocity
+    if (tiltRef.current) {
+      // Calculate speed in horizontal plane
+      const speed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2);
+      const leanAmount = speed * 0.02;
+
+      // Target rotation for tilt (pitch/roll)
+      tiltRef.current.rotation.z = THREE.MathUtils.lerp(tiltRef.current.rotation.z, -velocity.x * 0.015, 0.1);
+      tiltRef.current.rotation.x = THREE.MathUtils.lerp(tiltRef.current.rotation.x, velocity.z * 0.015, 0.1);
+    }
   });
 
   return (
     <group {...props} ref={groupRef}>
+      <group ref={tiltRef}>
       {/* 1. LOWER BODY (Hakama) */}
       <mesh position={[0, -0.4, 0]} castShadow>
         <cylinderGeometry args={[0.3, 0.4, 0.8, 8]} />
-        <meshStandardMaterial map={hakamaTexture} roughness={0.8} />
+        <meshStandardMaterial {...hakamaTextures} />
       </mesh>
 
       {/* 2. TORSO (Kimono) */}
       <mesh position={[0, 0.2, 0]} castShadow>
         <boxGeometry args={[0.5, 0.6, 0.3]} />
-        <meshStandardMaterial map={kimonoTexture} roughness={0.7} />
+        <meshStandardMaterial {...kimonoTextures} />
       </mesh>
 
       {/* Obi (Belt) */}
@@ -96,8 +110,10 @@ export const RoninV2 = (props: any) => {
         {/* KASA (Traditional Hat) */}
         <mesh position={[0, 0.15, 0]} rotation={[0.1, 0, 0]}>
           <cylinderGeometry args={[0.05, 0.6, 0.15, 12]} />
-          <meshStandardMaterial map={hatTexture} roughness={1} />
+          <meshStandardMaterial {...hatTextures} />
         </mesh>
+      </group>
+
       </group>
 
       {/* Shadow Blob */}

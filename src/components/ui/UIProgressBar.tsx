@@ -20,8 +20,8 @@ export function UIProgressBar({
   value,
   max,
   color,
-  bgColor = '#2C3E50',
-  height = 25,
+  bgColor = 'rgba(0,0,0,0.5)',
+  height = 10,
   width = 300,
   showText = false,
   text = '',
@@ -31,7 +31,7 @@ export function UIProgressBar({
 
   return (
     <div
-      className="relative rounded-sm border-2 border-black overflow-hidden"
+      className="relative rounded-full overflow-hidden backdrop-blur-md border border-white/10"
       style={{
         backgroundColor: bgColor,
         height,

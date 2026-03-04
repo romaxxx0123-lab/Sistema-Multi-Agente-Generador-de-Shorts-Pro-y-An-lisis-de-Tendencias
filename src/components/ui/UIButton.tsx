@@ -23,19 +23,19 @@ export function UIButton({
 
   const variants = {
     primary: {
-      bg: 'linear-gradient(to bottom, #2C3E50, #34495E)',
-      border: '2px solid #F39C12',
-      color: '#FFFFFF'
+      bg: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      color: '#F1C40F'
     },
     secondary: {
-      bg: 'linear-gradient(to bottom, #7F8C8D, #95A5A6)',
-      border: '2px solid #BDC3C7',
-      color: '#FFFFFF'
+      bg: 'rgba(255,255,255,0.02)',
+      border: '1px solid rgba(255,255,255,0.05)',
+      color: 'rgba(255,255,255,0.6)'
     },
     danger: {
-      bg: 'linear-gradient(to bottom, #C0392B, #E74C3C)',
-      border: '2px solid #922B21',
-      color: '#FFFFFF'
+      bg: 'rgba(231, 76, 60, 0.1)',
+      border: '1px solid rgba(231, 76, 60, 0.2)',
+      color: '#E74C3C'
     },
     ghost: {
         bg: 'transparent',
@@ -53,7 +53,7 @@ export function UIButton({
       onClick={onClick}
       disabled={disabled}
       className={`
-        relative px-6 py-3 rounded-lg font-black uppercase transition-all
+        relative px-8 py-4 rounded-xl font-bold uppercase tracking-[0.2em] transition-all backdrop-blur-md
         ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer'}
         ${className}
       `}
@@ -61,10 +61,8 @@ export function UIButton({
         background: currentVariant.bg,
         border: currentVariant.border,
         color: currentVariant.color,
-        boxShadow: !disabled ? '0 4px 0 rgba(0,0,0,0.3)' : 'none',
-        fontFamily: 'sans-serif',
-        textShadow: '1px 1px 0 rgba(0,0,0,0.5)',
-        minWidth: '200px'
+        fontFamily: 'monospace',
+        minWidth: '280px'
       }}
     >
       {children}

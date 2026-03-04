@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Mesh } from 'three';
+import { saveSystem } from '../utils/saveSystem';
 
 /**
  * GAME STORE - GLOBAL STATE MANAGEMENT
@@ -68,13 +69,15 @@ const INITIAL_RUN: RunStats = {
   maxDashCharges: 2
 };
 
+const savedData = saveSystem.load();
+
 export const useGameStore = create<GameState>((set) => ({
   view: 'menu',
   status: 'paused',
   playerRef: null,
   run: { ...INITIAL_RUN },
-  metaXp: 450, // Mock initial progress
-  totalRuns: 12,
+  metaXp: savedData.metaXp,
+  totalRuns: savedData.totalRuns,
   selectedCharacter: 'ronin',
 
   setView: (view) => set({ view }),
@@ -131,11 +134,23 @@ export const useGameStore = create<GameState>((set) => ({
     run: { ...INITIAL_RUN }
   }),
 
-  finishRun: (victory) => set((state) => ({
-    status: victory ? 'victory' : 'gameover',
-    metaXp: state.metaXp + (victory ? 345 : 120),
-    totalRuns: state.totalRuns + 1
-  })),
+  finishRun: (victory) => set((state) => {
+    const nextMetaXp = state.metaXp + (victory ? 345 : 120);
+    const nextTotalRuns = state.totalRuns + 1;
+
+    // Auto-save on run completion
+    saveSystem.save({
+      ...saveSystem.load(),
+      metaXp: nextMetaXp,
+      totalRuns: nextTotalRuns
+    });
+
+    return {
+      status: victory ? 'victory' : 'gameover',
+      metaXp: nextMetaXp,
+      totalRuns: nextTotalRuns
+    };
+  }),
 
   resetGame: () => set({
     view: 'menu',

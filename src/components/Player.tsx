@@ -62,7 +62,7 @@ export const Player = () => {
 
       {/* Visual Mesh Group */}
       <group ref={meshRef}>
-        <RoninV2 />
+        <RoninV2 velocity={rb.current?.linvel() || { x: 0, y: 0, z: 0 }} />
       </group>
     </RigidBody>
   );

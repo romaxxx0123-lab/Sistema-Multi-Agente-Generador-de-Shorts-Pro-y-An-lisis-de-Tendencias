@@ -34,8 +34,9 @@ export const usePlayerMovement = (
     _input.set(0, 0, 0);
 
     // 1. Get Normalized Input vector
-    if (forward) _input.z -= 1;
-    if (backward) _input.z += 1;
+    // Using positive Z for forward to match camera forward vector logic
+    if (forward) _input.z += 1;
+    if (backward) _input.z -= 1;
     if (left) _input.x -= 1;
     if (right) _input.x += 1;
 
