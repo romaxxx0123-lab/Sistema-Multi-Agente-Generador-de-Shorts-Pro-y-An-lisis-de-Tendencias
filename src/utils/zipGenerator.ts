@@ -27,6 +27,37 @@ const generateGuid = () => {
   });
 };
 
+export interface ProjectManifest {
+  projectName: string;
+  unityVersionHint: string;
+  folders: string[];
+  files: {
+    path: string;
+    content: string;
+    type: string;
+  }[];
+  notes?: string[];
+  warnings?: string[];
+}
+
+export const generateZipFromManifest = async (manifest: ProjectManifest) => {
+  const zip = new JSZip();
+
+  // Create folders
+  manifest.folders.forEach(folder => {
+    zip.folder(folder);
+  });
+
+  // Create files
+  manifest.files.forEach(file => {
+    // Ensure parent directories exist (though manifest should have folders[])
+    zip.file(file.path, file.content);
+  });
+
+  const content = await zip.generateAsync({ type: "blob" });
+  saveAs(content, `${manifest.projectName.replace(/\s+/g, '_')}_Unity_AI_Project.zip`);
+};
+
 export const generateUnityProject = async (config: ProjectConfig) => {
   const zip = new JSZip();
   const { projectName, namespace } = config;

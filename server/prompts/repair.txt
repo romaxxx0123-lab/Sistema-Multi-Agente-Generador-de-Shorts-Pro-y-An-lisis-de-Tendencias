@@ -1,0 +1,5 @@
+Tu JSON anterior tiene los siguientes errores de validación:
+{errors}
+
+Por favor, corrige y devuelve el MANIFEST COMPLETO de nuevo en JSON válido.
+Manifest original fallido: {manifest}

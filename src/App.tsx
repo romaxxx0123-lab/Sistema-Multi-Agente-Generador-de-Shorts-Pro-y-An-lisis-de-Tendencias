@@ -15,8 +15,8 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
-import { generateUnityProject } from './utils/zipGenerator';
-import type { ProjectConfig } from './utils/zipGenerator';
+import { generateUnityProject, generateZipFromManifest } from './utils/zipGenerator';
+import type { ProjectConfig, ProjectManifest } from './utils/zipGenerator';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -25,6 +25,8 @@ function cn(...inputs: ClassValue[]) {
 }
 
 function App() {
+  const [useAI, setUseAI] = useState(false);
+  const [model, setModel] = useState('qwen2.5-coder');
   const [config, setConfig] = useState<ProjectConfig>({
     projectName: 'HyperMegaGame',
     namespace: 'Company.Games',
@@ -55,33 +57,82 @@ function App() {
   const handleDownload = async () => {
     setIsGenerating(true);
     setProgress(5);
-    setTerminalLines(["[SYSTEM] Initializing Cognitive Engine v10.3..."]);
+    setTerminalLines([useAI ? "[SYSTEM] Initializing AI Orchestrator v1.0..." : "[SYSTEM] Initializing Cognitive Engine v10.3..."]);
 
     try {
-      const reasoningSteps = [
-        `[COGNITIVE] Analyzing ${config.genre} mechanics...`,
-        `[ARCHITECT] Designing core architecture for ${config.projectName}...`,
-        `[SYSTEM] Calculating physics constants for ${config.genre}...`,
-        "[DATA] Injecting ScriptableObject Variable system...",
-        "[UI] Mapping Model-View-Presenter delegates...",
-        `[LOGIC] Generating Deep-Logic ${config.genre} Controller...`,
-        config.complexity === 'Cognitive' ? "[AI] Training perfected Enemy AI models..." : null,
-        config.complexity === 'Cognitive' ? "[MODELS] Constructing Ultra-Detailed Enemy Prefabs..." : null,
-        config.complexity === 'Cognitive' ? "[PRO] Synthesizing High-Fidelity Vehicles and Props..." : null,
-        "[ASSETS] Linking persistent GUIDs to Meta files...",
-        "[VCS] Optimizing Git ignore patterns...",
-        "[FINALIZING] Compiling hyper-detailed structure..."
-      ];
+      if (useAI) {
+        const response = await fetch('/api/generate-manifest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ config, model })
+        });
 
-      for (let i = 0; i < reasoningSteps.length; i++) {
-        const step = reasoningSteps[i];
-        if (!step) continue;
-        await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400));
-        addTerminalLine(step);
-        setProgress(10 + (i * 10));
+        if (!response.ok) throw new Error("Server not reachable");
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("SSE Stream failure");
+
+        const decoder = new TextDecoder();
+        let manifest: ProjectManifest | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = JSON.parse(line.slice(6));
+              if (data.reasoning) {
+                data.reasoning.forEach((r: string) => addTerminalLine(r));
+              }
+              if (data.step) {
+                const stepMap: Record<string, number> = { interpret: 20, plan: 40, manifest: 60, validate: 80, repair: 85, complete: 95 };
+                setProgress(stepMap[data.step] || progress);
+              }
+              if (data.manifest) {
+                manifest = data.manifest;
+              }
+              if (data.error) {
+                throw new Error(data.error);
+              }
+            }
+          }
+        }
+
+        if (manifest) {
+          await generateZipFromManifest(manifest);
+        } else {
+          throw new Error("No manifest generated");
+        }
+      } else {
+        const reasoningSteps = [
+          `[COGNITIVE] Analyzing ${config.genre} mechanics...`,
+          `[ARCHITECT] Designing core architecture for ${config.projectName}...`,
+          `[SYSTEM] Calculating physics constants for ${config.genre}...`,
+          "[DATA] Injecting ScriptableObject Variable system...",
+          "[UI] Mapping Model-View-Presenter delegates...",
+          `[LOGIC] Generating Deep-Logic ${config.genre} Controller...`,
+          config.complexity === 'Cognitive' ? "[AI] Training perfected Enemy AI models..." : null,
+          config.complexity === 'Cognitive' ? "[MODELS] Constructing Ultra-Detailed Enemy Prefabs..." : null,
+          config.complexity === 'Cognitive' ? "[PRO] Synthesizing High-Fidelity Vehicles and Props..." : null,
+          "[ASSETS] Linking persistent GUIDs to Meta files...",
+          "[VCS] Optimizing Git ignore patterns...",
+          "[FINALIZING] Compiling hyper-detailed structure..."
+        ];
+
+        for (let i = 0; i < reasoningSteps.length; i++) {
+          const step = reasoningSteps[i];
+          if (!step) continue;
+          await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400));
+          addTerminalLine(step);
+          setProgress(10 + (i * 10));
+        }
+
+        await generateUnityProject(config);
       }
-
-      await generateUnityProject(config);
       addTerminalLine("[SUCCESS] Project deployed successfully.");
       setProgress(100);
       setTimeout(() => {
@@ -167,6 +218,50 @@ function App() {
               </div>
 
               <div className="space-y-8 flex-1">
+                {/* AI Toggle Panel */}
+                <div className="p-6 rounded-[32px] bg-indigo-500/5 border border-indigo-500/10 mb-8">
+                  <div className="flex flex-wrap items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "p-3 rounded-2xl transition-all",
+                        useAI ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-950 text-slate-500"
+                      )}>
+                        <Cpu size={24} />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-white text-sm uppercase tracking-widest">Modo IA Real (Ollama)</h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Orquestación Multi-Fase</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <select
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        disabled={!useAI}
+                        className="bg-slate-950 border border-white/5 rounded-xl px-4 py-2 text-xs font-bold text-slate-400 focus:outline-none focus:border-indigo-500/40 disabled:opacity-50"
+                      >
+                        <option value="qwen2.5-coder">qwen2.5-coder</option>
+                        <option value="llama3.2">llama3.2</option>
+                        <option value="mistral">mistral</option>
+                      </select>
+
+                      <button
+                        onClick={() => setUseAI(!useAI)}
+                        className={cn(
+                          "relative w-14 h-8 rounded-full transition-all duration-300",
+                          useAI ? "bg-indigo-500" : "bg-slate-800"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-all duration-300 shadow-sm",
+                          useAI ? "translate-x-6" : "translate-x-0"
+                        )} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <label className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Nombre del Proyecto</label>
