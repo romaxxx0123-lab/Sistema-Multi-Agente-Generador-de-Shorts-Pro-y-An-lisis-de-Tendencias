@@ -65,7 +65,9 @@ interface GameState {
 
   // Enemy Actions
   spawnEnemy: (enemy: EnemyEntity) => void;
+  updateEnemyPosition: (id: string, position: [number, number, number]) => void;
   damageEnemy: (id: string, amount: number) => void;
+  attackNearbyEnemies: (playerPos: [number, number, number], range: number, damage: number) => void;
   removeEnemy: (id: string) => void;
 
   // Lifecycle
@@ -151,9 +153,27 @@ export const useGameStore = create<GameState>((set) => ({
       enemies: [...state.enemies, enemy]
   })),
 
+  updateEnemyPosition: (id, position) => set((state) => ({
+    enemies: state.enemies.map(e => e.id === id ? { ...e, position } : e)
+  })),
+
   damageEnemy: (id, amount) => set((state) => ({
       enemies: state.enemies.map(e => e.id === id ? { ...e, hp: Math.max(0, e.hp - amount) } : e)
   })),
+
+  attackNearbyEnemies: (playerPos, range, damage) => set((state) => {
+    const [px, py, pz] = playerPos;
+    return {
+      enemies: state.enemies.map(e => {
+        const [ex, ey, ez] = e.position;
+        const distSq = (px - ex) ** 2 + (py - ey) ** 2 + (pz - ez) ** 2;
+        if (distSq <= range * range) {
+          return { ...e, hp: Math.max(0, e.hp - damage) };
+        }
+        return e;
+      })
+    };
+  }),
 
   removeEnemy: (id) => set((state) => ({
       enemies: state.enemies.filter(e => e.id !== id)

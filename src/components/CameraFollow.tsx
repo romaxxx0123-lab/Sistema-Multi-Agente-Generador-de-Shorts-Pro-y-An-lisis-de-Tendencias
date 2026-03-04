@@ -21,13 +21,17 @@ export const CameraFollow = () => {
   useFrame((state) => {
     if (!playerRef) return;
 
-    // Calculate fixed target camera position relative to player mesh
-    _targetPos.copy(playerRef.position).add(_offset);
+    // 1. Transform the offset by the player's current rotation (Yaw)
+    // This ensures the camera is always "behind" the player as they rotate
+    const rotatedOffset = _offset.clone().applyQuaternion(playerRef.quaternion);
 
-    // Immediate camera snap (Smooth Lerp planned for Part 1B)
+    // 2. Calculate target camera position relative to player
+    _targetPos.copy(playerRef.position).add(rotatedOffset);
+
+    // 3. Update camera position (Immediate snap for Part 1A)
     state.camera.position.copy(_targetPos);
 
-    // Always look slightly ahead of the player center
+    // 4. Always look at the player's upper body
     state.camera.lookAt(playerRef.position.x, playerRef.position.y + 1, playerRef.position.z);
   });
 

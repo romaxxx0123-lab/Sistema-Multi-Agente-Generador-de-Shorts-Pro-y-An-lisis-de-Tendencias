@@ -36,6 +36,9 @@ export const useControls = () => {
         case 'ShiftRight':
           setMovement((m) => ({ ...m, dash: true }));
           break;
+        case 'Space':
+          setMovement((m) => ({ ...m, attack: true }));
+          break;
       }
     };
 
@@ -60,6 +63,9 @@ export const useControls = () => {
         case 'ShiftLeft':
         case 'ShiftRight':
           setMovement((m) => ({ ...m, dash: false }));
+          break;
+        case 'Space':
+          setMovement((m) => ({ ...m, attack: false }));
           break;
       }
     };

@@ -42,8 +42,12 @@ export const RoninGame = () => {
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && view === 'game') {
-        if (status === 'playing') setStatus('paused');
-        else if (status === 'paused') setStatus('playing');
+        // Only toggle pause if we're not in a terminal state (gameover/victory/levelup)
+        if (status === 'playing') {
+          setStatus('paused');
+        } else if (status === 'paused') {
+          setStatus('playing');
+        }
       }
     };
     window.addEventListener('keydown', handleKey);

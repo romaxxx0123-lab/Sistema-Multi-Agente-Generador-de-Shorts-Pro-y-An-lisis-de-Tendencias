@@ -15,10 +15,12 @@ import { RoninV2 } from "./models/RoninV2";
 export const Player = () => {
   const { camera } = useThree();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
+  const attackNearbyEnemies = useGameStore((state) => state.attackNearbyEnemies);
 
   const controls = useControls();
   const rb = useRef<RapierRigidBody>(null);
   const meshRef = useRef<Mesh>(null);
+  const lastAttackTime = useRef(0);
 
   const { move } = usePlayerMovement(
     rb,
@@ -42,6 +44,18 @@ export const Player = () => {
       meshRef as any,
       camera
     );
+
+    // Attack logic
+    if (controls.attack && _state.clock.elapsedTime - lastAttackTime.current > 0.5) {
+      lastAttackTime.current = _state.clock.elapsedTime;
+      const pos = rb.current.translation();
+      attackNearbyEnemies([pos.x, pos.y, pos.z], 3, 20);
+
+      // Visual feedback (swing)
+      if (meshRef.current) {
+          // Simple visual punch/shake or call an animation trigger on RoninV2
+      }
+    }
   });
 
   return (
@@ -58,7 +72,10 @@ export const Player = () => {
       <CapsuleCollider args={[CONFIG.PLAYER.COLLIDER_HEIGHT / 2 - CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_RADIUS]} />
 
       <group ref={meshRef}>
-        <RoninV2 velocity={rb.current?.linvel() || { x: 0, y: 0, z: 0 }} />
+        <RoninV2
+          velocity={rb.current?.linvel() || { x: 0, y: 0, z: 0 }}
+          isAttacking={controls.attack}
+        />
       </group>
     </RigidBody>
   );

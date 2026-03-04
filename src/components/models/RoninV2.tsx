@@ -8,10 +8,11 @@ import { TextureGenerator } from "../../utils/textures";
  * RONIN V2 - HIGH QUALITY STYLIZED PLAYER
  * Features: Kasa (Hat), Kimono with Obi, Sode (Armor), and detailed proportions.
  */
-export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, ...props }: any) => {
+export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, ...props }: any) => {
   const groupRef = useRef<Group>(null);
   const headRef = useRef<Group>(null);
   const tiltRef = useRef<Group>(null);
+  const swordRef = useRef<Group>(null);
 
   const kimonoTextures = useMemo(() => TextureGenerator.createFabric('#2d3436'), []);
   const hakamaTextures = useMemo(() => TextureGenerator.createFabric('#1a1a1a'), []);
@@ -43,6 +44,15 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, ...props }: any) => {
       // Target rotation for tilt (pitch/roll)
       tiltRef.current.rotation.z = THREE.MathUtils.lerp(tiltRef.current.rotation.z, -velocity.x * 0.015, 0.1);
       tiltRef.current.rotation.x = THREE.MathUtils.lerp(tiltRef.current.rotation.x, velocity.z * 0.015, 0.1);
+    }
+
+    // Sword Animation
+    if (swordRef.current) {
+      if (isAttacking) {
+        swordRef.current.rotation.x = THREE.MathUtils.lerp(swordRef.current.rotation.x, -Math.PI / 2, 0.3);
+      } else {
+        swordRef.current.rotation.x = THREE.MathUtils.lerp(swordRef.current.rotation.x, 0, 0.1);
+      }
     }
   });
 
@@ -79,6 +89,18 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, ...props }: any) => {
           <boxGeometry args={[0.1, 0.25, 0.2]} />
           <meshStandardMaterial color="#111" metalness={0.8} roughness={0.2} />
         </mesh>
+
+        {/* SWORD (Katana) */}
+        <group ref={swordRef} position={[0, -0.1, 0.1]}>
+          <mesh rotation={[0, 0, 0]}>
+            <boxGeometry args={[0.03, 0.8, 0.01]} />
+            <meshStandardMaterial color="#ddd" metalness={0.9} roughness={0.1} />
+          </mesh>
+          <mesh position={[0, -0.4, 0]}>
+            <boxGeometry args={[0.04, 0.2, 0.02]} />
+            <meshStandardMaterial color="#111" />
+          </mesh>
+        </group>
       </group>
 
       {/* Left Arm */}

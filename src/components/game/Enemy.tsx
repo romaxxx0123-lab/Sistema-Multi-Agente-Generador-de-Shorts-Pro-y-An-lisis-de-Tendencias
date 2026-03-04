@@ -24,6 +24,7 @@ export function Enemy({ data }: EnemyProps) {
 
   const playerRef = useGameStore((state) => state.playerRef);
   const status = useGameStore((state) => state.status);
+  const updateEnemyPosition = useGameStore((state) => state.updateEnemyPosition);
   const removeEnemy = useGameStore((state) => state.removeEnemy);
   const takeDamage = useGameStore((state) => state.takeDamage);
   const addXp = useGameStore((state) => state.addXp);
@@ -63,6 +64,9 @@ export function Enemy({ data }: EnemyProps) {
     playerRef.getWorldPosition(playerPos);
     const { x, y, z } = rbRef.current.translation();
     enemyPos.set(x, y, z);
+
+    // Sync physics position back to store for combat hit detection
+    updateEnemyPosition(data.id, [x, y, z]);
 
     // 2. Simple Follow Logic
     moveDir.subVectors(playerPos, enemyPos).normalize();

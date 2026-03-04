@@ -20,6 +20,12 @@ export function PauseOverlay() {
   const seconds = Math.floor(run.time % 60);
   const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
+  const handleResume = () => setStatus('playing');
+  const handleMainMenu = () => {
+    setStatus('paused');
+    resetGame();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
       <motion.div
@@ -32,16 +38,16 @@ export function PauseOverlay() {
         </h2>
 
         <div className="flex flex-col gap-3 mb-10">
-            <UIButton onClick={() => setStatus('playing')} className="flex items-center justify-center gap-3">
+            <UIButton onClick={handleResume} className="flex items-center justify-center gap-3">
                 <Play size={18} fill="currentColor" /> Continuar
             </UIButton>
             <UIButton variant="secondary" className="flex items-center justify-center gap-3">
                 <Settings size={18} /> Opciones
             </UIButton>
-            <UIButton variant="secondary" onClick={resetGame} className="flex items-center justify-center gap-3">
+            <UIButton variant="secondary" onClick={handleMainMenu} className="flex items-center justify-center gap-3">
                 <Home size={18} /> Menú Principal
             </UIButton>
-            <UIButton variant="danger" className="flex items-center justify-center gap-3">
+            <UIButton variant="danger" onClick={() => window.location.reload()} className="flex items-center justify-center gap-3">
                 <LogOut size={18} /> Salir
             </UIButton>
         </div>
