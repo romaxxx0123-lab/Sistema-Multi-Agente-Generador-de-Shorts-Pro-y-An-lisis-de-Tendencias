@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Physics, RigidBody } from '@react-three/rapier';
+import { Physics } from '@react-three/rapier';
 import { Environment } from '@react-three/drei';
 
 import { Arena } from './components/Arena';
@@ -19,13 +19,16 @@ import { LevelUpOverlay } from './components/LevelUpOverlay';
 import { PauseOverlay } from './components/overlays/PauseOverlay';
 import { EndRunOverlay } from './components/overlays/EndRunOverlay';
 
+// Systems
+import { EnemySpawner } from './systems/EnemySpawner';
+import { Enemy } from './components/game/Enemy';
+
 import { useGameStore } from './store/useGameStore';
 import { CONFIG } from './config';
 
 /**
  * OPTIMIZED RONIN SURVIVOR ENTRY POINT
  * Migrated to Rapier physics for Part 2 scalability.
- * Includes performance monitoring and optimized config.
  * Unified UI System integration.
  */
 export const RoninGame = () => {
@@ -33,6 +36,7 @@ export const RoninGame = () => {
   const status = useGameStore((state) => state.status);
   const setStatus = useGameStore((state) => state.setStatus);
   const updateTime = useGameStore((state) => state.updateTime);
+  const enemies = useGameStore((state) => state.enemies);
 
   // Global Key Listener (ESC for Pause, etc.)
   useEffect(() => {
@@ -72,6 +76,14 @@ export const RoninGame = () => {
             >
               <Arena />
               <Player />
+
+              {/* SPAWNER SYSTEM */}
+              <EnemySpawner />
+
+              {/* ACTIVE ENEMIES */}
+              {enemies.map((enemy) => (
+                <Enemy key={enemy.id} data={enemy} />
+              ))}
             </Physics>
 
             <SakuraParticles count={200} />

@@ -11,13 +11,11 @@ import { RoninV2 } from "./models/RoninV2";
 /**
  * OPTIMIZED PLAYER COMPONENT
  * Implements a physics-driven character using Rapier.
- * Performance optimized for scaling in Part 2.
  */
 export const Player = () => {
   const { camera } = useThree();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
 
-  // Controls & Movement state
   const controls = useControls();
   const rb = useRef<RapierRigidBody>(null);
   const meshRef = useRef<Mesh>(null);
@@ -28,7 +26,6 @@ export const Player = () => {
     CONFIG.PLAYER.ROTATION_SPEED
   );
 
-  // Sync mesh reference with store for camera following
   useEffect(() => {
     if (meshRef.current) setPlayerRef(meshRef.current);
   }, [setPlayerRef]);
@@ -36,14 +33,13 @@ export const Player = () => {
   useFrame((_state, delta) => {
     if (!rb.current || !meshRef.current) return;
 
-    // Execute physics movement logic
     move(
       controls.forward,
       controls.backward,
       controls.left,
       controls.right,
       delta,
-      meshRef as any, // Visual rotation on mesh only
+      meshRef as any,
       camera
     );
   });
@@ -52,15 +48,15 @@ export const Player = () => {
     <RigidBody
       ref={rb}
       position={[0, 2, 0]}
-      enabledRotations={[false, false, false]} // Physics doesn't rotate, we rotate mesh
+      enabledRotations={[false, false, false]}
       colliders={false}
       mass={CONFIG.PLAYER.MASS}
-      friction={0} // Smooth movement without sticking
+      friction={0}
+      name="player"
+      userData={{ type: 'player' }}
     >
-      {/* Physics Collider */}
       <CapsuleCollider args={[CONFIG.PLAYER.COLLIDER_HEIGHT / 2 - CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_RADIUS]} />
 
-      {/* Visual Mesh Group */}
       <group ref={meshRef}>
         <RoninV2 velocity={rb.current?.linvel() || { x: 0, y: 0, z: 0 }} />
       </group>

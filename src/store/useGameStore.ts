@@ -4,7 +4,7 @@ import { saveSystem } from '../utils/saveSystem';
 
 /**
  * GAME STORE - GLOBAL STATE MANAGEMENT
- * Expanded to handle UI, Stats, Run Metadata, and Settings.
+ * Handles UI, Stats, Run Metadata, and Enemy Entities.
  */
 
 export interface RunStats {
@@ -18,6 +18,14 @@ export interface RunStats {
   time: number;
   dashCharges: number;
   maxDashCharges: number;
+}
+
+export interface EnemyEntity {
+  id: string;
+  type: 'oni' | 'ninja' | 'skeleton';
+  position: [number, number, number];
+  hp: number;
+  maxHp: number;
 }
 
 interface GameState {
@@ -36,6 +44,9 @@ interface GameState {
   // Selection
   selectedCharacter: string;
 
+  // Enemies
+  enemies: EnemyEntity[];
+
   // Actions
   setView: (view: GameState['view']) => void;
   setSelectedCharacter: (id: string) => void;
@@ -50,6 +61,11 @@ interface GameState {
   updateTime: (delta: number) => void;
   useDash: () => void;
   rechargeDash: () => void;
+
+  // Enemy Actions
+  spawnEnemy: (enemy: EnemyEntity) => void;
+  damageEnemy: (id: string, amount: number) => void;
+  removeEnemy: (id: string) => void;
 
   // Lifecycle
   startRun: () => void;
@@ -80,6 +96,7 @@ export const useGameStore = create<GameState>((set) => ({
   metaXp: savedData.metaXp,
   totalRuns: savedData.totalRuns,
   selectedCharacter: 'ronin',
+  enemies: [],
 
   setView: (view) => set({ view }),
   setSelectedCharacter: (selectedCharacter) => set({ selectedCharacter }),
@@ -100,7 +117,6 @@ export const useGameStore = create<GameState>((set) => ({
       xp -= xpToLevel;
       level += 1;
       xpToLevel = Math.round(xpToLevel * 1.5);
-      // Trigger levelup status
       return {
         run: { ...state.run, xp, level, xpToLevel },
         status: 'levelup'
@@ -130,17 +146,29 @@ export const useGameStore = create<GameState>((set) => ({
     run: { ...state.run, dashCharges: Math.min(state.run.maxDashCharges, state.run.dashCharges + 1) }
   })),
 
+  spawnEnemy: (enemy) => set((state) => ({
+      enemies: [...state.enemies, enemy]
+  })),
+
+  damageEnemy: (id, amount) => set((state) => ({
+      enemies: state.enemies.map(e => e.id === id ? { ...e, hp: Math.max(0, e.hp - amount) } : e)
+  })),
+
+  removeEnemy: (id) => set((state) => ({
+      enemies: state.enemies.filter(e => e.id !== id)
+  })),
+
   startRun: () => set({
     view: 'game',
     status: 'playing',
-    run: { ...INITIAL_RUN }
+    run: { ...INITIAL_RUN },
+    enemies: []
   }),
 
   finishRun: (victory) => set((state) => {
     const nextMetaXp = state.metaXp + (victory ? 345 : 120);
     const nextTotalRuns = state.totalRuns + 1;
 
-    // Auto-save on run completion
     saveSystem.save({
       ...saveSystem.load(),
       metaXp: nextMetaXp,
@@ -150,13 +178,15 @@ export const useGameStore = create<GameState>((set) => ({
     return {
       status: victory ? 'victory' : 'gameover',
       metaXp: nextMetaXp,
-      totalRuns: nextTotalRuns
+      totalRuns: nextTotalRuns,
+      enemies: []
     };
   }),
 
   resetGame: () => set({
     view: 'menu',
     status: 'paused',
-    run: { ...INITIAL_RUN }
+    run: { ...INITIAL_RUN },
+    enemies: []
   })
 }));
