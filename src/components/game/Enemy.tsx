@@ -6,6 +6,7 @@ import { useGameStore, EnemyEntity } from '../../store/useGameStore';
 import { Skeleton } from '../models/Skeleton';
 import { Ninja } from '../models/Ninja';
 import { Oni } from '../models/Oni';
+import { Samurai } from '../models/Samurai';
 
 /**
  * ENEMY COMPONENT
@@ -35,12 +36,22 @@ export function Enemy({ data }: EnemyProps) {
   const targetQuat = useMemo(() => new Quaternion(), []);
   const lookAtMat = useMemo(() => new Vector3(), []);
 
-  const stats = {
-      speed: data.type === 'ninja' ? 4 : (data.type === 'oni' ? 1.8 : 2.5),
-      damage: data.type === 'oni' ? 25 : (data.type === 'ninja' ? 10 : 5),
-      xp: data.type === 'oni' ? 50 : (data.type === 'ninja' ? 20 : 10),
-      scale: data.type === 'oni' ? 0.9 : (data.type === 'ninja' ? 0.6 : 0.5)
-  };
+  const stats = useMemo(() => {
+    let s = {
+      speed: data.type === 'ninja' ? 4 : (data.type === 'oni' ? 1.8 : (data.type === 'samurai' ? 3.2 : 2.5)),
+      damage: data.type === 'oni' ? 25 : (data.type === 'samurai' ? 15 : (data.type === 'ninja' ? 10 : 5)),
+      xp: data.type === 'oni' ? 50 : (data.type === 'samurai' ? 40 : (data.type === 'ninja' ? 20 : 10)),
+      scale: data.type === 'oni' ? 0.9 : (data.type === 'samurai' ? 0.8 : (data.type === 'ninja' ? 0.6 : 0.5))
+    };
+
+    if (data.isElite) {
+      s.speed *= 1.2;
+      s.damage *= 2;
+      s.xp *= 3;
+      s.scale *= 1.3;
+    }
+    return s;
+  }, [data.type, data.isElite]);
 
   useFrame((_state, delta) => {
     if (status !== 'playing' || !playerRef || !rbRef.current) return;
@@ -121,6 +132,22 @@ export function Enemy({ data }: EnemyProps) {
             {data.type === 'skeleton' && <Skeleton />}
             {data.type === 'ninja' && <Ninja />}
             {data.type === 'oni' && <Oni />}
+            {data.type === 'samurai' && <Samurai />}
+
+            {/* Elite Aura */}
+            {data.isElite && (
+              <mesh position={[0, 0.5, 0]}>
+                <sphereGeometry args={[1.2]} />
+                <meshStandardMaterial
+                  color="#f1c40f"
+                  transparent
+                  opacity={0.15}
+                  emissive="#f1c40f"
+                  emissiveIntensity={2}
+                  wireframe
+                />
+              </mesh>
+            )}
           </group>
 
           {/* PRO HP BAR */}

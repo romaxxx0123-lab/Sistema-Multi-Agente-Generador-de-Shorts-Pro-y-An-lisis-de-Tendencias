@@ -22,10 +22,11 @@ export interface RunStats {
 
 export interface EnemyEntity {
   id: string;
-  type: 'oni' | 'ninja' | 'skeleton';
+  type: 'oni' | 'ninja' | 'skeleton' | 'samurai';
   position: [number, number, number];
   hp: number;
   maxHp: number;
+  isElite?: boolean;
 }
 
 interface GameState {
@@ -190,3 +191,8 @@ export const useGameStore = create<GameState>((set) => ({
     enemies: []
   })
 }));
+
+// Expose store for testing
+if (typeof window !== 'undefined') {
+  (window as any).useGameStore = useGameStore;
+}
