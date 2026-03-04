@@ -1,7 +1,7 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { RigidBody, RigidBodyApi, CapsuleCollider } from '@react-three/rapier';
-import { Vector3, Euler, Quaternion } from 'three';
+import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier';
+import { Vector3, Quaternion, Color } from 'three';
 import { useGameStore, EnemyEntity } from '../../store/useGameStore';
 import { Skeleton } from '../models/Skeleton';
 import { Ninja } from '../models/Ninja';
@@ -17,7 +17,10 @@ interface EnemyProps {
 }
 
 export function Enemy({ data }: EnemyProps) {
-  const rbRef = useRef<RigidBodyApi>(null);
+  const rbRef = useRef<RapierRigidBody>(null);
+  const visualRef = useRef<any>(null);
+  const [hitFlash, setHitFlash] = useState(0);
+
   const playerRef = useGameStore((state) => state.playerRef);
   const status = useGameStore((state) => state.status);
   const removeEnemy = useGameStore((state) => state.removeEnemy);
@@ -33,13 +36,17 @@ export function Enemy({ data }: EnemyProps) {
   const lookAtMat = useMemo(() => new Vector3(), []);
 
   const stats = {
-      speed: data.type === 'ninja' ? 4 : (data.type === 'oni' ? 2 : 2.5),
+      speed: data.type === 'ninja' ? 4 : (data.type === 'oni' ? 1.8 : 2.5),
       damage: data.type === 'oni' ? 25 : (data.type === 'ninja' ? 10 : 5),
-      xp: data.type === 'oni' ? 50 : (data.type === 'ninja' ? 20 : 10)
+      xp: data.type === 'oni' ? 50 : (data.type === 'ninja' ? 20 : 10),
+      scale: data.type === 'oni' ? 0.9 : (data.type === 'ninja' ? 0.6 : 0.5)
   };
 
   useFrame((_state, delta) => {
     if (status !== 'playing' || !playerRef || !rbRef.current) return;
+
+    // Hit flash cooldown
+    if (hitFlash > 0) setHitFlash(prev => Math.max(0, prev - delta * 5));
 
     // 1. Get positions
     playerRef.getWorldPosition(playerPos);
@@ -54,9 +61,8 @@ export function Enemy({ data }: EnemyProps) {
     const velocity = moveDir.clone().multiplyScalar(stats.speed);
     rbRef.current.setLinvel({ x: velocity.x, y: 0, z: velocity.z }, true);
 
-    // 4. Smooth Rotation towards player
+    // 4. Smooth Rotation & Visual Feedback
     if (moveDir.lengthSq() > 0.1) {
-      lookAtMat.copy(enemyPos).add(moveDir);
       const targetRotation = Math.atan2(moveDir.x, moveDir.z);
       const currentRot = rbRef.current.rotation();
       const currentQuat = new Quaternion(currentRot.x, currentRot.y, currentRot.z, currentRot.w);
@@ -64,6 +70,13 @@ export function Enemy({ data }: EnemyProps) {
       const newRotation = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), targetRotation);
       currentQuat.slerp(newRotation, 10 * delta);
       rbRef.current.setRotation(currentQuat, true);
+
+      // Procedural "Bobbing/Walking" animation
+      if (visualRef.current) {
+        const t = _state.clock.getElapsedTime();
+        visualRef.current.position.y = Math.sin(t * stats.speed * 3) * 0.05;
+        visualRef.current.rotation.z = Math.sin(t * stats.speed * 3) * 0.05;
+      }
     }
 
     // 5. Cleanup if dead (logic happens in store)
@@ -75,14 +88,15 @@ export function Enemy({ data }: EnemyProps) {
   });
 
   const handleCollision = (e: any) => {
-      // Check if hit player
       if (e.other.rigidBodyObject?.name === 'player') {
           takeDamage(stats.damage);
-          // Apply knockback
+          setHitFlash(1);
           const knockbackDir = moveDir.clone().negate().multiplyScalar(5);
           rbRef.current?.applyImpulse({ x: knockbackDir.x, y: 2, z: knockbackDir.z }, true);
       }
   };
+
+  const hpPercent = data.hp / data.maxHp;
 
   return (
     <RigidBody
@@ -94,23 +108,32 @@ export function Enemy({ data }: EnemyProps) {
       userData={{ type: 'enemy', id: data.id }}
       name={`enemy-${data.id}`}
     >
-      <CapsuleCollider args={[0.5, 0.5]} position={[0, 0.5, 0]} />
+      <CapsuleCollider args={[0.4, 0.5]} position={[0, 0.5, 0]} />
 
-      {/* Dynamic Model based on type */}
-      <group>
-          {data.type === 'skeleton' && <Skeleton scale={0.5} />}
-          {data.type === 'ninja' && <Ninja scale={0.6} />}
-          {data.type === 'oni' && <Oni scale={0.8} />}
+      <group ref={visualRef}>
+          {/* Hit Flash Overlay */}
+          <mesh visible={hitFlash > 0.1} position={[0, 0.8, 0]}>
+            <sphereGeometry args={[stats.scale + 0.2]} />
+            <meshBasicMaterial color="white" transparent opacity={hitFlash * 0.5} />
+          </mesh>
 
-          {/* Simple HP Bar (Floating) */}
-          <mesh position={[0, 2, 0]}>
-              <planeGeometry args={[0.8, 0.1]} />
-              <meshBasicMaterial color="#333" transparent opacity={0.5} />
-          </mesh>
-          <mesh position={[0, 2, 0.01]}>
-              <planeGeometry args={[(data.hp / data.maxHp) * 0.8, 0.1]} />
-              <meshBasicMaterial color="#e74c3c" />
-          </mesh>
+          <group scale={stats.scale}>
+            {data.type === 'skeleton' && <Skeleton />}
+            {data.type === 'ninja' && <Ninja />}
+            {data.type === 'oni' && <Oni />}
+          </group>
+
+          {/* PRO HP BAR */}
+          <group position={[0, 2.2, 0]}>
+              <mesh>
+                  <planeGeometry args={[1, 0.15]} />
+                  <meshBasicMaterial color="#1a1a1a" transparent opacity={0.8} />
+              </mesh>
+              <mesh position={[-(1 - hpPercent) / 2, 0, 0.01]}>
+                  <planeGeometry args={[hpPercent, 0.1]} />
+                  <meshBasicMaterial color={hpPercent > 0.5 ? "#2ecc71" : (hpPercent > 0.25 ? "#f1c40f" : "#e74c3c")} />
+              </mesh>
+          </group>
       </group>
     </RigidBody>
   );

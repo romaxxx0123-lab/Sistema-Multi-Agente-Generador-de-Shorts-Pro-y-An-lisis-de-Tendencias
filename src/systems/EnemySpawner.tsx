@@ -10,8 +10,8 @@ import { CONFIG } from '../config';
  * Positions them in a ring around the player.
  */
 
-const SPAWN_RADIUS = 15;
-const INITIAL_SPAWN_RATE = 2.0; // Seconds between spawns
+const SPAWN_RADIUS = 18;
+const INITIAL_SPAWN_RATE = 2.5;
 
 export function EnemySpawner() {
   const status = useGameStore((state) => state.status);
@@ -27,41 +27,52 @@ export function EnemySpawner() {
 
     lastSpawnTime.current += delta;
 
-    // Scale spawn rate with level (gets faster)
-    const spawnRate = Math.max(0.5, INITIAL_SPAWN_RATE - (run.level * 0.1));
+    // 1. Dynamic Spawn Rate (faster as time/level goes on)
+    // Decreases 0.1s per level, minimum 0.4s
+    const spawnRate = Math.max(0.4, INITIAL_SPAWN_RATE - (run.level * 0.15));
 
     if (lastSpawnTime.current >= spawnRate) {
       lastSpawnTime.current = 0;
 
-      // Get player world position
+      // 2. Spawn Multiplier (spawn more enemies at once at higher levels)
+      const count = Math.floor(1 + (run.level / 4));
+
       playerRef.getWorldPosition(playerPos);
 
-      // Calculate random spawn point on a circle
-      const angle = Math.random() * Math.PI * 2;
-      const x = playerPos.x + Math.cos(angle) * SPAWN_RADIUS;
-      const z = playerPos.z + Math.sin(angle) * SPAWN_RADIUS;
+      for (let i = 0; i < count; i++) {
+        // Calculate random spawn point on a circle with slight variation
+        const angle = (Math.random() * Math.PI * 2);
+        const distance = SPAWN_RADIUS + (Math.random() * 4 - 2);
+        const x = playerPos.x + Math.cos(angle) * distance;
+        const z = playerPos.z + Math.sin(angle) * distance;
 
-      // Boundary check
-      const halfSize = CONFIG.ARENA.SIZE / 2 - 2;
-      const clampedX = Math.max(-halfSize, Math.min(halfSize, x));
-      const clampedZ = Math.max(-halfSize, Math.min(halfSize, z));
+        // Boundary check (keep inside arena)
+        const halfSize = CONFIG.ARENA.SIZE / 2 - 2;
+        const clampedX = Math.max(-halfSize, Math.min(halfSize, x));
+        const clampedZ = Math.max(-halfSize, Math.min(halfSize, z));
 
-      // Choose enemy type based on level
-      let type: EnemyEntity['type'] = 'skeleton';
-      const rand = Math.random();
+        // 3. Enemy Type Logic (Tiered System)
+        let type: EnemyEntity['type'] = 'skeleton';
+        const tierRoll = Math.random() + (run.level * 0.05); // Bonus roll per level
 
-      if (run.level >= 5 && rand > 0.7) type = 'oni';
-      else if (run.level >= 3 && rand > 0.4) type = 'ninja';
+        if (tierRoll > 1.8) {
+          type = 'oni';
+        } else if (tierRoll > 1.2) {
+          type = 'ninja';
+        }
 
-      const hp = type === 'oni' ? 100 : (type === 'ninja' ? 40 : 20);
+        // 4. HP Scaling (Base + 10% per level)
+        const baseHp = type === 'oni' ? 120 : (type === 'ninja' ? 50 : 25);
+        const scaledHp = Math.round(baseHp * (1 + (run.level - 1) * 0.15));
 
-      spawnEnemy({
-        id: Math.random().toString(36).substr(2, 9),
-        type,
-        position: [clampedX, 0.5, clampedZ],
-        hp,
-        maxHp: hp
-      });
+        spawnEnemy({
+          id: `enemy-${Math.random().toString(36).substring(2, 9)}`,
+          type,
+          position: [clampedX, 0.5, clampedZ],
+          hp: scaledHp,
+          maxHp: scaledHp
+        });
+      }
     }
   });
 
