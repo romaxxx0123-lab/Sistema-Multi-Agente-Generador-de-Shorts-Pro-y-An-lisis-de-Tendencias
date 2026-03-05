@@ -179,14 +179,53 @@ export const useGameStore = create<GameState>((set) => ({
         // Unlock Level 1
         nextAbilities.set(id, { id, level: 1, stats: { ...DEFAULT_ABILITY_STATS[id] } });
     } else {
-        // Level Up (scaling)
-        const nextLevel = Math.min(5, current.level + 1);
+        // Level Up (scaling) - Now supporting up to 8 levels with detailed progression
+        const nextLevel = Math.min(8, current.level + 1);
         const nextStats = { ...current.stats, level: nextLevel };
 
-        if (id === 'orbital') nextStats.count += 1;
-        if (id === 'lightning') nextStats.cooldown = Math.max(1.4, nextStats.cooldown - 0.4);
-        if (id === 'aura') nextStats.range += 0.5;
-        if (id === 'barrage') nextStats.count += 1;
+        // Orbital Progression (Kunai Orbital)
+        if (id === 'orbital') {
+            if (nextLevel === 2) nextStats.damage *= 1.2;
+            if (nextLevel === 3) nextStats.count += 1;
+            if (nextLevel === 4) nextStats.damage *= 1.3;
+            if (nextLevel === 5) nextStats.count += 2;
+            if (nextLevel === 6) nextStats.speed *= 1.5;
+            if (nextLevel === 7) nextStats.damage *= 1.5;
+            if (nextLevel === 8) { nextStats.range *= 1.5; nextStats.damage *= 2; } // Mastery
+        }
+
+        // Lightning Progression (Rayo Divino)
+        if (id === 'lightning') {
+            if (nextLevel === 2) nextStats.range *= 1.25;
+            if (nextLevel === 3) nextStats.count += 1;
+            if (nextLevel === 4) nextStats.cooldown *= 0.8;
+            if (nextLevel === 5) nextStats.count += 2;
+            if (nextLevel === 6) nextStats.damage *= 1.4;
+            if (nextLevel === 7) nextStats.cooldown *= 0.7;
+            if (nextLevel === 8) { nextStats.cooldown = 0.5; nextStats.damage *= 2; } // Mastery
+        }
+
+        // Aura Progression (Aura de Fuego)
+        if (id === 'aura') {
+            if (nextLevel === 2) nextStats.range *= 1.2;
+            if (nextLevel === 3) nextStats.damage *= 1.25;
+            if (nextLevel === 4) nextStats.range *= 1.2;
+            if (nextLevel === 5) nextStats.damage *= 1.25;
+            if (nextLevel === 6) nextStats.damage *= 1.5; // Represents knockback increase
+            if (nextLevel === 7) nextStats.range *= 1.3;
+            if (nextLevel === 8) { nextStats.damage *= 2; nextStats.range *= 1.5; } // Mastery
+        }
+
+        // Barrage Progression (Ráfaga de Kunai)
+        if (id === 'barrage') {
+            if (nextLevel === 2) nextStats.damage *= 1.2;
+            if (nextLevel === 3) nextStats.count += 2;
+            if (nextLevel === 4) nextStats.speed *= 1.3;
+            if (nextLevel === 5) nextStats.count += 3;
+            if (nextLevel === 6) nextStats.damage *= 1.3;
+            if (nextLevel === 7) nextStats.count += 2; // Extra projectiles
+            if (nextLevel === 8) { nextStats.cooldown *= 0.2; nextStats.damage *= 1.5; } // Mastery
+        }
 
         nextAbilities.set(id, { id, level: nextLevel, stats: nextStats });
     }

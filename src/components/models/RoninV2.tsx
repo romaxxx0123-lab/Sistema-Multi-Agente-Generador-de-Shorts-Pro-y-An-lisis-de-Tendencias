@@ -9,7 +9,7 @@ import { SlashTrail } from "../game/SlashTrail";
  * RONIN V2 - HIGH QUALITY STYLIZED PLAYER
  * Features: Kasa (Hat), Kimono with Obi, Sode (Armor), and detailed proportions.
  */
-export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, ...props }: any) => {
+export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, isDashing = false, hitFlash = false, ...props }: any) => {
   const groupRef = useRef<Group>(null);
   const headRef = useRef<Group>(null);
   const tiltRef = useRef<Group>(null);
@@ -125,6 +125,20 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
     }
   });
 
+  const flashMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#ffffff',
+    emissive: '#ffffff',
+    emissiveIntensity: 5
+  }), []);
+
+  const dashMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+      color: '#00d2ff',
+      transparent: true,
+      opacity: 0.5,
+      emissive: '#00d2ff',
+      emissiveIntensity: 1
+  }), []);
+
   return (
     <group {...props} ref={groupRef}>
       <group ref={tiltRef}>
@@ -132,13 +146,13 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
       {/* 1. LOWER BODY (Hakama) */}
       <mesh position={[0, -0.4, 0]} castShadow>
         <cylinderGeometry args={[0.3, 0.4, 0.8, 8]} />
-        <meshStandardMaterial {...hakamaTextures} />
+        {hitFlash ? <primitive object={flashMaterial} /> : (isDashing ? <primitive object={dashMaterial} /> : <meshStandardMaterial {...hakamaTextures} />)}
       </mesh>
 
       {/* 2. TORSO (Kimono) */}
       <mesh position={[0, 0.2, 0]} castShadow>
         <boxGeometry args={[0.5, 0.6, 0.3]} />
-        <meshStandardMaterial {...kimonoTextures} />
+        {hitFlash ? <primitive object={flashMaterial} /> : (isDashing ? <primitive object={dashMaterial} /> : <meshStandardMaterial {...kimonoTextures} />)}
       </mesh>
 
       {/* Obi (Belt) */}
@@ -152,7 +166,7 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
       <group ref={rightArmRef} position={[0.35, 0.3, 0]}>
         <mesh castShadow>
           <boxGeometry args={[0.15, 0.4, 0.15]} />
-          <meshStandardMaterial color="#2d3436" />
+          {hitFlash ? <primitive object={flashMaterial} /> : (isDashing ? <primitive object={dashMaterial} /> : <meshStandardMaterial color="#2d3436" />)}
         </mesh>
         {/* Sode Armor */}
         <mesh position={[0.05, 0.1, 0]} rotation={[0, 0, -0.2]}>
@@ -177,7 +191,7 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
       <group position={[-0.35, 0.3, 0]}>
         <mesh castShadow>
           <boxGeometry args={[0.15, 0.4, 0.15]} />
-          <meshStandardMaterial color="#2d3436" />
+          {hitFlash ? <primitive object={flashMaterial} /> : (isDashing ? <primitive object={dashMaterial} /> : <meshStandardMaterial color="#2d3436" />)}
         </mesh>
         {/* Sode Armor */}
         <mesh position={[-0.05, 0.1, 0]} rotation={[0, 0, 0.2]}>
@@ -191,7 +205,7 @@ export const RoninV2 = ({ velocity = { x: 0, y: 0, z: 0 }, isAttacking = false, 
         {/* Face/Mask */}
         <mesh castShadow>
           <boxGeometry args={[0.25, 0.25, 0.25]} />
-          <meshStandardMaterial color="#000" />
+          {hitFlash ? <primitive object={flashMaterial} /> : (isDashing ? <primitive object={dashMaterial} /> : <meshStandardMaterial color="#000" />)}
         </mesh>
         {/* Glowing Visor */}
         <mesh position={[0, 0.05, 0.13]}>

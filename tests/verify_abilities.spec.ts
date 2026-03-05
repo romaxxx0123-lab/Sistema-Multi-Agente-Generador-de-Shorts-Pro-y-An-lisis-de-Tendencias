@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  * Verifies that abilities are active and can be upgraded.
  */
 test('ability system and upgrades', async ({ page }) => {
-  await page.goto('http://localhost:5180');
+  await page.goto('http://localhost:5173');
 
   // 1. Start game
   await page.click('text=Nueva Run');

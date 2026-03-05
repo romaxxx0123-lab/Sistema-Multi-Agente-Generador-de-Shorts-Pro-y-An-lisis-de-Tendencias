@@ -22,11 +22,24 @@ export const Player = () => {
   const meshRef = useRef<Mesh>(null);
   const lastAttackTime = useRef(0);
 
-  const { move } = usePlayerMovement(
+  const { move, isDashing } = usePlayerMovement(
     rb,
     CONFIG.PLAYER.MOVE_SPEED,
     CONFIG.PLAYER.ROTATION_SPEED
   );
+
+  const status = useGameStore((state) => state.status);
+  const hp = useGameStore((state) => state.run.hp);
+  const lastHp = useRef(hp);
+  const hitFlashTime = useRef(0);
+
+  // Damage Flash effect
+  useFrame((state) => {
+      if (hp < lastHp.current) {
+          hitFlashTime.current = state.clock.getElapsedTime();
+      }
+      lastHp.current = hp;
+  });
 
   useEffect(() => {
     if (meshRef.current) setPlayerRef(meshRef.current);
@@ -75,6 +88,8 @@ export const Player = () => {
         <RoninV2
           velocity={rb.current?.linvel() || { x: 0, y: 0, z: 0 }}
           isAttacking={controls.attack}
+          isDashing={isDashing}
+          hitFlash={status !== 'gameover' && (useThree().clock.getElapsedTime() - hitFlashTime.current < 0.15)}
         />
       </group>
     </RigidBody>
