@@ -1,6 +1,7 @@
 import { useGameStore } from '../store/useGameStore';
 import { UIProgressBar } from './ui/UIProgressBar';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Shield, Zap, Target } from 'lucide-react';
 
 /**
  * GAME HUD
@@ -100,11 +101,28 @@ export function HUD() {
         </div>
 
         {/* Active Skills Placeholders */}
-        <div className="flex gap-3">
-            {[ '#3498DB', '#2ECC71', '#E74C3C' ].map((c, i) => (
-                <div key={i} className="w-12 h-12 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center relative group">
-                    <div className="w-8 h-8 rounded-full blur-[10px] opacity-20 absolute" style={{ backgroundColor: c }} />
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c }} />
+        <div className="flex gap-4">
+            {[
+                { color: '#3498DB', icon: <Shield size={16} /> },
+                { color: '#2ECC71', icon: <Zap size={16} /> },
+                { color: '#E74C3C', icon: <Target size={16} /> }
+            ].map((skill, i) => (
+                <div key={i} className="w-14 h-14 rounded-2xl bg-black/60 backdrop-blur-xl border-2 border-white/10 flex items-center justify-center relative group overflow-hidden shadow-lg">
+                    {/* Inner Glow */}
+                    <div className="w-10 h-10 rounded-full blur-[15px] opacity-10 absolute pointer-events-none" style={{ backgroundColor: skill.color }} />
+
+                    {/* Skill Icon/Dot */}
+                    <div className="relative z-10 text-white/20 group-hover:text-white transition-colors duration-300">
+                        {skill.icon}
+                    </div>
+
+                    {/* Active Border Overlay */}
+                    <div className="absolute inset-0 border-2 border-transparent group-hover:border-current opacity-30 transition-all duration-300" style={{ color: skill.color }} />
+
+                    {/* Key Hint */}
+                    <div className="absolute top-1 right-1.5 text-[8px] font-black text-white/20 uppercase tracking-tighter">
+                        Q
+                    </div>
                 </div>
             ))}
         </div>
