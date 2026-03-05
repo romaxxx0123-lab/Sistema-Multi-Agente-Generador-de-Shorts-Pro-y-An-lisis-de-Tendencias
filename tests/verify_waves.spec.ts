@@ -2,11 +2,10 @@ import { test, expect } from '@playwright/test';
 
 /**
  * WAVE VERIFICATION TEST
- * This script will run the game, skip the menu, and monitor the enemy counts
- * and types to ensure the spawner logic is functioning as intended.
+ * Updated to use the correct port 5180 for Ronin Survivor.
  */
 test('verify wave spawning and enemy variety', async ({ page }) => {
-  await page.goto('http://localhost:5173');
+  await page.goto('http://localhost:5180');
 
   // 1. Wait for and click 'Nueva Run'
   const newRunButton = page.locator('button', { hasText: 'Nueva Run' });
@@ -24,8 +23,6 @@ test('verify wave spawning and enemy variety', async ({ page }) => {
   await page.screenshot({ path: 'verification/wave1_swarm.png' });
 
   // 4. Force time forward if possible (via global state)
-  // Since we can't easily force time in a black-box test, we'll verify the
-  // HUD update for time and kills.
   const timeLabel = page.locator('text=Time Elapsed');
   await expect(timeLabel).toBeVisible();
 

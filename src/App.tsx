@@ -5,7 +5,7 @@ import { Environment } from '@react-three/drei';
 
 import { Arena } from './components/Arena';
 import { Player } from './components/Player';
-import { CameraFollow } from './components/CameraFollow';
+import { CameraRig } from './components/CameraRig';
 import { SakuraParticles } from './components/Particles';
 import { Effects } from './components/Effects';
 import { DebugPanel } from './components/DebugPanel';
@@ -37,6 +37,7 @@ export const RoninGame = () => {
   const setStatus = useGameStore((state) => state.setStatus);
   const updateTime = useGameStore((state) => state.updateTime);
   const enemies = useGameStore((state) => state.enemies);
+  const playerRef = useGameStore((state) => state.playerRef);
 
   // Global Key Listener (ESC for Pause, etc.)
   useEffect(() => {
@@ -65,7 +66,7 @@ export const RoninGame = () => {
         >
           <Suspense fallback={null}>
             {/* Follow Camera Logic */}
-            <CameraFollow />
+            <CameraRig target={playerRef as any} />
 
             <ambientLight intensity={0.5} />
             <directionalLight

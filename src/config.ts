@@ -34,7 +34,11 @@ export const CONFIG = {
 
   // Camera Perspective
   CAMERA: {
-    OFFSET: { x: 0, y: 4, z: 8 }, // Note: Adjusted Z for 3rd person follow
+    OFFSET_X: 0,
+    OFFSET_Y: 4,
+    OFFSET_Z: -8, // Negative = Behind in World Space
+    SMOOTH_SPEED: 5.0,
+    LOOK_AT_HEIGHT: 1.5,
     FOV: 75,
     NEAR: 0.1,
     FAR: 1000,
