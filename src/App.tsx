@@ -14,6 +14,7 @@ import { DebugPanel } from './components/DebugPanel';
 import { MenuRoot } from './components/menus/MenuRoot';
 import { HUD } from './components/HUD';
 import { LevelUpOverlay } from './components/LevelUpOverlay';
+import { ChestOverlay } from './components/overlays/ChestOverlay';
 import { PauseOverlay } from './components/overlays/PauseOverlay';
 import { EndRunOverlay } from './components/overlays/EndRunOverlay';
 
@@ -21,13 +22,14 @@ import { EndRunOverlay } from './components/overlays/EndRunOverlay';
 import { EnemySpawner } from './systems/EnemySpawner';
 import { Enemy } from './components/game/Enemy';
 import { AbilityManager } from './components/game/AbilityManager';
+import { PickupManager } from './components/game/PickupManager';
 
 import { useGameStore } from './store/useGameStore';
 import { CONFIG } from './config';
 
 /**
  * OPTIMIZED RONIN SURVIVOR ENTRY POINT
- * Integrated with Hub Menu system and persistent state.
+ * Integrated with Wave System, Pickups, and Hub.
  */
 export const RoninGame = () => {
   const view = useGameStore((state) => state.view);
@@ -43,6 +45,7 @@ export const RoninGame = () => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (view === 'game') {
+          // Priority: Close levelup/chest first if we wanted (but rules say ignore)
           if (status === 'playing') setStatus('paused');
           else if (status === 'paused') setStatus('playing');
         }
@@ -80,6 +83,7 @@ export const RoninGame = () => {
 
               <AbilityManager />
               <EnemySpawner />
+              <PickupManager />
 
               {enemies.map((enemy) => (
                 <Enemy key={enemy.id} data={enemy} />
@@ -102,6 +106,7 @@ export const RoninGame = () => {
           <div className="game-ui-overlay">
             <HUD />
             <LevelUpOverlay />
+            <ChestOverlay />
             <PauseOverlay />
             <EndRunOverlay />
           </div>

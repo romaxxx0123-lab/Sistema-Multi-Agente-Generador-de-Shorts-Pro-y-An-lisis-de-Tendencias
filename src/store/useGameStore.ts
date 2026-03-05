@@ -21,6 +21,7 @@ export interface RunStats {
   time: number;
   dashCharges: number;
   maxDashCharges: number;
+  goldRun: number;
 }
 
 export interface EnemyEntity {
@@ -30,6 +31,14 @@ export interface EnemyEntity {
   hp: number;
   maxHp: number;
   isElite?: boolean;
+  isBoss?: boolean;
+}
+
+export interface PickupEntity {
+  id: string;
+  type: 'xp' | 'gold' | 'chest';
+  position: [number, number, number];
+  value: number;
 }
 
 export interface ActiveAbility {
@@ -43,7 +52,7 @@ interface GameState {
   view: 'menu' | 'game';
   menuScreen: MenuScreen;
   menuHistory: MenuScreen[];
-  status: 'playing' | 'paused' | 'levelup' | 'gameover' | 'victory';
+  status: 'playing' | 'paused' | 'levelup' | 'chest' | 'gameover' | 'victory';
 
   // Player Reference (for camera/physics)
   playerRef: Mesh | null;
@@ -64,8 +73,9 @@ interface GameState {
   // Auto-Abilities
   abilities: Map<AbilityType, ActiveAbility>;
 
-  // Enemies
+  // Entities
   enemies: EnemyEntity[];
+  pickups: PickupEntity[];
 
   // Actions
   setView: (view: GameState['view']) => void;
@@ -93,12 +103,15 @@ interface GameState {
   // Ability Actions
   upgradeAbility: (id: AbilityType) => void;
 
-  // Enemy Actions
+  // Entity Actions
   spawnEnemy: (enemy: EnemyEntity) => void;
   updateEnemyPosition: (id: string, position: [number, number, number]) => void;
   damageEnemy: (id: string, amount: number) => void;
   attackNearbyEnemies: (playerPos: [number, number, number], range: number, damage: number) => void;
   removeEnemy: (id: string) => void;
+
+  spawnPickup: (pickup: PickupEntity) => void;
+  collectPickup: (id: string) => void;
 
   // Lifecycle
   startRun: () => void;
@@ -116,7 +129,8 @@ const INITIAL_RUN: RunStats = {
   kills: 0,
   time: 0,
   dashCharges: 2,
-  maxDashCharges: 2
+  maxDashCharges: 2,
+  goldRun: 0
 };
 
 const DEFAULT_ABILITY_STATS: Record<AbilityType, AbilityStats> = {
@@ -145,6 +159,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   settings: savedData.settings,
   abilities: new Map(),
   enemies: [],
+  pickups: [],
 
   setView: (view) => set({ view }),
 
@@ -163,7 +178,6 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setSelectedCharacter: (selectedCharacter) => {
     set({ selectedCharacter });
-    const current = get();
     saveSystem.save({
       ...saveSystem.load(),
       unlockedCharacters: Array.from(new Set([...saveSystem.load().unlockedCharacters, selectedCharacter]))
@@ -232,7 +246,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
 
   addCoin: (amount) => set((state) => ({
-    run: { ...state.run, coins: state.run.coins + amount }
+    run: { ...state.run, goldRun: state.run.goldRun + amount }
   })),
 
   addKill: () => set((state) => ({
@@ -260,8 +274,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     } else {
         const nextLevel = Math.min(8, current.level + 1);
         const nextStats = { ...current.stats, level: nextLevel };
-        // (Detailed scaling omitted for brevity in this setter, keeping original logic if needed)
-        // ... (Keep the detailed progression logic from previous version)
+
         if (id === 'orbital') {
             if (nextLevel === 2) nextStats.damage *= 1.2;
             if (nextLevel === 3) nextStats.count += 1;
@@ -311,38 +324,85 @@ export const useGameStore = create<GameState>((set, get) => ({
     enemies: state.enemies.map(e => e.id === id ? { ...e, position } : e)
   })),
 
-  damageEnemy: (id, amount) => set((state) => ({
-      enemies: state.enemies.map(e => e.id === id ? { ...e, hp: Math.max(0, e.hp - amount) } : e)
-  })),
+  damageEnemy: (id, amount) => set((state) => {
+      const enemy = state.enemies.find(e => e.id === id);
+      if (!enemy) return state;
 
-  attackNearbyEnemies: (playerPos, range, damage) => set((state) => {
+      const newHp = Math.max(0, enemy.hp - amount);
+      if (newHp === 0) {
+          // Drop Logic
+          const dropRoll = Math.random();
+          let pickup: PickupEntity | null = null;
+
+          if (enemy.isBoss) {
+              pickup = { id: `chest-${id}`, type: 'chest', position: enemy.position, value: 1 };
+          } else if (enemy.isElite) {
+              pickup = { id: `chest-${id}`, type: 'chest', position: enemy.position, value: 1 };
+          } else if (dropRoll < 0.3) {
+              pickup = { id: `xp-${id}`, type: 'xp', position: enemy.position, value: 1 };
+          } else if (dropRoll < 0.4) {
+              pickup = { id: `gold-${id}`, type: 'gold', position: enemy.position, value: 5 };
+          }
+
+          const nextPickups = pickup ? [...state.pickups, pickup].slice(-300) : state.pickups;
+
+          return {
+              enemies: state.enemies.filter(e => e.id !== id),
+              pickups: nextPickups,
+              run: { ...state.run, kills: state.run.kills + 1 }
+          };
+      }
+
+      return {
+          enemies: state.enemies.map(e => e.id === id ? { ...e, hp: newHp } : e)
+      };
+  }),
+
+  attackNearbyEnemies: (playerPos, range, damage) => {
+    const state = get();
     const [px, py, pz] = playerPos;
-    return {
-      enemies: state.enemies.map(e => {
+    state.enemies.forEach(e => {
         const [ex, ey, ez] = e.position;
         const distSq = (px - ex) ** 2 + (py - ey) ** 2 + (pz - ez) ** 2;
         if (distSq <= range * range) {
-          return { ...e, hp: Math.max(0, e.hp - damage) };
+            get().damageEnemy(e.id, damage);
         }
-        return e;
-      })
-    };
-  }),
+    });
+  },
 
   removeEnemy: (id) => set((state) => ({
       enemies: state.enemies.filter(e => e.id !== id)
   })),
+
+  spawnPickup: (pickup) => set((state) => ({
+      pickups: [...state.pickups, pickup].slice(-300)
+  })),
+
+  collectPickup: (id) => set((state) => {
+      const pickup = state.pickups.find(p => p.id === id);
+      if (!pickup) return state;
+
+      if (pickup.type === 'xp') {
+          get().addXp(pickup.value);
+      } else if (pickup.type === 'gold') {
+          get().addCoin(pickup.value);
+      } else if (pickup.type === 'chest') {
+          return { pickups: state.pickups.filter(p => p.id !== id), status: 'chest' };
+      }
+
+      return {
+          pickups: state.pickups.filter(p => p.id !== id)
+      };
+  }),
 
   startRun: () => {
     const { talents, loadoutPerk } = get();
     const initialAbilities = new Map<AbilityType, ActiveAbility>();
     initialAbilities.set('orbital', { id: 'orbital', level: 1, stats: { ...DEFAULT_ABILITY_STATS['orbital'] } });
 
-    // Apply Talents and Perks
     const modifiedRun = { ...INITIAL_RUN };
     modifiedRun.maxHp += talents.hp * 20;
     modifiedRun.hp = modifiedRun.maxHp;
-    // (Other talent applications would go here or in systems)
 
     if (loadoutPerk === 'perk_hp') {
         modifiedRun.maxHp *= 1.2;
@@ -354,12 +414,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         status: 'playing',
         run: modifiedRun,
         enemies: [],
+        pickups: [],
         abilities: initialAbilities
     });
   },
 
   finishRun: (victory) => set((state) => {
-    const nextMetaXp = state.metaXp + (victory ? 500 : 150) + (state.run.coins * 2);
+    const nextMetaXp = state.metaXp + (victory ? 500 : 150) + (state.run.goldRun * 2);
     const nextTotalRuns = state.totalRuns + 1;
 
     let unlockedChapters = [...state.unlockedChapters];
@@ -381,7 +442,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       metaXp: nextMetaXp,
       totalRuns: nextTotalRuns,
       unlockedChapters,
-      enemies: []
+      enemies: [],
+      pickups: []
     };
   }),
 
@@ -392,6 +454,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     status: 'paused',
     run: { ...INITIAL_RUN },
     enemies: [],
+    pickups: [],
     abilities: new Map()
   })
 }));

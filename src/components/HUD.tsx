@@ -63,7 +63,7 @@ export function HUD() {
             </div>
             <div className="flex flex-col">
                 <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/40">Koban</span>
-                <span className="text-xl font-black text-[#F1C40F]">× {run.coins}</span>
+                <span className="text-xl font-black text-[#F1C40F]">× {run.goldRun}</span>
             </div>
         </div>
 
