@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import { Mesh } from 'three';
-import { saveSystem } from '../utils/saveSystem';
+import { saveSystem, MetaSaveData } from '../utils/saveSystem';
 import { AbilityType, AbilityStats } from '../types/abilities';
 
 /**
  * GAME STORE - GLOBAL STATE MANAGEMENT
- * Handles UI, Stats, Run Metadata, Enemy Entities, and Auto-Abilities.
+ * Handles UI, Hub Navigation, Stats, Run Metadata, Enemy Entities, and Auto-Abilities.
  */
+
+export type MenuScreen = 'home' | 'chapters' | 'loadout' | 'talents' | 'settings' | 'gallery' | 'characters';
 
 export interface RunStats {
   hp: number;
@@ -38,7 +40,9 @@ export interface ActiveAbility {
 
 interface GameState {
   // Navigation & Status
-  view: 'menu' | 'characters' | 'game' | 'gallery';
+  view: 'menu' | 'game';
+  menuScreen: MenuScreen;
+  menuHistory: MenuScreen[];
   status: 'playing' | 'paused' | 'levelup' | 'gameover' | 'victory';
 
   // Player Reference (for camera/physics)
@@ -49,8 +53,13 @@ interface GameState {
   metaXp: number;
   totalRuns: number;
 
-  // Selection
+  // Hub / Meta State
+  unlockedChapters: string[];
+  selectedChapterId: string;
   selectedCharacter: string;
+  loadoutPerk: string | null;
+  talents: MetaSaveData['talents'];
+  settings: MetaSaveData['settings'];
 
   // Auto-Abilities
   abilities: Map<AbilityType, ActiveAbility>;
@@ -60,9 +69,17 @@ interface GameState {
 
   // Actions
   setView: (view: GameState['view']) => void;
+  setMenuScreen: (screen: MenuScreen, push?: boolean) => void;
+  goBack: () => void;
   setSelectedCharacter: (id: string) => void;
   setStatus: (status: GameState['status']) => void;
   setPlayerRef: (ref: Mesh | null) => void;
+
+  // Meta Actions
+  buyTalent: (talent: keyof MetaSaveData['talents']) => void;
+  updateSettings: (settings: Partial<MetaSaveData['settings']>) => void;
+  selectChapter: (id: string) => void;
+  selectPerk: (id: string | null) => void;
 
   // Run Actions
   takeDamage: (amount: number) => void;
@@ -102,7 +119,6 @@ const INITIAL_RUN: RunStats = {
   maxDashCharges: 2
 };
 
-// Initial Stats for Abilities (Level 1)
 const DEFAULT_ABILITY_STATS: Record<AbilityType, AbilityStats> = {
   orbital: { level: 1, damage: 15, range: 2, cooldown: 0, count: 2, speed: 180 },
   lightning: { level: 1, damage: 40, range: 10, cooldown: 3, count: 1, speed: 0 },
@@ -112,21 +128,85 @@ const DEFAULT_ABILITY_STATS: Record<AbilityType, AbilityStats> = {
 
 const savedData = saveSystem.load();
 
-export const useGameStore = create<GameState>((set) => ({
+export const useGameStore = create<GameState>((set, get) => ({
   view: 'menu',
+  menuScreen: 'home',
+  menuHistory: [],
   status: 'paused',
   playerRef: null,
   run: { ...INITIAL_RUN },
   metaXp: savedData.metaXp,
   totalRuns: savedData.totalRuns,
-  selectedCharacter: 'ronin',
+  unlockedChapters: savedData.unlockedChapters,
+  selectedChapterId: savedData.selectedChapterId,
+  selectedCharacter: savedData.unlockedCharacters[0] || 'ronin',
+  loadoutPerk: savedData.loadoutPerk,
+  talents: savedData.talents,
+  settings: savedData.settings,
   abilities: new Map(),
   enemies: [],
 
   setView: (view) => set({ view }),
-  setSelectedCharacter: (selectedCharacter) => set({ selectedCharacter }),
+
+  setMenuScreen: (screen, push = true) => set((state) => {
+    if (screen === state.menuScreen) return state;
+    const history = push ? [...state.menuHistory, state.menuScreen] : state.menuHistory;
+    return { menuScreen: screen, menuHistory: history };
+  }),
+
+  goBack: () => set((state) => {
+    if (state.menuHistory.length === 0) return state;
+    const newHistory = [...state.menuHistory];
+    const prevScreen = newHistory.pop()!;
+    return { menuScreen: prevScreen, menuHistory: newHistory };
+  }),
+
+  setSelectedCharacter: (selectedCharacter) => {
+    set({ selectedCharacter });
+    const current = get();
+    saveSystem.save({
+      ...saveSystem.load(),
+      unlockedCharacters: Array.from(new Set([...saveSystem.load().unlockedCharacters, selectedCharacter]))
+    });
+  },
+
   setStatus: (status) => set({ status }),
   setPlayerRef: (ref) => set({ playerRef: ref }),
+
+  updateSettings: (newSettings) => set((state) => {
+    const updated = { ...state.settings, ...newSettings };
+    saveSystem.save({ ...saveSystem.load(), settings: updated });
+    return { settings: updated };
+  }),
+
+  buyTalent: (talent) => set((state) => {
+    const currentLevel = state.talents[talent];
+    const cost = (currentLevel + 1) * 500;
+
+    if (state.metaXp >= cost) {
+      const updatedTalents = { ...state.talents, [talent]: currentLevel + 1 };
+      const nextMetaXp = state.metaXp - cost;
+
+      saveSystem.save({
+        ...saveSystem.load(),
+        talents: updatedTalents,
+        metaXp: nextMetaXp
+      });
+
+      return { talents: updatedTalents, metaXp: nextMetaXp };
+    }
+    return state;
+  }),
+
+  selectChapter: (selectedChapterId) => set((state) => {
+    saveSystem.save({ ...saveSystem.load(), selectedChapterId });
+    return { selectedChapterId };
+  }),
+
+  selectPerk: (loadoutPerk) => set((state) => {
+    saveSystem.save({ ...saveSystem.load(), loadoutPerk });
+    return { loadoutPerk };
+  }),
 
   takeDamage: (amount) => set((state) => {
     const newHp = Math.max(0, state.run.hp - amount);
@@ -176,14 +256,12 @@ export const useGameStore = create<GameState>((set) => ({
     const current = nextAbilities.get(id);
 
     if (!current) {
-        // Unlock Level 1
         nextAbilities.set(id, { id, level: 1, stats: { ...DEFAULT_ABILITY_STATS[id] } });
     } else {
-        // Level Up (scaling) - Now supporting up to 8 levels with detailed progression
         const nextLevel = Math.min(8, current.level + 1);
         const nextStats = { ...current.stats, level: nextLevel };
-
-        // Orbital Progression (Kunai Orbital)
+        // (Detailed scaling omitted for brevity in this setter, keeping original logic if needed)
+        // ... (Keep the detailed progression logic from previous version)
         if (id === 'orbital') {
             if (nextLevel === 2) nextStats.damage *= 1.2;
             if (nextLevel === 3) nextStats.count += 1;
@@ -191,10 +269,8 @@ export const useGameStore = create<GameState>((set) => ({
             if (nextLevel === 5) nextStats.count += 2;
             if (nextLevel === 6) nextStats.speed *= 1.5;
             if (nextLevel === 7) nextStats.damage *= 1.5;
-            if (nextLevel === 8) { nextStats.range *= 1.5; nextStats.damage *= 2; } // Mastery
+            if (nextLevel === 8) { nextStats.range *= 1.5; nextStats.damage *= 2; }
         }
-
-        // Lightning Progression (Rayo Divino)
         if (id === 'lightning') {
             if (nextLevel === 2) nextStats.range *= 1.25;
             if (nextLevel === 3) nextStats.count += 1;
@@ -202,34 +278,28 @@ export const useGameStore = create<GameState>((set) => ({
             if (nextLevel === 5) nextStats.count += 2;
             if (nextLevel === 6) nextStats.damage *= 1.4;
             if (nextLevel === 7) nextStats.cooldown *= 0.7;
-            if (nextLevel === 8) { nextStats.cooldown = 0.5; nextStats.damage *= 2; } // Mastery
+            if (nextLevel === 8) { nextStats.cooldown = 0.5; nextStats.damage *= 2; }
         }
-
-        // Aura Progression (Aura de Fuego)
         if (id === 'aura') {
             if (nextLevel === 2) nextStats.range *= 1.2;
             if (nextLevel === 3) nextStats.damage *= 1.25;
             if (nextLevel === 4) nextStats.range *= 1.2;
             if (nextLevel === 5) nextStats.damage *= 1.25;
-            if (nextLevel === 6) nextStats.damage *= 1.5; // Represents knockback increase
+            if (nextLevel === 6) nextStats.damage *= 1.5;
             if (nextLevel === 7) nextStats.range *= 1.3;
-            if (nextLevel === 8) { nextStats.damage *= 2; nextStats.range *= 1.5; } // Mastery
+            if (nextLevel === 8) { nextStats.damage *= 2; nextStats.range *= 1.5; }
         }
-
-        // Barrage Progression (Ráfaga de Kunai)
         if (id === 'barrage') {
             if (nextLevel === 2) nextStats.damage *= 1.2;
             if (nextLevel === 3) nextStats.count += 2;
             if (nextLevel === 4) nextStats.speed *= 1.3;
             if (nextLevel === 5) nextStats.count += 3;
             if (nextLevel === 6) nextStats.damage *= 1.3;
-            if (nextLevel === 7) nextStats.count += 2; // Extra projectiles
-            if (nextLevel === 8) { nextStats.cooldown *= 0.2; nextStats.damage *= 1.5; } // Mastery
+            if (nextLevel === 7) nextStats.count += 2;
+            if (nextLevel === 8) { nextStats.cooldown *= 0.2; nextStats.damage *= 1.5; }
         }
-
         nextAbilities.set(id, { id, level: nextLevel, stats: nextStats });
     }
-
     return { abilities: nextAbilities, status: 'playing' };
   }),
 
@@ -264,39 +334,61 @@ export const useGameStore = create<GameState>((set) => ({
   })),
 
   startRun: () => {
+    const { talents, loadoutPerk } = get();
     const initialAbilities = new Map<AbilityType, ActiveAbility>();
-    // Start with level 1 orbital for free in this demo
     initialAbilities.set('orbital', { id: 'orbital', level: 1, stats: { ...DEFAULT_ABILITY_STATS['orbital'] } });
+
+    // Apply Talents and Perks
+    const modifiedRun = { ...INITIAL_RUN };
+    modifiedRun.maxHp += talents.hp * 20;
+    modifiedRun.hp = modifiedRun.maxHp;
+    // (Other talent applications would go here or in systems)
+
+    if (loadoutPerk === 'perk_hp') {
+        modifiedRun.maxHp *= 1.2;
+        modifiedRun.hp = modifiedRun.maxHp;
+    }
 
     set({
         view: 'game',
         status: 'playing',
-        run: { ...INITIAL_RUN },
+        run: modifiedRun,
         enemies: [],
         abilities: initialAbilities
     });
   },
 
   finishRun: (victory) => set((state) => {
-    const nextMetaXp = state.metaXp + (victory ? 345 : 120);
+    const nextMetaXp = state.metaXp + (victory ? 500 : 150) + (state.run.coins * 2);
     const nextTotalRuns = state.totalRuns + 1;
+
+    let unlockedChapters = [...state.unlockedChapters];
+    if (victory) {
+        if (state.selectedChapterId === 'chapter_1' && !unlockedChapters.includes('chapter_2')) {
+            unlockedChapters.push('chapter_2');
+        }
+    }
 
     saveSystem.save({
       ...saveSystem.load(),
       metaXp: nextMetaXp,
-      totalRuns: nextTotalRuns
+      totalRuns: nextTotalRuns,
+      unlockedChapters
     });
 
     return {
       status: victory ? 'victory' : 'gameover',
       metaXp: nextMetaXp,
       totalRuns: nextTotalRuns,
+      unlockedChapters,
       enemies: []
     };
   }),
 
   resetGame: () => set({
     view: 'menu',
+    menuScreen: 'home',
+    menuHistory: [],
     status: 'paused',
     run: { ...INITIAL_RUN },
     enemies: [],
@@ -304,7 +396,6 @@ export const useGameStore = create<GameState>((set) => ({
   })
 }));
 
-// Expose store for testing
 if (typeof window !== 'undefined') {
   (window as any).useGameStore = useGameStore;
 }
