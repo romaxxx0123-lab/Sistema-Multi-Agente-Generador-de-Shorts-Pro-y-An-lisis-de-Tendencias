@@ -1,8 +1,10 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Sword, Zap, Flame, RotateCcw, FastForward } from 'lucide-react';
+import { Sparkles, RotateCcw, FastForward } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { UIButton } from './ui/UIButton';
+import { ABILITY_METADATA } from '../data/abilities';
+import { AbilityType } from '../types/abilities';
 
 /**
  * LEVEL UP OVERLAY
@@ -10,17 +12,18 @@ import { UIButton } from './ui/UIButton';
  * Improved with rarity gradients, glow effects, and keyboard shortcuts.
  */
 
-interface UpgradeOption {
-    id: string;
+interface DisplayUpgrade {
+    id: AbilityType;
     title: string;
     description: string;
     stats: string;
     rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
     icon: React.ReactNode;
-    level: string;
+    levelInfo: string;
+    isNew: boolean;
 }
 
-const RARITY_COLORS = {
+const RARITY_COLORS: Record<string, string> = {
     common: '#95A5A6',
     uncommon: '#2ECC71',
     rare: '#3498DB',
@@ -28,7 +31,7 @@ const RARITY_COLORS = {
     legendary: '#F39C12'
 };
 
-const RARITY_GRADIENTS = {
+const RARITY_GRADIENTS: Record<string, string> = {
     common: 'linear-gradient(180deg, rgba(149, 165, 166, 0.1) 0%, rgba(149, 165, 166, 0.05) 100%)',
     uncommon: 'linear-gradient(180deg, rgba(46, 204, 113, 0.15) 0%, rgba(46, 204, 113, 0.05) 100%)',
     rare: 'linear-gradient(180deg, rgba(52, 152, 219, 0.15) 0%, rgba(52, 152, 219, 0.05) 100%)',
@@ -36,58 +39,59 @@ const RARITY_GRADIENTS = {
     legendary: 'linear-gradient(180deg, rgba(243, 156, 18, 0.25) 0%, rgba(243, 156, 18, 0.05) 100%)'
 };
 
-const MOCK_OPTIONS: UpgradeOption[] = [
-    {
-        id: 'kunai',
-        title: 'KUNAI ORBITAL',
-        description: '3 kunais girando a tu alrededor',
-        stats: 'Daño: 15',
-        level: 'Nivel 1/5',
-        rarity: 'rare',
-        icon: <Sword className="text-blue-400" />
-    },
-    {
-        id: 'speed',
-        title: '+15% VELOCIDAD',
-        description: 'Muévete más rápido por la arena',
-        stats: 'Actual: 5.0 m/s\nNuevo: 5.75 m/s',
-        level: 'Mejora Pasiva',
-        rarity: 'uncommon',
-        icon: <Zap className="text-green-400" />
-    },
-    {
-        id: 'flame',
-        title: 'FLAME AURA',
-        description: 'Aura de fuego que daña enemigos cercanos',
-        stats: 'Radio: 3m\nDaño: 5/s',
-        level: 'Nivel 1/5',
-        rarity: 'epic',
-        icon: <Flame className="text-red-500" />
-    }
-];
-
 export function LevelUpOverlay() {
   const status = useGameStore((state) => state.status);
   const run = useGameStore((state) => state.run);
   const setStatus = useGameStore((state) => state.setStatus);
+  const abilities = useGameStore((state) => state.abilities);
+  const upgradeAbility = useGameStore((state) => state.upgradeAbility);
 
-  const handleSelect = useCallback(() => {
-    setStatus('playing');
-  }, [setStatus]);
+  const [options, setOptions] = useState<DisplayUpgrade[]>([]);
+
+  // Generate options when status changes to levelup
+  useEffect(() => {
+    if (status === 'levelup') {
+        const pool: AbilityType[] = ['orbital', 'lightning', 'aura', 'barrage'];
+        const selected = pool.sort(() => 0.5 - Math.random()).slice(0, 3);
+
+        const displayOptions: DisplayUpgrade[] = selected.map(id => {
+            const meta = ABILITY_METADATA[id];
+            const current = abilities.get(id);
+            const nextLevel = current ? current.level + 1 : 1;
+
+            return {
+                id,
+                title: meta.title,
+                description: meta.description,
+                stats: meta.upgrades[nextLevel - 1] || 'Mejora de estadísticas',
+                rarity: meta.rarity,
+                icon: meta.icon,
+                levelInfo: current ? `Nivel ${current.level}/8` : 'NUEVO',
+                isNew: !current
+            };
+        });
+
+        setOptions(displayOptions);
+    }
+  }, [status, abilities]);
+
+  const handleSelect = useCallback((id: AbilityType) => {
+    upgradeAbility(id);
+  }, [upgradeAbility]);
 
   // Keyboard shortcuts (1, 2, 3)
   useEffect(() => {
-    if (status !== 'levelup') return;
+    if (status !== 'levelup' || options.length === 0) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['1', '2', '3'].includes(e.key)) {
-        handleSelect();
-      }
+      if (e.key === '1') handleSelect(options[0].id);
+      if (e.key === '2' && options[1]) handleSelect(options[1].id);
+      if (e.key === '3' && options[2]) handleSelect(options[2].id);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status, handleSelect]);
+  }, [status, options, handleSelect]);
 
   if (status !== 'levelup') return null;
 
@@ -116,8 +120,8 @@ export function LevelUpOverlay() {
         </div>
 
         <div className="flex justify-center gap-8 px-4">
-            <AnimatePresence>
-                {MOCK_OPTIONS.map((opt, i) => (
+            <AnimatePresence mode="wait">
+                {options.map((opt: DisplayUpgrade, i: number) => (
                     <motion.div
                         key={opt.id}
                         initial={{ y: 40, opacity: 0 }}
@@ -128,15 +132,30 @@ export function LevelUpOverlay() {
                             boxShadow: `0 20px 40px -10px ${RARITY_COLORS[opt.rarity]}33`,
                             borderColor: RARITY_COLORS[opt.rarity]
                         }}
-                        onClick={handleSelect}
+                        onClick={() => handleSelect(opt.id)}
                         className="w-[280px] h-[400px] bg-white/[0.03] rounded-2xl p-6 border-2 border-white/10 cursor-pointer flex flex-col justify-between group relative overflow-hidden transition-colors"
                         style={{
                             background: RARITY_GRADIENTS[opt.rarity]
                         }}
                     >
+                        {/* Animated Shimmer for high rarity */}
+                        {(opt.rarity === 'epic' || opt.rarity === 'legendary') && (
+                            <motion.div
+                                animate={{ x: ['-200%', '200%'] }}
+                                transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
+                                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent pointer-events-none -rotate-45"
+                            />
+                        )}
                         {/* Rarity Tag */}
-                        <div className="absolute top-4 right-4 text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-current opacity-50" style={{ color: RARITY_COLORS[opt.rarity] }}>
-                            {opt.rarity}
+                        <div className="absolute top-4 right-4 flex items-center gap-2">
+                             {opt.isNew && (
+                                <span className="bg-[#F1C40F] text-black text-[8px] font-black px-1.5 py-0.5 rounded shadow-[0_0_10px_#F1C40F66]">
+                                    NUEVO!
+                                </span>
+                             )}
+                            <div className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-current opacity-50" style={{ color: RARITY_COLORS[opt.rarity] }}>
+                                {opt.rarity}
+                            </div>
                         </div>
 
                         <div className="text-center">
@@ -157,7 +176,7 @@ export function LevelUpOverlay() {
                         </div>
 
                         <div className="text-center mt-6">
-                            <span className="text-[#F1C40F] text-[10px] font-black uppercase tracking-widest">{opt.level}</span>
+                            <span className="text-[#F1C40F] text-[10px] font-black uppercase tracking-widest">{opt.levelInfo}</span>
                             <div className="mt-3 py-3 bg-white/5 group-hover:bg-[#F1C40F] rounded-xl uppercase font-black text-white group-hover:text-black text-xs transition-all border border-white/10 group-hover:border-transparent">
                                 ELEGIR [{i+1}]
                             </div>
@@ -171,7 +190,7 @@ export function LevelUpOverlay() {
             <UIButton variant="secondary" className="!min-w-[200px] !py-3 flex items-center justify-center gap-3 !text-xs border-white/5 hover:border-[#F1C40F]/30">
                 <RotateCcw size={14} /> REROLL (2 KOBAN)
             </UIButton>
-            <UIButton variant="ghost" className="!min-w-[140px] !py-3 opacity-20 hover:opacity-100 flex items-center justify-center gap-3 !text-xs transition-opacity" onClick={handleSelect}>
+            <UIButton variant="ghost" className="!min-w-[140px] !py-3 opacity-20 hover:opacity-100 flex items-center justify-center gap-3 !text-xs transition-opacity" onClick={() => setStatus('playing')}>
                 <FastForward size={14} /> OMITIR MEJORA
             </UIButton>
         </div>

@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { Mesh } from 'three';
 import { saveSystem } from '../utils/saveSystem';
+import { AbilityType, AbilityStats } from '../types/abilities';
 
 /**
  * GAME STORE - GLOBAL STATE MANAGEMENT
- * Handles UI, Stats, Run Metadata, and Enemy Entities.
+ * Handles UI, Stats, Run Metadata, Enemy Entities, and Auto-Abilities.
  */
 
 export interface RunStats {
@@ -29,6 +30,12 @@ export interface EnemyEntity {
   isElite?: boolean;
 }
 
+export interface ActiveAbility {
+  id: AbilityType;
+  level: number;
+  stats: AbilityStats;
+}
+
 interface GameState {
   // Navigation & Status
   view: 'menu' | 'characters' | 'game' | 'gallery';
@@ -44,6 +51,9 @@ interface GameState {
 
   // Selection
   selectedCharacter: string;
+
+  // Auto-Abilities
+  abilities: Map<AbilityType, ActiveAbility>;
 
   // Enemies
   enemies: EnemyEntity[];
@@ -62,6 +72,9 @@ interface GameState {
   updateTime: (delta: number) => void;
   useDash: () => void;
   rechargeDash: () => void;
+
+  // Ability Actions
+  upgradeAbility: (id: AbilityType) => void;
 
   // Enemy Actions
   spawnEnemy: (enemy: EnemyEntity) => void;
@@ -89,6 +102,14 @@ const INITIAL_RUN: RunStats = {
   maxDashCharges: 2
 };
 
+// Initial Stats for Abilities (Level 1)
+const DEFAULT_ABILITY_STATS: Record<AbilityType, AbilityStats> = {
+  orbital: { level: 1, damage: 15, range: 2, cooldown: 0, count: 2, speed: 180 },
+  lightning: { level: 1, damage: 40, range: 10, cooldown: 3, count: 1, speed: 0 },
+  aura: { level: 1, damage: 5, range: 3, cooldown: 1, count: 1, speed: 0 },
+  barrage: { level: 1, damage: 20, range: 15, cooldown: 2, count: 1, speed: 10 }
+};
+
 const savedData = saveSystem.load();
 
 export const useGameStore = create<GameState>((set) => ({
@@ -99,6 +120,7 @@ export const useGameStore = create<GameState>((set) => ({
   metaXp: savedData.metaXp,
   totalRuns: savedData.totalRuns,
   selectedCharacter: 'ronin',
+  abilities: new Map(),
   enemies: [],
 
   setView: (view) => set({ view }),
@@ -149,6 +171,29 @@ export const useGameStore = create<GameState>((set) => ({
     run: { ...state.run, dashCharges: Math.min(state.run.maxDashCharges, state.run.dashCharges + 1) }
   })),
 
+  upgradeAbility: (id) => set((state) => {
+    const nextAbilities = new Map(state.abilities);
+    const current = nextAbilities.get(id);
+
+    if (!current) {
+        // Unlock Level 1
+        nextAbilities.set(id, { id, level: 1, stats: { ...DEFAULT_ABILITY_STATS[id] } });
+    } else {
+        // Level Up (scaling)
+        const nextLevel = Math.min(5, current.level + 1);
+        const nextStats = { ...current.stats, level: nextLevel };
+
+        if (id === 'orbital') nextStats.count += 1;
+        if (id === 'lightning') nextStats.cooldown = Math.max(1.4, nextStats.cooldown - 0.4);
+        if (id === 'aura') nextStats.range += 0.5;
+        if (id === 'barrage') nextStats.count += 1;
+
+        nextAbilities.set(id, { id, level: nextLevel, stats: nextStats });
+    }
+
+    return { abilities: nextAbilities, status: 'playing' };
+  }),
+
   spawnEnemy: (enemy) => set((state) => ({
       enemies: [...state.enemies, enemy]
   })),
@@ -179,12 +224,19 @@ export const useGameStore = create<GameState>((set) => ({
       enemies: state.enemies.filter(e => e.id !== id)
   })),
 
-  startRun: () => set({
-    view: 'game',
-    status: 'playing',
-    run: { ...INITIAL_RUN },
-    enemies: []
-  }),
+  startRun: () => {
+    const initialAbilities = new Map<AbilityType, ActiveAbility>();
+    // Start with level 1 orbital for free in this demo
+    initialAbilities.set('orbital', { id: 'orbital', level: 1, stats: { ...DEFAULT_ABILITY_STATS['orbital'] } });
+
+    set({
+        view: 'game',
+        status: 'playing',
+        run: { ...INITIAL_RUN },
+        enemies: [],
+        abilities: initialAbilities
+    });
+  },
 
   finishRun: (victory) => set((state) => {
     const nextMetaXp = state.metaXp + (victory ? 345 : 120);
@@ -208,7 +260,8 @@ export const useGameStore = create<GameState>((set) => ({
     view: 'menu',
     status: 'paused',
     run: { ...INITIAL_RUN },
-    enemies: []
+    enemies: [],
+    abilities: new Map()
   })
 }));
 

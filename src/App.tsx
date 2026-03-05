@@ -22,6 +22,7 @@ import { EndRunOverlay } from './components/overlays/EndRunOverlay';
 // Systems
 import { EnemySpawner } from './systems/EnemySpawner';
 import { Enemy } from './components/game/Enemy';
+import { AbilityManager } from './components/game/AbilityManager';
 
 import { useGameStore } from './store/useGameStore';
 import { CONFIG } from './config';
@@ -55,6 +56,13 @@ export const RoninGame = () => {
     return () => window.removeEventListener('keydown', handleKey);
   }, [view, status, setStatus]);
 
+  // Debug auto-start for testing if needed or log status
+  useEffect(() => {
+    if (view === 'game') {
+      console.log('Game view active, status:', status);
+    }
+  }, [view, status]);
+
   return (
     <div className="w-screen h-screen bg-[#111111] overflow-hidden relative font-sans text-white">
 
@@ -82,6 +90,8 @@ export const RoninGame = () => {
               <Arena />
               <Player />
 
+              <AbilityManager />
+
               {/* SPAWNER SYSTEM */}
               <EnemySpawner />
 
@@ -106,12 +116,12 @@ export const RoninGame = () => {
       {view === 'gallery' && <AssetGallery />}
 
       {view === 'game' && (
-          <>
+          <div className="game-ui-overlay">
             <HUD />
             <LevelUpOverlay />
             <PauseOverlay />
             <EndRunOverlay />
-          </>
+          </div>
       )}
 
       {/* Performance Monitor (Always available but toggled by F3) */}
