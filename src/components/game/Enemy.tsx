@@ -1,8 +1,9 @@
 import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier';
-import { Vector3, Quaternion, Color } from 'three';
+import { Vector3, Quaternion } from 'three';
 import { useGameStore, EnemyEntity } from '../../store/useGameStore';
+import { enemyRegistry } from '../../systems/EnemyRegistry';
 import { Skeleton } from '../models/Skeleton';
 import { Ninja } from '../models/Ninja';
 import { Oni } from '../models/Oni';
@@ -20,15 +21,18 @@ interface EnemyProps {
 export function Enemy({ data }: EnemyProps) {
   const rbRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<any>(null);
+  const hitFlashRef = useRef<any>(null);
+  const contentRef = useRef<any>(null);
+  const hpBarRef = useRef<any>(null);
+
   const prevHp = useRef(data.hp);
-  const [hitFlash, setHitFlash] = useState(0);
-  const [isDead, setIsDead] = useState(false);
-  const [dissolveProgress, setDissolveProgress] = useState(0);
-  const [hitStop, setHitStop] = useState(0);
+  const hitFlashVal = useRef(0);
+  const isDead = useRef(false);
+  const dissolveProgress = useRef(0);
+  const hitStop = useRef(0);
 
   const playerRef = useGameStore((state) => state.playerRef);
   const status = useGameStore((state) => state.status);
-  const updateEnemyPosition = useGameStore((state) => state.updateEnemyPosition);
   const removeEnemy = useGameStore((state) => state.removeEnemy);
   const takeDamage = useGameStore((state) => state.takeDamage);
   const addXp = useGameStore((state) => state.addXp);
@@ -41,11 +45,20 @@ export function Enemy({ data }: EnemyProps) {
   const targetQuat = useMemo(() => new Quaternion(), []);
   const lookAtMat = useMemo(() => new Vector3(), []);
 
+  // Registry & Physics Setup
+  useEffect(() => {
+    if (rbRef.current) {
+      enemyRegistry.register(data.id, rbRef.current);
+    }
+    return () => enemyRegistry.unregister(data.id);
+  }, [data.id]);
+
   // Hit Detection & Knockback Feedback
   useEffect(() => {
     if (data.hp < prevHp.current) {
-      setHitFlash(1);
-      setHitStop(0.1); // 100ms hit stop
+      hitFlashVal.current = 1;
+      hitStop.current = 0.1; // 100ms hit stop
+      if ((window as any).triggerShake) (window as any).triggerShake(0.1);
       // Apply physical knockback
       if (rbRef.current && playerRef) {
         const pPos = new Vector3();
@@ -79,21 +92,28 @@ export function Enemy({ data }: EnemyProps) {
     if (status !== 'playing' || !playerRef || !rbRef.current) return;
 
     // Hit Stop Logic
-    if (hitStop > 0) {
-      setHitStop(prev => Math.max(0, prev - delta));
+    if (hitStop.current > 0) {
+      hitStop.current = Math.max(0, hitStop.current - delta);
       return;
     }
 
     // Death Dissolve Logic
-    if (data.hp <= 0 && !isDead) {
-      setIsDead(true);
+    if (data.hp <= 0 && !isDead.current) {
+      isDead.current = true;
       // Disable physics on death
       rbRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     }
 
-    if (isDead) {
-      setDissolveProgress(prev => Math.min(1, prev + delta * 1.5));
-      if (dissolveProgress >= 1) {
+    if (isDead.current) {
+      dissolveProgress.current = Math.min(1, dissolveProgress.current + delta * 1.5);
+
+      // Update visual dissolve
+      if (contentRef.current) {
+        const s = stats.scale * (1 - dissolveProgress.current);
+        contentRef.current.scale.set(s, s, s);
+      }
+
+      if (dissolveProgress.current >= 1) {
         addXp(stats.xp);
         addKill();
         removeEnemy(data.id);
@@ -102,15 +122,25 @@ export function Enemy({ data }: EnemyProps) {
     }
 
     // Hit flash cooldown
-    if (hitFlash > 0) setHitFlash(prev => Math.max(0, prev - delta * 5));
+    if (hitFlashVal.current > 0) {
+      hitFlashVal.current = Math.max(0, hitFlashVal.current - delta * 5);
+      if (hitFlashRef.current) {
+        hitFlashRef.current.visible = hitFlashVal.current > 0.1;
+        hitFlashRef.current.material.opacity = hitFlashVal.current * 0.5;
+      }
+    }
+
+    // Update HP Bar
+    if (hpBarRef.current) {
+      const hpPercent = data.hp / data.maxHp;
+      hpBarRef.current.scale.x = hpPercent;
+      hpBarRef.current.position.x = -(1 - hpPercent) / 2;
+    }
 
     // 1. Get positions
     playerRef.getWorldPosition(playerPos);
     const { x, y, z } = rbRef.current.translation();
     enemyPos.set(x, y, z);
-
-    // Sync physics position back to store for combat hit detection
-    updateEnemyPosition(data.id, [x, y, z]);
 
     // 2. Simple Follow Logic
     moveDir.subVectors(playerPos, enemyPos).normalize();
@@ -141,10 +171,10 @@ export function Enemy({ data }: EnemyProps) {
   });
 
   const handleCollision = (e: any) => {
-    if (isDead) return;
+    if (isDead.current) return;
       if (e.other.rigidBodyObject?.name === 'player') {
           takeDamage(stats.damage);
-          setHitFlash(1);
+          hitFlashVal.current = 1;
           const knockbackDir = moveDir.clone().negate().multiplyScalar(5);
           rbRef.current?.applyImpulse({ x: knockbackDir.x, y: 2, z: knockbackDir.z }, true);
       }
@@ -166,12 +196,12 @@ export function Enemy({ data }: EnemyProps) {
 
       <group ref={visualRef}>
           {/* Hit Flash Overlay */}
-          <mesh visible={hitFlash > 0.1} position={[0, 0.8, 0]}>
+          <mesh ref={hitFlashRef} visible={false} position={[0, 0.8, 0]}>
             <sphereGeometry args={[stats.scale + 0.2]} />
-            <meshBasicMaterial color="white" transparent opacity={hitFlash * 0.5} />
+            <meshBasicMaterial color="white" transparent opacity={0} />
           </mesh>
 
-          <group scale={stats.scale * (1 - dissolveProgress)}>
+          <group ref={contentRef} scale={stats.scale}>
             {data.type === 'skeleton' && <Skeleton />}
             {data.type === 'ninja' && <Ninja />}
             {data.type === 'oni' && <Oni />}
@@ -199,8 +229,8 @@ export function Enemy({ data }: EnemyProps) {
                   <planeGeometry args={[1, 0.15]} />
                   <meshBasicMaterial color="#1a1a1a" transparent opacity={0.8} />
               </mesh>
-              <mesh position={[-(1 - hpPercent) / 2, 0, 0.01]}>
-                  <planeGeometry args={[hpPercent, 0.1]} />
+              <mesh ref={hpBarRef} position={[-(1 - hpPercent) / 2, 0, 0.01]} scale={[hpPercent, 1, 1]}>
+                  <planeGeometry args={[1, 0.1]} />
                   <meshBasicMaterial color={hpPercent > 0.5 ? "#2ecc71" : (hpPercent > 0.25 ? "#f1c40f" : "#e74c3c")} />
               </mesh>
           </group>

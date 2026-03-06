@@ -54,6 +54,7 @@ export function UIButton({
       disabled={disabled}
       className={`
         relative px-8 py-4 rounded-xl font-bold uppercase tracking-[0.2em] transition-all backdrop-blur-md
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F1C40F] focus-visible:ring-offset-2 focus-visible:ring-offset-black
         ${disabled ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer'}
         ${className}
       `}

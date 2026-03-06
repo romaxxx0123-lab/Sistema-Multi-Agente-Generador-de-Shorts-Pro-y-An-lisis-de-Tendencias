@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../../store/useGameStore';
+import { enemyRegistry } from '../../systems/EnemyRegistry';
 import { Vector3, Group } from 'three';
 
 /**
@@ -8,7 +9,7 @@ import { Vector3, Group } from 'three';
  * Rotates kunais around the player and deals damage on contact.
  */
 
-const _enemyPos = new Vector3();
+const _tempPos = new Vector3();
 const _playerPos = new Vector3();
 
 export const KunaiOrbital = () => {
@@ -29,20 +30,21 @@ export const KunaiOrbital = () => {
         groupRef.current.rotation.y += (stats.speed * (Math.PI / 180)) * delta;
 
         // 2. Damage Logic (Simplified: Check distance to each kunai)
-        // In a production game, we'd use physics triggers.
+        // Uses EnemyRegistry for performance.
         const kunaiCount = stats.count;
         const radius = stats.range;
         const damage = stats.damage;
+        const enemies = enemyRegistry.getAll();
 
         for (let i = 0; i < kunaiCount; i++) {
             const angle = (i / kunaiCount) * Math.PI * 2 + groupRef.current.rotation.y;
             const kx = _playerPos.x + Math.cos(angle) * radius;
             const kz = _playerPos.z + Math.sin(angle) * radius;
+            _tempPos.set(kx, 0.5, kz);
 
             // Check against enemies
             for (const enemy of enemies) {
-                _enemyPos.set(...enemy.position);
-                const distSq = (kx - _enemyPos.x) ** 2 + (kz - _enemyPos.z) ** 2;
+                const distSq = _tempPos.distanceToSquared(enemy.position);
 
                 if (distSq < 1.0) { // Hit radius 1m
                     damageEnemy(enemy.id, damage * delta * 5); // Constant damage while touching

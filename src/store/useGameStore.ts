@@ -1,14 +1,16 @@
 import { create } from 'zustand';
 import { Mesh } from 'three';
 import { saveSystem, MetaSaveData } from '../utils/saveSystem';
-import { AbilityType, AbilityStats } from '../types/abilities';
+import { AbilityType, AbilityStats, PassiveType, PendingOverlay, UpgradeOption } from '../types/abilities';
+import { TUNING } from '../data/tuning';
 
 /**
  * GAME STORE - GLOBAL STATE MANAGEMENT
  * Handles UI, Hub Navigation, Stats, Run Metadata, Enemy Entities, and Auto-Abilities.
  */
 
-export type MenuScreen = 'home' | 'chapters' | 'loadout' | 'talents' | 'settings' | 'gallery' | 'characters';
+export type MenuScreen = 'home' | 'chapters' | 'loadout' | 'talents' | 'missions' | 'settings' | 'gallery' | 'characters';
+export type SyncStatus = 'ok' | 'syncing' | 'offline' | 'error';
 
 export interface RunStats {
   hp: number;
@@ -53,6 +55,7 @@ interface GameState {
   menuScreen: MenuScreen;
   menuHistory: MenuScreen[];
   status: 'playing' | 'paused' | 'levelup' | 'chest' | 'gameover' | 'victory';
+  syncStatus: SyncStatus;
 
   // Player Reference (for camera/physics)
   playerRef: Mesh | null;
@@ -70,8 +73,10 @@ interface GameState {
   talents: MetaSaveData['talents'];
   settings: MetaSaveData['settings'];
 
-  // Auto-Abilities
+  // Auto-Abilities & Passives
   abilities: Map<AbilityType, ActiveAbility>;
+  passives: Map<PassiveType, number>;
+  pendingOverlays: PendingOverlay[];
 
   // Entities
   enemies: EnemyEntity[];
@@ -80,6 +85,7 @@ interface GameState {
   // Actions
   setView: (view: GameState['view']) => void;
   setMenuScreen: (screen: MenuScreen, push?: boolean) => void;
+  setSyncStatus: (status: SyncStatus) => void;
   goBack: () => void;
   setSelectedCharacter: (id: string) => void;
   setStatus: (status: GameState['status']) => void;
@@ -96,22 +102,25 @@ interface GameState {
   addXp: (amount: number) => void;
   addCoin: (amount: number) => void;
   addKill: () => void;
+  addPendingOverlay: (overlay: PendingOverlay) => void;
+  popPendingOverlay: () => void;
   updateTime: (delta: number) => void;
   useDash: () => void;
   rechargeDash: () => void;
 
   // Ability Actions
-  upgradeAbility: (id: AbilityType) => void;
+  upgradeAbility: (id: AbilityType | PassiveType, type: 'skill' | 'passive') => void;
+  evolveAbility: (id: AbilityType) => void;
 
   // Entity Actions
   spawnEnemy: (enemy: EnemyEntity) => void;
-  updateEnemyPosition: (id: string, position: [number, number, number]) => void;
   damageEnemy: (id: string, amount: number) => void;
   attackNearbyEnemies: (playerPos: [number, number, number], range: number, damage: number) => void;
   removeEnemy: (id: string) => void;
 
   spawnPickup: (pickup: PickupEntity) => void;
   collectPickup: (id: string) => void;
+  mergePickups: () => void;
 
   // Lifecycle
   startRun: () => void;
@@ -137,7 +146,8 @@ const DEFAULT_ABILITY_STATS: Record<AbilityType, AbilityStats> = {
   orbital: { level: 1, damage: 15, range: 2, cooldown: 0, count: 2, speed: 180 },
   lightning: { level: 1, damage: 40, range: 10, cooldown: 3, count: 1, speed: 0 },
   aura: { level: 1, damage: 5, range: 3, cooldown: 1, count: 1, speed: 0 },
-  barrage: { level: 1, damage: 20, range: 15, cooldown: 2, count: 1, speed: 10 }
+  barrage: { level: 1, damage: 20, range: 15, cooldown: 2, count: 1, speed: 10 },
+  iai_slash: { level: 1, damage: 60, range: 4, cooldown: 1.5, count: 1, speed: 0, angle: Math.PI / 3 }
 };
 
 const savedData = saveSystem.load();
@@ -147,6 +157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   menuScreen: 'home',
   menuHistory: [],
   status: 'paused',
+  syncStatus: 'ok',
   playerRef: null,
   run: { ...INITIAL_RUN },
   metaXp: savedData.metaXp,
@@ -158,6 +169,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   talents: savedData.talents,
   settings: savedData.settings,
   abilities: new Map(),
+  passives: new Map(),
+  pendingOverlays: [],
   enemies: [],
   pickups: [],
 
@@ -168,6 +181,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const history = push ? [...state.menuHistory, state.menuScreen] : state.menuHistory;
     return { menuScreen: screen, menuHistory: history };
   }),
+
+  setSyncStatus: (syncStatus) => set({ syncStatus }),
 
   goBack: () => set((state) => {
     if (state.menuHistory.length === 0) return state;
@@ -189,7 +204,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   updateSettings: (newSettings) => set((state) => {
     const updated = { ...state.settings, ...newSettings };
-    saveSystem.save({ ...saveSystem.load(), settings: updated });
+    get().setSyncStatus('syncing');
+    setTimeout(() => {
+        saveSystem.save({ ...saveSystem.load(), settings: updated });
+        get().setSyncStatus('ok');
+    }, 500);
     return { settings: updated };
   }),
 
@@ -201,11 +220,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       const updatedTalents = { ...state.talents, [talent]: currentLevel + 1 };
       const nextMetaXp = state.metaXp - cost;
 
-      saveSystem.save({
-        ...saveSystem.load(),
-        talents: updatedTalents,
-        metaXp: nextMetaXp
-      });
+      get().setSyncStatus('syncing');
+      setTimeout(() => {
+          saveSystem.save({
+            ...saveSystem.load(),
+            talents: updatedTalents,
+            metaXp: nextMetaXp
+          });
+          get().setSyncStatus('ok');
+      }, 500);
 
       return { talents: updatedTalents, metaXp: nextMetaXp };
     }
@@ -235,10 +258,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (xp >= xpToLevel) {
       xp -= xpToLevel;
       level += 1;
-      xpToLevel = Math.round(xpToLevel * 1.5);
+      // xpToNext = base * (growth^(level-1)) + additiveCurve
+      xpToLevel = Math.round(TUNING.XP.BASE * Math.pow(TUNING.XP.GROWTH, level - 1) + (level * TUNING.XP.ADDITIVE));
+
+      const nextStatus = state.status === 'playing' ? 'levelup' : state.status;
+      if (state.status !== 'playing') {
+          // Queue it
+          const nextPending = [...state.pendingOverlays, { type: 'levelup', payload: { level } }];
+          return { run: { ...state.run, xp, level, xpToLevel }, pendingOverlays: nextPending };
+      }
+
       return {
         run: { ...state.run, xp, level, xpToLevel },
-        status: 'levelup'
+        status: nextStatus
       };
     }
 
@@ -253,6 +285,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     run: { ...state.run, kills: state.run.kills + 1 }
   })),
 
+  addPendingOverlay: (overlay) => set((state) => ({
+      pendingOverlays: [...state.pendingOverlays, overlay]
+  })),
+
+  popPendingOverlay: () => set((state) => {
+      if (state.pendingOverlays.length === 0) return { status: 'playing' };
+      const next = state.pendingOverlays[0];
+      const remaining = state.pendingOverlays.slice(1);
+      return { status: next.type, pendingOverlays: remaining };
+  }),
+
   updateTime: (delta) => set((state) => ({
     run: { ...state.run, time: state.run.time + delta }
   })),
@@ -265,17 +308,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     run: { ...state.run, dashCharges: Math.min(state.run.maxDashCharges, state.run.dashCharges + 1) }
   })),
 
-  upgradeAbility: (id) => set((state) => {
+  upgradeAbility: (id, type) => set((state) => {
+    if (type === 'passive') {
+        const nextPassives = new Map(state.passives);
+        const level = (nextPassives.get(id as PassiveType) || 0) + 1;
+        nextPassives.set(id as PassiveType, level);
+
+        // Re-calculate active status via pop
+        if (state.pendingOverlays.length > 0) {
+            const next = state.pendingOverlays[0];
+            const remaining = state.pendingOverlays.slice(1);
+            return { passives: nextPassives, status: next.type, pendingOverlays: remaining };
+        }
+        return { passives: nextPassives, status: 'playing' };
+    }
+
     const nextAbilities = new Map(state.abilities);
-    const current = nextAbilities.get(id);
+    const current = nextAbilities.get(id as AbilityType);
 
     if (!current) {
-        nextAbilities.set(id, { id, level: 1, stats: { ...DEFAULT_ABILITY_STATS[id] } });
+        nextAbilities.set(id as AbilityType, { id: id as AbilityType, level: 1, stats: { ...DEFAULT_ABILITY_STATS[id as AbilityType] } });
     } else {
         const nextLevel = Math.min(8, current.level + 1);
         const nextStats = { ...current.stats, level: nextLevel };
 
-        if (id === 'orbital') {
+        const abilityId = id as AbilityType;
+        if (abilityId === 'orbital') {
             if (nextLevel === 2) nextStats.damage *= 1.2;
             if (nextLevel === 3) nextStats.count += 1;
             if (nextLevel === 4) nextStats.damage *= 1.3;
@@ -284,7 +342,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (nextLevel === 7) nextStats.damage *= 1.5;
             if (nextLevel === 8) { nextStats.range *= 1.5; nextStats.damage *= 2; }
         }
-        if (id === 'lightning') {
+        if (abilityId === 'lightning') {
             if (nextLevel === 2) nextStats.range *= 1.25;
             if (nextLevel === 3) nextStats.count += 1;
             if (nextLevel === 4) nextStats.cooldown *= 0.8;
@@ -293,7 +351,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (nextLevel === 7) nextStats.cooldown *= 0.7;
             if (nextLevel === 8) { nextStats.cooldown = 0.5; nextStats.damage *= 2; }
         }
-        if (id === 'aura') {
+        if (abilityId === 'aura') {
             if (nextLevel === 2) nextStats.range *= 1.2;
             if (nextLevel === 3) nextStats.damage *= 1.25;
             if (nextLevel === 4) nextStats.range *= 1.2;
@@ -302,7 +360,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (nextLevel === 7) nextStats.range *= 1.3;
             if (nextLevel === 8) { nextStats.damage *= 2; nextStats.range *= 1.5; }
         }
-        if (id === 'barrage') {
+        if (abilityId === 'barrage') {
             if (nextLevel === 2) nextStats.damage *= 1.2;
             if (nextLevel === 3) nextStats.count += 2;
             if (nextLevel === 4) nextStats.speed *= 1.3;
@@ -311,17 +369,51 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (nextLevel === 7) nextStats.count += 2;
             if (nextLevel === 8) { nextStats.cooldown *= 0.2; nextStats.damage *= 1.5; }
         }
-        nextAbilities.set(id, { id, level: nextLevel, stats: nextStats });
+        if (abilityId === 'iai_slash') {
+            if (nextLevel === 2) nextStats.damage *= 1.3;
+            if (nextLevel === 3) nextStats.angle! *= 1.5;
+            if (nextLevel === 4) nextStats.cooldown *= 0.8;
+            if (nextLevel === 5) nextStats.count += 1;
+            if (nextLevel === 6) nextStats.range *= 1.5;
+            if (nextLevel === 7) nextStats.damage *= 1.5;
+            if (nextLevel === 8) { nextStats.cooldown *= 0.5; nextStats.damage *= 2; }
+        }
+        nextAbilities.set(id as AbilityType, { id: id as AbilityType, level: nextLevel, stats: nextStats });
     }
+
+    if (state.pendingOverlays.length > 0) {
+        const next = state.pendingOverlays[0];
+        const remaining = state.pendingOverlays.slice(1);
+        return { abilities: nextAbilities, status: next.type, pendingOverlays: remaining };
+    }
+
     return { abilities: nextAbilities, status: 'playing' };
+  }),
+
+  evolveAbility: (id) => set((state) => {
+      const nextAbilities = new Map(state.abilities);
+      const current = nextAbilities.get(id);
+      if (!current || current.level < 8) return state;
+
+      const nextStats = { ...current.stats, isEvolved: true };
+
+      if (id === 'iai_slash') {
+          nextStats.damage *= 2.0;
+          nextStats.range *= 1.2;
+          nextStats.count = 2; // Double strike
+      }
+      if (id === 'orbital') {
+          nextStats.count += 4;
+          nextStats.range *= 1.5;
+          nextStats.speed *= 1.5;
+      }
+
+      nextAbilities.set(id, { ...current, stats: nextStats });
+      return { abilities: nextAbilities };
   }),
 
   spawnEnemy: (enemy) => set((state) => ({
       enemies: [...state.enemies, enemy]
-  })),
-
-  updateEnemyPosition: (id, position) => set((state) => ({
-    enemies: state.enemies.map(e => e.id === id ? { ...e, position } : e)
   })),
 
   damageEnemy: (id, amount) => set((state) => {
@@ -374,9 +466,49 @@ export const useGameStore = create<GameState>((set, get) => ({
       enemies: state.enemies.filter(e => e.id !== id)
   })),
 
-  spawnPickup: (pickup) => set((state) => ({
-      pickups: [...state.pickups, pickup].slice(-300)
-  })),
+  spawnPickup: (pickup) => set((state) => {
+    const nextPickups = [...state.pickups, pickup];
+    if (nextPickups.length > TUNING.PICKUPS.MAX_COUNT) {
+        // Trigger merge logic if over cap
+        get().mergePickups();
+        return { pickups: get().pickups };
+    }
+    return { pickups: nextPickups };
+  }),
+
+  mergePickups: () => set((state) => {
+    // Simple spatial merge: find pairs of same type within MERGE_RADIUS
+    const items = [...state.pickups];
+    const merged: PickupEntity[] = [];
+    const processed = new Set<string>();
+
+    for (let i = 0; i < items.length; i++) {
+        const a = items[i];
+        if (processed.has(a.id)) continue;
+
+        let combined = false;
+        for (let j = i + 1; j < items.length; j++) {
+            const b = items[j];
+            if (processed.has(b.id) || a.type !== b.type || a.type === 'chest') continue;
+
+            const distSq = (a.position[0]-b.position[0])**2 + (a.position[2]-b.position[2])**2;
+            if (distSq < TUNING.PICKUPS.MERGE_RADIUS * TUNING.PICKUPS.MERGE_RADIUS) {
+                // Merge B into A
+                a.value += b.value;
+                // Average position
+                a.position[0] = (a.position[0] + b.position[0]) / 2;
+                a.position[2] = (a.position[2] + b.position[2]) / 2;
+                processed.add(b.id);
+                combined = true;
+                break; // Only merge one pair at a time for performance or could continue
+            }
+        }
+        processed.add(a.id);
+        merged.push(a);
+    }
+
+    return { pickups: merged };
+  }),
 
   collectPickup: (id) => set((state) => {
       const pickup = state.pickups.find(p => p.id === id);
@@ -387,6 +519,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       } else if (pickup.type === 'gold') {
           get().addCoin(pickup.value);
       } else if (pickup.type === 'chest') {
+          const nextStatus = state.status === 'playing' ? 'chest' : state.status;
+          if (state.status !== 'playing') {
+              const nextPending = [...state.pendingOverlays, { type: 'chest', payload: { id: pickup.id } }];
+              return {
+                  pickups: state.pickups.filter(p => p.id !== id),
+                  pendingOverlays: nextPending
+              };
+          }
           return { pickups: state.pickups.filter(p => p.id !== id), status: 'chest' };
       }
 
@@ -398,7 +538,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   startRun: () => {
     const { talents, loadoutPerk } = get();
     const initialAbilities = new Map<AbilityType, ActiveAbility>();
-    initialAbilities.set('orbital', { id: 'orbital', level: 1, stats: { ...DEFAULT_ABILITY_STATS['orbital'] } });
+    initialAbilities.set('iai_slash', { id: 'iai_slash', level: 1, stats: { ...DEFAULT_ABILITY_STATS['iai_slash'] } });
+
+    const initialPassives = new Map<PassiveType, number>();
 
     const modifiedRun = { ...INITIAL_RUN };
     modifiedRun.maxHp += talents.hp * 20;
@@ -415,7 +557,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         run: modifiedRun,
         enemies: [],
         pickups: [],
-        abilities: initialAbilities
+        abilities: initialAbilities,
+        passives: initialPassives,
+        pendingOverlays: []
     });
   },
 
@@ -455,7 +599,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     run: { ...INITIAL_RUN },
     enemies: [],
     pickups: [],
-    abilities: new Map()
+    abilities: new Map(),
+    passives: new Map(),
+    pendingOverlays: []
   })
 }));
 

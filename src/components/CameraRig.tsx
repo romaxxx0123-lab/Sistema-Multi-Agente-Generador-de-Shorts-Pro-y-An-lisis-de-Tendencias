@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import { CONFIG } from '../config';
+import { useJuice } from '../hooks/useJuice';
 
 /**
  * RONIN SURVIVOR - STABLE CAMERA RIG
@@ -17,6 +18,10 @@ const _lookAtPoint = new Vector3();
 
 export function CameraRig({ target }: CameraRigProps) {
   const { camera } = useThree();
+  const { shakeOffset, triggerShake } = useJuice();
+
+  // Expose shake to window for global access
+  (window as any).triggerShake = triggerShake;
 
   // Smooth position tracking
   const smoothPosition = useRef(new Vector3());
@@ -54,15 +59,15 @@ export function CameraRig({ target }: CameraRigProps) {
     // Use a fixed alpha if delta is weird, but CONFIG.CAMERA.SMOOTH_SPEED * delta is standard
     smoothPosition.current.lerp(_targetCameraPos, Math.min(1, CONFIG.CAMERA.SMOOTH_SPEED * delta));
 
-    // 4. Apply to camera
-    camera.position.copy(smoothPosition.current);
+    // 4. Apply to camera with shake
+    camera.position.copy(smoothPosition.current).add(shakeOffset);
 
-    // 5. Look at player's torso
+    // 5. Look at player's torso with shake
     _lookAtPoint.set(
       _playerWorldPos.x,
       _playerWorldPos.y + CONFIG.CAMERA.LOOK_AT_HEIGHT,
       _playerWorldPos.z
-    );
+    ).add(shakeOffset);
     camera.lookAt(_lookAtPoint);
 
     // 6. Fix Z-roll

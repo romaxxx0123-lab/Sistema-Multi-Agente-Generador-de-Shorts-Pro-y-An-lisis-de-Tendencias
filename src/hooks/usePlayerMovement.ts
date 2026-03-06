@@ -17,7 +17,8 @@ const _up = new Vector3(0, 1, 0);
 export const usePlayerMovement = (
   rb: React.RefObject<RapierRigidBody>,
   speed: number,
-  rotationSpeed: number
+  rotationSpeed: number,
+  speedMultiplier: number = 1.0
 ) => {
   const move = (
       forward: boolean,
@@ -63,10 +64,11 @@ export const usePlayerMovement = (
 
       // 3. Apply Linear Velocity via Rapier
       const currentVel = rb.current.linvel();
+      const finalSpeed = speed * speedMultiplier;
       rb.current.setLinvel({
-        x: _direction.x * speed,
+        x: _direction.x * finalSpeed,
         y: currentVel.y,
-        z: _direction.z * speed
+        z: _direction.z * finalSpeed
       }, true);
 
       // 4. Smooth visual rotation

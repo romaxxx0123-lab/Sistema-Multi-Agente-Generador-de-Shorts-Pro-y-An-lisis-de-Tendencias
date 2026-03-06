@@ -1,35 +1,49 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../../store/useGameStore';
-import { Vector3, Euler } from 'three';
+import { enemyRegistry } from '../../systems/EnemyRegistry';
+import { Vector3, InstancedMesh, Object3D, DynamicDrawUsage } from 'three';
+import { ObjectPool } from '../../systems/ObjectPool';
 
 /**
- * PROJECTILE BARRAGE COMPONENT
- * Fires multiple fast-moving projectiles in the direction the player is facing.
+ * OPTIMIZED PROJECTILE BARRAGE
+ * Uses InstancedMesh for rendering and ObjectPool for data reuse.
+ * Performs collision via EnemyRegistry.
  */
 
-interface Projectile {
-    id: number;
-    position: Vector3;
-    velocity: Vector3;
-    distanceTraveled: number;
+class Projectile {
+    position = new Vector3();
+    velocity = new Vector3();
+    distanceTraveled = 0;
+    active = false;
 }
 
 const _playerPos = new Vector3();
 const _playerDir = new Vector3();
+const _tempObj = new Object3D();
 
 export const ProjectileBarrage = () => {
     const stats = useGameStore(state => state.abilities.get('barrage')?.stats);
-    const enemies = useGameStore(state => state.enemies);
     const damageEnemy = useGameStore(state => state.damageEnemy);
     const playerRef = useGameStore(state => state.playerRef);
 
-    const [projectiles, setProjectiles] = useState<Projectile[]>([]);
+    const instancedMeshRef = useRef<InstancedMesh>(null);
     const timer = useRef(0);
-    const nextId = useRef(0);
+
+    // 1. Initialize Object Pool for Projectile Data
+    const pool = useMemo(() => new ObjectPool<Projectile>(
+        () => new Projectile(),
+        (p) => {
+            p.active = false;
+            p.distanceTraveled = 0;
+        },
+        50
+    ), []);
+
+    const activeProjectiles = useRef<Projectile[]>([]);
 
     useFrame((_state, delta) => {
-        if (!stats || !playerRef) return;
+        if (!stats || !playerRef || !instancedMeshRef.current) return;
 
         timer.current += delta;
 
@@ -38,76 +52,80 @@ export const ProjectileBarrage = () => {
             timer.current = 0;
 
             playerRef.getWorldPosition(_playerPos);
-            // Assume player is facing the direction they move
-            // We can get forward direction from playerRef.matrix
             _playerDir.set(0, 0, 1).applyQuaternion(playerRef.quaternion).normalize();
 
-            const newProjectiles: Projectile[] = [];
-            const spread = 0.3; // Angle spread in radians
+            const spread = 0.3;
 
             for (let i = 0; i < stats.count; i++) {
-                // Calculate direction with spread
                 const angleOffset = (i - (stats.count - 1) / 2) * spread;
                 const dir = _playerDir.clone().applyAxisAngle(new Vector3(0, 1, 0), angleOffset);
 
-                newProjectiles.push({
-                    id: nextId.current++,
-                    position: _playerPos.clone().add(new Vector3(0, 0.5, 0)),
-                    velocity: dir.multiplyScalar(15), // Speed 15m/s
-                    distanceTraveled: 0
-                });
+                const p = pool.get();
+                p.active = true;
+                p.position.copy(_playerPos).add(new Vector3(0, 0.5, 0));
+                p.velocity.copy(dir).multiplyScalar(15);
+                p.distanceTraveled = 0;
+                activeProjectiles.current.push(p);
             }
-
-            setProjectiles(prev => [...prev, ...newProjectiles]);
         }
 
-        // Movement & Collision logic
-        setProjectiles(prev => {
-            const updated: Projectile[] = [];
+        // Movement & Collision & Visual Update
+        const enemies = enemyRegistry.getAll();
+        const mesh = instancedMeshRef.current;
+        let visibleCount = 0;
 
-            for (const p of prev) {
-                const moveDist = p.velocity.length() * delta;
-                p.position.add(p.velocity.clone().multiplyScalar(delta));
-                p.distanceTraveled += moveDist;
+        for (let i = activeProjectiles.current.length - 1; i >= 0; i--) {
+            const p = activeProjectiles.current[i];
 
-                // Check distance limit
-                if (p.distanceTraveled > stats.range) continue;
+            const moveStep = p.velocity.clone().multiplyScalar(delta);
+            p.position.add(moveStep);
+            p.distanceTraveled += moveStep.length();
 
-                // Check collision with enemies
-                let hit = false;
+            let expired = p.distanceTraveled > stats.range;
+
+            if (!expired) {
+                // Collision check
                 for (const enemy of enemies) {
-                    const [ex, ey, ez] = enemy.position;
-                    const dSq = (p.position.x - ex) ** 2 + (p.position.z - ez) ** 2;
-                    if (dSq < 1.0) { // Hit radius
+                    const dSq = p.position.distanceToSquared(enemy.position);
+                    if (dSq < 1.0) {
                         damageEnemy(enemy.id, stats.damage);
-                        hit = true;
+                        expired = true;
                         break;
                     }
                 }
-
-                if (!hit) {
-                    updated.push(p);
-                }
             }
 
-            return updated;
-        });
+            if (expired) {
+                p.active = false;
+                pool.release(p);
+                activeProjectiles.current.splice(i, 1);
+            } else {
+                // Update Instance Matrix
+                _tempObj.position.copy(p.position);
+                _tempObj.updateMatrix();
+                mesh.setMatrixAt(visibleCount, _tempObj.matrix);
+                visibleCount++;
+            }
+        }
+
+        mesh.count = visibleCount;
+        mesh.instanceMatrix.needsUpdate = true;
     });
 
     if (!stats) return null;
 
     return (
-        <group>
-            {projectiles.map(p => (
-                <mesh key={p.id} position={p.position}>
-                    <sphereGeometry args={[0.15, 8, 8]} />
-                    <meshStandardMaterial
-                        color="#3498DB"
-                        emissive="#2980B9"
-                        emissiveIntensity={2}
-                    />
-                </mesh>
-            ))}
-        </group>
+        <instancedMesh
+            ref={instancedMeshRef}
+            args={[undefined, undefined, 200]}
+            usage={DynamicDrawUsage}
+        >
+            <sphereGeometry args={[0.15, 8, 8]} />
+            <meshStandardMaterial
+                color="#3498DB"
+                emissive="#2980B9"
+                emissiveIntensity={2}
+            />
+        </instancedMesh>
     );
 };

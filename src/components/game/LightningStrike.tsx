@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../../store/useGameStore';
-import { Vector3, Group } from 'three';
+import { enemyRegistry } from '../../systems/EnemyRegistry';
+import { Vector3 } from 'three';
 
 /**
  * LIGHTNING STRIKE COMPONENT
@@ -30,31 +31,17 @@ export const LightningStrike = () => {
             // Target search
             if (!playerRef) return;
             playerRef.getWorldPosition(_pos);
-            const px = _pos.x;
-            const pz = _pos.z;
 
-            // Find closest enemy within range
-            let targetId = '';
-            let minDistSq = stats.range * stats.range;
+            // Find closest enemy within range via Registry
+            const closest = enemyRegistry.getClosest(_pos, stats.range);
 
-            for (const enemy of enemies) {
-                const [ex, ey, ez] = enemy.position;
-                const dSq = (px - ex) ** 2 + (pz - ez) ** 2;
-                if (dSq < minDistSq) {
-                    minDistSq = dSq;
-                    targetId = enemy.id;
-                }
-            }
+            if (closest) {
+                const { x, y, z } = closest.rb.translation();
+                setStrikePos([x, y, z]);
+                damageEnemy(closest.id, stats.damage);
 
-            if (targetId) {
-                const target = enemies.find(e => e.id === targetId);
-                if (target) {
-                    setStrikePos(target.position);
-                    damageEnemy(targetId, stats.damage);
-
-                    // Clear VFX after a brief delay
-                    setTimeout(() => setStrikePos(null), 150);
-                }
+                // Clear VFX after a brief delay
+                setTimeout(() => setStrikePos(null), 150);
             }
         }
     });

@@ -20,7 +20,9 @@ import { EndRunOverlay } from './components/overlays/EndRunOverlay';
 
 // Systems
 import { EnemySpawner } from './systems/EnemySpawner';
+import { enemyRegistry } from './systems/EnemyRegistry';
 import { Enemy } from './components/game/Enemy';
+import { Boss } from './components/game/Boss';
 import { AbilityManager } from './components/game/AbilityManager';
 import { PickupManager } from './components/game/PickupManager';
 
@@ -86,7 +88,7 @@ export const RoninGame = () => {
               <PickupManager />
 
               {enemies.map((enemy) => (
-                <Enemy key={enemy.id} data={enemy} />
+                enemy.isBoss ? <Boss key={enemy.id} data={enemy} /> : <Enemy key={enemy.id} data={enemy} />
               ))}
             </Physics>
 
@@ -122,6 +124,7 @@ function GameLogicLoop({ updateTime, status }: { updateTime: (d: number) => void
     useFrame((_state, delta) => {
         if (status === 'playing') {
             updateTime(delta);
+            enemyRegistry.updateAll();
         }
     });
     return null;

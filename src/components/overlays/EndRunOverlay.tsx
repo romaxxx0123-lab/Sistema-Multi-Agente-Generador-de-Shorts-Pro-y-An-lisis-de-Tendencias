@@ -19,7 +19,7 @@ export function EndRunOverlay() {
   const seconds = Math.floor(run.time % 60);
   const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-  const xpGained = isVictory ? 500 : 150 + (run.coins * 2);
+  const xpGained = isVictory ? 500 : 150 + (run.goldRun * 2);
 
   const handleToTalents = () => {
       setMenuScreen('talents');
@@ -61,7 +61,7 @@ export function EndRunOverlay() {
                 <StatResult icon={<Timer size={18} />} label="TIEMPO" value={timeString} />
                 <StatResult icon={<Zap size={18} />} label="NIVEL" value={run.level} />
                 <StatResult icon={<Sword size={18} />} label="BAJAS" value={run.kills} />
-                <StatResult icon={<CircleDollarSign size={18} />} label="KOBANS" value={run.coins} />
+                <StatResult icon={<CircleDollarSign size={18} />} label="KOBANS" value={run.goldRun} />
             </div>
         </div>
 

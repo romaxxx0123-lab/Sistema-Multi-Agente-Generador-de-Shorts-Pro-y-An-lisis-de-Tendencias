@@ -1,9 +1,10 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore, EnemyEntity, PickupEntity } from '../store/useGameStore';
 import { Vector3 } from 'three';
 import { CONFIG } from '../config';
 import { TIMELINE } from '../data/waves';
+import { ObjectPool } from './ObjectPool';
 
 const SPAWN_RADIUS = 20;
 
@@ -17,6 +18,25 @@ export function EnemySpawner() {
   const lastSpawnTime = useRef(0);
   const playerPos = useMemo(() => new Vector3(), []);
   const spawnedBoss = useRef<string | null>(null);
+
+  // 1. Initialize Object Pool for Enemy Data objects
+  // Note: We still use the store for the 'enemies' array to trigger rendering,
+  // but we reuse the object instances to reduce GC pressure.
+  const pool = useMemo(() => new ObjectPool<EnemyEntity>(
+    () => ({
+        id: '',
+        type: 'skeleton',
+        position: [0, 0, 0],
+        hp: 0,
+        maxHp: 0
+    }),
+    (e) => {
+        e.id = '';
+        e.isElite = false;
+        e.isBoss = false;
+    },
+    100
+  ), []);
 
   useFrame((_state, delta) => {
     if (status !== 'playing' || !playerRef) return;
@@ -33,14 +53,15 @@ export function EnemySpawner() {
         spawnedBoss.current = segment.waveName!;
 
         const angle = Math.random() * Math.PI * 2;
-        spawnEnemy({
-            id: `boss-${segment.waveName}`,
-            type: segment.boss.type,
-            position: [playerPos.x + Math.cos(angle) * 10, 0.5, playerPos.z + Math.sin(angle) * 10],
-            hp: 500 * segment.boss.hpMultiplier,
-            maxHp: 500 * segment.boss.hpMultiplier,
-            isBoss: true
-        });
+        const boss = pool.get();
+        boss.id = `boss-${segment.waveName}`;
+        boss.type = segment.boss.type;
+        boss.position = [playerPos.x + Math.cos(angle) * 10, 0.5, playerPos.z + Math.sin(angle) * 10];
+        boss.hp = 500 * segment.boss.hpMultiplier;
+        boss.maxHp = 500 * segment.boss.hpMultiplier;
+        boss.isBoss = true;
+
+        spawnEnemy(boss);
     }
 
     // 3. Chest Logic
@@ -82,14 +103,15 @@ export function EnemySpawner() {
       const isElite = Math.random() < segment.eliteChance;
       const hp = (isElite ? 200 : 50) * (1 + (run.time / 300));
 
-      spawnEnemy({
-        id: `enemy-${Math.random().toString(36).substring(2, 9)}`,
-        type,
-        position: [clampedX, 0.5, clampedZ],
-        hp,
-        maxHp: hp,
-        isElite
-      });
+      const enemy = pool.get();
+      enemy.id = `enemy-${Math.random().toString(36).substring(2, 9)}`;
+      enemy.type = type;
+      enemy.position = [clampedX, 0.5, clampedZ];
+      enemy.hp = hp;
+      enemy.maxHp = hp;
+      enemy.isElite = isElite;
+
+      spawnEnemy(enemy);
     }
   });
 

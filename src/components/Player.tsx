@@ -15,6 +15,7 @@ import { RoninV2 } from "./models/RoninV2";
 export const Player = () => {
   const { camera } = useThree();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
+  const passives = useGameStore((state) => state.passives);
   const attackNearbyEnemies = useGameStore((state) => state.attackNearbyEnemies);
 
   const controls = useControls();
@@ -22,11 +23,17 @@ export const Player = () => {
   const meshRef = useRef<Mesh>(null);
   const lastAttackTime = useRef(0);
 
-  const { move, isDashing } = usePlayerMovement(
+  const movespeedLevel = passives.get('movespeed') || 0;
+  const speedMult = 1 + movespeedLevel * 0.1;
+
+  const { move } = usePlayerMovement(
     rb,
     CONFIG.PLAYER.MOVE_SPEED,
-    CONFIG.PLAYER.ROTATION_SPEED
+    CONFIG.PLAYER.ROTATION_SPEED,
+    speedMult
   );
+
+  const isDashing = false; // Dash not implemented in 1A
 
   const status = useGameStore((state) => state.status);
   const hp = useGameStore((state) => state.run.hp);
