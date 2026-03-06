@@ -5,6 +5,7 @@ import { Ninja } from "../models/Ninja";
 import { Oni } from "../models/Oni";
 import { Suspense, useRef } from "react";
 import * as THREE from "three";
+import { TOKENS } from "../../styles/tokens";
 
 /**
  * CHARACTER PREVIEW COMPONENT (THE ALTAR)
@@ -33,20 +34,26 @@ const Altar = () => {
         <group position={[0, -1, 0]}>
             {/* Main Base - Obsidian / Metal */}
             <mesh receiveShadow>
-                <cylinderGeometry args={[1.5, 1.8, 0.15, 64]} />
+                <cylinderGeometry args={[1.5, 1.8, 0.25, 64]} />
                 <meshStandardMaterial color="#050505" metalness={0.9} roughness={0.1} />
             </mesh>
 
-            {/* Inner Ring Glow */}
-            <mesh position={[0, 0.08, 0]}>
-                <cylinderGeometry args={[1.4, 1.4, 0.05, 64]} />
-                <meshStandardMaterial color="#F1C40F" emissive="#F1C40F" emissiveIntensity={1} transparent opacity={0.2} />
+            {/* Decorative Golden Band */}
+            <mesh position={[0, 0.05, 0]}>
+                <cylinderGeometry args={[1.51, 1.81, 0.05, 64]} />
+                <meshStandardMaterial color={TOKENS.colors.gold} metalness={1} roughness={0.2} />
             </mesh>
 
-            {/* Decorative Edge */}
-            <mesh position={[0, 0.02, 0]}>
-                <torusGeometry args={[1.5, 0.02, 16, 100]} rotation={[Math.PI / 2, 0, 0]} />
-                <meshStandardMaterial color="#333" metalness={1} roughness={0.1} />
+            {/* Inner Ring Glow */}
+            <mesh position={[0, 0.13, 0]}>
+                <cylinderGeometry args={[1.4, 1.4, 0.05, 64]} />
+                <meshStandardMaterial color={TOKENS.colors.goldBright} emissive={TOKENS.colors.goldBright} emissiveIntensity={2} transparent opacity={0.15} />
+            </mesh>
+
+            {/* Light Rim around edge */}
+            <mesh position={[0, 0.08, 0]}>
+                <torusGeometry args={[1.5, 0.01, 16, 100]} rotation={[Math.PI / 2, 0, 0]} />
+                <meshStandardMaterial color={TOKENS.colors.gold} metalness={1} roughness={0.1} />
             </mesh>
         </group>
     );
@@ -61,10 +68,10 @@ export function CharacterPreview({ characterId }: CharacterPreviewProps) {
         <ambientLight intensity={0.3} />
 
         {/* Main Key Light */}
-        <spotLight position={[5, 10, 10]} angle={0.15} penumbra={1} intensity={2} castShadow />
+        <spotLight position={[5, 10, 5]} angle={0.2} penumbra={1} intensity={200} castShadow />
 
         {/* Rim Light (Pop effect) */}
-        <spotLight position={[-5, 5, -5]} angle={0.3} penumbra={1} intensity={3} color="#fff" />
+        <spotLight position={[-5, 5, -5]} angle={0.3} penumbra={1} intensity={300} color="#fff" />
 
         {/* Fill Light */}
         <pointLight position={[-10, 2, 5]} intensity={0.5} />

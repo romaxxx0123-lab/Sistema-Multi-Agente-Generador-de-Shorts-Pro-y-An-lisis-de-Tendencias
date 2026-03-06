@@ -7,14 +7,24 @@ import { TalentsScreen } from './TalentsScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { AssetGallery } from '../AssetGallery';
 import { CharacterSelector } from './CharacterSelector';
-import { useEffect } from 'react';
+import { BottomNavigation } from '../ui/BottomNavigation';
+import { useState, useEffect } from 'react';
+import { TOKENS } from '../../styles/tokens';
+import { UIButton } from '../ui/UIButton';
+import { IconSeal } from '../ui/ronin-atlas';
 
 /**
  * MENU ROOT
  * Orchestrates navigation between Hub screens with transitions.
  */
 export function MenuRoot() {
-  const { menuScreen, goBack, view } = useGameStore();
+  const { menuScreen, goBack, view, setMenuScreen } = useGameStore();
+  const [showComingSoon, setShowComingSoon] = useState(false);
+
+  // Expose coming soon globally for HomeScreen
+  useEffect(() => {
+    (window as any).triggerComingSoon = () => setShowComingSoon(true);
+  }, []);
 
   // Global Escape Listener
   useEffect(() => {
@@ -60,6 +70,32 @@ export function MenuRoot() {
 
         {/* Global Menu Vignette */}
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_20%,rgba(0,0,0,0.8)_100%)] z-10" />
+
+        {/* Persistent Bottom Navigation */}
+        {menuScreen !== 'characters' && <BottomNavigation />}
+
+        {/* Coming Soon Modal */}
+        <AnimatePresence>
+            {showComingSoon && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-10 backdrop-blur-md bg-black/40">
+                    <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.9, opacity: 0 }}
+                        className="bg-[#0A0A0A] p-10 rounded-[32px] border-2 border-white/10 w-[400px] text-center shadow-[0_0_60px_rgba(0,0,0,0.8)]"
+                    >
+                        <div className="w-20 h-20 bg-white/5 rounded-3xl mx-auto flex items-center justify-center mb-6 border border-white/10">
+                            <IconSeal size={40} color={TOKENS.colors.gold} opacity={0.2} />
+                        </div>
+                        <h3 className="text-2xl font-black italic text-white uppercase tracking-tighter mb-2">PRÓXIMAMENTE</h3>
+                        <p className="text-white/40 text-xs font-bold uppercase tracking-widest leading-relaxed mb-8">
+                            Este sistema está bajo forja mística. Llegará en la próxima actualización del Dojo.
+                        </p>
+                        <UIButton onClick={() => setShowComingSoon(false)} className="!w-full !py-4 !bg-white/10 !text-white !text-sm">ENTENDIDO</UIButton>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
             <motion.div

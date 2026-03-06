@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pause, Play, Settings, Home, LogOut, AlertTriangle } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
 import { useState } from 'react';
+import { IconSync, IconGear, IconKatana, IconTorii } from '../ui/ronin-atlas';
+import { TOKENS } from '../../styles/tokens';
 
 /**
  * PRO PAUSE OVERLAY
@@ -34,7 +35,7 @@ export function PauseOverlay() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-6">
       <AnimatePresence mode="wait">
           {!showConfirmQuit ? (
               <motion.div
@@ -42,21 +43,21 @@ export function PauseOverlay() {
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-[#1A1A1A]/95 p-10 rounded-3xl border-2 border-white/10 w-[420px] text-center shadow-2xl relative overflow-hidden"
+                className="bg-[#1A1A1A]/95 p-8 md:p-10 rounded-[32px] border border-white/10 w-full max-w-[420px] text-center shadow-2xl relative overflow-hidden"
               >
                 {/* Decorative background */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500" />
 
                 <h2 className="text-4xl font-black text-white uppercase italic mb-8 flex items-center justify-center gap-4 tracking-tighter">
-                    <Pause size={32} className="text-cyan-500" /> EN PAUSA
+                    EN PAUSA
                 </h2>
 
                 <div className="flex flex-col gap-3 mb-10">
-                    <UIButton onClick={handleResume} className="!bg-cyan-600 !text-white flex items-center justify-center gap-3 !py-5 border-none">
-                        <Play size={18} fill="currentColor" /> CONTINUAR
+                    <UIButton onClick={handleResume} className="!bg-cyan-600 !text-white flex items-center justify-center gap-3 !py-5 border-none !min-w-0">
+                        <IconKatana size={18} color="#fff" /> CONTINUAR
                     </UIButton>
-                    <UIButton variant="secondary" onClick={handleSettings} className="flex items-center justify-center gap-3">
-                        <Settings size={18} /> AJUSTES
+                    <UIButton variant="secondary" onClick={handleSettings} className="flex items-center justify-center gap-3 !min-w-0">
+                        <IconGear size={18} color="#fff" /> AJUSTES
                     </UIButton>
                     <div className="h-[1px] bg-white/5 my-2" />
                     <UIButton variant="danger" onClick={() => setShowConfirmQuit(true)} className="flex items-center justify-center gap-3">

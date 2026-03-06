@@ -1,0 +1,56 @@
+
+Running 2 tests using 1 worker
+
+  ✘  1 tests/verify_premium_ui.spec.ts:3:1 › Ronin Survivor - Premium UI & Responsive Verification (5.8s)
+  ✘  2 tests/verify_premium_ui.spec.ts:41:1 › Ronin Survivor - Desktop View (5.7s)
+
+
+  1) tests/verify_premium_ui.spec.ts:3:1 › Ronin Survivor - Premium UI & Responsive Verification ───
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('nav')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('nav')[22m
+
+
+       8 |
+       9 |   // 1. Check HUB Mobile Navigation
+    > 10 |   await expect(page.locator('nav')).toBeVisible();
+         |                                     ^
+      11 |   await expect(page.getByText('DOJO')).toBeVisible();
+      12 |   await expect(page.getByText('MISIÓN')).toBeVisible();
+      13 |
+        at /app/tests/verify_premium_ui.spec.ts:10:37
+
+  2) tests/verify_premium_ui.spec.ts:41:1 › Ronin Survivor - Desktop View ──────────────────────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('RONIN')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText('RONIN')[22m
+
+
+      42 |   await page.setViewportSize({ width: 1920, height: 1080 });
+      43 |   await page.goto('http://localhost:5173');
+    > 44 |   await expect(page.getByText('RONIN')).toBeVisible();
+         |                                         ^
+      45 |   await page.screenshot({ path: 'verification/premium_ui_desktop.png' });
+      46 | });
+      47 |
+        at /app/tests/verify_premium_ui.spec.ts:44:41
+
+  2 failed
+    tests/verify_premium_ui.spec.ts:3:1 › Ronin Survivor - Premium UI & Responsive Verification ────
+    tests/verify_premium_ui.spec.ts:41:1 › Ronin Survivor - Desktop View ───────────────────────────

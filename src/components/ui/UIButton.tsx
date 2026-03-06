@@ -23,14 +23,14 @@ export function UIButton({
 
   const variants = {
     primary: {
-      bg: 'rgba(255,255,255,0.05)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      color: '#F1C40F'
+      bg: '#F1C40F',
+      border: 'none',
+      color: '#000000'
     },
     secondary: {
-      bg: 'rgba(255,255,255,0.02)',
-      border: '1px solid rgba(255,255,255,0.05)',
-      color: 'rgba(255,255,255,0.6)'
+      bg: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      color: '#FFFFFF'
     },
     danger: {
       bg: 'rgba(231, 76, 60, 0.1)',
@@ -62,8 +62,8 @@ export function UIButton({
         background: currentVariant.bg,
         border: currentVariant.border,
         color: currentVariant.color,
-        fontFamily: 'monospace',
-        minWidth: '280px'
+        fontFamily: 'Inter, system-ui, sans-serif',
+        minWidth: '160px'
       }}
     >
       {children}

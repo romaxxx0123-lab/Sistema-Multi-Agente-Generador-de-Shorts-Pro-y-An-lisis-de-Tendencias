@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
-import { ChevronLeft, Lock, Trophy, Play, Star } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
+import { TOKENS } from '../../styles/tokens';
+import { IconScroll, IconOban, IconTorii } from '../ui/ronin-atlas';
 
 const CHAPTERS = [
   {
@@ -31,24 +32,20 @@ const CHAPTERS = [
 ];
 
 export function ChaptersScreen() {
-  const { unlockedChapters, selectedChapterId, selectChapter, goBack, startRun } = useGameStore();
+  const { unlockedChapters, selectedChapterId, selectChapter, startRun } = useGameStore();
 
   return (
-    <div className="w-full h-full flex flex-col p-10">
+    <div className="w-full h-full flex flex-col p-6 md:p-10 pb-32">
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-12">
-        <div className="flex items-center gap-6">
-            <motion.button
-                whileHover={{ x: -5 }}
-                onClick={goBack}
-                className="p-3 bg-white/5 rounded-full border border-white/10"
-            >
-                <ChevronLeft size={24} />
-            </motion.button>
-            <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">CAPÍTULOS</h2>
+      <div className="flex justify-between items-center mb-10">
+        <div className="flex items-center gap-4">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/10">
+                <IconScroll size={28} color={TOKENS.colors.goldBright} />
+            </div>
+            <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">MISIÓN</h2>
         </div>
-        <div className="flex items-center gap-3 text-white/40 font-bold uppercase text-[10px] tracking-widest">
+        <div className="flex items-center gap-3 text-white/40 font-bold uppercase text-[10px] tracking-widest bg-black/40 px-4 py-2 rounded-full border border-white/5">
             Progreso: {unlockedChapters.length} / {CHAPTERS.length}
         </div>
       </div>

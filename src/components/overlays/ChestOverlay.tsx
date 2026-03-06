@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Gift, Sparkles, TrendingUp, Coins, Zap, Shield, Sword, Star } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
 import { TUNING } from '../../data/tuning';
 import { AbilityType, PassiveType } from '../../types/abilities';
 import { ABILITY_METADATA } from '../../data/abilities';
+import { IconChest, IconOban, BadgeForged, SelloComun, SelloRaro, SelloEpico, SelloReliquia } from '../ui/ronin-atlas';
 
 /**
  * CHEST OVERLAY
@@ -96,26 +96,29 @@ export function ChestOverlay() {
   };
 
   const currentRarityColor = reward.rarity === 'RELIC' ? '#F1C40F' : (reward.rarity === 'EPIC' ? '#9B59B6' : (reward.rarity === 'RARE' ? '#3498DB' : '#95A5A6'));
+  const RaritySeal = reward.rarity === 'RELIC' ? SelloReliquia : (reward.rarity === 'EPIC' ? SelloEpico : (reward.rarity === 'RARE' ? SelloRaro : SelloComun));
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl p-6">
       <motion.div
         initial={{ scale: 0.8, opacity: 0, y: 50 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-[#1A1A1A] p-12 rounded-[40px] border-2 border-[#9B59B6]/30 w-[500px] text-center shadow-[0_0_100px_rgba(155,89,182,0.2)]"
+        className="bg-[#1A1A1A] p-8 md:p-12 rounded-[40px] border-2 border-[#9B59B6]/30 w-full max-w-[500px] text-center shadow-[0_0_100px_rgba(155,89,182,0.2)]"
       >
-        <div className="relative mb-12">
+        <div className="relative mb-8 md:mb-12">
             <motion.div
                 animate={{
                     rotate: [0, -10, 10, -10, 0],
-                    scale: [1, 1.1, 1, 1.1, 1]
+                    scale: [1, 1.05, 1, 1.05, 1]
                 }}
                 transition={{ repeat: Infinity, duration: 4 }}
-                className="w-32 h-32 bg-[#9B59B6] rounded-3xl mx-auto flex items-center justify-center shadow-[0_0_40px_rgba(155,89,182,0.4)]"
+                className="w-32 h-32 mx-auto flex items-center justify-center relative"
             >
-                <Gift size={64} className="text-white" />
+                <RaritySeal size={128} />
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <IconChest size={64} color="#fff" />
+                </div>
             </motion.div>
-            <Sparkles className="absolute -top-4 -right-4 text-[#F1C40F]" size={48} />
         </div>
 
         <h2 className="text-4xl font-black italic text-white mb-2 tracking-tighter uppercase" style={{ color: currentRarityColor }}>

@@ -1,32 +1,33 @@
 import { motion } from 'framer-motion';
-import { ChevronLeft, Zap, Heart, Sword, Shield, Target, PlusCircle } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
+import { TOKENS } from '../../styles/tokens';
+import { IconSoul, IconSeal, IconHeart, IconKatana, IconSync, IconGear, IconOban } from '../ui/ronin-atlas';
 
 const TALENT_LIST = [
-    { id: 'hp', title: 'CONSTITUCIÓN', description: '+20 Salud Máxima por nivel.', icon: <Heart size={20} className="text-red-500" /> },
-    { id: 'damage', title: 'FUERZA MÍSTICA', description: '+5% Daño Base por nivel.', icon: <Sword size={20} className="text-orange-500" /> },
-    { id: 'speed', title: 'REFLEJOS', description: '+2% Velocidad por nivel.', icon: <Zap size={20} className="text-cyan-400" /> },
-    { id: 'pickupRange', title: 'MAGNETISMO', description: '+10% Rango de Recogida por nivel.', icon: <Target size={20} className="text-purple-500" /> },
-    { id: 'cooldown', title: 'CONCENTRACIÓN', description: '-3% Enfriamiento por nivel.', icon: <Shield size={20} className="text-blue-500" /> },
+    { id: 'hp', title: 'CONSTITUCIÓN', description: '+20 Salud Máxima por nivel.', icon: <IconHeart size={20} color="#EF4444" /> },
+    { id: 'damage', title: 'FUERZA MÍSTICA', description: '+5% Daño Base por nivel.', icon: <IconKatana size={20} color="#F97316" /> },
+    { id: 'speed', title: 'REFLEJOS', description: '+2% Velocidad por nivel.', icon: <IconSync size={20} color="#22D3EE" /> },
+    { id: 'pickupRange', title: 'MAGNETISMO', description: '+10% Rango de Recogida por nivel.', icon: <IconGear size={20} color="#A855F7" /> },
+    { id: 'cooldown', title: 'CONCENTRACIÓN', description: '-3% Enfriamiento por nivel.', icon: <IconSync size={20} color="#3B82F6" /> },
 ];
 
 export function TalentsScreen() {
-  const { metaXp, talents, buyTalent, goBack } = useGameStore();
+  const { metaXp, talents, buyTalent } = useGameStore();
 
   return (
-    <div className="w-full h-full flex flex-col p-10">
+    <div className="w-full h-full flex flex-col p-6 md:p-10 pb-32">
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-12">
-        <div className="flex items-center gap-6">
-            <motion.button onClick={goBack} className="p-3 bg-white/5 rounded-full border border-white/10">
-                <ChevronLeft size={24} />
-            </motion.button>
-            <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">TALENTOS</h2>
+      <div className="flex justify-between items-center mb-10">
+        <div className="flex items-center gap-4">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/10">
+                <IconSeal size={28} color={TOKENS.colors.goldBright} />
+            </div>
+            <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">SENDA</h2>
         </div>
-        <div className="flex items-center gap-4 bg-black/40 px-6 py-2 rounded-2xl border border-white/5">
-            <Zap size={16} className="text-[#F1C40F]" />
+        <div className="flex items-center gap-4 bg-black/40 px-6 py-2 rounded-2xl border border-white/5 shadow-xl">
+            <IconSoul size={16} color={TOKENS.colors.goldBright} />
             <div className="flex flex-col">
                 <span className="text-[8px] font-black text-white/30 tracking-widest uppercase">META-XP DISPONIBLE</span>
                 <span className="text-lg font-black text-[#F1C40F] leading-none">{metaXp.toLocaleString()}</span>
@@ -66,7 +67,7 @@ export function TalentsScreen() {
                           <div className="flex flex-col">
                               <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">COSTE MEJORA</span>
                               <div className="flex items-center gap-2">
-                                  <Zap size={12} className={canAfford ? 'text-[#F1C40F]' : 'text-red-500'} />
+                                  <IconSoul size={12} color={canAfford ? '#F1C40F' : '#EF4444'} />
                                   <span className={`text-sm font-black ${canAfford ? 'text-white' : 'text-red-500'}`}>{cost.toLocaleString()}</span>
                               </div>
                           </div>

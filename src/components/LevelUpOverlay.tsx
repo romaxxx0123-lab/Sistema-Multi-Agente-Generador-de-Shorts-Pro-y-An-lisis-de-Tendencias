@@ -6,6 +6,7 @@ import { UIButton } from './ui/UIButton';
 import { ABILITY_METADATA } from '../data/abilities';
 import { AbilityType, PassiveType } from '../types/abilities';
 import { TUNING } from '../data/tuning';
+import { SelloComun, SelloRaro, SelloEpico, SelloReliquia } from './ui/ronin-atlas';
 
 /**
  * LEVEL UP OVERLAY
@@ -152,30 +153,28 @@ export function LevelUpOverlay() {
   if (status !== 'levelup') return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <motion.div
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 50, opacity: 0 }}
-        className="bg-[#1A1A1A]/90 p-10 rounded-3xl border-2 border-white/10 w-[1000px] h-[700px] relative overflow-hidden shadow-2xl"
+        className="bg-[#1A1A1A]/90 p-6 md:p-10 rounded-[32px] border border-white/10 w-full max-w-5xl h-full max-h-[800px] relative overflow-y-auto shadow-2xl"
       >
         {/* Background glow effect */}
         <div className="absolute top-[-200px] left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[#F1C40F]/10 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="text-center mb-12 relative">
+        <div className="text-center mb-8 md:mb-12 relative">
             <motion.h2
                 animate={{ y: [0, -5, 0] }}
                 transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-                className="text-5xl font-black text-[#F1C40F] uppercase tracking-tighter flex items-center justify-center gap-6"
+                className="text-3xl md:text-5xl font-black text-[#F1C40F] uppercase tracking-tighter flex items-center justify-center gap-4 md:gap-6"
             >
-                <Sparkles size={48} className="text-[#F1C40F]" />
                 NIVEL {run.level} ALCANZADO
-                <Sparkles size={48} className="text-[#F1C40F]" />
             </motion.h2>
-            <p className="text-white/40 font-bold uppercase tracking-[0.3em] text-xs mt-3">Sincronización de Habilidades Completa</p>
+            <p className="text-white/40 font-bold uppercase tracking-[0.3em] text-[10px] md:text-xs mt-3">Sincronización de Habilidades Completa</p>
         </div>
 
-        <div className="flex justify-center gap-8 px-4">
+        <div className="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 px-2">
             <AnimatePresence mode="wait">
                 {options.map((opt: DisplayUpgrade, i: number) => (
                     <motion.div
@@ -189,7 +188,7 @@ export function LevelUpOverlay() {
                             borderColor: RARITY_COLORS[opt.rarity]
                         }}
                         onClick={() => handleSelect(opt.id, opt.type)}
-                        className="w-[280px] h-[400px] bg-white/[0.03] rounded-2xl p-6 border-2 border-white/10 cursor-pointer flex flex-col justify-between group relative overflow-hidden transition-colors"
+                        className="w-full md:w-[280px] h-[160px] md:h-[400px] bg-white/[0.03] rounded-2xl p-4 md:p-6 border-2 border-white/10 cursor-pointer flex md:flex-col justify-between items-center md:items-stretch group relative overflow-hidden transition-colors"
                         style={{
                             background: RARITY_GRADIENTS[opt.rarity]
                         }}
@@ -205,35 +204,41 @@ export function LevelUpOverlay() {
                         {/* Rarity Tag */}
                         <div className="absolute top-4 right-4 flex items-center gap-2">
                              {opt.isNew && (
-                                <span className="bg-[#F1C40F] text-black text-[8px] font-black px-1.5 py-0.5 rounded shadow-[0_0_10px_#F1C40F66]">
+                                <span className="bg-[#F1C40F] text-black text-[8px] font-black px-1.5 py-0.5 rounded shadow-[0_0_10px_#F1C40F66] z-10">
                                     NUEVO!
                                 </span>
                              )}
-                            <div className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full border border-current opacity-50" style={{ color: RARITY_COLORS[opt.rarity] }}>
-                                {opt.rarity}
+                            <div className="opacity-40">
+                                {opt.rarity === 'common' && <SelloComun size={32} />}
+                                {opt.rarity === 'rare' && <SelloRaro size={32} />}
+                                {opt.rarity === 'epic' && <SelloEpico size={32} />}
+                                {opt.rarity === 'legendary' && <SelloReliquia size={32} />}
                             </div>
                         </div>
 
-                        <div className="text-center">
+                        <div className="flex items-center gap-4 md:block md:text-center">
                             <motion.div
                                 whileHover={{ rotate: 10, scale: 1.1 }}
-                                className="text-6xl mb-6 flex justify-center py-6 drop-shadow-lg"
+                                className="text-3xl md:text-6xl mb-0 md:mb-6 flex justify-center p-2 md:py-6 drop-shadow-lg"
                             >
                                 {opt.icon}
                             </motion.div>
-                            <h3 className="font-black text-white text-2xl leading-tight mb-1 group-hover:text-[#F1C40F] transition-colors uppercase italic">{opt.title}</h3>
+                            <div className="flex flex-col">
+                                <h3 className="font-black text-white text-lg md:text-2xl leading-tight mb-1 group-hover:text-[#F1C40F] transition-colors uppercase italic">{opt.title}</h3>
+                                <span className="md:hidden text-[#F1C40F] text-[9px] font-black uppercase tracking-widest">{opt.levelInfo}</span>
+                            </div>
                         </div>
 
-                        <div className="flex-1 mt-6 space-y-4">
+                        <div className="hidden md:flex flex-1 mt-6 space-y-4">
                             <p className="text-white/80 text-sm font-medium leading-relaxed">{opt.description}</p>
                             <div className="bg-black/40 p-3 rounded-lg text-[11px] text-[#2ECC71] whitespace-pre-wrap font-mono border border-white/5">
                                 {opt.stats}
                             </div>
                         </div>
 
-                        <div className="text-center mt-6">
-                            <span className="text-[#F1C40F] text-[10px] font-black uppercase tracking-widest">{opt.levelInfo}</span>
-                            <div className="mt-3 py-3 bg-white/5 group-hover:bg-[#F1C40F] rounded-xl uppercase font-black text-white group-hover:text-black text-xs transition-all border border-white/10 group-hover:border-transparent">
+                        <div className="text-right md:text-center mt-0 md:mt-6">
+                            <span className="hidden md:block text-[#F1C40F] text-[10px] font-black uppercase tracking-widest">{opt.levelInfo}</span>
+                            <div className="px-4 py-2 md:mt-3 md:py-3 bg-white/5 group-hover:bg-[#F1C40F] rounded-xl uppercase font-black text-white group-hover:text-black text-[10px] md:text-xs transition-all border border-white/10 group-hover:border-transparent">
                                 ELEGIR [{i+1}]
                             </div>
                         </div>
@@ -242,7 +247,7 @@ export function LevelUpOverlay() {
             </AnimatePresence>
         </div>
 
-        <div className="absolute bottom-10 left-0 right-0 flex justify-center gap-6">
+        <div className="mt-8 md:mt-12 flex justify-center gap-4 md:gap-6 pb-4">
             <UIButton
                 variant="secondary"
                 onClick={handleReroll}

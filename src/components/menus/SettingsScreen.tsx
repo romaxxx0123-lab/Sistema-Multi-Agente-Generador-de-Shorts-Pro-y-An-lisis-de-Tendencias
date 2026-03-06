@@ -1,21 +1,22 @@
 import { motion } from 'framer-motion';
-import { ChevronLeft, Volume2, Monitor, Info, RotateCcw, Save } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
+import { TOKENS } from '../../styles/tokens';
+import { IconGear, IconSoul, IconSync } from '../ui/ronin-atlas';
 
 export function SettingsScreen() {
   const { settings, updateSettings, goBack } = useGameStore();
 
   return (
-    <div className="w-full h-full flex flex-col p-10">
+    <div className="w-full h-full flex flex-col p-6 md:p-10 pb-32">
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-12">
-        <div className="flex items-center gap-6">
-            <motion.button onClick={goBack} className="p-3 bg-white/5 rounded-full border border-white/10">
-                <ChevronLeft size={24} />
-            </motion.button>
-            <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">AJUSTES</h2>
+      <div className="flex justify-between items-center mb-10">
+        <div className="flex items-center gap-4">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/10">
+                <IconGear size={28} color={TOKENS.colors.goldBright} />
+            </div>
+            <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">HONOR</h2>
         </div>
       </div>
 

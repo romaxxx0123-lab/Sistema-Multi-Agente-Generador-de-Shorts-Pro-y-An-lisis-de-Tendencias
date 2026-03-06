@@ -1,14 +1,17 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Play, Users, LayoutGrid, Award, BookOpen,
-  Settings as SettingsIcon, Zap, Coins, Target,
-  RefreshCcw, CheckCircle2, WifiOff, AlertCircle,
-  ChevronRight, Sword
-} from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useGameStore, SyncStatus } from '../../store/useGameStore';
 import { UIButton } from '../ui/UIButton';
 import { CharacterPreview } from './CharacterPreview';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { TOKENS } from '../../styles/tokens';
+import {
+  IconSoul,
+  IconOban,
+  IconSync,
+  IconGear,
+  IconKatana,
+  IconScroll
+} from '../ui/ronin-atlas';
 
 /**
  * PREMIUM HERO HUB
@@ -20,8 +23,6 @@ export function HomeScreen() {
     selectedChapterId, unlockedChapters, syncStatus, startRun
   } = useGameStore();
 
-  const [showComingSoon, setShowComingSoon] = useState(false);
-
   // Derive progress
   const level = useMemo(() => Math.floor(metaXp / 1000) + 1, [metaXp]);
   const xpInLevel = metaXp % 1000;
@@ -32,19 +33,19 @@ export function HomeScreen() {
   const isHard = unlockedChapters.length > 2;
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-between p-6 md:p-10 overflow-hidden font-sans select-none">
+    <div className="relative w-full h-full flex flex-col items-center justify-between p-6 md:p-10 pb-32 overflow-hidden font-sans select-none">
 
       {/* TOP BAR - Global Navigation & Status */}
       <div className="w-full flex justify-between items-start z-30">
         <div className="flex flex-col md:flex-row gap-3 md:gap-4">
             <ResourceChip
-                icon={<Zap size={14} className="text-[#F1C40F]" />}
+                icon={<IconSoul size={14} color={TOKENS.colors.goldBright} />}
                 value={metaXp}
-                color="#F1C40F"
+                color={TOKENS.colors.goldBright}
                 label="SOUL XP"
             />
             <ResourceChip
-                icon={<Target size={14} className="text-cyan-400" />}
+                icon={<IconOban size={14} color="#22D3EE" />}
                 value={totalRuns}
                 color="#22D3EE"
                 label="RUNS"
@@ -57,10 +58,10 @@ export function HomeScreen() {
                 whileHover={{ rotate: 90, backgroundColor: 'rgba(255,255,255,0.1)' }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setMenuScreen('settings')}
-                className="p-3 bg-white/5 rounded-2xl border border-white/10 transition-colors backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F1C40F] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                className="p-3 bg-white/5 rounded-2xl border border-white/10 transition-colors backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F1C40F]"
                 aria-label="Settings"
             >
-                <SettingsIcon size={20} className="text-white/60" />
+                <IconGear size={20} color="rgba(255,255,255,0.6)" />
             </motion.button>
         </div>
       </div>
@@ -89,7 +90,6 @@ export function HomeScreen() {
                         animate={{ width: `${xpPercent}%` }}
                         className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400"
                       />
-                      {/* Shimmer */}
                       <motion.div
                         animate={{ x: ['-100%', '200%'] }}
                         transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
@@ -104,14 +104,14 @@ export function HomeScreen() {
                   </h2>
                   <div className="flex items-center justify-center gap-2 text-cyan-400 font-bold text-[10px] tracking-[0.4em] uppercase">
                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_#22D3EE]" />
-                      Dojo Sincronizado
+                      DOJO SINCRONIZADO
                   </div>
               </div>
           </motion.div>
       </div>
 
-      {/* BOTTOM ACTIONS (CTA + Nav) */}
-      <div className="w-full max-w-5xl flex flex-col items-center gap-8 z-30 pb-4">
+      {/* BOTTOM ACTIONS (CTA) */}
+      <div className="w-full max-w-md flex flex-col items-center gap-8 z-30">
 
         {/* Main CTA */}
         <motion.div
@@ -120,6 +120,7 @@ export function HomeScreen() {
             className="relative w-full flex flex-col items-center"
         >
             <div className="absolute -top-12 px-6 py-2 bg-black/80 backdrop-blur-md rounded-2xl border border-white/5 shadow-xl flex items-center gap-3">
+                <IconScroll size={16} color="rgba(255,255,255,0.4)" />
                 <div className="flex flex-col">
                     <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">Misión Actual</span>
                     <span className="text-xs font-black text-white italic">{chapterName}</span>
@@ -132,10 +133,10 @@ export function HomeScreen() {
 
             <UIButton
                 onClick={startRun}
-                className="!w-[420px] !py-7 !text-2xl !bg-[#F1C40F] !text-black shadow-[0_15px_40px_-10px_rgba(241,196,15,0.4)] border-none relative group overflow-hidden"
+                className="!w-full !py-7 !text-2xl !bg-[#F1C40F] !text-black shadow-[0_15px_40px_-10px_rgba(241,196,15,0.4)] border-none relative group overflow-hidden"
             >
                 <div className="relative z-10 flex items-center justify-center gap-4 font-black italic">
-                    <Sword size={28} fill="black" className="group-hover:rotate-12 transition-transform" />
+                    <IconKatana size={28} color="black" className="group-hover:rotate-12 transition-transform" />
                     JUGAR AHORA
                 </div>
                 {/* Shinobi Pulse */}
@@ -146,47 +147,20 @@ export function HomeScreen() {
                 />
             </UIButton>
         </motion.div>
-
-        {/* Professional Bottom Nav */}
-        <div className="w-full grid grid-cols-5 md:grid-cols-7 gap-2">
-            <NavTab active icon={<LayoutGrid size={22} />} label="DOJO" onClick={() => {}} />
-            <NavTab icon={<BookOpen size={22} />} label="MISIÓN" onClick={() => setMenuScreen('chapters')} />
-            <NavTab icon={<Sword size={22} />} label="EQUIPO" onClick={() => setMenuScreen('loadout')} />
-            <NavTab icon={<Zap size={22} />} label="SENDA" onClick={() => setMenuScreen('talents')} />
-            <NavTab icon={<Award size={22} />} label="HONOR" onClick={() => setShowComingSoon(true)} />
-            <NavTab icon={<Users size={22} />} label="ALMAS" onClick={() => setShowComingSoon(true)} className="hidden md:flex" />
-            <NavTab icon={<RefreshCcw size={22} />} label="EXPO" onClick={() => setShowComingSoon(true)} className="hidden md:flex" />
-        </div>
       </div>
-
-      {/* Coming Soon Modal */}
-      <AnimatePresence>
-          {showComingSoon && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center p-10 backdrop-blur-md bg-black/40">
-                  <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.9, opacity: 0 }}
-                    className="bg-[#0A0A0A] p-10 rounded-[32px] border-2 border-white/10 w-[400px] text-center shadow-[0_0_60px_rgba(0,0,0,0.8)]"
-                  >
-                      <div className="w-20 h-20 bg-white/5 rounded-3xl mx-auto flex items-center justify-center mb-6 border border-white/10">
-                          <Award size={40} className="text-white/20" />
-                      </div>
-                      <h3 className="text-2xl font-black italic text-white uppercase tracking-tighter mb-2">PRÓXIMAMENTE</h3>
-                      <p className="text-white/40 text-xs font-bold uppercase tracking-widest leading-relaxed mb-8">
-                          El sistema de Logros y Desafíos Diarios llegará en la próxima actualización de Ronin.
-                      </p>
-                      <UIButton onClick={() => setShowComingSoon(false)} className="!w-full !py-4 !bg-white/10 !text-white !text-sm">ENTENDIDO</UIButton>
-                  </motion.div>
-              </div>
-          )}
-      </AnimatePresence>
 
     </div>
   );
 }
 
-function ResourceChip({ icon, value, color, label }: any) {
+interface ResourceChipProps {
+  icon: React.ReactNode;
+  value: number;
+  color: string;
+  label: string;
+}
+
+function ResourceChip({ icon, value, color, label }: ResourceChipProps) {
     return (
         <div className="group flex flex-col">
             <span className="text-[7px] font-black text-white/20 tracking-[0.3em] uppercase ml-2 mb-1">{label}</span>
@@ -200,10 +174,10 @@ function ResourceChip({ icon, value, color, label }: any) {
 
 function SyncIndicator({ status }: { status: SyncStatus }) {
     const config = {
-        ok: { icon: <CheckCircle2 size={12} className="text-green-500" />, label: 'Dojo Conectado' },
-        syncing: { icon: <RefreshCcw size={12} className="text-cyan-400 animate-spin" />, label: 'Guardando...' },
-        offline: { icon: <WifiOff size={12} className="text-white/20" />, label: 'Sin Conexión' },
-        error: { icon: <AlertCircle size={12} className="text-red-500" />, label: 'Error Sync' },
+        ok: { icon: <IconSync size={12} color="#4ADE80" />, label: 'Dojo Conectado' },
+        syncing: { icon: <IconSync size={12} color="#FACC15" className="animate-spin" />, label: 'Guardando...' },
+        offline: { icon: <IconSync size={12} color="rgba(255,255,255,0.2)" />, label: 'Sin Conexión' },
+        error: { icon: <IconSync size={12} color="#F87171" />, label: 'Error Sync' },
     };
     const { icon, label } = config[status];
     return (
@@ -214,7 +188,16 @@ function SyncIndicator({ status }: { status: SyncStatus }) {
     );
 }
 
-function NavTab({ icon, label, onClick, active, disabled, className }: any) {
+interface NavTabProps {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  className?: string;
+}
+
+function NavTab({ icon, label, onClick, active, disabled, className }: NavTabProps) {
     return (
         <motion.button
             whileHover={!disabled ? { y: -4 } : {}}

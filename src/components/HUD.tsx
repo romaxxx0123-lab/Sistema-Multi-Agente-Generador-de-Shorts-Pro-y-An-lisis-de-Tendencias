@@ -2,6 +2,8 @@ import { useGameStore } from '../store/useGameStore';
 import { UIProgressBar } from './ui/UIProgressBar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ABILITY_METADATA } from '../data/abilities';
+import { IconSoul, IconOban, IconHeart, IconSync } from './ui/ronin-atlas';
+import { TOKENS } from '../styles/tokens';
 
 /**
  * GAME HUD
@@ -24,7 +26,7 @@ export function HUD() {
   const timerColor = minutes < 5 ? '#FFFFFF' : (minutes < 10 ? '#F39C12' : '#E74C3C');
 
   return (
-    <div className="fixed inset-0 pointer-events-none select-none p-8 font-mono">
+    <div className="fixed inset-0 pointer-events-none select-none p-4 md:p-8 font-sans">
 
       {/* TOP: XP Progress - Full Width Minimalist */}
       <div className="absolute top-0 left-0 right-0 p-1 flex justify-center">
@@ -58,12 +60,18 @@ export function HUD() {
         {/* Level & Coins */}
         <div className="flex gap-6 items-center">
             <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/40">Rank</span>
-                <span className="text-xl font-black italic text-white">LV.{run.level}</span>
+                <span className="text-[8px] uppercase tracking-[0.2em] font-bold text-white/40">Rank</span>
+                <div className="flex items-center gap-2">
+                    <IconSoul size={14} color={TOKENS.colors.goldBright} />
+                    <span className="text-lg font-black italic text-white">LV.{run.level}</span>
+                </div>
             </div>
             <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/40">Koban</span>
-                <span className="text-xl font-black text-[#F1C40F]">× {run.goldRun}</span>
+                <span className="text-[8px] uppercase tracking-[0.2em] font-bold text-white/40">Koban</span>
+                <div className="flex items-center gap-2">
+                    <IconOban size={14} color={TOKENS.colors.goldBright} />
+                    <span className="text-lg font-black text-[#F1C40F]">× {run.goldRun}</span>
+                </div>
             </div>
         </div>
 
