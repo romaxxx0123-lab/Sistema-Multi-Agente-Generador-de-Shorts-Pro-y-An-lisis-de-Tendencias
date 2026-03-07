@@ -15,22 +15,40 @@ namespace RPGProject.Interaction
             UpdatePrompt();
         }
 
+        [Header("World State Integration")]
+        [SerializeField] private string _requiredWaterFlag = "env_pozo_revisado";
+        [SerializeField] private string _flagToSet = "env_vasija_revisada";
+
         protected override bool OnInteract(GameObject interactor)
         {
+            if (RPGProject.UI.DialogueUI.Instance != null && RPGProject.UI.DialogueUI.Instance.IsActive)
+                RPGProject.UI.DialogueUI.Instance.HideDialogue();
+
             if (_isFilled)
             {
-                Debug.Log("[Vasija] La vasija ya está llena y limpia.");
+                Debug.Log("[Vasija] La vasija ya está llena y lista para el servicio.");
                 return false;
             }
 
-            Debug.Log("[Vasija] Has llenado la vasija con el agua del pozo. (Placeholder para misión)");
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                if (RPGProject.World.WorldStateManager.Instance.GetFlag(_requiredWaterFlag))
+                {
+                    Debug.Log("[Vasija] Has llenado la vasija con el agua fresca del pozo.");
+                    _isFilled = true;
+                    UpdatePrompt();
 
-            _isFilled = true;
-            UpdatePrompt();
+                    RPGProject.World.WorldStateManager.Instance.SetFlag(_flagToSet, true);
+                    return true;
+                }
+                else
+                {
+                    Debug.Log("[Vasija] La vasija está sucia y vacía. Necesito agua del pozo primero.");
+                    return false;
+                }
+            }
 
-            // TODO: En la siguiente iteración, aquí se verificará si el jugador tiene agua
-            // y se actualizará el estado de la misión.
-            return true;
+            return false;
         }
 
         private void UpdatePrompt()

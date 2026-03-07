@@ -13,13 +13,35 @@ namespace RPGProject.Interaction
             _promptMessage = "Sacar agua";
         }
 
+        [Header("World State Integration")]
+        [SerializeField] private string _requiredQuestID = "prep_capilla";
+        [SerializeField] private string _flagToSet = "env_pozo_revisado";
+
         protected override bool OnInteract(GameObject interactor)
         {
-            Debug.Log("[Pozo] Has sacado agua fresca del pozo. (Placeholder para misión)");
+            // Close dialogue UI if open
+            if (RPGProject.UI.DialogueUI.Instance != null && RPGProject.UI.DialogueUI.Instance.IsActive)
+                RPGProject.UI.DialogueUI.Instance.HideDialogue();
 
-            // TODO: En la siguiente iteración, aquí se añadirá el agua al inventario
-            // o se cambiará el estado de la misión activa.
-            return true;
+            // Simple validation to ensure quest is active
+            if (RPGProject.World.WorldStateManager.Instance != null &&
+                RPGProject.World.WorldStateManager.Instance.GetFlag($"quest_{_requiredQuestID}_started"))
+            {
+                if (!RPGProject.World.WorldStateManager.Instance.GetFlag(_flagToSet))
+                {
+                    Debug.Log("[Pozo] Has sacado agua fresca del pozo.");
+                    RPGProject.World.WorldStateManager.Instance.SetFlag(_flagToSet, true);
+                    return true;
+                }
+                else
+                {
+                    Debug.Log("[Pozo] Ya tienes suficiente agua.");
+                    return false;
+                }
+            }
+
+            Debug.Log("[Pozo] El agua del pozo refleja el cielo tranquilo. Aún no necesito agua.");
+            return false;
         }
     }
 }

@@ -35,7 +35,7 @@ Todo el contenido específico de nuestro juego se encuentra aislado en `Assets/_
 2. Iteración 2: Base Unity Real y Scripts Fundacionales (¡Completada!).
 3. Iteración 3: Núcleo jugable en el Editor (Movimiento, cámara, interacción). (¡Completada!)
 4. Iteración 4: Diseño de Escena ("La Capilla Olvidada") y Base de Misión. (¡Completada!)
-5. Iteración 5: Sistemas de Quest y Diálogo.
+5. Iteración 5: Sistemas de Quest, Diálogo y World State. (¡Completada!)
 6. Consulte `Docs/Roadmap.md` para más detalles.
 
 ---

@@ -21,15 +21,15 @@
 - `/Core/`: Punto de entrada de la aplicación (`GameBootstrap.cs`).
 - `/Player/`: Manejo de las lógicas físicas y de estado exclusivas del jugador. Creados `PlayerController.cs` (CharacterController), `PlayerStats.cs`, `HealthComponent.cs` y `StaminaComponent.cs`.
 - `/Interaction/`: Sistema genérico de descubrimiento y activación en el entorno. Implementado `IInteractable.cs`, su base abstracta `InteractableBase.cs` y el componente lector de área `InteractionDetector.cs`.
-- `/UI/`: Lógicas de Canvas. Se incluye `InteractionPromptUI.cs` en modo de World-Space u Overlay para reflejar la interacción más cercana.
-- `/World/`: Control del clima, objetos globales.
-- `/NPC/`: Estados, IA ligera para movimiento e Idle.
-- `/Quests/`: Datos del progreso espiritual del jugador y gestión de las tareas.
+- `/UI/`: Lógicas de Canvas (`InteractionPromptUI.cs`, `DialogueUI.cs`, `QuestUI.cs`, `StaminaUI.cs`).
+- `/World/`: Control del estado global del mundo y flags de persistencia (`WorldStateManager.cs`).
+- `/NPC/`: Estados, IA ligera para movimiento e Idle, sistemas de diálogo contextual simple y asignación de misiones (`CaretakerNPCInteractable.cs`).
+- `/Quests/`: Datos del progreso espiritual del jugador y gestión de las tareas (`QuestManager.cs` y `QuestData.cs` ScriptableObjects).
 
-## Uso Futuro de World State, Diálogos y Misiones
-- **World State:** Deberá implementarse como un sistema de guardado persistente (ej. JSON) que registre los "flags" o variables booleanas de progreso (ej. `ErmitaReparada = true`).
-- **Diálogos:** Se utilizará un sistema basado en nodos o JSON/ScriptableObjects para manejar árboles de diálogo ramificados, donde las respuestas disponibles puedan depender del `WorldState`.
-- **Misiones:** Deberán basarse en eventos. Completar una acción o un diálogo desencadenará un evento (`QuestEvent`) que el `QuestSystem` evaluará, actualizará el estado de la misión y modificará el `WorldState`.
+## Arquitectura de World State, Diálogos y Misiones
+- **World State:** Funciona como un Singleton central que almacena y emite eventos sobre variables booleanas (flags) de progreso, garantizando bajo acoplamiento con la UI o misiones individuales.
+- **Diálogos Contextuales:** El NPC base evalúa el estado del `WorldState` y del `QuestManager` para determinar qué bloque de diálogo lineal mostrar a través de `DialogueUI.cs`.
+- **Misiones (Quest System):** Depende de datos configurados en ScriptableObjects (`QuestData`). El `QuestManager` escucha los eventos del `WorldState` y, si una misión activa detecta que todos sus flags requeridos son `true`, transiciona de `InProgress` a `ReadyToTurnIn`.
 
 ## Principios para Bajo Acoplamiento
 - **Scriptable Objects:** Usar SOs para configuraciones, datos constantes y variables globales compartidas.

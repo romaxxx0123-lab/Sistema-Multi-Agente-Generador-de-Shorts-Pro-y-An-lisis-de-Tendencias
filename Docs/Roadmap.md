@@ -24,10 +24,16 @@
 - [x] Documentar la distribución, tono y flujo espacial de la primera escena ("La Capilla Olvidada") en `Docs/FirstSceneLayout.md`.
 - [x] Especificar cómo ensamblar la capilla de forma segura y contemplativa dentro del editor.
 
-## Iteration 5: Sistema de Misiones (En Progreso)
-- [ ] Implementar el Quest System básico para entrelazar las acciones (pozo -> vasija -> altar).
-- [ ] Crear el sistema de Diálogo Real para que el Cuidador asigne la misión.
-- [ ] Implementar el estado global (World State) para recordar qué objetos se han interactuado de forma persistente.
+## Iteration 5: Sistema de Misiones (Completada)
+- [x] Crear el estado global (`WorldStateManager`) para recordar interacciones de forma persistente.
+- [x] Implementar el Quest System (`QuestManager`, `QuestData`) entrelazado al World State.
+- [x] Crear el sistema de Diálogo Simple (`DialogueUI`) dependiente del estado del mundo.
+- [x] Conectar los objetos interactuables a los sistemas para la misión "Preparar la Capilla".
+
+## Iteration 6: Extensiones y Meta-Progreso
+- [ ] Añadir interacciones secundarias (Mantel, Velas).
+- [ ] Guardado y Carga del World State en JSON.
+- [ ] Animaciones y Eventos Especiales de Cámara en diálogos.
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.
