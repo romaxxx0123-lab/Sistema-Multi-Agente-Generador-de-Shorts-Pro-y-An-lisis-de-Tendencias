@@ -36,7 +36,8 @@ Todo el contenido específico de nuestro juego se encuentra aislado en `Assets/_
 3. Iteración 3: Núcleo jugable en el Editor (Movimiento, cámara, interacción). (¡Completada!)
 4. Iteración 4: Diseño de Escena ("La Capilla Olvidada") y Base de Misión. (¡Completada!)
 5. Iteración 5: Sistemas de Quest, Diálogo y World State. (¡Completada!)
-6. Consulte `Docs/Roadmap.md` para más detalles.
+6. Iteración 6: Misión "Preparar la Capilla" Completa (Multi-fase). (¡Completada!)
+7. Consulte `Docs/Roadmap.md` para más detalles.
 
 ---
 

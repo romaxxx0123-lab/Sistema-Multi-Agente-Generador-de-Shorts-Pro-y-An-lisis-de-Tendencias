@@ -26,14 +26,21 @@
 
 ## Iteration 5: Sistema de Misiones (Completada)
 - [x] Crear el estado global (`WorldStateManager`) para recordar interacciones de forma persistente.
-- [x] Implementar el Quest System (`QuestManager`, `QuestData`) entrelazado al World State.
+- [x] Implementar el Quest System Multi-Fase (`QuestManager`, `QuestData`) entrelazado al World State.
 - [x] Crear el sistema de Diálogo Simple (`DialogueUI`) dependiente del estado del mundo.
 - [x] Conectar los objetos interactuables a los sistemas para la misión "Preparar la Capilla".
 
-## Iteration 6: Extensiones y Meta-Progreso
-- [ ] Añadir interacciones secundarias (Mantel, Velas).
-- [ ] Guardado y Carga del World State en JSON.
-- [ ] Animaciones y Eventos Especiales de Cámara en diálogos.
+## Iteration 6: Extensión de Misión "Preparar la Capilla" (Completada)
+- [x] Añadir soporte Multi-Fase al `QuestData` y actualizar el flujo lineal del NPC.
+- [x] Añadir interacciones secundarias dependientes de fase (`ClothInteractable`, `CandleInteractable`).
+- [x] Evitar sistemas de inventario complejos usando estados de mundo (`player_has_altar_cloth`).
+- [x] Crear notificaciones de UI mínimas y sobrias (`NotificationUI`).
+- [x] Documentar el flujo completo de la misión y la configuración en el editor en `Docs/FirstQuestFullFlow.md`.
+
+## Iteration 7: Sistemas Guardado y Meta-Progreso (Pendiente)
+- [ ] Guardado y Carga del World State en JSON persistente.
+- [ ] Animaciones de personajes e idle states del Cuidador / Padre Elías.
+- [ ] Eventos Especiales de Cámara en diálogos.
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.

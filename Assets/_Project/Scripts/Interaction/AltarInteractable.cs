@@ -17,6 +17,16 @@ namespace RPGProject.Interaction
 
         [Header("World State Integration")]
         [SerializeField] private string _requiredQuestID = "prep_capilla";
+        [SerializeField] private string _flagToCheck = "player_has_altar_cloth";
+        [SerializeField] private string _flagToSet = "env_altar_dressed";
+
+        [Header("Visual Feedback")]
+        [SerializeField] private GameObject _clothVisuals; // Optional mesh to enable
+
+        private void Start()
+        {
+            if (_clothVisuals != null) _clothVisuals.SetActive(false);
+        }
 
         protected override bool OnInteract(GameObject interactor)
         {
@@ -25,26 +35,39 @@ namespace RPGProject.Interaction
 
             if (_isPrepared)
             {
-                Debug.Log("[Altar] El altar ya está preparado para la misa.");
+                Debug.Log("[Altar] Ya está vestido. Ahora las velas aguardan.");
                 return false;
             }
 
-            if (RPGProject.World.WorldStateManager.Instance != null &&
-                RPGProject.World.WorldStateManager.Instance.GetFlag($"quest_{_requiredQuestID}_completed"))
+            if (RPGProject.World.WorldStateManager.Instance != null)
             {
-                Debug.Log("[Altar] Te inclinas reverentemente. Todo está en orden para la celebración.");
-                _isPrepared = true;
-                UpdatePrompt();
-                return true;
+                // Has picked up the cloth but hasn't placed it yet
+                if (RPGProject.World.WorldStateManager.Instance.GetFlag(_flagToCheck) &&
+                    !RPGProject.World.WorldStateManager.Instance.GetFlag(_flagToSet))
+                {
+                    Debug.Log("[Sistema] Has extendido cuidadosamente el mantel sobre el altar de piedra.");
+
+                    if (RPGProject.UI.NotificationUI.Instance != null)
+                    {
+                        RPGProject.UI.NotificationUI.Instance.ShowNotification("Altar vestido");
+                    }
+
+                    _isPrepared = true;
+                    if (_clothVisuals != null) _clothVisuals.SetActive(true);
+
+                    UpdatePrompt();
+                    RPGProject.World.WorldStateManager.Instance.SetFlag(_flagToSet, true);
+                    return true;
+                }
             }
 
-            Debug.Log("[Altar] El altar se siente incompleto. Faltan preparativos previos.");
+            Debug.Log("[Altar] Una base de piedra fría. No hay nada más que hacer sin el mantel.");
             return false;
         }
 
         private void UpdatePrompt()
         {
-            _promptMessage = _isPrepared ? "Altar preparado" : "Preparar Altar";
+            _promptMessage = _isPrepared ? "Altar vestido" : "Vestir Altar";
         }
     }
 }

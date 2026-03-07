@@ -55,13 +55,9 @@ namespace RPGProject.UI
             _questContainer.SetActive(true);
             _questNameText.text = activeQuest.QuestName;
 
-            if (state == QuestState.InProgress)
+            if (state == QuestState.InProgress || state == QuestState.ReadyToTurnIn)
             {
-                _objectiveText.text = $"- {activeQuest.ObjectiveTextInProgress}";
-            }
-            else if (state == QuestState.ReadyToTurnIn)
-            {
-                _objectiveText.text = $"- {activeQuest.ObjectiveTextReady}";
+                _objectiveText.text = $"- {QuestManager.Instance.GetCurrentObjectiveText()}";
             }
         }
     }

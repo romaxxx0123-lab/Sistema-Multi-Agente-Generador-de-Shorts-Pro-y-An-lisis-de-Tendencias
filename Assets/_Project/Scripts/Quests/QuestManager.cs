@@ -15,6 +15,9 @@ namespace RPGProject.Quests
         public QuestData ActiveQuest { get; private set; }
         public QuestState CurrentState { get; private set; } = QuestState.NotStarted;
 
+        /// <summary>Índice de la fase actual (0 es la primera fase).</summary>
+        public int CurrentPhaseIndex { get; private set; } = 0;
+
         public event Action<QuestData, QuestState> OnQuestUpdated;
 
         private void Awake()
@@ -56,9 +59,10 @@ namespace RPGProject.Quests
 
             ActiveQuest = quest;
             CurrentState = QuestState.InProgress;
+            CurrentPhaseIndex = 0;
 
             WorldStateManager.Instance.SetFlag($"quest_{quest.QuestID}_started", true);
-            Debug.Log($"[QuestManager] Quest '{quest.QuestName}' started.");
+            Debug.Log($"[QuestManager] Quest '{quest.QuestName}' started at Phase {CurrentPhaseIndex}.");
 
             OnQuestUpdated?.Invoke(ActiveQuest, CurrentState);
         }
@@ -83,24 +87,51 @@ namespace RPGProject.Quests
         private void CheckActiveQuestProgress(string flagName, bool value)
         {
             if (ActiveQuest == null || CurrentState != QuestState.InProgress) return;
+            if (ActiveQuest.Phases == null || ActiveQuest.Phases.Length == 0) return;
 
-            // Check if all required flags are true
-            bool allComplete = true;
-            foreach (var flag in ActiveQuest.RequiredFlags)
+            QuestPhase currentPhase = ActiveQuest.Phases[CurrentPhaseIndex];
+
+            // Evaluate if current phase is met
+            bool phaseComplete = true;
+            foreach (var flag in currentPhase.RequiredFlags)
             {
                 if (!WorldStateManager.Instance.GetFlag(flag))
                 {
-                    allComplete = false;
+                    phaseComplete = false;
                     break;
                 }
             }
 
-            if (allComplete)
+            if (phaseComplete)
             {
-                CurrentState = QuestState.ReadyToTurnIn;
-                Debug.Log($"[QuestManager] Objectives for '{ActiveQuest.QuestName}' met. Ready to turn in.");
+                CurrentPhaseIndex++;
+
+                if (CurrentPhaseIndex >= ActiveQuest.Phases.Length)
+                {
+                    // Quest is fully complete
+                    CurrentState = QuestState.ReadyToTurnIn;
+                    Debug.Log($"[QuestManager] All phases for '{ActiveQuest.QuestName}' met. Ready to turn in.");
+                }
+                else
+                {
+                    // Quest advances to next phase
+                    Debug.Log($"[QuestManager] Phase {CurrentPhaseIndex - 1} complete. Advancing to phase {CurrentPhaseIndex}.");
+                }
+
+                // Broadcast update so UI refreshes
                 OnQuestUpdated?.Invoke(ActiveQuest, CurrentState);
             }
+        }
+
+        public string GetCurrentObjectiveText()
+        {
+            if (ActiveQuest == null) return string.Empty;
+            if (CurrentState == QuestState.ReadyToTurnIn) return ActiveQuest.ObjectiveTextReady;
+            if (CurrentState == QuestState.InProgress && CurrentPhaseIndex < ActiveQuest.Phases.Length)
+            {
+                return ActiveQuest.Phases[CurrentPhaseIndex].ObjectiveText;
+            }
+            return string.Empty;
         }
     }
 }

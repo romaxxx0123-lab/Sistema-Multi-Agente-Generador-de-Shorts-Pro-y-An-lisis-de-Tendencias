@@ -15,9 +15,11 @@ namespace RPGProject.NPC
         [Header("Contextual Dialogues")]
         [SerializeField] private string _speakerName = "Cuidador";
         [TextArea(2, 5)] [SerializeField] private string _preQuestDialogue = "Bienvenido peregrino. La capilla aún no está lista para la misa. Por favor, saca agua del pozo, limpia las vasijas y lee las escrituras del atril.";
-        [TextArea(2, 5)] [SerializeField] private string _duringQuestDialogue = "¿Ya terminaste de limpiar todo? Necesitamos el agua limpia y el atril listo.";
-        [TextArea(2, 5)] [SerializeField] private string _readyToTurnInDialogue = "¡Alabado sea Dios! Veo que has limpiado las vasijas y preparado el atril. Ahora puedes acercarte al altar.";
-        [TextArea(2, 5)] [SerializeField] private string _postQuestDialogue = "La paz sea contigo. El Señor te bendiga por tu servicio.";
+        [TextArea(2, 5)] [SerializeField] private string _duringQuestPhase0Dialogue = "¿Ya terminaste de revisar el pozo, las vasijas y las escrituras? Necesitamos que el ambiente esté puro.";
+        [TextArea(2, 5)] [SerializeField] private string _duringQuestPhase1Dialogue = "Gracias. Todo está en orden. Por favor, recoge el mantel doblado del rincón y colócalo reverentemente sobre el altar.";
+        [TextArea(2, 5)] [SerializeField] private string _duringQuestPhase2Dialogue = "El altar ya tiene el mantel. Solo falta encender las dos velas para que la luz del Señor nos guíe.";
+        [TextArea(2, 5)] [SerializeField] private string _readyToTurnInDialogue = "¡Alabado sea Dios! El altar está completamente vestido y las velas encendidas. Has devuelto la vida a este lugar.";
+        [TextArea(2, 5)] [SerializeField] private string _postQuestDialogue = "La paz sea contigo. El Padre Elías llegará pronto. Deberías ir a buscarlo cerca de la colina este, seguramente le alegrará ver esto.";
 
         [Header("Quest Assignment")]
         [SerializeField] private RPGProject.Quests.QuestData _questToAssign;
@@ -62,11 +64,26 @@ namespace RPGProject.NPC
                         currentDialogue = _readyToTurnInDialogue;
                         qm.CompleteQuest(); // Turn it in!
 
-                        // Future: The Altar interactable will now become active since the quest is completed.
+                        // Otorga recompensa simbólica aquí.
+                        Debug.Log("[Sistema] Misión Completada. Virtud Espiritual aumentada.");
                     }
                     else if (qm.CurrentState == RPGProject.Quests.QuestState.InProgress)
                     {
-                        currentDialogue = _duringQuestDialogue;
+                        switch(qm.CurrentPhaseIndex)
+                        {
+                            case 0:
+                                currentDialogue = _duringQuestPhase0Dialogue;
+                                break;
+                            case 1:
+                                currentDialogue = _duringQuestPhase1Dialogue;
+                                break;
+                            case 2:
+                                currentDialogue = _duringQuestPhase2Dialogue;
+                                break;
+                            default:
+                                currentDialogue = _duringQuestPhase0Dialogue;
+                                break;
+                        }
                     }
                 }
                 // Assign the quest if not started

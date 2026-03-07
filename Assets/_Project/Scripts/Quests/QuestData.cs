@@ -10,9 +10,17 @@ namespace RPGProject.Quests
         Completed
     }
 
+    [System.Serializable]
+    public class QuestPhase
+    {
+        [Tooltip("Las flags del WorldState que deben ser verdaderas para avanzar de esta fase.")]
+        public string[] RequiredFlags;
+        public string ObjectiveText = "Completa la tarea.";
+    }
+
     /// <summary>
     /// ScriptableObject to define a quest's static data securely.
-    /// This prevents hardcoding mission text and objectives.
+    /// Soporta múltiples fases lineales para misiones con progreso secuencial.
     /// </summary>
     [CreateAssetMenu(fileName = "NewQuest", menuName = "RPGProject/Quest")]
     public class QuestData : ScriptableObject
@@ -21,11 +29,10 @@ namespace RPGProject.Quests
         public string QuestName;
         [TextArea(3, 10)] public string Description;
 
-        [Header("Required World Flags to Complete")]
-        [Tooltip("The names of the WorldState flags that must be true to turn this quest in.")]
-        public string[] RequiredFlags;
+        [Header("Fases de la Misión")]
+        [Tooltip("Define los pasos secuenciales de la misión. La última fase completada la pone en ReadyToTurnIn.")]
+        public QuestPhase[] Phases;
 
-        public string ObjectiveTextInProgress = "Completa las tareas encomendadas.";
         public string ObjectiveTextReady = "Regresa con el Cuidador.";
     }
 }
