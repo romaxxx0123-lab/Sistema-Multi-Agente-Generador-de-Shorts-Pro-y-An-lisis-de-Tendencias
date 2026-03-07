@@ -7,6 +7,7 @@ import { TalentsScreen } from './TalentsScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { AssetGallery } from '../AssetGallery';
 import { CharacterSelector } from './CharacterSelector';
+import { MissionsScreen } from '../missions/MissionsScreen';
 import { BottomNavigation } from '../ui/BottomNavigation';
 import { useState, useEffect } from 'react';
 import { TOKENS } from '../../styles/tokens';
@@ -16,6 +17,7 @@ import { IconSeal } from '../ui/ronin-atlas';
 /**
  * MENU ROOT
  * Orchestrates navigation between Hub screens with transitions.
+ * FIXED: Added MissionsScreen to the router.
  */
 export function MenuRoot() {
   const { menuScreen, goBack, view, setMenuScreen } = useGameStore();
@@ -43,6 +45,7 @@ export function MenuRoot() {
       case 'chapters': return <ChaptersScreen />;
       case 'loadout': return <LoadoutScreen />;
       case 'talents': return <TalentsScreen />;
+      case 'missions': return <MissionsScreen />;
       case 'settings': return <SettingsScreen />;
       case 'gallery': return <AssetGallery />;
       case 'characters': return <CharacterSelector />;

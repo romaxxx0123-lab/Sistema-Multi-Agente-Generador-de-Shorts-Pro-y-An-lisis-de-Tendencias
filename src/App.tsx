@@ -30,8 +30,8 @@ import { useGameStore } from './store/useGameStore';
 import { CONFIG } from './config';
 
 /**
- * OPTIMIZED RONIN SURVIVOR ENTRY POINT
- * Integrated with Wave System, Pickups, and Hub.
+ * RONIN SURVIVOR - FULLY ASSEMBLED ENTRY POINT
+ * Integrated with Hub, Wave System, Pickups, and Mission Director.
  */
 export const RoninGame = () => {
   const view = useGameStore((state) => state.view);
@@ -47,7 +47,6 @@ export const RoninGame = () => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (view === 'game') {
-          // Priority: Close levelup/chest first if we wanted (but rules say ignore)
           if (status === 'playing') setStatus('paused');
           else if (status === 'paused') setStatus('playing');
         }
@@ -114,7 +113,6 @@ export const RoninGame = () => {
           </div>
       )}
 
-      {/* Performance Monitor (Always available but toggled by F3) */}
       <DebugPanel />
     </div>
   );

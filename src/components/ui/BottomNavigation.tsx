@@ -16,14 +16,14 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'chapters', label: 'MISIÓN', icon: IconScroll },
+  { id: 'missions', label: 'MISIÓN', icon: IconScroll },
   { id: 'loadout', label: 'EQUIPO', icon: IconMask },
   { id: 'home', label: 'DOJO', icon: IconTorii },
   { id: 'talents', label: 'SENDA', icon: IconSeal },
   { id: 'settings', label: 'HONOR', icon: IconGear },
 ];
 
-const COMING_SOON_TABS: string[] = ['settings']; // Honor is currently mapped to settings, but we want it as Coming Soon per prompt
+const COMING_SOON_TABS: string[] = ['settings'];
 
 export function BottomNavigation() {
   const currentScreen = useGameStore((state) => state.menuScreen);

@@ -1,0 +1,7 @@
+
+Running 2 tests using 1 worker
+
+  ✓  1 tests/verify_movement_1a.spec.ts:17:3 › Ronin Survivor - Part 1A Movement › should move character in 8 directions (visual verification) (4.4s)
+  ✓  2 tests/verify_movement_1a.spec.ts:39:3 › Ronin Survivor - Part 1A Movement › should not exit arena boundaries (7.2s)
+
+  2 passed (13.7s)

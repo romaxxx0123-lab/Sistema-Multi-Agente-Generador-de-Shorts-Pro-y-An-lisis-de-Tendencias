@@ -1,0 +1,62 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e4]:
+  - generic:
+    - img
+  - navigation:
+    - generic [ref=e5]:
+      - button "MISIÓN" [ref=e7] [cursor=pointer]:
+        - img [ref=e9]
+        - generic [ref=e11]: MISIÓN
+      - button "EQUIPO" [ref=e12] [cursor=pointer]:
+        - img [ref=e14]
+        - generic [ref=e17]: EQUIPO
+      - button "DOJO" [ref=e18] [cursor=pointer]:
+        - img [ref=e21]
+        - generic [ref=e24]: DOJO
+      - button "SENDA" [ref=e26] [cursor=pointer]:
+        - img [ref=e28]
+        - generic [ref=e32]: SENDA
+      - button "HONOR" [ref=e33] [cursor=pointer]:
+        - img [ref=e35]
+        - generic [ref=e38]: HONOR
+  - generic [ref=e40]:
+    - generic [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]: SOUL XP
+          - generic [ref=e45]:
+            - img [ref=e46]
+            - generic [ref=e49]: "0"
+        - generic [ref=e50]:
+          - generic [ref=e51]: RUNS
+          - generic [ref=e52]:
+            - img [ref=e53]
+            - generic [ref=e56]: "0"
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - img [ref=e59]
+          - generic [ref=e63]: Dojo Conectado
+        - button "Settings" [ref=e64] [cursor=pointer]:
+          - img [ref=e65]
+    - generic:
+      - generic:
+        - generic [ref=e74]:
+          - generic [ref=e75]: Rango
+          - generic [ref=e76]: Lv. 1
+        - generic:
+          - heading "ronin" [level=2]
+          - generic: DOJO SINCRONIZADO
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - img [ref=e83]
+        - generic [ref=e85]:
+          - generic [ref=e86]: Misión Actual
+          - generic [ref=e87]: CHAPTER 1
+        - generic [ref=e89]: NORMAL
+      - button "JUGAR AHORA" [ref=e90] [cursor=pointer]:
+        - generic [ref=e91]:
+          - img [ref=e92]
+          - text: JUGAR AHORA
+```

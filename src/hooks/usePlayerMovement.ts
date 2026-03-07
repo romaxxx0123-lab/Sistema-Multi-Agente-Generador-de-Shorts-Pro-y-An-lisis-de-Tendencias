@@ -1,11 +1,12 @@
 import { useRef } from 'react';
-import { Vector3, Quaternion } from 'three';
+import { Vector3, Quaternion, MathUtils } from 'three';
 import { RapierRigidBody } from '@react-three/rapier';
 import { Camera } from 'three';
 
 /**
- * OPTIMIZED PLAYER MOVEMENT HOOK
+ * OPTIMIZED PLAYER MOVEMENT HOOK - PART 2
  * Handles camera-relative movement and smooth rotation using Rapier physics.
+ * FIXED: Uses lerped velocity to prevent jitter against walls and smooths rotation.
  */
 const _direction = new Vector3();
 const _targetRotation = new Quaternion();
@@ -34,17 +35,17 @@ export const usePlayerMovement = (
     _direction.set(0, 0, 0);
     _input.set(0, 0, 0);
 
-    // 1. Get Normalized Input vector
-    // Using positive Z for forward to match camera forward vector logic
     if (forward) _input.z += 1;
     if (backward) _input.z -= 1;
     if (left) _input.x -= 1;
     if (right) _input.x += 1;
 
+    const currentVel = rb.current.linvel();
+    const finalSpeed = speed * speedMultiplier;
+
     if (_input.lengthSq() > 0) {
       _input.normalize();
 
-      // 2. Transform input relative to camera view
       if (camera) {
           _camForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
           _camForward.y = 0;
@@ -62,16 +63,17 @@ export const usePlayerMovement = (
           _direction.copy(_input);
       }
 
-      // 3. Apply Linear Velocity via Rapier
-      const currentVel = rb.current.linvel();
-      const finalSpeed = speed * speedMultiplier;
+      // PHYSICS SMOOTHING: Lerp velocity to avoid "jitter" when hitting walls
+      const targetVelX = _direction.x * finalSpeed;
+      const targetVelZ = _direction.z * finalSpeed;
+
       rb.current.setLinvel({
-        x: _direction.x * finalSpeed,
+        x: MathUtils.lerp(currentVel.x, targetVelX, 0.2),
         y: currentVel.y,
-        z: _direction.z * finalSpeed
+        z: MathUtils.lerp(currentVel.z, targetVelZ, 0.2)
       }, true);
 
-      // 4. Smooth visual rotation
+      // Smooth visual rotation
       const angle = Math.atan2(_direction.x, _direction.z);
       _targetRotation.setFromAxisAngle(_up, angle);
 
@@ -79,8 +81,12 @@ export const usePlayerMovement = (
         meshRef.current.quaternion.slerp(_targetRotation, rotationSpeed * delta);
       }
     } else {
-      const currentVel = rb.current.linvel();
-      rb.current.setLinvel({ x: 0, y: currentVel.y, z: 0 }, true);
+      // Smooth deceleration
+      rb.current.setLinvel({
+          x: MathUtils.lerp(currentVel.x, 0, 0.3),
+          y: currentVel.y,
+          z: MathUtils.lerp(currentVel.z, 0, 0.3)
+      }, true);
     }
   };
 

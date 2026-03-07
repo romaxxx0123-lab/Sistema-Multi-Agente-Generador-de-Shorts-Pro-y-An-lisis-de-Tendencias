@@ -12,6 +12,7 @@ import { Samurai } from '../models/Samurai';
 /**
  * ENEMY COMPONENT
  * Handles physics-based movement, AI (simple follow), and visuals.
+ * FIXED: Increased base scale and improved follow physics.
  */
 
 interface EnemyProps {
@@ -42,8 +43,6 @@ export function Enemy({ data }: EnemyProps) {
   const moveDir = useMemo(() => new Vector3(), []);
   const playerPos = useMemo(() => new Vector3(), []);
   const enemyPos = useMemo(() => new Vector3(), []);
-  const targetQuat = useMemo(() => new Quaternion(), []);
-  const lookAtMat = useMemo(() => new Vector3(), []);
 
   // Registry & Physics Setup
   useEffect(() => {
@@ -57,33 +56,34 @@ export function Enemy({ data }: EnemyProps) {
   useEffect(() => {
     if (data.hp < prevHp.current) {
       hitFlashVal.current = 1;
-      hitStop.current = 0.1; // 100ms hit stop
+      hitStop.current = 0.1;
       if ((window as any).triggerShake) (window as any).triggerShake(0.1);
-      // Apply physical knockback
+
       if (rbRef.current && playerRef) {
         const pPos = new Vector3();
         playerRef.getWorldPosition(pPos);
         const { x, y, z } = rbRef.current.translation();
         const kbDir = new Vector3(x - pPos.x, 0, z - pPos.z).normalize();
-        rbRef.current.applyImpulse({ x: kbDir.x * 10, y: 4, z: kbDir.z * 10 }, true);
+        rbRef.current.applyImpulse({ x: kbDir.x * 15, y: 5, z: kbDir.z * 15 }, true);
       }
     }
     prevHp.current = data.hp;
   }, [data.hp, playerRef]);
 
   const stats = useMemo(() => {
+    // SCALES INCREASED FOR BETTER VISIBILITY
     let s = {
       speed: data.type === 'ninja' ? 4 : (data.type === 'oni' ? 1.8 : (data.type === 'samurai' ? 3.2 : 2.5)),
       damage: data.type === 'oni' ? 25 : (data.type === 'samurai' ? 15 : (data.type === 'ninja' ? 10 : 5)),
       xp: data.type === 'oni' ? 50 : (data.type === 'samurai' ? 40 : (data.type === 'ninja' ? 20 : 10)),
-      scale: data.type === 'oni' ? 0.9 : (data.type === 'samurai' ? 0.8 : (data.type === 'ninja' ? 0.6 : 0.5))
+      scale: data.type === 'oni' ? 1.4 : (data.type === 'samurai' ? 1.2 : (data.type === 'ninja' ? 1.0 : 0.8))
     };
 
     if (data.isElite) {
       s.speed *= 1.2;
       s.damage *= 2;
       s.xp *= 3;
-      s.scale *= 1.3;
+      s.scale *= 1.4;
     }
     return s;
   }, [data.type, data.isElite]);
@@ -91,28 +91,22 @@ export function Enemy({ data }: EnemyProps) {
   useFrame((_state, delta) => {
     if (status !== 'playing' || !playerRef || !rbRef.current) return;
 
-    // Hit Stop Logic
     if (hitStop.current > 0) {
       hitStop.current = Math.max(0, hitStop.current - delta);
       return;
     }
 
-    // Death Dissolve Logic
     if (data.hp <= 0 && !isDead.current) {
       isDead.current = true;
-      // Disable physics on death
       rbRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     }
 
     if (isDead.current) {
       dissolveProgress.current = Math.min(1, dissolveProgress.current + delta * 1.5);
-
-      // Update visual dissolve
       if (contentRef.current) {
         const s = stats.scale * (1 - dissolveProgress.current);
         contentRef.current.scale.set(s, s, s);
       }
-
       if (dissolveProgress.current >= 1) {
         addXp(stats.xp);
         addKill();
@@ -137,47 +131,49 @@ export function Enemy({ data }: EnemyProps) {
       hpBarRef.current.position.x = -(1 - hpPercent) / 2;
     }
 
-    // 1. Get positions
     playerRef.getWorldPosition(playerPos);
     const { x, y, z } = rbRef.current.translation();
     enemyPos.set(x, y, z);
 
-    // 2. Simple Follow Logic
     moveDir.subVectors(playerPos, enemyPos).normalize();
-    moveDir.y = 0; // Lock to ground
+    moveDir.y = 0;
 
-    // 3. Move via physics velocity
-    const velocity = moveDir.clone().multiplyScalar(stats.speed);
-    rbRef.current.setLinvel({ x: velocity.x, y: 0, z: velocity.z }, true);
+    // PHYSICS-SMOOTHED VELOCITY
+    const currentVel = rbRef.current.linvel();
+    const targetVelX = moveDir.x * stats.speed;
+    const targetVelZ = moveDir.z * stats.speed;
 
-    // 4. Smooth Rotation & Visual Feedback
+    rbRef.current.setLinvel({
+        x: THREE.MathUtils.lerp(currentVel.x, targetVelX, 0.1),
+        y: currentVel.y,
+        z: THREE.MathUtils.lerp(currentVel.z, targetVelZ, 0.1)
+    }, true);
+
+    // Smooth Rotation
     if (moveDir.lengthSq() > 0.1) {
       const targetRotation = Math.atan2(moveDir.x, moveDir.z);
       const currentRot = rbRef.current.rotation();
       const currentQuat = new Quaternion(currentRot.x, currentRot.y, currentRot.z, currentRot.w);
-
       const newRotation = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), targetRotation);
       currentQuat.slerp(newRotation, 10 * delta);
       rbRef.current.setRotation(currentQuat, true);
 
-      // Procedural "Bobbing/Walking" animation
       if (visualRef.current) {
         const t = _state.clock.getElapsedTime();
         visualRef.current.position.y = Math.sin(t * stats.speed * 3) * 0.05;
         visualRef.current.rotation.z = Math.sin(t * stats.speed * 3) * 0.05;
       }
     }
-
   });
 
   const handleCollision = (e: any) => {
     if (isDead.current) return;
-      if (e.other.rigidBodyObject?.name === 'player') {
-          takeDamage(stats.damage);
-          hitFlashVal.current = 1;
-          const knockbackDir = moveDir.clone().negate().multiplyScalar(5);
-          rbRef.current?.applyImpulse({ x: knockbackDir.x, y: 2, z: knockbackDir.z }, true);
-      }
+    if (e.other.rigidBodyObject?.name === 'player') {
+        takeDamage(stats.damage);
+        hitFlashVal.current = 1;
+        const knockbackDir = moveDir.clone().negate().multiplyScalar(8);
+        rbRef.current?.applyImpulse({ x: knockbackDir.x, y: 3, z: knockbackDir.z }, true);
+    }
   };
 
   const hpPercent = data.hp / data.maxHp;
@@ -191,13 +187,13 @@ export function Enemy({ data }: EnemyProps) {
       onCollisionEnter={handleCollision}
       userData={{ type: 'enemy', id: data.id }}
       name={`enemy-${data.id}`}
+      mass={5}
     >
-      <CapsuleCollider args={[0.4, 0.5]} position={[0, 0.5, 0]} />
+      <CapsuleCollider args={[0.5, stats.scale * 0.8]} position={[0, stats.scale, 0]} />
 
       <group ref={visualRef}>
-          {/* Hit Flash Overlay */}
-          <mesh ref={hitFlashRef} visible={false} position={[0, 0.8, 0]}>
-            <sphereGeometry args={[stats.scale + 0.2]} />
+          <mesh ref={hitFlashRef} visible={false} position={[0, stats.scale, 0]}>
+            <sphereGeometry args={[stats.scale + 0.3]} />
             <meshBasicMaterial color="white" transparent opacity={0} />
           </mesh>
 
@@ -207,10 +203,9 @@ export function Enemy({ data }: EnemyProps) {
             {data.type === 'oni' && <Oni />}
             {data.type === 'samurai' && <Samurai />}
 
-            {/* Elite Aura */}
             {data.isElite && (
               <mesh position={[0, 0.5, 0]}>
-                <sphereGeometry args={[1.2]} />
+                <sphereGeometry args={[1.5]} />
                 <meshStandardMaterial
                   color="#f1c40f"
                   transparent
@@ -223,14 +218,13 @@ export function Enemy({ data }: EnemyProps) {
             )}
           </group>
 
-          {/* PRO HP BAR */}
-          <group position={[0, 2.2, 0]}>
+          <group position={[0, stats.scale * 2.5, 0]}>
               <mesh>
-                  <planeGeometry args={[1, 0.15]} />
+                  <planeGeometry args={[1.2, 0.18]} />
                   <meshBasicMaterial color="#1a1a1a" transparent opacity={0.8} />
               </mesh>
-              <mesh ref={hpBarRef} position={[-(1 - hpPercent) / 2, 0, 0.01]} scale={[hpPercent, 1, 1]}>
-                  <planeGeometry args={[1, 0.1]} />
+              <mesh ref={hpBarRef} position={[-(1.2 - hpPercent * 1.2) / 2, 0, 0.01]} scale={[hpPercent, 1, 1]}>
+                  <planeGeometry args={[1.2, 0.12]} />
                   <meshBasicMaterial color={hpPercent > 0.5 ? "#2ecc71" : (hpPercent > 0.25 ? "#f1c40f" : "#e74c3c")} />
               </mesh>
           </group>

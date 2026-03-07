@@ -6,47 +6,32 @@ import { useControls } from "../hooks/useControls";
 import { usePlayerMovement } from "../hooks/usePlayerMovement";
 import { useGameStore } from "../store/useGameStore";
 import { CONFIG } from "../config";
-import { RoninV2 } from "./models/RoninV2";
 
 /**
- * OPTIMIZED PLAYER COMPONENT
- * Implements a physics-driven character using Rapier.
+ * OPTIMIZED PLAYER COMPONENT - PART 1A
+ * Implements a physics-driven character using Rapier with a placeholder model.
  */
 export const Player = () => {
   const { camera } = useThree();
   const setPlayerRef = useGameStore((state) => state.setPlayerRef);
   const passives = useGameStore((state) => state.passives);
-  const attackNearbyEnemies = useGameStore((state) => state.attackNearbyEnemies);
+  const talents = useGameStore((state) => state.talents);
 
   const controls = useControls();
   const rb = useRef<RapierRigidBody>(null);
   const meshRef = useRef<Mesh>(null);
-  const lastAttackTime = useRef(0);
 
-  const movespeedLevel = passives.get('movespeed') || 0;
-  const speedMult = 1 + movespeedLevel * 0.1;
+  // Calculate speed multiplier from passives and talents
+  const moveSpeedLevel = passives.get('movespeed') || 0;
+  const talentMoveSpeed = talents.speed || 0;
+  const speedMultiplier = (1 + moveSpeedLevel * 0.1) * (1 + talentMoveSpeed * 0.05);
 
   const { move } = usePlayerMovement(
     rb,
     CONFIG.PLAYER.MOVE_SPEED,
     CONFIG.PLAYER.ROTATION_SPEED,
-    speedMult
+    speedMultiplier
   );
-
-  const isDashing = false; // Dash not implemented in 1A
-
-  const status = useGameStore((state) => state.status);
-  const hp = useGameStore((state) => state.run.hp);
-  const lastHp = useRef(hp);
-  const hitFlashTime = useRef(0);
-
-  // Damage Flash effect
-  useFrame((state) => {
-      if (hp < lastHp.current) {
-          hitFlashTime.current = state.clock.getElapsedTime();
-      }
-      lastHp.current = hp;
-  });
 
   useEffect(() => {
     if (meshRef.current) setPlayerRef(meshRef.current);
@@ -64,18 +49,6 @@ export const Player = () => {
       meshRef as any,
       camera
     );
-
-    // Attack logic
-    if (controls.attack && _state.clock.elapsedTime - lastAttackTime.current > 0.5) {
-      lastAttackTime.current = _state.clock.elapsedTime;
-      const pos = rb.current.translation();
-      attackNearbyEnemies([pos.x, pos.y, pos.z], 3, 20);
-
-      // Visual feedback (swing)
-      if (meshRef.current) {
-          // Simple visual punch/shake or call an animation trigger on RoninV2
-      }
-    }
   });
 
   return (
@@ -92,12 +65,17 @@ export const Player = () => {
       <CapsuleCollider args={[CONFIG.PLAYER.COLLIDER_HEIGHT / 2 - CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_RADIUS]} />
 
       <group ref={meshRef}>
-        <RoninV2
-          velocity={rb.current?.linvel() || { x: 0, y: 0, z: 0 }}
-          isAttacking={controls.attack}
-          isDashing={isDashing}
-          hitFlash={status !== 'gameover' && (useThree().clock.getElapsedTime() - hitFlashTime.current < 0.15)}
-        />
+        {/* Placeholder Model for Part 1A */}
+        <mesh castShadow>
+          <capsuleGeometry args={[CONFIG.PLAYER.COLLIDER_RADIUS, CONFIG.PLAYER.COLLIDER_HEIGHT - CONFIG.PLAYER.COLLIDER_RADIUS * 2, 4, 8]} />
+          <meshStandardMaterial color="#3b82f6" />
+        </mesh>
+
+        {/* Direction Indicator (Forward) */}
+        <mesh position={[0, 0, 0.5]}>
+            <boxGeometry args={[0.2, 0.2, 0.5]} />
+            <meshStandardMaterial color="#ffffff" />
+        </mesh>
       </group>
     </RigidBody>
   );

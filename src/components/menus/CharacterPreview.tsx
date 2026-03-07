@@ -10,6 +10,7 @@ import { TOKENS } from "../../styles/tokens";
 /**
  * CHARACTER PREVIEW COMPONENT (THE ALTAR)
  * Renders a premium 3D preview on a stylized obsidian pedestal.
+ * FIXED: Camera FOV and model scales for correct proportions.
  */
 
 interface CharacterPreviewProps {
@@ -19,13 +20,13 @@ interface CharacterPreviewProps {
 const CharacterModel = ({ id }: { id: string }) => {
   switch (id) {
     case "ronin":
-      return <RoninV2 scale={1.6} position={[0, -0.85, 0]} />;
+      return <RoninV2 scale={1.0} position={[0, -0.85, 0]} />;
     case "ninja":
-      return <Ninja scale={1.6} position={[0, -0.75, 0]} />;
+      return <Ninja scale={1.0} position={[0, -0.75, 0]} />;
     case "oni":
-      return <Oni scale={1.3} position={[0, -0.95, 0]} />;
+      return <Oni scale={0.8} position={[0, -0.95, 0]} />;
     default:
-      return <RoninV2 scale={1.6} position={[0, -0.85, 0]} />;
+      return <RoninV2 scale={1.0} position={[0, -0.85, 0]} />;
   }
 };
 
@@ -63,21 +64,21 @@ export function CharacterPreview({ characterId }: CharacterPreviewProps) {
   return (
     <div className="w-full h-full relative cursor-grab active:cursor-grabbing">
       <Canvas shadows dpr={[1, 2]}>
-        <PerspectiveCamera makeDefault position={[0, 1.8, 6]} fov={30} />
+        <PerspectiveCamera makeDefault position={[0, 1.5, 5]} fov={35} />
 
-        <ambientLight intensity={0.3} />
+        <ambientLight intensity={0.5} />
 
         {/* Main Key Light */}
-        <spotLight position={[5, 10, 5]} angle={0.2} penumbra={1} intensity={200} castShadow />
+        <spotLight position={[5, 10, 5]} angle={0.2} penumbra={1} intensity={500} castShadow />
 
         {/* Rim Light (Pop effect) */}
-        <spotLight position={[-5, 5, -5]} angle={0.3} penumbra={1} intensity={300} color="#fff" />
+        <spotLight position={[-5, 5, -5]} angle={0.3} penumbra={1} intensity={600} color="#fff" />
 
         {/* Fill Light */}
-        <pointLight position={[-10, 2, 5]} intensity={0.5} />
+        <pointLight position={[-10, 2, 5]} intensity={1} />
 
         <Suspense fallback={null}>
-          <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.2}>
+          <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.1}>
             <CharacterModel id={characterId} />
           </Float>
 
@@ -106,7 +107,7 @@ export function CharacterPreview({ characterId }: CharacterPreviewProps) {
       </Canvas>
 
       {/* Atmospheric vignette directly in overlay if needed, or via post-processing */}
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.5)_100%)]" />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.6)_100%)]" />
     </div>
   );
 }

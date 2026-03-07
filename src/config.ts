@@ -6,49 +6,47 @@ export const CONFIG = {
   // Performance & Rendering
   PERFORMANCE: {
     TARGET_FPS: 60,
-    MAX_DELTA: 0.1, // Limit physics step to avoid tunneling
-    ENABLE_SHADOWS: true, // Enabled for the visual upgrade
+    MAX_DELTA: 0.1,
+    ENABLE_SHADOWS: true,
   },
 
   // Physics (Rapier Specific)
   PHYSICS: {
-    GRAVITY: [0, -9.81, 0] as [number, number, number],
+    GRAVITY: [0, -20.0, 0] as [number, number, number], // Stronger gravity for tactile feel
     TIME_STEP: 1/60,
-    MAX_SUBSTEPS: 1, // Minimize sub-steps for maximum performance
+    MAX_SUBSTEPS: 1,
   },
 
   // Player Stats & Physical Properties
   PLAYER: {
-    MOVE_SPEED: 5.0,
-    ROTATION_SPEED: 12.5, // ~720 deg/s
+    MOVE_SPEED: 7.0, // Increased for larger map
+    ROTATION_SPEED: 15.0,
     COLLIDER_RADIUS: 0.5,
     COLLIDER_HEIGHT: 2.0,
     MASS: 1.0,
   },
 
-  // Arena Dimensions
+  // Arena Dimensions - EXPANDED FOR FULL GAMEPLAY
   ARENA: {
-    SIZE: 50,
-    WALL_HEIGHT: 5,
+    SIZE: 200,
+    WALL_HEIGHT: 10,
   },
 
   // Camera Perspective
   CAMERA: {
     OFFSET_X: 0,
-    OFFSET_Y: 4,
-    OFFSET_Z: -8, // Negative = Behind in World Space
-    SMOOTH_SPEED: 5.0,
-    LOOK_AT_HEIGHT: 1.5,
-    FOV: 75,
+    OFFSET_Y: 10, // Higher for better visibility on large map
+    OFFSET_Z: -12,
+    SMOOTH_SPEED: 4.0,
+    LOOK_AT_HEIGHT: 1.0,
+    FOV: 60, // Lower FOV for more cinematic feel
     NEAR: 0.1,
-    FAR: 1000,
+    FAR: 2000,
   },
 
-  // Future: Object Pooling Sizes (Part 2 Preparation)
   POOLS: {
-    ENEMY_SLIME: 50,
-    ENEMY_SKELETON: 30,
-    PROJECTILES: 100,
-    PARTICLES: 200,
+    ENEMY_ONCE: 100,
+    PROJECTILES: 200,
+    PICKUPS: 300,
   },
 } as const;

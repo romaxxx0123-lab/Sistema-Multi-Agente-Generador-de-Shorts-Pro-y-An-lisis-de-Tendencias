@@ -34,6 +34,7 @@ export interface EnemyEntity {
   maxHp: number;
   isElite?: boolean;
   isBoss?: boolean;
+  isDying?: boolean;
 }
 
 export interface PickupEntity {
@@ -418,7 +419,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   damageEnemy: (id, amount) => set((state) => {
       const enemy = state.enemies.find(e => e.id === id);
-      if (!enemy) return state;
+      if (!enemy || enemy.isDying) return state;
 
       const newHp = Math.max(0, enemy.hp - amount);
       if (newHp === 0) {
@@ -439,9 +440,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const nextPickups = pickup ? [...state.pickups, pickup].slice(-300) : state.pickups;
 
           return {
-              enemies: state.enemies.filter(e => e.id !== id),
-              pickups: nextPickups,
-              run: { ...state.run, kills: state.run.kills + 1 }
+              enemies: state.enemies.map(e => e.id === id ? { ...e, hp: 0, isDying: true } : e),
+              pickups: nextPickups
           };
       }
 
@@ -454,6 +454,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     const [px, py, pz] = playerPos;
     state.enemies.forEach(e => {
+        if (e.isDying) return;
         const [ex, ey, ez] = e.position;
         const distSq = (px - ex) ** 2 + (py - ey) ** 2 + (pz - ez) ** 2;
         if (distSq <= range * range) {
