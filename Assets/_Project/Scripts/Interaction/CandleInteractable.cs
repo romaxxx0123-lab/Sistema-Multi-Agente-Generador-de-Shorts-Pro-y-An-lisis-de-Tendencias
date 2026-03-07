@@ -21,7 +21,46 @@ namespace RPGProject.Interaction
         private void Awake()
         {
             UpdatePrompt();
-            if (_flameVFX != null) _flameVFX.SetActive(false);
+        }
+
+        private void OnEnable()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                RPGProject.World.WorldStateManager.Instance.OnFlagChanged += HandleFlagChanged;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                RPGProject.World.WorldStateManager.Instance.OnFlagChanged -= HandleFlagChanged;
+            }
+        }
+
+        private void Start()
+        {
+            // Initial sync in case SaveManager already loaded before Start
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                SyncState(RPGProject.World.WorldStateManager.Instance.GetFlag(_flagToSet));
+            }
+        }
+
+        private void HandleFlagChanged(string flagName, bool value)
+        {
+            if (flagName == _flagToSet)
+            {
+                SyncState(value);
+            }
+        }
+
+        private void SyncState(bool isLit)
+        {
+            _isLit = isLit;
+            if (_flameVFX != null) _flameVFX.SetActive(_isLit);
+            UpdatePrompt();
         }
 
         protected override bool OnInteract(GameObject interactor)

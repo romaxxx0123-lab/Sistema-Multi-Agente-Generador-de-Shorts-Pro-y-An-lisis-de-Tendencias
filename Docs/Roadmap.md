@@ -43,10 +43,16 @@
 - [x] Implementar la actualización del estado del mundo (`event_spoke_to_padre_elias`).
 - [x] Documentar el cierre narrativo de la introducción y el gancho hacia el pueblo.
 
-## Iteration 8: Sistemas Guardado y Meta-Progreso (Pendiente)
-- [ ] Guardado y Carga del World State en JSON persistente.
+## Iteration 8: Save/Load System (Completada)
+- [x] Crear `SaveData.cs` y `SaveManager.cs` para serializar progreso en JSON.
+- [x] Guardar/Cargar el World State y la Quest Activa.
+- [x] Restaurar visualmente el entorno (Velas, Mantel, Altar, Vasijas) usando los hooks en `Start()`.
+- [x] Auto-save tras interactuar con Padre Elías y auto-load en `GameBootstrap.cs`.
+
+## Iteration 9: Expandiendo el Mundo (Pendiente)
 - [ ] Animaciones de personajes e idle states del Cuidador / Padre Elías.
 - [ ] Transición a la siguiente escena (El Pueblo / El Valle).
+- [ ] Diseño de la segunda misión narrativa base.
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.

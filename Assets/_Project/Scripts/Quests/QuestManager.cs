@@ -18,6 +18,10 @@ namespace RPGProject.Quests
         /// <summary>Índice de la fase actual (0 es la primera fase).</summary>
         public int CurrentPhaseIndex { get; private set; } = 0;
 
+        [Header("Quest Database")]
+        [Tooltip("Lista maestra de misiones para restaurarlas al cargar partida.")]
+        [SerializeField] private QuestData[] _questDatabase;
+
         public event Action<QuestData, QuestState> OnQuestUpdated;
 
         private void Awake()
@@ -132,6 +136,49 @@ namespace RPGProject.Quests
                 return ActiveQuest.Phases[CurrentPhaseIndex].ObjectiveText;
             }
             return string.Empty;
+        }
+
+        // --- Save / Load API ---
+
+        public void RestoreQuestState(string questID, int questStateVal, int phaseIndex)
+        {
+            if (string.IsNullOrEmpty(questID))
+            {
+                ClearActiveQuest();
+                return;
+            }
+
+            // Buscar en Database
+            if (_questDatabase == null)
+            {
+                Debug.LogWarning("[QuestManager] Database vacía. No se puede restaurar la misión.");
+                return;
+            }
+
+            foreach (var q in _questDatabase)
+            {
+                if (q.QuestID == questID)
+                {
+                    ActiveQuest = q;
+                    CurrentState = (QuestState)questStateVal;
+                    CurrentPhaseIndex = phaseIndex;
+
+                    Debug.Log($"[QuestManager] Misión {questID} restaurada. Estado: {CurrentState}. Fase: {CurrentPhaseIndex}");
+                    OnQuestUpdated?.Invoke(ActiveQuest, CurrentState);
+                    return;
+                }
+            }
+
+            Debug.LogWarning($"[QuestManager] ID '{questID}' no encontrada en Database.");
+        }
+
+        public void ClearActiveQuest()
+        {
+            ActiveQuest = null;
+            CurrentState = QuestState.NotStarted;
+            CurrentPhaseIndex = 0;
+            OnQuestUpdated?.Invoke(null, CurrentState);
+            Debug.Log("[QuestManager] Misión limpiada (New Game).");
         }
     }
 }

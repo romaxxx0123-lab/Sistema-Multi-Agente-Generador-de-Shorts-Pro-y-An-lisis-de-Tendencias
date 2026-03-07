@@ -15,6 +15,44 @@ namespace RPGProject.Interaction
             UpdatePrompt();
         }
 
+        private void OnEnable()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                RPGProject.World.WorldStateManager.Instance.OnFlagChanged += HandleFlagChanged;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                RPGProject.World.WorldStateManager.Instance.OnFlagChanged -= HandleFlagChanged;
+            }
+        }
+
+        private void Start()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                SyncState(RPGProject.World.WorldStateManager.Instance.GetFlag(_flagToSet));
+            }
+        }
+
+        private void HandleFlagChanged(string flagName, bool value)
+        {
+            if (flagName == _flagToSet)
+            {
+                SyncState(value);
+            }
+        }
+
+        private void SyncState(bool isFilled)
+        {
+            _isFilled = isFilled;
+            UpdatePrompt();
+        }
+
         [Header("World State Integration")]
         [SerializeField] private string _requiredWaterFlag = "env_pozo_revisado";
         [SerializeField] private string _flagToSet = "env_vasija_revisada";

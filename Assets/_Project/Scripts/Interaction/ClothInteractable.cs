@@ -18,6 +18,38 @@ namespace RPGProject.Interaction
             _promptMessage = "Recoger mantel";
         }
 
+        private void OnEnable()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                RPGProject.World.WorldStateManager.Instance.OnFlagChanged += HandleFlagChanged;
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                RPGProject.World.WorldStateManager.Instance.OnFlagChanged -= HandleFlagChanged;
+            }
+        }
+
+        private void Start()
+        {
+            if (RPGProject.World.WorldStateManager.Instance != null)
+            {
+                HandleFlagChanged(_flagToSet, RPGProject.World.WorldStateManager.Instance.GetFlag(_flagToSet));
+            }
+        }
+
+        private void HandleFlagChanged(string flagName, bool value)
+        {
+            if (flagName == _flagToSet && value == true)
+            {
+                gameObject.SetActive(false);
+            }
+        }
+
         protected override bool OnInteract(GameObject interactor)
         {
             if (RPGProject.UI.DialogueUI.Instance != null && RPGProject.UI.DialogueUI.Instance.IsActive)

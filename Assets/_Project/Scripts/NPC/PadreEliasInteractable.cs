@@ -66,6 +66,12 @@ namespace RPGProject.NPC
                     {
                         NotificationUI.Instance.ShowNotification("El descanso del peregrino");
                     }
+
+                    // Auto-Save en este hito narrativo importante
+                    if (RPGProject.Core.SaveManager.Instance != null)
+                    {
+                        RPGProject.Core.SaveManager.Instance.SaveGame(interactor.transform);
+                    }
                 }
                 else
                 {

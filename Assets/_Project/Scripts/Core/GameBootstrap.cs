@@ -10,10 +10,13 @@ namespace RPGProject.Core
     {
         [SerializeField] private bool _initializeOnAwake = true;
 
-        private void Awake()
+        private void Start()
         {
             if (_initializeOnAwake)
             {
+                // Se invoca en Start en lugar de Awake para asegurar que
+                // WorldStateManager, QuestManager y SaveManager (que usan Awake)
+                // ya estén completamente inicializados.
                 InitializeGame();
             }
         }
@@ -22,8 +25,18 @@ namespace RPGProject.Core
         {
             Debug.Log("[GameBootstrap] Initializing Game Systems...");
 
-            // TODO: Initialize global event bus, audio systems,
-            // state management, and load user settings.
+            // Auto-load on game start
+            if (SaveManager.Instance != null)
+            {
+                if (SaveManager.Instance.HasSaveData())
+                {
+                    SaveManager.Instance.LoadGame();
+                }
+                else
+                {
+                    SaveManager.Instance.NewGame();
+                }
+            }
 
             Debug.Log("[GameBootstrap] Initialization Complete.");
         }

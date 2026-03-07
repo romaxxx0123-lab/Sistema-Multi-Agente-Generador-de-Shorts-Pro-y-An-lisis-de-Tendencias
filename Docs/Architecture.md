@@ -18,7 +18,7 @@
 
 ## Organización de Scripts y Componentes Base
 `Assets/_Project/Scripts/`
-- `/Core/`: Punto de entrada de la aplicación (`GameBootstrap.cs`).
+- `/Core/`: Sistemas fundamentales de la aplicación (`GameBootstrap.cs`, `SaveManager.cs`, `SaveData.cs`).
 - `/Player/`: Manejo de las lógicas físicas y de estado exclusivas del jugador. Creados `PlayerController.cs` (CharacterController), `PlayerStats.cs`, `HealthComponent.cs` y `StaminaComponent.cs`.
 - `/Interaction/`: Sistema genérico de descubrimiento y activación en el entorno. Implementado `IInteractable.cs`, su base abstracta `InteractableBase.cs` y el componente lector de área `InteractionDetector.cs`.
 - `/UI/`: Lógicas de Canvas (`InteractionPromptUI.cs`, `DialogueUI.cs`, `QuestUI.cs`, `StaminaUI.cs`).

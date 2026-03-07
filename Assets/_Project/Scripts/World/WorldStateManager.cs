@@ -44,5 +44,29 @@ namespace RPGProject.World
             }
             return false; // Default state is false if not found
         }
+
+        // --- Serialización Externa ---
+
+        public Dictionary<string, bool> ExportFlags()
+        {
+            return new Dictionary<string, bool>(_worldFlags);
+        }
+
+        public void ImportFlags(Dictionary<string, bool> loadedFlags)
+        {
+            _worldFlags.Clear();
+            foreach (var kvp in loadedFlags)
+            {
+                _worldFlags[kvp.Key] = kvp.Value;
+                OnFlagChanged?.Invoke(kvp.Key, kvp.Value); // Disparar a UI e Interactuables que están "escuchando" su inicialización
+            }
+            Debug.Log($"[WorldState] {loadedFlags.Count} flags cargadas.");
+        }
+
+        public void ClearFlags()
+        {
+            _worldFlags.Clear();
+            Debug.Log("[WorldState] Flags limpiadas para nueva partida.");
+        }
     }
 }
