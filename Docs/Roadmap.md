@@ -49,9 +49,15 @@
 - [x] Restaurar visualmente el entorno (Velas, Mantel, Altar, Vasijas) usando los hooks en `Start()`.
 - [x] Auto-save tras interactuar con Padre Elías y auto-load en `GameBootstrap.cs`.
 
-## Iteration 9: Expandiendo el Mundo (Pendiente)
-- [ ] Animaciones de personajes e idle states del Cuidador / Padre Elías.
-- [ ] Transición a la siguiente escena (El Pueblo / El Valle).
+## Iteration 9: Atmósfera Reactiva (Completada)
+- [x] Crear controlador global de atmósfera (`ReactiveAtmosphereController`).
+- [x] Crear controladores locales de luz suave (`ReactiveLight`).
+- [x] Crear hooks desacoplados de audio (`ReactiveAudio`).
+- [x] Integrar respuestas de atmósfera con el Guardado/Carga vía `WorldStateManager`.
+
+## Iteration 10: Animación y Transición de Escena (Pendiente)
+- [ ] Animaciones de personajes e idle states del Cuidador / Padre Elías usando Animator.
+- [ ] Implementar trigger de carga a la siguiente escena (El Pueblo / El Valle).
 - [ ] Diseño de la segunda misión narrativa base.
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.

@@ -52,14 +52,18 @@ namespace RPGProject.World
             return new Dictionary<string, bool>(_worldFlags);
         }
 
+        public bool IsLoading { get; private set; }
+
         public void ImportFlags(Dictionary<string, bool> loadedFlags)
         {
+            IsLoading = true;
             _worldFlags.Clear();
             foreach (var kvp in loadedFlags)
             {
                 _worldFlags[kvp.Key] = kvp.Value;
                 OnFlagChanged?.Invoke(kvp.Key, kvp.Value); // Disparar a UI e Interactuables que están "escuchando" su inicialización
             }
+            IsLoading = false;
             Debug.Log($"[WorldState] {loadedFlags.Count} flags cargadas.");
         }
 

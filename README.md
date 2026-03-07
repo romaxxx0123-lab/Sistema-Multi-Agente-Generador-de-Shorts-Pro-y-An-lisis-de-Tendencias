@@ -39,7 +39,8 @@ Todo el contenido específico de nuestro juego se encuentra aislado en `Assets/_
 6. Iteración 6: Misión "Preparar la Capilla" Completa (Multi-fase). (¡Completada!)
 7. Iteración 7: Interacción Narrativa Final de la Introducción (Padre Elías). (¡Completada!)
 8. Iteración 8: Save/Load System Base Integrado. (¡Completada!)
-9. Consulte `Docs/Roadmap.md` para más detalles.
+9. Iteración 9: Atmósfera Reactiva, Luces y Audio Desacoplado. (¡Completada!)
+10. Consulte `Docs/Roadmap.md` para más detalles.
 
 ---
 
