@@ -33,7 +33,7 @@ Todo el contenido específico de nuestro juego se encuentra aislado en `Assets/_
 **Roadmap Resumido**
 1. Iteración 1: Estructura base y documentación (¡Completada!).
 2. Iteración 2: Base Unity Real y Scripts Fundacionales (¡Completada!).
-3. Iteración 3: Núcleo jugable en el Editor (Movimiento, interacción básica).
+3. Iteración 3: Núcleo jugable en el Editor (Movimiento, cámara, interacción). (¡Completada!)
 4. Iteración 4: Sistemas de diálogo y persistencia del mundo.
 5. Consulte `Docs/Roadmap.md` para más detalles.
 

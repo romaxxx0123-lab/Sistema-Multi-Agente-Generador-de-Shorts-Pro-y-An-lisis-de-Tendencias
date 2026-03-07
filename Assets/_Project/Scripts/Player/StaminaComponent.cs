@@ -9,6 +9,7 @@ namespace RPGProject.Player
         [SerializeField] private float _regenRate = 5f;
         [SerializeField] private float _regenDelay = 2f;
 
+        public float MaxStamina => _maxStamina;
         public float CurrentStamina { get; private set; }
         private float _lastUsedTime;
 

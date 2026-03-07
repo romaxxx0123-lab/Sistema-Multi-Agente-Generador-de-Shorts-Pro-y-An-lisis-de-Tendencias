@@ -12,13 +12,18 @@
 - [x] Crear la base del sistema de Interacción (Detectores y UI).
 - [x] Preparar las instrucciones para abrir la primera Escena.
 
-## Iteration 3: Núcleo Jugable (En Progreso)
-- [ ] Implementar el movimiento de cámara (Cinemachine o custom script).
-- [ ] Configurar el primer entorno de prueba (bloques, luces básicas) desde el Editor de Unity.
-- [ ] Instanciar los scripts de la Iteración 2 en un personaje dentro del Editor y comprobar el sistema básico de interacción (ej. pulsar tecla para interactuar con un cubo).
-- [ ] Integrar el sistema de diálogo inicial en UI.
+## Iteration 3: Núcleo Jugable (Completada)
+- [x] Implementar Player Input Reader desacoplado del Input System antiguo.
+- [x] Refinar Player Controller (salto, sprint, consumo de estamina, relativo a cámara).
+- [x] Integrar interacción base y Dummy Interactable object.
+- [x] Crear el HUD mínimo (StaminaUI).
+- [x] Crear Guía de Ensamblaje (`PlayablePrototypeSetup.md`).
 
-## Iteration 4: Core Loop y World State
+## Iteration 4: Entorno y Primer Dialogo en UI (En Progreso)
+- [ ] Configurar el primer entorno de prueba (bloques, luces básicas) desde el Editor de Unity siguiendo la guía técnica.
+- [ ] Integrar el sistema de diálogo inicial en UI conectándolo con el `InteractableBase`.
+
+## Iteration 5: Core Loop y World State
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.
