@@ -37,10 +37,16 @@
 - [x] Crear notificaciones de UI mínimas y sobrias (`NotificationUI`).
 - [x] Documentar el flujo completo de la misión y la configuración en el editor en `Docs/FirstQuestFullFlow.md`.
 
-## Iteration 7: Sistemas Guardado y Meta-Progreso (Pendiente)
+## Iteration 7: Interacción Narrativa con Padre Elías (Completada)
+- [x] Crear el NPC `PadreEliasInteractable`.
+- [x] Añadir diálogos contemplativos basados en el progreso (antes y después de la capilla).
+- [x] Implementar la actualización del estado del mundo (`event_spoke_to_padre_elias`).
+- [x] Documentar el cierre narrativo de la introducción y el gancho hacia el pueblo.
+
+## Iteration 8: Sistemas Guardado y Meta-Progreso (Pendiente)
 - [ ] Guardado y Carga del World State en JSON persistente.
 - [ ] Animaciones de personajes e idle states del Cuidador / Padre Elías.
-- [ ] Eventos Especiales de Cámara en diálogos.
+- [ ] Transición a la siguiente escena (El Pueblo / El Valle).
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.
