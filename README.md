@@ -1,3 +1,45 @@
+# Proyecto RPG Contemplativo (Unity 3D)
+
+**Visión General del Juego**
+Un juego 3D "low poly" contemplativo y pacífico con una ambientación católica medieval/fantástica. El enfoque está en la exploración, la interacción con NPCs, y misiones basadas en valores altruistas que resultan en cambios persistentes y significativos en el entorno. No hay combate tradicional.
+
+**Pilares del Diseño**
+- Exploración guiada por la curiosidad, sin marcadores intrusivos.
+- Narrativa ambiental y diálogos contextuales profundos.
+- Progresión basada en el impacto positivo y la transformación del mundo.
+- Atmósfera etérea y pacífica.
+
+**Stack Técnico**
+- Unity 3D (2022.3 LTS o superior recomendado)
+- C# (Arquitectura orientada a eventos y desacoplada)
+- Render Pipeline: URP (Universal Render Pipeline) por defecto para control estilizado.
+
+**Estructura del Proyecto**
+Todo el contenido específico de nuestro juego se encuentra aislado en `Assets/_Project/` para mantener el repositorio limpio de plugins y dependencias externas.
+- `Assets/_Project/Scripts/`: Lógica del juego.
+- `Assets/_Project/Scenes/`: Escenas (niveles, menús).
+- `Assets/_Project/Prefabs/`: Objetos reutilizables.
+- `Assets/_Project/ScriptableObjects/`: Datos persistentes y configuración.
+- `Assets/_Project/Art/`: Modelos 3D, texturas, materiales.
+- `Assets/_Project/UI/`: Assets de interfaz gráfica.
+- `Docs/`: Documentación del proyecto (GDD, Arquitectura, Roadmap).
+
+**Cómo abrirlo en Unity**
+1. Clona el repositorio.
+2. Abre Unity Hub.
+3. Selecciona "Add" o "Open" y elige la carpeta raíz del repositorio.
+4. (Nota: Dado que este repositorio convive con una aplicación React, ignora las carpetas ajenas a Unity como `src/` o `node_modules/`).
+
+**Roadmap Resumido**
+1. Iteración 1: Estructura base y documentación (¡Completada!).
+2. Iteración 2: Núcleo jugable (Movimiento, interacción básica).
+3. Iteración 3: Sistemas de diálogo y persistencia del mundo.
+4. Consulte `Docs/Roadmap.md` para más detalles.
+
+---
+
+*Nota: Este repositorio también aloja la siguiente aplicación heredada:*
+
 # Autolingo: Aprende sobre Autos al estilo Duolingo
 
 Una plataforma educativa profesional diseñada para entusiastas del automovilismo y la ingeniería mecánica, utilizando el exitoso sistema de aprendizaje gamificado de Duolingo.
