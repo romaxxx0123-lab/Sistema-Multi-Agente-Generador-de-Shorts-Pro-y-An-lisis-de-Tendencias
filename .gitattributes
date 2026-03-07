@@ -1,0 +1,46 @@
+# =======================
+# Unity specific settings
+# =======================
+
+# Handle Unity scenes and prefabs securely
+*.unity binary
+*.prefab binary
+*.asset binary
+
+# 3D models
+*.fbx binary
+*.obj binary
+*.dae binary
+*.3ds binary
+*.blend binary
+
+# Images and Textures
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.tga binary
+*.tif binary
+*.tiff binary
+*.bmp binary
+*.exr binary
+*.hdr binary
+*.psd binary
+
+# Audio
+*.mp3 binary
+*.ogg binary
+*.wav binary
+
+# Fonts
+*.ttf binary
+*.otf binary
+
+# ScriptableObjects and metadata
+*.meta text
+*.txt text eol=lf
+*.cs text diff=csharp eol=lf
+*.md text eol=lf
+*.json text eol=lf
+
+# Auto-detect text files
+* text=auto

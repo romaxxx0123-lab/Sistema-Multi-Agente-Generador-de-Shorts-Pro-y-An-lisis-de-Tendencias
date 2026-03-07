@@ -16,13 +16,15 @@
 - **Quest System:** Evaluar el progreso de las misiones y notificar al `WorldState` para aplicar cambios en el mundo basándose en los eventos completados o no completados.
 - **UI:** Renderizar el estado actual del juego, reaccionando a eventos, nunca controlando la lógica del juego directamente.
 
-## Organización de Scripts
+## Organización de Scripts y Componentes Base
 `Assets/_Project/Scripts/`
-- `/Core/`: Game loops, Data persistence, Event buses.
-- `/Player/`: Controllers, Inputs, Collision Handling.
-- `/Environment/`: Interactive objects, Changing environment states, Triggers.
-- `/Systems/`: Quests, Inventory, Audio, etc.
-- `/UI/`: HUD, Dialogs, Menus, Animations.
+- `/Core/`: Punto de entrada de la aplicación (`GameBootstrap.cs`).
+- `/Player/`: Manejo de las lógicas físicas y de estado exclusivas del jugador. Creados `PlayerController.cs` (CharacterController), `PlayerStats.cs`, `HealthComponent.cs` y `StaminaComponent.cs`.
+- `/Interaction/`: Sistema genérico de descubrimiento y activación en el entorno. Implementado `IInteractable.cs`, su base abstracta `InteractableBase.cs` y el componente lector de área `InteractionDetector.cs`.
+- `/UI/`: Lógicas de Canvas. Se incluye `InteractionPromptUI.cs` en modo de World-Space u Overlay para reflejar la interacción más cercana.
+- `/World/`: Control del clima, objetos globales.
+- `/NPC/`: Estados, IA ligera para movimiento e Idle.
+- `/Quests/`: Datos del progreso espiritual del jugador y gestión de las tareas.
 
 ## Uso Futuro de World State, Diálogos y Misiones
 - **World State:** Deberá implementarse como un sistema de guardado persistente (ej. JSON) que registre los "flags" o variables booleanas de progreso (ej. `ErmitaReparada = true`).
