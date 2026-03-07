@@ -19,11 +19,15 @@
 - [x] Crear el HUD mínimo (StaminaUI).
 - [x] Crear Guía de Ensamblaje (`PlayablePrototypeSetup.md`).
 
-## Iteration 4: Entorno y Primer Dialogo en UI (En Progreso)
-- [ ] Configurar el primer entorno de prueba (bloques, luces básicas) desde el Editor de Unity siguiendo la guía técnica.
-- [ ] Integrar el sistema de diálogo inicial en UI conectándolo con el `InteractableBase`.
+## Iteration 4: Diseño de Primera Escena e Interactuables Base (Completada)
+- [x] Crear scripts placeholders concretos para la primera misión (`WellInteractable`, `VesselInteractable`, `LecternInteractable`, `AltarInteractable`, `CaretakerNPCInteractable`).
+- [x] Documentar la distribución, tono y flujo espacial de la primera escena ("La Capilla Olvidada") en `Docs/FirstSceneLayout.md`.
+- [x] Especificar cómo ensamblar la capilla de forma segura y contemplativa dentro del editor.
 
-## Iteration 5: Core Loop y World State
+## Iteration 5: Sistema de Misiones (En Progreso)
+- [ ] Implementar el Quest System básico para entrelazar las acciones (pozo -> vasija -> altar).
+- [ ] Crear el sistema de Diálogo Real para que el Cuidador asigne la misión.
+- [ ] Implementar el estado global (World State) para recordar qué objetos se han interactuado de forma persistente.
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.
