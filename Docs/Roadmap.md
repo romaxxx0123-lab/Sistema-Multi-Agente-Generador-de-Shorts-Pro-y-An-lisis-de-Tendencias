@@ -55,10 +55,16 @@
 - [x] Crear hooks desacoplados de audio (`ReactiveAudio`).
 - [x] Integrar respuestas de atmósfera con el Guardado/Carga vía `WorldStateManager`.
 
-## Iteration 10: Animación y Transición de Escena (Pendiente)
+## Iteration 10: Segunda Misión "El rincón del peregrino" (Completada)
+- [x] Crear el nuevo flujo de la misión usando el soporte multi-phase (`QuestData`).
+- [x] Añadir el NPC Peregrino y actualizar los diálogos de Padre Elías.
+- [x] Crear interactuables visuales persistentes (`RestBench`, `PilgrimBlanket`, `WaterBowl`).
+- [x] Asegurar la integración con el Save/Load sin duplicar lógicas.
+- [x] Documentar el ensamblaje manual y los flags en `Docs/SecondQuest_PadreElias.md`.
+
+## Iteration 11: Animación, Polish y Transición de Escena (Pendiente)
 - [ ] Animaciones de personajes e idle states del Cuidador / Padre Elías usando Animator.
-- [ ] Implementar trigger de carga a la siguiente escena (El Pueblo / El Valle).
-- [ ] Diseño de la segunda misión narrativa base.
+- [ ] Implementar trigger de carga persistente a la siguiente escena (El Pueblo / El Valle).
 - [ ] Implementar el "Valle del Silencio" con assets low poly.
 - [ ] Integrar el sistema de "World State" y persistencia.
 - [ ] Crear misiones y diálogos basados en los valores del juego.
