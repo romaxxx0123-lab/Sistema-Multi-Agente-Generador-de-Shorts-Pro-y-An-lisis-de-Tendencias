@@ -1,0 +1,10 @@
+Basado en la configuración interpretada, diseña el plan arquitectónico detallado.
+Configuración: {config}
+
+Decide:
+1. Patrones de diseño a usar (EventBus, Singleton, etc.)
+2. Jerarquía de folders profesional
+3. ScriptableObject architecture si aplica
+4. Checklist de sistemas necesarios
+
+Devuelve: { architecturePlan: {...}, checklist: [], reasoning: [] }

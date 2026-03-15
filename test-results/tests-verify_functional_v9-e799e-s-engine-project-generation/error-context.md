@@ -1,0 +1,303 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - main [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img [ref=e7]
+        - generic [ref=e9]: Unity World Architect v10.3 - Pro Architect
+      - heading "Ultimate Unity Architect" [level=1] [ref=e10]:
+        - text: Ultimate Unity
+        - text: Architect
+      - paragraph [ref=e11]:
+        - text: Genera proyectos de Unity listos para abrir.
+        - text: Arquitectura completa, GUIDs vinculados y carpetas hyper-detalladas.
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - img [ref=e18]
+            - generic [ref=e21]:
+              - heading "Configuración Maestro" [level=2] [ref=e22]
+              - paragraph [ref=e23]: Arquitectura y Metadatos
+          - generic [ref=e24]:
+            - img [ref=e25]
+            - generic [ref=e28]: Generación Estructural Profunda
+        - generic [ref=e29]:
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - img [ref=e34]
+              - generic [ref=e37]:
+                - heading "Modo IA Real (Ollama)" [level=3] [ref=e38]
+                - paragraph [ref=e39]: Orquestación Multi-Fase
+            - generic [ref=e40]:
+              - combobox [disabled] [ref=e41]:
+                - option "qwen2.5-coder" [selected]
+                - option "qwen3:30b"
+                - option "llama3.2"
+                - option "mistral"
+              - button [ref=e42]
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - text: Nombre del Proyecto
+              - generic [ref=e46]:
+                - img [ref=e47]
+                - textbox [ref=e49]: AetherisProject
+            - generic [ref=e50]:
+              - text: Nivel de Detalle
+              - generic [ref=e51]:
+                - img [ref=e52]
+                - combobox [ref=e56]:
+                  - option "Estructura Base"
+                  - option "Mundo Estándar"
+                  - option "Entorno Completo"
+                  - option "Arquitectura Enterprise"
+                  - option "Ultimate Pro Engine (V6.0)"
+                  - option "Omni-Architect (V7.0)"
+                  - option "Nexus Prime (V8.0)"
+                  - option "Aetheris Engine (V9.0)" [selected]
+                  - option "Cognitive Pro (V10.3)"
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - text: Namespace Profesional
+              - generic [ref=e59]:
+                - img [ref=e60]
+                - textbox [ref=e63]: Company.Games
+            - generic [ref=e64]:
+              - text: Género del Gameplay
+              - generic [ref=e65]:
+                - img [ref=e66]
+                - combobox [ref=e68]:
+                  - option "Action Platformer" [selected]
+                  - option "RPG Adventure"
+                  - option "FPS Shooter"
+                  - option "Open World Sandbox"
+                  - option "Horror Survival"
+          - generic [ref=e69]:
+            - heading "Motores de Integración" [level=3] [ref=e70]:
+              - img [ref=e71]
+              - text: Motores de Integración
+            - generic [ref=e73]:
+              - button "AsmDefs Optimización Modular" [ref=e74]:
+                - img [ref=e76]
+                - generic [ref=e80]: AsmDefs
+                - generic [ref=e81]: Optimización Modular
+                - img [ref=e83]
+              - button "High URP Renderizado Pro" [ref=e86]:
+                - img [ref=e88]
+                - generic [ref=e90]: High URP
+                - generic [ref=e91]: Renderizado Pro
+                - img [ref=e93]
+              - button "Inputs V2 Acciones Dinámicas" [ref=e96]:
+                - img [ref=e98]
+                - generic [ref=e101]: Inputs V2
+                - generic [ref=e102]: Acciones Dinámicas
+                - img [ref=e104]
+              - button "Inventory Scriptable System" [ref=e107]:
+                - img [ref=e109]
+                - generic [ref=e113]: Inventory
+                - generic [ref=e114]: Scriptable System
+                - img [ref=e116]
+              - button "Stats Modulable Stats" [ref=e119]:
+                - img [ref=e121]
+                - generic [ref=e123]: Stats
+                - generic [ref=e124]: Modulable Stats
+                - img [ref=e126]
+              - button "CI/CD GitHub Actions" [ref=e129]:
+                - img [ref=e131]
+                - generic [ref=e134]: CI/CD
+                - generic [ref=e135]: GitHub Actions
+              - button "Netcode Nexus Multiplayer" [ref=e136]:
+                - img [ref=e138]
+                - generic [ref=e141]: Netcode
+                - generic [ref=e142]: Nexus Multiplayer
+                - img [ref=e144]
+              - button "Assets Addressables V2" [ref=e147]:
+                - img [ref=e149]
+                - generic [ref=e153]: Assets
+                - generic [ref=e154]: Addressables V2
+                - img [ref=e156]
+              - button "Render Post-Processing Pro" [ref=e159]:
+                - img [ref=e161]
+                - generic [ref=e163]: Render
+                - generic [ref=e164]: Post-Processing Pro
+                - img [ref=e166]
+              - button "GitIgnore VCS Optimization" [ref=e169]:
+                - img [ref=e171]
+                - generic [ref=e174]: GitIgnore
+                - generic [ref=e175]: VCS Optimization
+                - img [ref=e177]
+              - button "EditorCfg Format Standard" [ref=e180]:
+                - img [ref=e182]
+                - generic [ref=e184]: EditorCfg
+                - generic [ref=e185]: Format Standard
+                - img [ref=e187]
+        - generic [ref=e190]:
+          - generic [ref=e192]:
+            - generic [ref=e193]: "[UI] Mapping Model-View-Presenter delegates..."
+            - generic [ref=e195]: "[LOGIC] Generating Deep-Logic Action Controller..."
+            - generic [ref=e197]: "[ASSETS] Linking persistent GUIDs to Meta files..."
+            - generic [ref=e199]: "[VCS] Optimizing Git ignore patterns..."
+            - generic [ref=e201]: "[FINALIZING] Compiling hyper-detailed structure..."
+            - generic [ref=e203]: "[SUCCESS] Project deployed successfully."
+          - button "Desplegar Proyecto Hyper-Detallado 🚀" [ref=e207]:
+            - generic [ref=e208]: Desplegar Proyecto Hyper-Detallado
+            - generic [ref=e210]: 🚀
+          - paragraph [ref=e211]: Compatible con Unity 2022.3.10f1+ y superiores
+      - generic [ref=e213]:
+        - generic [ref=e214]:
+          - generic [ref=e215]:
+            - img [ref=e217]
+            - generic [ref=e219]:
+              - heading "Jerarquía de Proyecto" [level=3] [ref=e220]
+              - paragraph [ref=e221]: Generación en Tiempo Real
+          - generic [ref=e224]: Live Preview
+        - generic [ref=e225]:
+          - generic [ref=e226]:
+            - generic [ref=e227]: 📂
+            - generic [ref=e228]: AetherisProject
+            - generic [ref=e229]: Root Project
+          - generic [ref=e230]:
+            - generic [ref=e231]:
+              - generic [ref=e232]: 📄
+              - generic [ref=e233]: .gitignore
+            - generic [ref=e234]:
+              - generic [ref=e235]: 📄
+              - generic [ref=e236]: .editorconfig
+            - generic [ref=e237]:
+              - generic [ref=e238]:
+                - generic [ref=e239]: 📁
+                - generic [ref=e240]: Assets
+                - generic [ref=e241]: + META
+              - generic [ref=e242]:
+                - generic [ref=e244]:
+                  - generic [ref=e245]: 📁
+                  - generic [ref=e246]: Plugins
+                  - generic [ref=e247]: Librerías externas
+                  - generic [ref=e248]: + META
+                - generic [ref=e250]:
+                  - generic [ref=e251]: 📁
+                  - generic [ref=e252]: Settings
+                  - generic [ref=e253]: URP/Quality assets
+                  - generic [ref=e254]: + META
+                - generic [ref=e255]:
+                  - generic [ref=e256]:
+                    - generic [ref=e257]: 📁
+                    - generic [ref=e258]: Scripts
+                    - generic [ref=e259]: + META
+                  - generic [ref=e260]:
+                    - generic [ref=e261]:
+                      - generic [ref=e262]: Core/
+                      - generic [ref=e264]:
+                        - generic [ref=e265]:
+                          - generic [ref=e266]: EventBus.cs
+                          - generic [ref=e268]: CS
+                        - generic [ref=e269]:
+                          - generic [ref=e270]: Singleton.cs
+                          - generic [ref=e272]: CS
+                        - generic [ref=e273]:
+                          - generic [ref=e274]: Localization.cs
+                          - generic [ref=e276]: CS
+                    - generic [ref=e277]:
+                      - generic [ref=e278]: Managers/
+                      - generic [ref=e280]:
+                        - generic [ref=e281]:
+                          - generic [ref=e282]: GameManager.cs
+                          - generic [ref=e284]: CS
+                        - generic [ref=e285]:
+                          - generic [ref=e286]: AudioManager.cs
+                          - generic [ref=e288]: CS
+                    - generic [ref=e289]:
+                      - generic [ref=e290]: Systems/
+                      - generic [ref=e292]:
+                        - generic [ref=e293]:
+                          - generic [ref=e294]: InventorySystem.cs
+                          - generic [ref=e296]: CS
+                        - generic [ref=e297]:
+                          - generic [ref=e298]: StatSystem.cs
+                          - generic [ref=e300]: CS
+                    - generic [ref=e301]:
+                      - generic [ref=e302]: Addressables/
+                      - generic [ref=e305]:
+                        - generic [ref=e306]: AddressablesLoader.cs
+                        - generic [ref=e308]: CS
+                    - generic [ref=e309]:
+                      - generic [ref=e310]: Networking/
+                      - generic [ref=e312]:
+                        - generic [ref=e313]:
+                          - generic [ref=e314]: NetworkManagerUI.cs
+                          - generic [ref=e316]: CS
+                        - generic [ref=e317]:
+                          - generic [ref=e318]: NetworkPlayer.cs
+                          - generic [ref=e320]: CS
+                    - generic [ref=e321]:
+                      - generic [ref=e322]: Architecture/
+                      - generic [ref=e324]:
+                        - generic [ref=e325]:
+                          - generic [ref=e326]: GameEvent.cs
+                          - generic [ref=e328]: CS
+                        - generic [ref=e329]:
+                          - generic [ref=e330]: FloatVariable.cs
+                          - generic [ref=e332]: CS
+                - generic [ref=e334]:
+                  - generic [ref=e335]: 📁
+                  - generic [ref=e336]: Prefabs
+                  - generic [ref=e337]: Player/Environment
+                  - generic [ref=e338]: + META
+                - generic [ref=e340]:
+                  - generic [ref=e341]: 📁
+                  - generic [ref=e342]: Scenes
+                  - generic [ref=e343]: MainScene.unity
+                  - generic [ref=e344]: + META
+                - generic [ref=e346]:
+                  - generic [ref=e347]: 📁
+                  - generic [ref=e348]: Shaders
+                  - generic [ref=e349]: HLSL/ShaderGraph
+                  - generic [ref=e350]: + META
+                - generic [ref=e352]:
+                  - generic [ref=e353]: 📁
+                  - generic [ref=e354]: VFX
+                  - generic [ref=e355]: VFXGraph Library
+                  - generic [ref=e356]: + META
+                - generic [ref=e358]:
+                  - generic [ref=e359]: 📁
+                  - generic [ref=e360]: Tests
+                  - generic [ref=e361]: NUnit Core Tests
+                  - generic [ref=e362]: + META
+                - generic [ref=e364]:
+                  - generic [ref=e365]: 📁
+                  - generic [ref=e366]: Editor
+                  - generic [ref=e367]: Architect Tools
+                  - generic [ref=e368]: + META
+            - generic [ref=e369]:
+              - generic [ref=e370]:
+                - generic [ref=e371]: ⚙️
+                - generic [ref=e372]: ProjectSettings
+                - generic [ref=e373]: + META
+              - generic [ref=e374]:
+                - generic [ref=e375]: TagManager.asset
+                - generic [ref=e376]: QualitySettings.asset
+                - generic [ref=e377]: InputManager.asset
+            - generic [ref=e378]:
+              - generic [ref=e379]:
+                - generic [ref=e380]: 📦
+                - generic [ref=e381]: Packages
+              - generic [ref=e382]: manifest.json
+            - generic [ref=e383]:
+              - img [ref=e384]
+              - generic [ref=e389]: README.md
+              - img [ref=e390]
+        - generic [ref=e393]:
+          - img [ref=e395]
+          - generic [ref=e399]:
+            - img [ref=e401]
+            - generic [ref=e404]: GUID Integrity System
+          - paragraph [ref=e405]: "\"Generación automática de metadatos (.meta) vinculando materiales y scripts de forma persistente.\""
+  - generic [ref=e406]:
+    - generic [ref=e409]: Engine Stable
+    - generic [ref=e411]:
+      - generic [ref=e412]: Build
+      - generic [ref=e413]: 10.3.0-PRO
+    - button "Docs" [ref=e415]
+```

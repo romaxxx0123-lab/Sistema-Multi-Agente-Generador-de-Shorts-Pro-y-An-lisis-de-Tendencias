@@ -1,0 +1,15 @@
+Genera la PARTE 1 (INFRAESTRUCTURA) del manifest de archivos para Unity.
+Céntrate en la base del proyecto y sistemas core.
+
+Plan: {plan}
+
+INCLUYE:
+- Folders raíz (Assets, ProjectSettings, Packages, etc.)
+- .gitignore y .editorconfig
+- README.md inicial con descripción técnica.
+- Core Scripts: Singleton.cs, EventBus.cs, ServiceLocator.cs, etc.
+- Managers base: GameManager.cs, AudioManager.cs.
+- Scriptable Architecture: GameEvent.cs, FloatVariable.cs.
+
+Devuelve JSON estrictamente igual al esquema manifest:
+{ projectName, unityVersionHint, folders: [], files: [{path, content, type}], notes: [], warnings: [] }

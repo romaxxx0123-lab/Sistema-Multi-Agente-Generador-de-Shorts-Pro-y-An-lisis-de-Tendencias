@@ -1,0 +1,8 @@
+Analiza los siguientes requisitos del usuario para un proyecto de Unity y devuelve un JSON con la interpretación normalizada.
+
+Requisitos:
+{config}
+
+Detecta si falta información crítica y agrégala como "warnings".
+Asume defaults profesionales para lo que falte.
+Devuelve: { normalizedConfig: {...}, missingInfo: [], reasoning: [] }

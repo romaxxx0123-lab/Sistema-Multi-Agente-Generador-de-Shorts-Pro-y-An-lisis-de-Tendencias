@@ -1,0 +1,17 @@
+Genera la PARTE 2 (CONTENIDO) del manifest de archivos para Unity.
+Céntrate en el gameplay, assets y la escena principal.
+
+Plan: {plan}
+Archivos ya generados: {foundation}
+
+INCLUYE:
+- Controllers de gameplay (ej: PlayerController.cs, EnemyAI.cs).
+- Prefabs detallados (YAML) vinculados a los scripts anteriores.
+- Escena principal: Assets/Scenes/Main.unity (YAML detallado).
+- Materiales y Texturas (Placeholder procedurale si aplica).
+- Folders específicos para estos assets.
+
+NO repitas archivos ya generados en la fase de infraestructura.
+
+Devuelve JSON estrictamente igual al esquema manifest:
+{ folders: [], files: [{path, content, type}], notes: [], warnings: [] }
