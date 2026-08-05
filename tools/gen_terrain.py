@@ -37,7 +37,7 @@ def _shift(base, tone):
     target = COOL_HUE if dark else WARM_HUE
     cap = ROT_SHADOW if dark else ROT_LIGHT
     arc = (target - hb * 360.0 + 540.0) % 360.0 - 180.0   # arco más corto, con signo
-    k = min(1.0, abs(lt - lb) / 0.16)                 # más lejos del base, más rota
+    k = min(1.0, abs(lt - lb) / 0.10)                 # más lejos del base, más rota
     rot = max(-cap, min(cap, arc)) * k
     r, g, b = colorsys.hls_to_rgb((hb + rot / 360.0) % 1.0, lt, st)
     return '#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255))
@@ -51,11 +51,11 @@ def _ramp(cols):
 
 _RAW = {
     # base, dark, light, speck-dark, speck-light
-    'grass':   ['#4f7d3a', '#3d6330', '#68975016', '#3a5c2c', '#7ba85a'],
-    'meadow':  ['#5d8c40', '#487035', '#000000', '#456a31', '#8fb861'],
-    'forest':  ['#3a6130', '#2d4c27', '#000000', '#294524', '#527f3f'],
-    'sand':    ['#d8c48d', '#c0a870', '#000000', '#b79f68', '#ece0b4'],
-    'dirt':    ['#8a6a45', '#71563a', '#000000', '#644c33', '#a5844f'],
+    'grass':   ['#4f7d3a', '#33543a', '#000000', '#3b5c2a', '#78a655'],
+    'meadow':  ['#609142', '#3d632b', '#000000', '#487033', '#8ac263'],
+    'forest':  ['#355e2d', '#21421b', '#000000', '#26471e', '#558a43'],
+    'sand':    ['#d3c086', '#b59a5d', '#000000', '#c2a768', '#eadba1'],
+    'dirt':    ['#82623e', '#5e4325', '#000000', '#6e5132', '#9e794f'],
     'rock':    ['#6f6f7d', '#575765', '#000000', '#4c4c59', '#8b8b98'],
     'snow':    ['#e8eef5', '#cdd7e4', '#000000', '#c2ccdb', '#ffffff'],
     'swamp':   ['#4e5b3a', '#3d4930', '#000000', '#36402a', '#66744a'],
@@ -74,12 +74,12 @@ def _base_tile(name, seed, variant):
     n2 = TileNoise(seed * 71 + variant * 7, 8)
     for y in range(TS):
         for x in range(TS):
-            v = n1.at(x, y, TS) * 0.65 + n2.at(x, y, TS) * 0.35
-            v += (bayer(x, y) - 0.5) * 0.07
-            if v < 0.38:
-                img.set(x, y, mix(base, dark, min(1, (0.38 - v) * 3.4)))
-            elif v > 0.63:
-                img.set(x, y, mix(base, sl, min(1, (v - 0.63) * 2.6)))
+            # Ruido suave sin estática
+            v = n1.at(x, y, TS) * 0.70 + n2.at(x, y, TS) * 0.30
+            if v < 0.40:
+                img.set(x, y, mix(base, dark, min(1, (0.40 - v) * 3.0)))
+            elif v > 0.60:
+                img.set(x, y, mix(base, sl, min(1, (v - 0.60) * 2.5)))
     return img, rnd, (base, dark, sd, sl)
 
 
@@ -90,11 +90,11 @@ def grass_tile(seed, variant, kind='grass'):
     for _ in range(blades):
         x = rnd.randrange(TS)
         y = rnd.randrange(TS)
-        h = rnd.choice([2, 2, 3])
+        h = rnd.choice([1, 2, 2])
         c = sl if rnd.random() < 0.55 else sd
         for k in range(h):
             img.set(x, y - k, c, wrap=True)
-        if rnd.random() < 0.35:
+        if rnd.random() < 0.25:
             img.set(x + 1, y - h + 1, c, wrap=True)
     if kind == 'meadow':
         # a couple of tiny 2x2 blossoms with a stem - not 1px confetti
@@ -116,7 +116,7 @@ def grass_tile(seed, variant, kind='grass'):
 
 def sand_tile(seed, variant):
     img, rnd, (base, dark, sd, sl) = _base_tile('sand', seed, variant)
-    for _ in range(26):
+    for _ in range(12):
         x, y = rnd.randrange(TS), rnd.randrange(TS)
         img.set(x, y, sd if rnd.random() < 0.5 else sl, wrap=True)
     for _ in range(rnd.randrange(0, 3)):  # pebbles / shells
@@ -128,7 +128,7 @@ def sand_tile(seed, variant):
 
 def dirt_tile(seed, variant):
     img, rnd, (base, dark, sd, sl) = _base_tile('dirt', seed, variant)
-    for _ in range(30):
+    for _ in range(15):
         x, y = rnd.randrange(TS), rnd.randrange(TS)
         img.set(x, y, sd if rnd.random() < 0.6 else sl, wrap=True)
     for _ in range(rnd.randrange(1, 4)):
@@ -148,7 +148,7 @@ def rock_tile(seed, variant, kind='rock'):
         for k in range(rnd.randrange(3, 7)):
             img.set(x + d[0] * k, y + d[1] * k, sd, wrap=True)
             img.set(x + d[0] * k, y + d[1] * k - 1, mix(base, sl, .5), wrap=True)
-    for _ in range(18):
+    for _ in range(8):
         x, y = rnd.randrange(TS), rnd.randrange(TS)
         img.set(x, y, sl if rnd.random() < 0.4 else sd, wrap=True)
     return img
