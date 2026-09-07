@@ -104,6 +104,7 @@ const ROSTER = [
     id: 'trumpo',
     name: 'TRUMPO',
     title: 'EL MAGNATE DORADO',
+    type: 'dinero', sub: 'LADRILLO',
     bio: 'Construye muros y paga los daños en efectivo. Tremendo, la gente lo dice.',
     speed: 1.28, power: 1.05, weight: 1.1,
     pal: { s: '#f0a878', S: '#c98055', h: '#f5dc8e', H: '#cbae52', k: '#181818', m: '#8c3b3b' },
@@ -131,7 +132,7 @@ const ROSTER = [
       speed: 2.1, gravity: 0.045, art: 'bill', oy: -34, life: 130,
       say: '¡EFECTIVO, MUCHO EFECTIVO!'
     },
-    quotes: ['Gané. Enorme victoria. La más grande.', 'Te mandé la factura del muro.'],
+    quotes: ['Gané. Enorme victoria. La más grande.', 'Te mandé la factura del muro.', 'Nadie construye muros como yo. Nadie.', 'Esto lo pagas tú. Siempre lo pagas tú.'],
     taunt: '¡TREMENDO!'
   },
 
@@ -139,6 +140,7 @@ const ROSTER = [
     id: 'abuela',
     name: 'ABUELA CHANCLETA',
     title: 'CAMPEONA DE PUNTERÍA',
+    type: 'chancla', sub: 'SOPA',
     bio: 'Chancla teledirigida calibrada con 40 años de experiencia. Nunca falla.',
     speed: 1.22, power: 1.0, weight: 1.0,
     pal: { s: '#f2c9a0', S: '#cfa17c', l: '#dfe3ea', w: '#ffffff', k: '#181818', m: '#a34b52', p: '#d874a0' },
@@ -164,10 +166,10 @@ const ROSTER = [
     },
     superMove: {
       name: 'SOPA HIRVIENDO', cost: 100, kind: 'projectile', dmg: 9, count: 4, spread: 0.5,
-      speed: 2.4, art: 'sopa', oy: -30, life: 120, burn: true,
+      speed: 2.4, art: 'sopa', oy: -30, life: 120, effect: 'burn',
       say: '¡ESTÁ CALENTITA, TÓMATELA!'
     },
-    quotes: ['Ahora sí te comes toda la sopa.', 'En mis tiempos ganábamos sin barra de super.'],
+    quotes: ['Ahora sí te comes toda la sopa.', 'En mis tiempos ganábamos sin barra de super.', 'Y ahora te tomas la sopa que dejaste en 1998.', 'Le voy a contar a tu madre.'],
     taunt: '¡NO ME CONTESTES!'
   },
 
@@ -175,6 +177,7 @@ const ROSTER = [
     id: 'capi',
     name: 'CAPI',
     title: 'CAPIBARA ZEN',
+    type: 'zen', sub: 'ROEDOR',
     bio: 'No pelea, coexiste. Si te gana es porque te estresaste tú solo.',
     speed: 1.05, power: 1.15, weight: 1.35,
     pal: { n: '#a4794a', N: '#7a5631', k: '#181818', w: '#ffe9c9' },
@@ -201,7 +204,7 @@ const ROSTER = [
       name: 'ESTAMPIDA', cost: 100, kind: 'dash', dmg: 10, hits: 3, speed: 4.2, dur: 34,
       say: '¡MOMENTO NO-ZEN!'
     },
-    quotes: ['Ganar, perder... el río sigue igual.', 'Te presté mi calma y no la usaste.'],
+    quotes: ['Ganar, perder... el río sigue igual.', 'Te presté mi calma y no la usaste.', 'No gané yo. Ganó el momento presente.', 'Ahora si me disculpas, hay un charco tibio esperándome.'],
     taunt: 'mmh.'
   },
 
@@ -209,6 +212,7 @@ const ROSTER = [
     id: 'palomo',
     name: 'PALOMO 3000',
     title: 'PALOMA CIBERNÉTICA',
+    type: 'aereo', sub: 'CHATARRA',
     bio: 'Le pusieron un ojo láser y sigue prefiriendo el pan viejo.',
     speed: 1.45, power: 0.9, weight: 0.8,
     pal: { d: '#6f7d99', D: '#4a5670', c: '#9fb6d9', o: '#f0932b', k: '#181818', r: '#ff4d4d', w: '#ffffff' },
@@ -236,7 +240,7 @@ const ROSTER = [
       name: 'PICOTAZO SUPERSÓNICO', cost: 100, kind: 'dash', dmg: 9, hits: 4, speed: 5.0, dur: 30, air: true,
       say: '¡PAN! ¿DÓNDE ESTÁ EL PAN?'
     },
-    quotes: ['Coo. Coo. (traducción: gané)', 'Te estacionaste debajo de mí. Error.'],
+    quotes: ['Coo. Coo. (traducción: gané)', 'Te estacionaste debajo de mí. Error.', 'Coo. (Se te ve el auto desde aquí.)', 'Volveré. Siempre vuelvo. Y siempre desde arriba.'],
     taunt: '¡COO!'
   },
 
@@ -244,6 +248,7 @@ const ROSTER = [
     id: 'router',
     name: 'DON ROUTER',
     title: 'SEÑOR DE LA SEÑAL',
+    type: 'senal', sub: 'RUIDO BLANCO',
     bio: 'Tiene todas las barras y aún así te va lento. Reiniciarlo no sirve.',
     speed: 1.15, power: 1.0, weight: 1.2,
     pal: { d: '#3c4457', l: '#8d97ad', c: '#48e0d0', g: '#4ad14a', r: '#ff4d4d', k: '#0f131c' },
@@ -272,7 +277,7 @@ const ROSTER = [
       speed: 3.4, art: 'wifi', oy: -30, life: 130, effect: 'slow', big: true,
       say: '¡SIN INTERNET, SIN PIEDAD!'
     },
-    quotes: ['Se cayó tu conexión. Y tú también.', 'Ping 9000. Ganaste el lag, no la pelea.'],
+    quotes: ['Se cayó tu conexión. Y tú también.', 'Ping 9000. Ganaste el lag, no la pelea.', 'Prueba desconectando y conectando tu dignidad.', 'Tu problema no era el router. Nunca lo es.'],
     taunt: 'BUFFERING...'
   },
 
@@ -280,6 +285,7 @@ const ROSTER = [
     id: 'brocoli',
     name: 'BRÓCOLI BOB',
     title: 'EL VERDE QUE NADIE PIDIÓ',
+    type: 'fibra', sub: 'ENSALADA',
     bio: 'Nutritivo, incomprendido y sorprendentemente violento.',
     speed: 1.18, power: 1.0, weight: 1.0,
     pal: { G: '#4ad14a', D: '#2a7d3a', l: '#9bf59b', k: '#123a17', m: '#1d5c2a' },
@@ -306,7 +312,7 @@ const ROSTER = [
       name: 'LLUVIA DE VERDURAS', cost: 100, kind: 'rain', dmg: 8, count: 7, art: 'broco',
       say: '¡CÓMETE LOS VEGETALES!'
     },
-    quotes: ['Nadie me quiere en el plato pero aquí estoy.', 'Cinco porciones al día. Cinco golpes también.'],
+    quotes: ['Nadie me quiere en el plato pero aquí estoy.', 'Cinco porciones al día. Cinco golpes también.', 'Y todavía me dejas en el borde del plato.', 'Esto pasa por no comer verduras, campeón.'],
     taunt: '¡FIBRA!'
   },
 
@@ -314,6 +320,7 @@ const ROSTER = [
     id: 'licuadora',
     name: 'LICUADORA-MAX',
     title: 'MODO TURBO 12 VELOCIDADES',
+    type: 'electro', sub: 'BATIDO',
     bio: 'Solo tiene dos botones: "pulso" y "arruinar tu día".',
     speed: 1.32, power: 1.1, weight: 1.15,
     pal: { l: '#d7dbe6', c: '#bfe6ff', d: '#4a5265', p: '#f07ac0', k: '#1a1d26' },
@@ -341,7 +348,7 @@ const ROSTER = [
       speed: 3.2, art: 'blade', oy: -30, life: 120,
       say: '¡SIN GRUMOS!'
     },
-    quotes: ['Quedaste bien batido.', 'Te licué en dos velocidades menos de las que tengo.'],
+    quotes: ['Quedaste bien batido.', 'Te licué en dos velocidades menos de las que tengo.', 'Modo pulso. Ni lo viste venir.', 'Te dejé cremoso y sin grumos.'],
     taunt: '¡BRRRRR!'
   },
 
@@ -349,6 +356,7 @@ const ROSTER = [
     id: 'gato',
     name: 'NINJA SUSHI GATO',
     title: 'SOMBRA CON HAMBRE',
+    type: 'sushi', sub: 'SIGILO',
     bio: 'Entrenó veinte años en las artes marciales y once minutos en modales.',
     speed: 1.5, power: 0.92, weight: 0.85,
     pal: { d: '#3a3f52', D: '#22263a', w: '#f2f0e6', k: '#111', r: '#c0392b', m: '#e08aa0' },
@@ -376,7 +384,7 @@ const ROSTER = [
       name: 'NUEVE VIDAS', cost: 100, kind: 'teleport', dmg: 22,
       say: '¡NO ME VISTE VENIR, HUMANO!'
     },
-    quotes: ['Tiré tu vaso de la mesa. Y también tu récord.', 'Miau. (Es un insulto en su idioma.)'],
+    quotes: ['Tiré tu vaso de la mesa. Y también tu récord.', 'Miau. (Es un insulto en su idioma.)', 'Ahora duermo catorce horas. Me lo gané.', 'Tu comida ya no es tuya. Nada es tuyo.'],
     taunt: '¡MIAU!'
   }
 ];

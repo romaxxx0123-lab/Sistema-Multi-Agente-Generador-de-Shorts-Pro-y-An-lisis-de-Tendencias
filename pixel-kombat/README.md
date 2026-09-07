@@ -37,6 +37,7 @@ Necesita teclado (no hay controles táctiles).
 | **SUPER** (barra al 100%) | `T` | `O` |
 | Uppercut | `S` + `F` | `↓` + `J` |
 | Barrida | `S` + `G` | `↓` + `K` |
+| **Burla** (+12% de barra) | `R` | `P` |
 
 - **Bloquear**: mantén la dirección contraria al rival (en el suelo).
 - `ESC` pausa · `M` silencia · `Enter` confirma en los menús.
@@ -48,6 +49,44 @@ Necesita teclado (no hay controles táctiles).
 - Si se acaba el tiempo gana quien tenga más vida (empate = asalto nulo).
 - La **barra de SUPER** sube al pegar y al recibir; se conserva a la mitad entre asaltos.
 - El especial cuesta 30; el SUPER cuesta los 100.
+- **Burlarse carga barra** (+12) pero te deja completamente vendido durante medio segundo.
+  El comentarista lo comenta. El rival lo recuerda.
+
+---
+
+## 🧬 Tipos (sí, como en Pokémon, pero peor)
+
+Cada luchador tiene un **tipo principal** que multiplica el daño y un **subtipo**
+que no hace absolutamente nada y existe solo para el chiste.
+
+| Tipo | Personaje | Le pega 40% más fuerte a | Porque |
+|---|---|---|---|
+| 💵 DINERO | Trumpo *(sub: ladrillo)* | 📶 SEÑAL, 🔌 ELECTRO | pagó el plan premium / lo compró al contado |
+| 🩴 CHANCLA | Abuela *(sub: sopa)* | 💵 DINERO, 🍣 SUSHI, 🧘 ZEN | la chancla no acepta sobornos |
+| 🧘 ZEN | Capi *(sub: roedor)* | 💵 DINERO, 🔌 ELECTRO | la felicidad no se compra |
+| 🕊️ AÉREO | Palomo *(sub: chatarra)* | 🩴 CHANCLA, 🥦 FIBRA | la chancla no llega tan alto |
+| 📶 SEÑAL | Don Router *(sub: ruido blanco)* | 🧘 ZEN, 🩴 CHANCLA | 17 notificaciones nuevas |
+| 🥦 FIBRA | Brócoli Bob *(sub: ensalada)* | 🔌 ELECTRO, 💵 DINERO | atascó las aspas / la salud no se compra |
+| 🔌 ELECTRO | Licuadora-Max *(sub: batido)* | 📶 SEÑAL, 🍣 SUSHI, 🕊️ AÉREO | interferencia del microondas |
+| 🍣 SUSHI | Ninja Sushi Gato *(sub: sigilo)* | 🕊️ AÉREO, 🥦 FIBRA | el gato caza palomas |
+
+La tabla es **simétrica**: si un tipo pega fuerte a otro, ese otro le hace un 30%
+menos de daño. Al conectar un golpe con ventaja salta **¡SUPER EFECTIVO!** con el
+chiste correspondiente; al revés sale *poco efectivo...* y una excusa
+(«se perdió el paquete», «garantía extendida», «huesos huecos, no siente nada»).
+Si el KO llega con ventaja de tipo, el remate es **¡REMATE SUPER EFECTIVO!**.
+
+La pantalla **VS** te avisa del cruce antes de empezar, y la de **CONTROLES**
+tiene la tabla completa.
+
+### Otros detalles que suben el chiste
+- **Comentarista**: una línea abajo que narra el desastre (arranque de asalto,
+  vida baja, KO, burlas y ventajas de tipo).
+- **La sopa de la abuela quema**: su SUPER deja al rival ardiendo un rato,
+  perdiendo 1 de vida cada tanto y soltando un *¡AY!*.
+- **El LAG del router** ralentiza de verdad al rival.
+- La CPU se **burla sola** cuando va ganando por mucho, y se envalentona si
+  tiene ventaja de tipo.
 
 ---
 
@@ -77,6 +116,7 @@ pixel-kombat/
 ├── css/style.css       # estilo arcade y HUD
 └── js/
     ├── pixel.js        # utilidades de dibujo pixel (rejillas, rects, texto)
+    ├── types.js        # tabla de tipos, multiplicadores y chistes de cada cruce
     ├── audio.js        # efectos de sonido sintetizados con WebAudio
     ├── roster.js       # los 8 personajes + arte de proyectiles
     ├── render.js       # dibujo paramétrico de luchadores y 4 escenarios

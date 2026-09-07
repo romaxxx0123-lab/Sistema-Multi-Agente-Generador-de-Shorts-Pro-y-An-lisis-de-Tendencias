@@ -10,18 +10,40 @@
   const LAYERS = ['title', 'howto', 'select', 'vs', 'result', 'pause', 'hud', 'announce'];
   const show = (...ids) => LAYERS.forEach(l => $(l).classList.toggle('hidden', !ids.includes(l)));
 
+  const COMMENTS = {
+    start: [
+      'DOS DESCONOCIDOS TOTALES. UN SOLO RING.',
+      'NADIE PIDIÓ ESTE COMBATE Y SIN EMBARGO AQUÍ ESTAMOS.',
+      'APUESTEN, SEÑORES. PERO POCO.',
+      'EL REGLAMENTO SE PERDIÓ. IMPROVISAMOS.',
+      'ESTO NO DEBERÍA ESTAR PASANDO Y ES HERMOSO.'
+    ],
+    low: [
+      'ESTÁ MÁS ROJO QUE MI ALQUILER.',
+      'UN GOLPE MÁS Y SE VA A CASA EN TAXI.',
+      'LE QUEDA MENOS VIDA QUE A MI BATERÍA.'
+    ],
+    ko: [
+      'SE APAGÓ COMO EL WIFI EN TORMENTA.',
+      'ALGUIEN AVISE A UN FAMILIAR.',
+      'LO MANDÓ A LA PANTALLA DE CARGA.',
+      'ESO VA A SALIR EN EL RESUMEN Y EN TERAPIA.'
+    ],
+    timeout: ['SE ACABÓ EL TIEMPO Y LA PACIENCIA.', 'GANA EL QUE MENOS SE DEJÓ PEGAR.']
+  };
+
   const FINISHERS = ['¡RIDICULEZ!', '¡PAPELÓN!', '¡QUÉ VERGÜENZA!', '¡FATALIDAD (MÁS O MENOS)!', '¡SE ACABÓ EL PAN!'];
   const ROUND_FRAMES = 60 * 60;      // 60 segundos
   const WINS_NEEDED = 2;             // al mejor de 3
 
   /* ---------------- entrada ---------------- */
-  const BTN = { up: 1, punch: 1, kick: 1, special: 1, super: 1 };
+  const BTN = { up: 1, punch: 1, kick: 1, special: 1, super: 1, taunt: 1 };
   const Input = {
     keys: {},        // teclas mantenidas
     taps: {},        // pulsaciones nuevas (se consumen cada tick)
     maps: {
-      1: { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS', punch: 'KeyF', kick: 'KeyG', special: 'KeyH', super: 'KeyT' },
-      2: { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', punch: 'KeyJ', kick: 'KeyK', special: 'KeyL', super: 'KeyO' }
+      1: { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS', punch: 'KeyF', kick: 'KeyG', special: 'KeyH', super: 'KeyT', taunt: 'KeyR' },
+      2: { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', punch: 'KeyJ', kick: 'KeyK', special: 'KeyL', super: 'KeyO', taunt: 'KeyP' }
     },
     /* un toque brevisimo (menos de un frame) tambien cuenta */
     intent(p) {
@@ -136,7 +158,9 @@
       const t2 = document.createElement('span'); t2.className = 'tagp tag2'; t2.textContent = 'P2';
       const c = document.createElement('canvas'); c.width = 40; c.height = 52;
       const n = document.createElement('span'); n.className = 'cname'; n.textContent = def.name;
-      card.append(t1, t2, c, n);
+      const ch = document.createElement('div'); ch.className = 'chips'; ch.innerHTML = typeChip(def.type, true);
+      const sb = document.createElement('span'); sb.className = 'sub'; sb.textContent = 'sub: ' + def.sub;
+      card.append(t1, t2, c, n, ch, sb);
       card.addEventListener('click', () => {
         if (G.picks[0] === null) { G.cur[0] = i; confirmPick(0); }
         else if (G.mode === '2p' && G.picks[1] === null) { G.cur[1] = i; confirmPick(1); }
@@ -163,9 +187,16 @@
       c.querySelector('.tag2').style.display = p2 ? 'block' : 'none';
     }
     const hov = ROSTER[G.picks[0] === null ? G.cur[0] : (G.picks[1] === null ? G.cur[1] : G.picks[1])];
-    $('selBio').innerHTML = hov.name + ' — <span style="color:#48e0d0">' + hov.title + '</span><br>' +
+    $('selBio').innerHTML = hov.name + ' — <span style="color:#48e0d0">' + hov.title + '</span> ' +
+      typeChip(hov.type) + ' <span style="color:#66748f">/ ' + hov.sub + '</span><br>' +
       '<span style="color:#b9c4d8;font-size:.9em">' + hov.bio + '</span><br>' +
       'ESPECIAL: ' + hov.special.name + ' · SUPER: ' + hov.superMove.name;
+    if (G.picks[0] !== null) {
+      const other = ROSTER[G.picks[1] !== null ? G.picks[1] : G.cur[1]];
+      $('selMatch').textContent = matchupLine(ROSTER[G.picks[0]].type, other.type);
+    } else {
+      $('selMatch').textContent = TYPES[hov.type].icon + ' ' + TYPES[hov.type].name + ': ' + TYPES[hov.type].tag;
+    }
     $('selPrompt').textContent = G.picks[0] === null ? 'JUGADOR 1: ELIGE TU RANDOM'
       : (G.mode === '2p' ? 'JUGADOR 2: ELIGE TU RANDOM' : 'LA CPU ESTÁ ELIGIENDO...');
   }
@@ -235,6 +266,9 @@
     renderPortrait($('vsB'), b);
     $('vsAName').textContent = a.name;
     $('vsBName').textContent = b.name + (G.mode === '1p' ? ' (CPU)' : '');
+    $('vsAType').innerHTML = typeChip(a.type) + '<span class="sub">sub: ' + a.sub + '</span>';
+    $('vsBType').innerHTML = typeChip(b.type) + '<span class="sub">sub: ' + b.sub + '</span>';
+    $('vsMatch').textContent = matchupLine(a.type, b.type);
     Sfx.bell();
     ctx.fillStyle = '#05060c'; ctx.fillRect(0, 0, W, H);
     setTimeout(startMatch, 1500);
@@ -255,6 +289,8 @@
     Sfx.quiet = false;
     $('p1name').textContent = G.f1.def.name;
     $('p2name').textContent = G.f2.def.name + (G.mode === '1p' ? ' [CPU]' : '');
+    $('p1type').innerHTML = typeChip(G.f1.def.type, true);
+    $('p2type').innerHTML = typeChip(G.f2.def.type, true);
     show('hud');
     startRound();
   }
@@ -270,7 +306,9 @@
     G.timer = ROUND_FRAMES;
     G.phase = 'intro';
     G.phaseT = 0;
+    G.lowSaid = [false, false];
     $('roundlab').textContent = 'ROUND ' + G.round;
+    G.world.say(G.round === 1 ? pick(COMMENTS.start) : matchupLine(G.f1.def.type, G.f2.def.type), 220);
     announce('ROUND ' + G.round, 1000);
     Sfx.bell();
   }
@@ -282,7 +320,9 @@
       winner.wins++;
       winner.state = 'win';
       winner.t = 0;
-      announce(reason || FINISHERS[irnd(0, FINISHERS.length - 1)], 2200, 'ko');
+      const remate = reason || (G.world.koSuper ? '¡REMATE SUPER EFECTIVO!' : FINISHERS[irnd(0, FINISHERS.length - 1)]);
+      announce(remate, 2200, 'ko');
+      G.world.say(reason ? pick(COMMENTS.timeout) : pick(COMMENTS.ko), 240);
       Sfx.win();
     } else {
       announce('EMPATE', 2000, 'ko');
@@ -332,6 +372,12 @@
       faceEachOther(f1, f2);
       w.update();
       if (G.phase === 'fight') {
+        [f1, f2].forEach((f, i) => {
+          if (!G.lowSaid[i] && f.hp > 0 && f.hp <= 25) {
+            G.lowSaid[i] = true;
+            w.say(f.def.name + ': ' + pick(COMMENTS.low), 200);
+          }
+        });
         if (f1.state === 'ko') endRound(f2);
         else if (f2.state === 'ko') endRound(f1);
       }
@@ -408,6 +454,12 @@
     $('timer').textContent = secs < 10 ? '0' + secs : secs;
     $('timer').classList.toggle('danger', secs <= 10);
     pips('p1pips', f1.wins); pips('p2pips', f2.wins);
+    const ch = G.world && G.world.chyron, chEl = $('chyron');
+    chEl.classList.toggle('on', !!ch);
+    if (ch && chEl.dataset.cid !== String(ch.id)) {
+      chEl.innerHTML = '<span>' + ch.text + '</span>';
+      chEl.dataset.cid = String(ch.id);
+    }
     combo('combo1', f1); combo('combo2', f2);
   }
   function pips(id, n) {
@@ -480,6 +532,10 @@
   /* ---------------- botones ---------------- */
   document.querySelectorAll('.btn[data-mode]').forEach(b =>
     b.addEventListener('click', () => { Sfx.init(); Sfx.resume(); gotoSelect(b.dataset.mode); }));
+  $('typeHelp').innerHTML =
+    '<div class="thead">TABLA DE TIPOS — CADA UNO LE PEGA 40% MÁS FUERTE A:</div>' +
+    Object.keys(TYPES).map(id => '<div class="trow">' + typeChip(id, true) + '<b>&gt;</b>' +
+      CHART[id].strong.map(s2 => TYPES[s2].icon + ' ' + TYPES[s2].name).join(', ') + '</div>').join('');
   $('howtoBtn').addEventListener('click', () => { G.screen = 'howto'; show('howto'); });
   $('howtoBack').addEventListener('click', gotoTitle);
   $('resumeBtn').addEventListener('click', togglePause);

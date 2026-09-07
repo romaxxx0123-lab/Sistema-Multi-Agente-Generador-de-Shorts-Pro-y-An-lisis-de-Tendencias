@@ -2,6 +2,14 @@
    fighter.js — maquina de estados del luchador y combate
    ========================================================= */
 
+const TAUNT_REACTIONS = [
+  'SE ESTÁ BURLANDO. QUÉ FALTA DE RESPETO.',
+  'ESO LO VA A PAGAR CARO.',
+  'EL PÚBLICO ABUCHEA. UN POCO.',
+  'PROVOCAR GRATIS NO EXISTE.',
+  'LA BURLA CARGA BARRA. LA VERGÜENZA NO SE VA.'
+];
+
 const GRAV = 0.42;
 const JUMP_V = -6.7;
 
@@ -11,7 +19,8 @@ const ATTACKS = {
   low: { startup: 5, active: 4, recover: 11, dmg: 7, reach: 20, h: 7, oy: -10, push: 1.6, hitstun: 15, anim: 'kick', low: true, name: 'BARRIDA' },
   upper: { startup: 5, active: 5, recover: 17, dmg: 13, reach: 15, h: 22, oy: -42, push: 2.0, hitstun: 26, anim: 'upper', launch: true, name: 'UPPERCUT' },
   air: { startup: 4, active: 9, recover: 7, dmg: 8, reach: 18, h: 10, oy: -20, push: 2.4, hitstun: 16, anim: 'kick', air: true, name: 'PATADA AÉREA' },
-  cast: { startup: 9, active: 1, recover: 15, anim: 'cast', name: 'ESPECIAL' }
+  cast: { startup: 9, active: 1, recover: 15, anim: 'cast', name: 'ESPECIAL' },
+  taunt: { startup: 8, active: 1, recover: 22, anim: 'taunt', name: 'BURLA' }
 };
 
 class Fighter {
@@ -39,7 +48,8 @@ class Fighter {
     this.pendingSp = null;
     this.hitstun = 0; this.flash = 0;
     this.crouching = false; this.blocking = false;
-    this.guard = 0; this.slow = 0;
+    this.guard = 0; this.slow = 0; this.burn = 0;
+    this.tauntPending = false; this.lastTypeSay = -999;
     this.combo = 0; this.comboT = 0;
     this.koT = 0; this.dead = false;
     this.frozen = 0;
@@ -98,6 +108,14 @@ class Fighter {
     if (this.guard > 0) this.guard--;
     if (this.slow > 0) this.slow--;
     if (this.dashCd > 0) this.dashCd--;
+    if (this.burn > 0) {                       // la sopa de la abuela sigue quemando
+      this.burn--;
+      if (this.burn % 26 === 0 && this.hp > 1) {
+        this.hp = Math.max(1, this.hp - 1);
+        world.parts.push(new Particle(this.x + rnd(-6, 6), this.y - rnd(10, 40), rnd(-.3, .3), -0.5, 22, '#f0932b', 1, -0.02));
+        if (this.burn % 78 === 0) world.popup(this.x, this.y - 54, '¡AY!', '#f0932b');
+      }
+    }
     if (this.comboT > 0 && --this.comboT === 0) this.combo = 0;
 
     /* registra flancos aunque no podamos actuar */
@@ -106,6 +124,7 @@ class Fighter {
     const pSpec = this.edge(inp, 'special');
     const pSuper = this.edge(inp, 'super');
     const pUp = this.edge(inp, 'up');
+    const pTaunt = this.edge(inp, 'taunt');
 
     if (this.state === 'ko') {
       this.koT = Math.min(1, this.koT + 0.14);
@@ -150,6 +169,7 @@ class Fighter {
 
     if (pSuper && this.meter >= 100) { this.startSpecial(this.def.superMove, world, true); return; }
     if (pSpec && this.meter >= this.def.special.cost) { this.startSpecial(this.def.special, world, false); return; }
+    if (pTaunt && this.onGround) { this.startTaunt(); return; }
     if (pPunch) { this.startAttack(!this.onGround ? ATTACKS.air : this.crouching ? ATTACKS.upper : ATTACKS.punch); return; }
     if (pKick) { this.startAttack(!this.onGround ? ATTACKS.air : this.crouching ? ATTACKS.low : ATTACKS.kick); return; }
 
@@ -164,6 +184,17 @@ class Fighter {
     this.state = 'attack';
     this.blocking = false;
     Sfx.whiff();
+  }
+
+  startTaunt() {
+    this.atk = ATTACKS.taunt;
+    this.atkT = 0;
+    this.hasHit = true;
+    this.tauntPending = true;
+    this.state = 'attack';
+    this.blocking = false;
+    this.crouching = false;
+    this.vx = 0;
   }
 
   startSpecial(sp, world, isSuper) {
@@ -182,6 +213,13 @@ class Fighter {
   attackUpdate(world) {
     this.atkT++;
     const a = this.atk;
+    if (this.tauntPending && this.atkT === a.startup) {
+      this.tauntPending = false;
+      this.meter = Math.min(100, this.meter + 12);   // burlarse carga barra... si te dejan
+      world.popup(this.x, this.y - 58, this.def.taunt, '#f5c542');
+      world.say(pick(TAUNT_REACTIONS));
+      Sfx.taunt();
+    }
     if (this.pendingSp && this.atkT === a.startup) {
       const sp = this.pendingSp;
       this.pendingSp = null;          // se limpia antes: 'dash' cambia de estado
@@ -274,6 +312,7 @@ class Fighter {
       else if (a.anim === 'upper') { A.punch = p; A.punchUp = true; }
       else if (a.anim === 'kick') { A.kick = p; A.kickHigh = !a.low; }
       else if (a.anim === 'cast') A.cast = p;
+      else if (a.anim === 'taunt') { A.cast = p; A.bob = this.atkT % 8 < 4 ? 1 : 0; }
       if (a.low) A.crouch = 5;
     } else if (this.state === 'walk') {
       A.walk = this.t * 0.26;
@@ -296,7 +335,8 @@ function dealDamage(src, tgt, dmg, opts, world) {
   if (!tgt || tgt.state === 'ko' || tgt.dead) return false;
 
   const blocked = !opts.unblockable && tgt.canBlock(src);
-  let d = Math.round(dmg * (src.def.power || 1));
+  const tm = typeMult(src.def.type, tgt.def.type);      // ventaja de tipo estilo Pokémon
+  let d = Math.round(dmg * (src.def.power || 1) * tm.m);
   if (blocked) d = Math.max(1, Math.round(d * 0.22));
   if (tgt.guard > 0) d = Math.max(1, Math.round(d * 0.6));
 
@@ -325,22 +365,42 @@ function dealDamage(src, tgt, dmg, opts, world) {
     tgt.blocking = false;
     if (opts.launch) { tgt.vy = -5.2; tgt.onGround = false; }
     src.combo++; src.comboT = 90;
-    world.burst(cx, cy, d > 9 ? 14 : 8, d > 9 ? '#ffe07a' : '#ffffff');
-    world.popup(tgt.x, tgt.y - 52, '-' + d, d > 9 ? '#f5c542' : '#ffffff');
-    world.shake = d > 9 ? 8 : 4;
-    world.hitstop = d > 9 ? 6 : 3;
-    if (d > 9) Sfx.bigHit(); else Sfx.hit();
+    const big = d > 9 || tm.kind === 'super';
+    world.burst(cx, cy, big ? 14 : 8, tm.kind === 'super' ? '#f5c542' : (big ? '#ffe07a' : '#ffffff'));
+    world.popup(tgt.x, tgt.y - 52, '-' + d, tm.kind === 'super' ? '#f5c542' : (tm.kind === 'weak' ? '#9aa6bd' : '#ffffff'));
+    world.shake = big ? 8 : 4;
+    world.hitstop = big ? 6 : 3;
+    if (big) Sfx.bigHit(); else Sfx.hit();
+
+    /* el chiste del cruce de tipos, sin repetirlo cada golpe */
+    if (tm.kind !== 'normal' && world.t - src.lastTypeSay > 110) {
+      src.lastTypeSay = world.t;
+      if (tm.kind === 'super') {
+        world.popup(tgt.x, tgt.y - 66, '¡SUPER EFECTIVO!', '#f5c542');
+        world.flash = 6;
+        Sfx.superEff();
+      } else {
+        world.popup(tgt.x, tgt.y - 66, 'poco efectivo...', '#9aa6bd');
+      }
+      world.say(tm.msg);
+    }
   }
 
   if (opts.effect === 'slow' && !blocked) {
     tgt.slow = 260;
     world.popup(tgt.x, tgt.y - 62, 'LAG', '#48e0d0');
   }
+  if (opts.effect === 'burn' && !blocked) {
+    tgt.burn = 300;
+    world.popup(tgt.x, tgt.y - 62, '¡QUEMA!', '#f0932b');
+    world.say('LA SOPA ESTABA HIRVIENDO. SIEMPRE ESTÁ HIRVIENDO.');
+  }
 
   src.meter = Math.min(100, src.meter + (blocked ? 4 : 9));
   tgt.meter = Math.min(100, tgt.meter + (blocked ? 3 : 6));
 
   if (tgt.hp <= 0) {
+    world.koSuper = (tm.kind === 'super');
     tgt.state = 'ko';
     tgt.koT = 0;
     tgt.vy = -4.6;

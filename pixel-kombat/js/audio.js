@@ -71,5 +71,7 @@ const Sfx = {
   super()   { this.tone(180, 0.5, 'sawtooth', 0.4, 700); this.noise(0.5, 0.4, 900); },
   ko()      { [330, 262, 196, 131].forEach((f, i) => setTimeout(() => this.tone(f, 0.28, 'square', 0.42), i * 130)); },
   win()     { [392, 523, 659, 784].forEach((f, i) => setTimeout(() => this.tone(f, 0.22, 'square', 0.38), i * 110)); },
-  bell()    { this.tone(880, 0.18, 'square', 0.35); setTimeout(() => this.tone(1180, 0.22, 'square', 0.35), 120); }
+  bell()    { this.tone(880, 0.18, 'square', 0.35); setTimeout(() => this.tone(1180, 0.22, 'square', 0.35), 120); },
+  superEff() { [523, 659, 880, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.12, 'square', 0.32), i * 55)); this.noise(0.18, 0.5, 1800); },
+  taunt()   { [440, 392, 440, 523].forEach((f, i) => setTimeout(() => this.tone(f, 0.10, 'triangle', 0.3), i * 90)); }
 };

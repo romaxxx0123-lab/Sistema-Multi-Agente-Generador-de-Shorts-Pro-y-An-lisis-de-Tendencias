@@ -175,6 +175,14 @@ class World {
     this.hitstop = 0;
     this.flash = 0;
     this.t = 0;
+    this.chyron = null;      // linea del comentarista
+    this.sayN = 0;
+  }
+
+  /* el comentarista dice algo (lo pinta el HUD) */
+  say(text, frames) {
+    if (!text) return;
+    this.chyron = { text, t: frames || 170, id: ++this.sayN };
   }
 
   opponentOf(f) { return this.fighters.find(o => o !== f); }
@@ -271,6 +279,7 @@ class World {
 
   update() {
     this.t++;
+    if (this.chyron && --this.chyron.t <= 0) this.chyron = null;
     if (this.shake > 0) this.shake--;
     if (this.flash > 0) this.flash--;
     for (const a of [this.projs, this.walls, this.parts, this.pops]) {

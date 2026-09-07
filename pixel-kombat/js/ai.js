@@ -3,7 +3,7 @@
    ========================================================= */
 const AI = {
   blank() {
-    return { left: false, right: false, up: false, down: false, punch: false, kick: false, special: false, super: false };
+    return { left: false, right: false, up: false, down: false, punch: false, kick: false, special: false, super: false, taunt: false };
   },
 
   think(f, opp, world, level) {
@@ -47,6 +47,12 @@ const AI = {
         else { a.plan = 'retreat'; a.t = irnd(10, 22); }
       }
       if (f.hp < 30 && f.def.special.kind === 'heal' && f.meter >= f.def.special.cost) { a.plan = 'special'; a.t = 26; }
+      /* si va ganando de sobra y está lejos, se burla (y se lo hace pagar) */
+      if (f.hp - opp.hp > 35 && dist > 55 && Math.random() < 0.22) { a.plan = 'taunt'; a.t = 34; }
+      /* con ventaja de tipo se envalentona */
+      if (a.plan === 'retreat' && typeMult(f.def.type, opp.def.type).kind === 'super' && Math.random() < 0.6) {
+        a.plan = 'approach'; a.t = 22;
+      }
     }
     a.t--;
 
@@ -83,6 +89,9 @@ const AI = {
         break;
       case 'super':
         if (a.fire) inp.super = true;
+        break;
+      case 'taunt':
+        if (a.fire) inp.taunt = true;
         break;
       default:
         if (Math.random() < 0.05) inp[toward] = true;

@@ -163,3 +163,43 @@ h3{font-size:clamp(10px,1.5vw,16px);color:var(--cyan);margin-bottom:.6em}
 @keyframes slam{from{transform:scale(2.6);opacity:0}to{transform:scale(1);opacity:1}}
 
 .disclaimer{margin-top:12px;text-align:center;color:#4b5670;font-size:11px;letter-spacing:.04em;font-weight:400}
+
+/* ---------- tipos (estilo Pokémon absurdo) ---------- */
+.chip{
+  display:inline-block; padding:.15em .5em;
+  background:color-mix(in srgb, var(--c) 22%, #0b0d16);
+  border:1px solid var(--c); color:var(--c);
+  font-size:.82em; letter-spacing:.08em; white-space:nowrap;
+}
+.chip.sm{font-size:.7em;padding:.1em .35em}
+.tchip{display:flex;gap:.3em}
+.tchip .chip{font-size:clamp(6px,.85vw,11px)}
+.card .chips{display:flex;gap:.2em;flex-wrap:wrap;justify-content:center}
+.card .sub{font-size:clamp(5px,.72vw,9px);color:#66748f;letter-spacing:.05em}
+.matchhint{color:#8ea0c0;font-size:clamp(7px,1vw,12px);min-height:1.2em}
+.vstype{display:flex;flex-direction:column;gap:.3em;align-items:center;font-size:clamp(7px,1vw,12px)}
+.vstype .sub{color:#66748f;font-size:.85em}
+.vsmatch{
+  position:absolute; top:12%; left:50%; transform:translateX(-50%);
+  width:86%; text-align:center; color:var(--gold);
+  font-size:clamp(8px,1.35vw,17px); line-height:1.7;
+  text-shadow:2px 2px 0 #000;
+}
+.typehelp{
+  display:grid; grid-template-columns:repeat(2,auto); gap:.35em 2em;
+  justify-content:center; color:#8ea0c0; font-size:clamp(6px,.95vw,11px);
+}
+.typehelp .thead{grid-column:1/-1;color:var(--gold);text-align:center;margin-bottom:.3em}
+.typehelp .trow{display:flex;gap:.45em;align-items:center;white-space:nowrap}
+.typehelp b{color:#dfe6f2}
+
+/* ---------- comentarista ---------- */
+.chyron{
+  position:absolute; left:0; bottom:7%;
+  width:100%; text-align:center;
+  color:#ffe9a8; font-size:clamp(7px,1.1vw,13px); letter-spacing:.08em;
+  text-shadow:2px 2px 0 #000;
+  opacity:0; transition:opacity .18s;
+}
+.chyron.on{opacity:1}
+.chyron span{background:rgba(5,6,12,.55);padding:.15em .6em;border-left:3px solid var(--gold);border-right:3px solid var(--gold)}
