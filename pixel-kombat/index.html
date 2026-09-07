@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIXEL KOMBAT — Torneo de Random Absolutos</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="screen">
+    <canvas id="game" width="320" height="180"></canvas>
+
+    <!-- ===== HUD DE COMBATE ===== -->
+    <div id="hud" class="layer hidden">
+      <div class="hud-top">
+        <div class="side">
+          <div class="row"><span class="pname" id="p1name">—</span><span class="pips" id="p1pips"></span></div>
+          <div class="bar"><div class="fill" id="p1hp"></div></div>
+          <div class="meter"><div class="mfill" id="p1meter"></div><span class="mlab" id="p1mlab">SUPER</span></div>
+        </div>
+        <div class="clock">
+          <div class="timer" id="timer">60</div>
+          <div class="round" id="roundlab">ROUND 1</div>
+        </div>
+        <div class="side right">
+          <div class="row"><span class="pips" id="p2pips"></span><span class="pname" id="p2name">—</span></div>
+          <div class="bar rtl"><div class="fill" id="p2hp"></div></div>
+          <div class="meter rtl"><div class="mfill" id="p2meter"></div><span class="mlab" id="p2mlab">SUPER</span></div>
+        </div>
+      </div>
+      <div class="combos">
+        <div class="combo" id="combo1"></div>
+        <div class="combo right" id="combo2"></div>
+      </div>
+    </div>
+
+    <!-- ===== ANUNCIOS ===== -->
+    <div id="announce" class="layer hidden"><span id="announceText"></span></div>
+
+    <!-- ===== TITULO ===== -->
+    <div id="title" class="layer">
+      <div class="logo">
+        <span class="l1">PIXEL</span>
+        <span class="l2">KOMBAT</span>
+        <span class="sub">TORNEO DE RANDOM ABSOLUTOS</span>
+      </div>
+      <div class="menu">
+        <button class="btn" data-mode="1p">1 JUGADOR <small>(vs CPU)</small></button>
+        <button class="btn" data-mode="2p">2 JUGADORES <small>(mismo teclado)</small></button>
+        <button class="btn ghost" id="howtoBtn">CONTROLES</button>
+      </div>
+      <div class="tagline">Un magnate, una abuela con chancla, un capibara zen y un router.<br>Nadie sabe por qué. Nadie preguntó.</div>
+    </div>
+
+    <!-- ===== CONTROLES ===== -->
+    <div id="howto" class="layer hidden">
+      <h2>CONTROLES</h2>
+      <div class="cols">
+        <div class="ctrlbox">
+          <h3>JUGADOR 1</h3>
+          <p><b>A / D</b> mover · <b>W</b> saltar · <b>S</b> agacharse</p>
+          <p><b>F</b> puño · <b>G</b> patada · <b>H</b> especial</p>
+          <p><b>T</b> SUPER (barra llena) · <b>S+F</b> uppercut</p>
+          <p>Mantén <b>atrás</b> para bloquear</p>
+        </div>
+        <div class="ctrlbox">
+          <h3>JUGADOR 2 / CPU</h3>
+          <p><b>← / →</b> mover · <b>↑</b> saltar · <b>↓</b> agacharse</p>
+          <p><b>J</b> puño · <b>K</b> patada · <b>L</b> especial</p>
+          <p><b>O</b> SUPER (barra llena) · <b>↓+J</b> uppercut</p>
+          <p><b>ESC</b> pausa · <b>M</b> silenciar</p>
+        </div>
+      </div>
+      <button class="btn" id="howtoBack">VOLVER</button>
+    </div>
+
+    <!-- ===== SELECCION ===== -->
+    <div id="select" class="layer hidden">
+      <div class="selhead"><span id="selPrompt">JUGADOR 1: ELIGE TU RANDOM</span></div>
+      <div id="selGrid" class="grid"></div>
+      <div class="selfoot">
+        <div class="bio" id="selBio">—</div>
+        <div class="hint">P1: WASD + F para elegir · P2: flechas + J · ESC para volver</div>
+      </div>
+    </div>
+
+    <!-- ===== VS ===== -->
+    <div id="vs" class="layer hidden">
+      <div class="vsside"><canvas class="vsart" id="vsA" width="60" height="64"></canvas><div class="vsname" id="vsAName"></div></div>
+      <div class="vsword">VS</div>
+      <div class="vsside"><canvas class="vsart" id="vsB" width="60" height="64"></canvas><div class="vsname" id="vsBName"></div></div>
+    </div>
+
+    <!-- ===== RESULTADO ===== -->
+    <div id="result" class="layer hidden">
+      <div class="winner" id="winnerName"></div>
+      <div class="quote" id="winnerQuote"></div>
+      <div class="menu">
+        <button class="btn" id="againBtn">REVANCHA</button>
+        <button class="btn ghost" id="menuBtn">MENÚ PRINCIPAL</button>
+      </div>
+    </div>
+
+    <!-- ===== PAUSA ===== -->
+    <div id="pause" class="layer hidden">
+      <h2>PAUSA</h2>
+      <div class="menu">
+        <button class="btn" id="resumeBtn">CONTINUAR</button>
+        <button class="btn ghost" id="quitBtn">SALIR AL MENÚ</button>
+      </div>
+    </div>
+  </div>
+  <p class="disclaimer">Todos los personajes son parodias ficticias. Cualquier parecido con la realidad es culpa de la realidad.</p>
+</div>
+
+<script src="js/pixel.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/roster.js"></script>
+<script src="js/render.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/fighter.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
