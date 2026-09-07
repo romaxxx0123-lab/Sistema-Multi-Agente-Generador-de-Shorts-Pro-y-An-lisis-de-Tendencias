@@ -145,6 +145,23 @@ class Particle {
   }
 }
 
+/* adorno decorativo (el arbolito feliz de Bob) */
+class Deco {
+  constructor(x, y, artId, life) {
+    this.art = ART[artId];
+    this.x = x; this.y = y;
+    this.life = life || 240; this.max = this.life;
+    this.dead = false;
+  }
+  update() { if (--this.life <= 0) this.dead = true; }
+  draw(ctx) {
+    if (this.life < 40 && this.life % 6 < 3) return;
+    const rise = Math.min(0, -(this.max - this.life) + 8);
+    Pix.grid(ctx, this.art.rows, this.art.pal,
+      this.x - this.art.rows[0].length / 2, this.y - this.art.rows.length + rise);
+  }
+}
+
 class Popup {
   constructor(x, y, text, color) {
     this.size = text.length > 14 ? 6 : 8;
@@ -168,6 +185,7 @@ class World {
     this.stage = stageId;
     this.projs = [];
     this.walls = [];
+    this.decos = [];
     this.parts = [];
     this.pops = [];
     this.fighters = [];
@@ -241,6 +259,7 @@ class World {
           this.parts.push(new Particle(owner.x + rnd(-9, 9), owner.y - rnd(0, 42),
             rnd(-0.3, 0.3), rnd(-1.2, -0.4), irnd(20, 40), '#9bf59b', 1, -0.01));
         this.popup(owner.x, owner.y - 52, '+' + (sp.heal || 15), '#4ad14a');
+        if (sp.art) this.decos.push(new Deco(owner.x - owner.dir * 16, GROUND, sp.art, 260));
         Sfx.heal();
         break;
       }
@@ -249,7 +268,7 @@ class World {
         const cx = opp ? opp.x : owner.x + owner.dir * 60;
         for (let i = 0; i < (sp.count || 6); i++) {
           this.projs.push(new Proj(owner, {
-            dmg: sp.dmg, art: sp.art, speed: 0, life: 200, gravity: 0.16
+            dmg: sp.dmg, art: sp.art, speed: 0, life: 200, gravity: 0.16, effect: sp.effect
           }, { x: clamp(cx + rnd(-42, 42), 10, W - 10), y: -10 - i * 14, vx: rnd(-0.4, 0.4), vy: rnd(0.4, 1.4), g: 0.16 }));
         }
         Sfx.shoot();
@@ -282,16 +301,18 @@ class World {
     if (this.chyron && --this.chyron.t <= 0) this.chyron = null;
     if (this.shake > 0) this.shake--;
     if (this.flash > 0) this.flash--;
-    for (const a of [this.projs, this.walls, this.parts, this.pops]) {
+    for (const a of [this.projs, this.walls, this.parts, this.pops, this.decos]) {
       for (const e of a) e.update(this);
     }
     this.projs = this.projs.filter(e => !e.dead);
     this.walls = this.walls.filter(e => !e.dead);
+    this.decos = this.decos.filter(e => !e.dead);
     this.parts = this.parts.filter(e => !e.dead);
     this.pops = this.pops.filter(e => !e.dead);
   }
 
   drawBack(ctx) {
+    for (const d of this.decos) d.draw(ctx);
     for (const w of this.walls) w.draw(ctx);
   }
 

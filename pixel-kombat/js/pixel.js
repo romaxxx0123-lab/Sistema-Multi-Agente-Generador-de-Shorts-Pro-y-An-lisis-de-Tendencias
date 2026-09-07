@@ -43,15 +43,10 @@ const Pix = {
     }
   },
 
-  /* texto retro sobre el lienzo (se ve chunky al escalar) */
+  /* texto en pixeles (fuente propia); y = centro vertical */
   text(ctx, str, x, y, color, align = 'center', size = 8) {
-    ctx.font = 'bold ' + size + 'px "Courier New", monospace';
-    ctx.textAlign = align;
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#000';
-    ctx.fillText(str, Math.round(x) + 1, Math.round(y) + 1);
-    ctx.fillStyle = color;
-    ctx.fillText(str, Math.round(x), Math.round(y));
+    const sc = size >= 14 ? 2 : 1;
+    Text.draw(ctx, str, x, y - 4 * sc, color, align, sc);
   },
 
   shadow(ctx, x, y, w) {

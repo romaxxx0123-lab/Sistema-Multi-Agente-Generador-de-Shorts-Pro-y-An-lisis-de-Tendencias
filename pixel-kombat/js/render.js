@@ -30,24 +30,26 @@ function drawFighter(ctx, f) {
   const shoulderY = torsoTop + 3;
   const swing = Math.round(Math.sin(A.walk) * 3);
   const foot = '#22252f';
+  const legC = B.legs || B.main, legD = B.legsDark || B.dark;
+  const aw = B.bulk ? 4 : 3;
 
   /* ---------- piernas ---------- */
   if (A.kick > 0) {
-    Pix.r(ctx, -5, hipY, 4, legLen, C(B.dark));
+    Pix.r(ctx, -5, hipY, 4, legLen, C(legD));
     Pix.r(ctx, -6, hipY + legLen - 2, 6, 2, C(foot));
     const ky = A.kickHigh ? hipY - 7 : hipY + Math.max(0, legLen - 6);
     const kl = 5 + 11 * A.kick;
-    Pix.r(ctx, 1, ky, kl, 4, C(B.main));
+    Pix.r(ctx, 1, ky, kl, 4, C(legC));
     Pix.r(ctx, 1 + kl, ky - 1, 5, 5, C(foot));
   } else if (A.air) {
-    Pix.r(ctx, -5, hipY + 2, 4, legLen - 5, C(B.dark));
+    Pix.r(ctx, -5, hipY + 2, 4, legLen - 5, C(legD));
     Pix.r(ctx, -7, hipY + legLen - 3, 6, 3, C(foot));
-    Pix.r(ctx, 1, hipY, 4, legLen - 4, C(B.main));
+    Pix.r(ctx, 1, hipY, 4, legLen - 4, C(legC));
     Pix.r(ctx, 1, hipY + legLen - 4, 6, 3, C(foot));
   } else {
-    Pix.r(ctx, -5 - swing, hipY, 4, legLen, C(B.dark));
+    Pix.r(ctx, -5 - swing, hipY, 4, legLen, C(legD));
     Pix.r(ctx, -6 - swing, hipY + legLen - 2, 6, 2, C(foot));
-    Pix.r(ctx, 1 + swing, hipY, 4, legLen, C(B.main));
+    Pix.r(ctx, 1 + swing, hipY, 4, legLen, C(legC));
     Pix.r(ctx, 1 + swing, hipY + legLen - 2, 6, 2, C(foot));
   }
 
@@ -59,7 +61,7 @@ function drawFighter(ctx, f) {
     Pix.r(ctx, -2, shoulderY - 2, 9, 3, C(B.dark));
     Pix.r(ctx, 7, shoulderY - 3, 4, 4, C(B.skin));
   } else {
-    Pix.r(ctx, -8, shoulderY + swing, 3, 9, C(B.dark));
+    Pix.r(ctx, -8, shoulderY + swing, aw, 9, C(B.dark));
   }
 
   /* ---------- brazo delantero ---------- */
@@ -76,7 +78,7 @@ function drawFighter(ctx, f) {
     Pix.r(ctx, 3, shoulderY - 1, 4, 12, C(B.dark));
     Pix.r(ctx, 3, shoulderY - 1, 4, 3, C(B.light));
   } else {
-    Pix.r(ctx, 5, shoulderY - swing, 3, 9, C(B.main));
+    Pix.r(ctx, 5, shoulderY - swing, aw, 9, C(B.main));
     Pix.r(ctx, 5, shoulderY - swing + 9, 4, 4, C(B.skin));
   }
 
@@ -117,10 +119,46 @@ function drawTorso(ctx, B, top, C, A) {
       Pix.r(ctx, 0, top + 5, 2, 2, C(A.bob ? B.light : B.dark));
       Pix.r(ctx, -6, top + 13, 12, 3, C(B.light));
       break;
-    case 'ninja':
-      Pix.r(ctx, -6, top + 9, 12, 3, C(B.accent));
-      Pix.r(ctx, -6, top + 1, 4, 8, C(B.dark));
-      Pix.r(ctx, -9, top + 2, 4, 9, C(B.accent));
+    case 'jacket':                                   // cazadora abierta
+      Pix.r(ctx, -3, top, 6, 16, C(B.light));
+      Pix.r(ctx, -6, top, 3, 14, C(B.dark));
+      Pix.r(ctx, 3, top, 3, 14, C(B.dark));
+      Pix.r(ctx, -1, top + 3, 2, 2, C(B.accent));
+      break;
+    case 'stripes':                                  // camiseta a rayas
+      Pix.r(ctx, -6, top, 2, 16, C(B.light));
+      Pix.r(ctx, -1, top, 2, 16, C(B.light));
+      Pix.r(ctx, 4, top, 2, 16, C(B.light));
+      Pix.r(ctx, -3, top, 6, 2, C(B.dark));
+      Pix.r(ctx, -6, top + 13, 12, 3, C(B.light));
+      break;
+    case 'jersey':                                   // camiseta lisa con cuello
+      Pix.r(ctx, -3, top, 6, 2, C(B.light));
+      Pix.r(ctx, -6, top + 13, 12, 3, C(B.light));
+      Pix.r(ctx, 2, top + 4, 2, 5, C(B.light));
+      Pix.r(ctx, 1, top + 4, 3, 1, C(B.light));
+      break;
+    case 'chef':                                     // chaquetilla con botones
+      Pix.r(ctx, -6, top, 12, 2, C(B.accent));
+      Pix.r(ctx, -3, top + 3, 1, 1, C(B.accent));
+      Pix.r(ctx, -3, top + 6, 1, 1, C(B.accent));
+      Pix.r(ctx, -3, top + 9, 1, 1, C(B.accent));
+      Pix.r(ctx, 1, top + 3, 1, 1, C(B.accent));
+      Pix.r(ctx, 1, top + 6, 1, 1, C(B.accent));
+      Pix.r(ctx, 1, top + 9, 1, 1, C(B.accent));
+      Pix.r(ctx, -6, top + 12, 12, 4, C(B.dark));
+      break;
+    case 'shirt':                                    // camisa remangada
+      Pix.r(ctx, -3, top, 6, 3, C(B.light));
+      Pix.r(ctx, -1, top + 3, 1, 10, C(B.dark));
+      Pix.r(ctx, -6, top + 12, 12, 2, C(B.dark));
+      Pix.r(ctx, 4, top + 2, 2, 6, C(B.light));
+      break;
+    case 'tee':                                      // camiseta ajustada
+      Pix.r(ctx, -3, top, 6, 2, C(B.dark));
+      Pix.r(ctx, -6, top, 2, 6, C(B.light));
+      Pix.r(ctx, 4, top, 2, 6, C(B.light));
+      Pix.r(ctx, -2, top + 5, 4, 1, C(B.accent));
       break;
   }
 }
@@ -137,6 +175,22 @@ function drawSpin(ctx, def, A) {
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.fillRect(-14, -30, 2, 20);
   ctx.fillRect(12, -34, 2, 20);
+}
+
+/* pose neutra para retratos */
+const IDLE_ANIM = {
+  crouch: 0, punch: 0, kick: 0, cast: 0, walk: 0, air: false, ko: 0,
+  bob: 0, block: false, flash: false, spin: false, kickHigh: false, punchUp: false
+};
+
+/* dibuja a un personaje suelto (menus, VS, seleccion) */
+function drawPose(ctx, def, x, y, dir, scale, anim) {
+  const dummy = { def, x: 0, y: 0, dir: dir || 1, animParams: () => anim || IDLE_ANIM };
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  if (scale && scale !== 1) ctx.scale(scale, scale);
+  drawFighter(ctx, dummy);
+  ctx.restore();
 }
 
 /* ---------- retratos para el menu de seleccion ---------- */

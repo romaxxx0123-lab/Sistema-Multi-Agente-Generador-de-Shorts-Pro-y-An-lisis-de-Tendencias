@@ -1,391 +1,212 @@
 /* =========================================================
-   roster.js — los 8 randoms del torneo
-   Cada personaje: cabeza en pixel-grid, paleta, stats,
-   un ESPECIAL (30 de barra) y un SUPER (100 de barra).
-   Todos son parodias ficticias.
+   roster.js — 8 parodias de gente real.
+   El chiste sale de quiénes son: sus poderes son sus memes.
+   Nombres deformados a propósito: son caricaturas, no ellos.
    ========================================================= */
 
 /* ---------- arte de proyectiles ---------- */
 const ART = {
   bill: {
     pal: { g: '#3fa14a', G: '#7ede78', k: '#123a17', y: '#f5e07a' },
-    rows: [
-      'gggggggg',
-      'gGGGGGGg',
-      'gGykkyGg',
-      'gGykkyGg',
-      'gGGGGGGg',
-      'gggggggg'
-    ]
+    rows: ['gggggggg', 'gGGGGGGg', 'gGykkyGg', 'gGykkyGg', 'gGGGGGGg', 'gggggggg']
   },
-  chancla: {
-    pal: { b: '#7b4bd4', B: '#4a2a8c', k: '#221037', w: '#c8a6ff' },
-    rows: [
-      '..kkkk..',
-      '.BwwwwB.',
-      'BbbbbbbB',
-      'BbbkkbbB',
-      '.BbbbbB.',
-      '..BBBB..'
-    ]
+  cohete: {
+    pal: { w: '#f2f2ef', r: '#e0343c', y: '#f5c542', d: '#8d97ad' },
+    rows: ['..w..', '.rwr.', '.rwr.', '.rrr.', 'd.y.d', '.y.y.']
   },
-  guano: {
-    pal: { w: '#f2f4ee', l: '#c9cdbc', d: '#6d7160', y: '#d8d84a' },
-    rows: [
-      '..dwwd..',
-      '.wwwwww.',
-      'wwwlwwww',
-      'wwwwwlww',
-      '.wwwwww.',
-      '..dllw..'
-    ]
+  tuit: {
+    pal: { w: '#f2f2ef', k: '#101726', c: '#48e0d0' },
+    rows: ['wwwwww', 'wkwwkw', 'wwkkww', 'wkwwkw', 'wwwwww', 'cc....']
   },
-  wifi: {
-    pal: { c: '#48e0d0', C: '#a8fff4', d: '#106b64' },
-    rows: [
-      '..d..c..',
-      '.d.c.C.c',
-      'd.c.C.C.',
-      'd.c.CCC.',
-      'd.c.C.C.',
-      '.d.c.C.c',
-      '..d..c..'
-    ]
+  balon: {
+    pal: { w: '#f2f2ef', k: '#1a1a1a' },
+    rows: ['..www..', '.wkwkw.', 'wwwkwww', 'wkwwwkw', 'wwwkwww', '.wkwkw.', '..www..']
   },
-  maki: {
-    pal: { k: '#161616', w: '#f4f2e6', p: '#f07a86', G: '#3fa14a' },
-    rows: [
-      '.kkkkk.',
-      'kwwwwwk',
-      'kwppwGk',
-      'kwppppk',
-      'kwGwwwk',
-      'kwwwwwk',
-      '.kkkkk.'
-    ]
+  grito: {
+    pal: { y: '#f5c542', w: '#fff2a8' },
+    rows: ['..y..', '.y.w.', 'y.w.y', 'y.w.y', '.y.w.', '..y..']
   },
-  broco: {
-    pal: { G: '#4ad14a', D: '#2a7d3a', l: '#9bf59b' },
-    rows: [
-      '.GlG.',
-      'GGGGG',
-      'lGGGl',
-      '.DDD.',
-      '.DD..'
-    ]
+  plato: {
+    pal: { w: '#f2f2ef', r: '#c0392b', p: '#f07a86' },
+    rows: ['.wwwww.', 'wwprpww', 'wprrrpw', 'wwprpww', '.wwwww.']
   },
-  sopa: {
-    pal: { o: '#f0932b', y: '#ffd166', r: '#c0392b', w: '#ffe9c9' },
-    rows: [
-      '..yyyy..',
-      '.yoooooy',
-      'yoorrooy',
-      'yooooooy',
-      '.yooooy.',
-      '..wwww..'
-    ]
+  sarten: {
+    pal: { k: '#22252f', r: '#e0343c', y: '#f5c542' },
+    rows: ['..rr...', '.ryyr..', 'kkkkkk.', 'kkkkkkk', '.kkkk..']
   },
-  blade: {
-    pal: { l: '#d7dbe6', w: '#ffffff', d: '#6b7280', p: '#f07ac0' },
-    rows: [
-      '.d.ll.d.',
-      'd.lwwl.d',
-      '.lwppwl.',
-      '.lwppwl.',
-      'd.lwwl.d',
-      '.d.ll.d.'
-    ]
+  arbol: {
+    pal: { G: '#4ad14a', D: '#2a7d3a', n: '#6b4a2a' },
+    rows: ['..G..', '.GDG.', 'GGGGG', '.GDG.', '..n..', '..n..']
+  },
+  mancha: {
+    pal: { p: '#f07ac0', b: '#9bb7f0' },
+    rows: ['..pp..', '.pbbp.', 'pbbbbp', '.pbbp.', '..pp..', '.p..p.']
+  },
+  ceja: {
+    pal: { k: '#3a2a1a', n: '#6b4a2a' },
+    rows: ['...knn', '..kn..', '.kn...', 'kn....']
+  },
+  captcha: {
+    pal: { k: '#101726', w: '#f2f2ef', c: '#48e0d0' },
+    rows: ['kkkkkk', 'k.w.wk', 'kw.c.k', 'k.w.wk', 'kkkkkk']
+  },
+  doc: {
+    pal: { w: '#f2f2ef', k: '#5a6478' },
+    rows: ['wwwww', 'wkkkw', 'wwwww', 'wkkkw', 'wwwww']
   }
 };
 
-/* ---------- personajes ---------- */
+/* ---------- el elenco ---------- */
 const ROSTER = [
   {
-    id: 'trumpo',
-    name: 'TRUMPO',
-    title: 'EL MAGNATE DORADO',
-    type: 'dinero', sub: 'LADRILLO',
-    bio: 'Construye muros y paga los daños en efectivo. Tremendo, la gente lo dice.',
-    speed: 1.28, power: 1.05, weight: 1.1,
-    pal: { s: '#f0a878', S: '#c98055', h: '#f5dc8e', H: '#cbae52', k: '#181818', m: '#8c3b3b' },
-    head: [
-      '....hhhh....',
-      '..hhhhhhhh..',
-      '.hhhhhhhhhh.',
-      '.hhsssssshh.',
-      '.ssssssssss.',
-      '.skssskssss.',
-      '.ssssssssss.',
-      '.sssmmmmsss.',
-      '.ssssssssss.',
-      '..ssssssss..',
-      '...SSSSSS...',
-      '....ssss....'
-    ],
+    id: 'trumpo', name: 'TRUMPO', short: 'TRUMPO', real: 'EL MAGNATE',
+    title: 'CONSTRUCTOR DE MUROS', type: 'dinero', sub: 'LADRILLO',
+    bio: 'PAGA LOS DAÑOS EN EFECTIVO Y LA FACTURA TE LLEGA A TI.',
+    speed: 1.28, power: 1.05,
+    pal: { s: '#f0a878', S: '#c98055', h: '#f5dc8e', k: '#181818', m: '#8c3b3b' },
+    head: ['....hhhh....', '..hhhhhhhh..', '.hhhhhhhhhh.', '.hhsssssshh.',
+           '.ssssssssss.', '.skssskssss.', '.ssssssssss.', '.sssmmmmsss.',
+           '.ssssssssss.', '..ssssssss..', '...SSSSSS...', '....ssss....'],
     body: { style: 'suit', main: '#1e2436', dark: '#141926', light: '#f2f2ef', accent: '#c02a2a', skin: '#f0a878' },
-    special: {
-      name: 'MURO DE ORO', cost: 30, kind: 'wall', dmg: 8,
-      say: '¡PAGA EL MURO!'
-    },
-    superMove: {
-      name: 'LLUVIA DE BILLETES', cost: 100, kind: 'projectile', dmg: 11, count: 6, spread: 0.9,
-      speed: 2.1, gravity: 0.045, art: 'bill', oy: -34, life: 130,
-      say: '¡EFECTIVO, MUCHO EFECTIVO!'
-    },
-    quotes: ['Gané. Enorme victoria. La más grande.', 'Te mandé la factura del muro.', 'Nadie construye muros como yo. Nadie.', 'Esto lo pagas tú. Siempre lo pagas tú.'],
+    special: { name: 'MURO DE ORO', cost: 30, kind: 'wall', dmg: 8, say: '¡Y LO PAGAS TÚ!' },
+    superMove: { name: 'LLUVIA DE BILLETES', cost: 100, kind: 'projectile', dmg: 11, count: 6, spread: 0.9,
+      speed: 2.1, gravity: 0.045, art: 'bill', oy: -34, life: 130, say: '¡EFECTIVO, MUCHO EFECTIVO!' },
+    quotes: ['GANÉ. ENORME VICTORIA. LA MÁS GRANDE.', 'TE MANDÉ LA FACTURA DEL MURO.',
+             'NADIE CONSTRUYE MUROS COMO YO. NADIE.'],
     taunt: '¡TREMENDO!'
   },
 
   {
-    id: 'abuela',
-    name: 'ABUELA CHANCLETA',
-    title: 'CAMPEONA DE PUNTERÍA',
-    type: 'chancla', sub: 'SOPA',
-    bio: 'Chancla teledirigida calibrada con 40 años de experiencia. Nunca falla.',
-    speed: 1.22, power: 1.0, weight: 1.0,
-    pal: { s: '#f2c9a0', S: '#cfa17c', l: '#dfe3ea', w: '#ffffff', k: '#181818', m: '#a34b52', p: '#d874a0' },
-    head: [
-      '...llllll...',
-      '..llllllll..',
-      '.llllllllll.',
-      '.llssssssll.',
-      '.ssssssssss.',
-      '.wkwsswkwss.',
-      '.ssssssssss.',
-      '..sssmmss...',
-      '..ssssssss..',
-      '...ssssss...',
-      '...pppppp...',
-      '....pppp....'
-    ],
-    body: { style: 'dress', main: '#c0507f', dark: '#8e3459', light: '#f6dce8', accent: '#f2c94c', skin: '#f2c9a0' },
-    special: {
-      name: 'CHANCLA TELEDIRIGIDA', cost: 30, kind: 'projectile', dmg: 12,
-      speed: 1.9, homing: 0.14, art: 'chancla', oy: -32, life: 180,
-      say: '¡TE LA MANDÉ CON CARIÑO!'
-    },
-    superMove: {
-      name: 'SOPA HIRVIENDO', cost: 100, kind: 'projectile', dmg: 9, count: 4, spread: 0.5,
-      speed: 2.4, art: 'sopa', oy: -30, life: 120, effect: 'burn',
-      say: '¡ESTÁ CALENTITA, TÓMATELA!'
-    },
-    quotes: ['Ahora sí te comes toda la sopa.', 'En mis tiempos ganábamos sin barra de super.', 'Y ahora te tomas la sopa que dejaste en 1998.', 'Le voy a contar a tu madre.'],
-    taunt: '¡NO ME CONTESTES!'
+    id: 'musko', name: 'MUSKO', short: 'MUSKO', real: 'EL DE LOS COHETES',
+    title: 'DIRECTOR DE TODO', type: 'cohete', sub: 'BETA PERMANENTE',
+    bio: 'LANZA COHETES QUE A VECES ATERRIZAN. TUITEA A LAS 3 DE LA MAÑANA.',
+    speed: 1.22, power: 1.0,
+    pal: { s: '#f0c8a8', S: '#c9a17c', h: '#4a3524', k: '#181818', m: '#8c3b3b' },
+    head: ['............', '...hhhhhh...', '..hhhhhhhh..', '.hhsssssshh.',
+           '.ssssssssss.', '.skssskssss.', '.ssssssssss.', '.ssssmmssss.',
+           '.ssssssssss.', '..ssssssss..', '...SSSSSS...', '....ssss....'],
+    body: { style: 'jacket', main: '#1a1a1e', dark: '#0e0e12', light: '#2a2a34', accent: '#e0343c', skin: '#f0c8a8' },
+    special: { name: 'ATERRIZAJE CONTROLADO', cost: 30, kind: 'projectile', dmg: 12,
+      speed: 2.7, gravity: 0.10, vy: -2.0, art: 'cohete', oy: -38, life: 150, splash: true,
+      say: 'ESTA VEZ SÍ ATERRIZA' },
+    superMove: { name: 'TUIT DE MADRUGADA', cost: 100, kind: 'projectile', dmg: 12, count: 3, spread: 0.4,
+      speed: 3.2, art: 'tuit', oy: -32, life: 130, effect: 'slow', say: '¡SE DESPLOMÓ LA BOLSA!' },
+    quotes: ['LO ARREGLO CON UNA ACTUALIZACIÓN DE SOFTWARE.', 'COMPRÉ EL RING. AHORA SE LLAMA X.',
+             'TU DERROTA ESTABA EN LA HOJA DE RUTA.'],
+    taunt: '¡AL ESPACIO!'
   },
 
   {
-    id: 'capi',
-    name: 'CAPI',
-    title: 'CAPIBARA ZEN',
-    type: 'zen', sub: 'ROEDOR',
-    bio: 'No pelea, coexiste. Si te gana es porque te estresaste tú solo.',
-    speed: 1.05, power: 1.15, weight: 1.35,
-    pal: { n: '#a4794a', N: '#7a5631', k: '#181818', w: '#ffe9c9' },
-    head: [
-      '..n......n..',
-      '.nnn....nnn.',
-      '.nnnnnnnnnn.',
-      'nnnnnnnnnnnn',
-      'nnkknnnnkknn',
-      'nnnnnnnnnnnn',
-      '.nnnnnnnnnn.',
-      '.nnNNNNNNnn.',
-      '.nnNkkkkNnn.',
-      '..NNNNNNNN..',
-      '...nnnnnn...',
-      '....nnnn....'
-    ],
-    body: { style: 'fur', main: '#a4794a', dark: '#7a5631', light: '#c9a06d', accent: '#4ad14a', skin: '#a4794a' },
-    special: {
-      name: 'AURA ZEN', cost: 30, kind: 'heal', heal: 18, guard: 240,
-      say: '...todo bien, todo tranquilo.'
-    },
-    superMove: {
-      name: 'ESTAMPIDA', cost: 100, kind: 'dash', dmg: 10, hits: 3, speed: 4.2, dur: 34,
-      say: '¡MOMENTO NO-ZEN!'
-    },
-    quotes: ['Ganar, perder... el río sigue igual.', 'Te presté mi calma y no la usaste.', 'No gané yo. Ganó el momento presente.', 'Ahora si me disculpas, hay un charco tibio esperándome.'],
-    taunt: 'mmh.'
+    id: 'pulga', name: 'EL PULGA', short: 'PULGA', real: 'EL DE LA ZURDA',
+    title: 'ZURDA REGISTRADA', type: 'futbol', sub: 'TRANQUILO',
+    bio: 'CAMINA, CAMINA, CAMINA Y DE REPENTE TE ELIMINÓ DEL TORNEO.',
+    speed: 1.55, power: 0.85,
+    pal: { s: '#e8b98f', S: '#c2926a', h: '#8a6a44', b: '#6b4f30', k: '#181818', m: '#8c3b3b' },
+    head: ['............', '..hhhhhhhh..', '.hhhhhhhhhh.', '.hhsssssshh.',
+           '.ssssssssss.', '.skssskssss.', '.ssssssssss.', '.bbbbmmbbbb.',
+           '.bbbbbbbbbb.', '..bbbbbbbb..', '...bbbbbb...', '....ssss....'],
+    body: { style: 'stripes', main: '#7fd0e8', dark: '#3a7f96', light: '#f2f2ef', accent: '#f5c542', skin: '#e8b98f', legs: '#e8ecf5', legsDark: '#b9c4d8' },
+    special: { name: 'TIRO LIBRE', cost: 30, kind: 'projectile', dmg: 11,
+      speed: 2.6, homing: 0.13, art: 'balon', oy: -20, life: 170, say: 'AL ÁNGULO' },
+    superMove: { name: 'GAMBETA INFINITA', cost: 100, kind: 'dash', dmg: 9, hits: 4, speed: 4.6, dur: 36,
+      say: '¡SE FUE DE CUATRO!' },
+    quotes: ['Y HOY TAMPOCO FUE PENAL.', 'LA PELOTA NO SE MANCHA. TU RÉCORD SÍ.',
+             'ANDÁ, TRANQUILO, NO PASA NADA.'],
+    taunt: 'ANDÁ P’ALLÁ'
   },
 
   {
-    id: 'palomo',
-    name: 'PALOMO 3000',
-    title: 'PALOMA CIBERNÉTICA',
-    type: 'aereo', sub: 'CHATARRA',
-    bio: 'Le pusieron un ojo láser y sigue prefiriendo el pan viejo.',
-    speed: 1.45, power: 0.9, weight: 0.8,
-    pal: { d: '#6f7d99', D: '#4a5670', c: '#9fb6d9', o: '#f0932b', k: '#181818', r: '#ff4d4d', w: '#ffffff' },
-    head: [
-      '....dddd....',
-      '..dddddddd..',
-      '.dddddddddd.',
-      '.dddddddddd.',
-      '.ddwkddrrdd.',
-      '.dddddddoooo',
-      '.dddddddoo..',
-      '.cccccccc...',
-      '..cccccc....',
-      '...cccc.....',
-      '...dddd.....',
-      '....dd......'
-    ],
-    body: { style: 'fur', main: '#6f7d99', dark: '#4a5670', light: '#9fb6d9', accent: '#f0932b', skin: '#6f7d99' },
-    special: {
-      name: 'BOMBA GUANO', cost: 30, kind: 'projectile', dmg: 10,
-      speed: 2.6, gravity: 0.09, vy: -1.8, art: 'guano', oy: -38, life: 140, splash: true,
-      say: '¡SORPRESA DESDE ARRIBA!'
-    },
-    superMove: {
-      name: 'PICOTAZO SUPERSÓNICO', cost: 100, kind: 'dash', dmg: 9, hits: 4, speed: 5.0, dur: 30, air: true,
-      say: '¡PAN! ¿DÓNDE ESTÁ EL PAN?'
-    },
-    quotes: ['Coo. Coo. (traducción: gané)', 'Te estacionaste debajo de mí. Error.', 'Coo. (Se te ve el auto desde aquí.)', 'Volveré. Siempre vuelvo. Y siempre desde arriba.'],
-    taunt: '¡COO!'
+    id: 'siuuu', name: 'SIUUU', short: 'SIUUU', real: 'EL DEL SALTO',
+    title: 'MÁQUINA DE SALTAR', type: 'ego', sub: 'ABDOMINALES',
+    bio: 'SALTA MÁS ALTO QUE TU AUTOESTIMA Y ADEMÁS TE LO CUENTA.',
+    speed: 1.42, power: 1.0,
+    pal: { s: '#e0a878', S: '#b8845a', h: '#1a1410', w: '#ffffff', k: '#181818' },
+    head: ['............', '..hhhhhhhh..', '.hhhhhhhhhh.', '.hhhhhhhhhh.',
+           '.ssssssssss.', '.skssskssss.', '.ssssssssss.', '..sswwwwss..',
+           '..sswwwwss..', '..ssssssss..', '...ssssss...', '....ssss....'],
+    body: { style: 'jersey', main: '#c0392b', dark: '#8f1218', light: '#f2f2ef', accent: '#f5c542', skin: '#e0a878', legs: '#f2f2ef', legsDark: '#c9cfdd' },
+    special: { name: 'CABEZAZO ORBITAL', cost: 30, kind: 'dash', dmg: 11, hits: 2, speed: 4.4, dur: 30, air: true,
+      say: '¡SIGO SUBIENDO!' },
+    superMove: { name: 'GRITO SIUUU', cost: 100, kind: 'projectile', dmg: 13, count: 2, spread: 0.5,
+      speed: 3.0, art: 'grito', oy: -34, life: 130, big: true, effect: 'slow', say: '¡SIUUUUUU!' },
+    quotes: ['SOY EL MEJOR. LO DIGO YO, QUE SÉ DE ESTO.', 'ESAS CINCO LAS GANÉ SOLO.',
+             'EL TALENTO SIN TRABAJO NO ES NADA. YO TENGO LOS DOS.'],
+    taunt: '¡SIUUU!'
   },
 
   {
-    id: 'router',
-    name: 'DON ROUTER',
-    title: 'SEÑOR DE LA SEÑAL',
-    type: 'senal', sub: 'RUIDO BLANCO',
-    bio: 'Tiene todas las barras y aún así te va lento. Reiniciarlo no sirve.',
-    speed: 1.15, power: 1.0, weight: 1.2,
-    pal: { d: '#3c4457', l: '#8d97ad', c: '#48e0d0', g: '#4ad14a', r: '#ff4d4d', k: '#0f131c' },
-    head: [
-      '..l......l..',
-      '..l......l..',
-      'dddddddddddd',
-      'dlllllllllld',
-      'dlkllllkllld',
-      'dlllllllllld',
-      'dlgrglllllld',
-      'dddddddddddd',
-      '..dddddddd..',
-      '...dddddd...',
-      '...cccccc...',
-      '....dddd....'
-    ],
-    body: { style: 'machine', main: '#3c4457', dark: '#252b38', light: '#8d97ad', accent: '#48e0d0', skin: '#8d97ad' },
-    special: {
-      name: 'LAG', cost: 30, kind: 'projectile', dmg: 6,
-      speed: 3.0, art: 'wifi', oy: -30, life: 110, effect: 'slow',
-      say: '¿Y si reinicias?'
-    },
-    superMove: {
-      name: 'DESCONEXIÓN TOTAL', cost: 100, kind: 'projectile', dmg: 14, count: 3, spread: 0.35,
-      speed: 3.4, art: 'wifi', oy: -30, life: 130, effect: 'slow', big: true,
-      say: '¡SIN INTERNET, SIN PIEDAD!'
-    },
-    quotes: ['Se cayó tu conexión. Y tú también.', 'Ping 9000. Ganaste el lag, no la pelea.', 'Prueba desconectando y conectando tu dignidad.', 'Tu problema no era el router. Nunca lo es.'],
-    taunt: 'BUFFERING...'
+    id: 'ramses', name: 'CHEF RAMSÉS', short: 'RAMSÉS', real: 'EL CHEF QUE GRITA',
+    title: 'TODO ESTÁ CRUDO', type: 'cocina', sub: 'GRITO',
+    bio: 'NUNCA HA VISTO UN PLATO BIEN HECHO. NI UN RIVAL BIEN COCINADO.',
+    speed: 1.25, power: 1.1,
+    pal: { s: '#f2c9a0', S: '#cfa17c', h: '#e8d9a0', k: '#181818' },
+    head: ['.h.h..h.h...', '.hhhhhhhhh..', '.hhhhhhhhhh.', '.hhsssssshh.',
+           '.ssssssssss.', '.kkssskkkss.', '.ssssssssss.', '.sskkkkkkss.',
+           '.ssssssssss.', '..ssssssss..', '...ssssss...', '....ssss....'],
+    body: { style: 'chef', main: '#f2f2ef', dark: '#c9cfdd', light: '#ffffff', accent: '#3a4560', skin: '#f2c9a0', legs: '#3a4560', legsDark: '#252b38' },
+    special: { name: '¡ESTÁ CRUDO!', cost: 30, kind: 'projectile', dmg: 10, count: 2, spread: 0.35,
+      speed: 3.2, art: 'plato', oy: -30, life: 120, say: '¡ESTO ESTÁ CRUDÍSIMO!' },
+    superMove: { name: 'PESADILLA EN LA COCINA', cost: 100, kind: 'rain', dmg: 9, count: 7, art: 'sarten',
+      effect: 'burn', say: '¡FUERA DE MI COCINA!' },
+    quotes: ['¡ESTO ESTÁ MÁS CRUDO QUE TU DEFENSA!', 'TE DEJÉ QUEMADO POR FUERA Y TEMBLANDO POR DENTRO.',
+             '¿ESTO LO HICISTE TÚ? ¿CON LAS MANOS?'],
+    taunt: '¡ESTÁ CRUDO!'
   },
 
   {
-    id: 'brocoli',
-    name: 'BRÓCOLI BOB',
-    title: 'EL VERDE QUE NADIE PIDIÓ',
-    type: 'fibra', sub: 'ENSALADA',
-    bio: 'Nutritivo, incomprendido y sorprendentemente violento.',
-    speed: 1.18, power: 1.0, weight: 1.0,
-    pal: { G: '#4ad14a', D: '#2a7d3a', l: '#9bf59b', k: '#123a17', m: '#1d5c2a' },
-    head: [
-      '..GGG..GGG..',
-      '.GGGGGGGGGG.',
-      'GGGGGGGGGGGG',
-      'GGGlGGGGlGGG',
-      '.GGkGGGGkGG.',
-      '.GGGGGGGGGG.',
-      '..GGmmmmGG..',
-      '..DDDDDDDD..',
-      '...DDDDDD...',
-      '...DDDDDD...',
-      '....DDDD....',
-      '....DDDD....'
-    ],
-    body: { style: 'veggie', main: '#2a7d3a', dark: '#1c5527', light: '#7de07d', accent: '#f2c94c', skin: '#4ad14a' },
-    special: {
-      name: 'FOTOSÍNTESIS', cost: 30, kind: 'heal', heal: 22, guard: 120,
-      say: '¡DAME SOL Y TE DOY GUERRA!'
-    },
-    superMove: {
-      name: 'LLUVIA DE VERDURAS', cost: 100, kind: 'rain', dmg: 8, count: 7, art: 'broco',
-      say: '¡CÓMETE LOS VEGETALES!'
-    },
-    quotes: ['Nadie me quiere en el plato pero aquí estoy.', 'Cinco porciones al día. Cinco golpes también.', 'Y todavía me dejas en el borde del plato.', 'Esto pasa por no comer verduras, campeón.'],
-    taunt: '¡FIBRA!'
+    id: 'bob', name: 'BOB LA BROCHA', short: 'BOB', real: 'EL PINTOR AMABLE',
+    title: 'ACCIDENTES FELICES', type: 'oleo', sub: 'ARBOLITO',
+    bio: 'NO CREE EN LOS ERRORES. TAMPOCO EN PEGARTE, PERO AQUÍ ESTAMOS.',
+    speed: 1.10, power: 0.95,
+    pal: { s: '#f2c9a0', S: '#cfa17c', h: '#6b4a2a', b: '#5a3d22', k: '#181818', m: '#8c5b4b' },
+    head: ['..hhhhhhhh..', '.hhhhhhhhhh.', 'hhhhhhhhhhhh', 'hhhsssssshhh',
+           '.hssssssssh.', '.skssskssss.', '.ssssssssss.', '.bbbbmmbbbb.',
+           '.bbbbbbbbbb.', '..bbbbbbbb..', '...bbbbbb...', '....ssss....'],
+    body: { style: 'shirt', main: '#7fa8d8', dark: '#4a6f9e', light: '#e8f0fa', accent: '#f0932b', skin: '#f2c9a0' },
+    special: { name: 'ARBOLITO FELIZ', cost: 30, kind: 'heal', heal: 22, guard: 200, art: 'arbol', say: 'UN AMIGUITO AQUÍ' },
+    superMove: { name: 'ACCIDENTE FELIZ', cost: 100, kind: 'rain', dmg: 8, count: 8, art: 'mancha',
+      effect: 'slow', say: 'NO HAY ERRORES, SOLO ACCIDENTES FELICES' },
+    quotes: ['NO PERDISTE, TUVISTE UN ACCIDENTE FELIZ.', 'UN ARBOLITO AQUÍ, UN MORETÓN ALLÁ.',
+             'HOY PINTAMOS UNA NUBECITA. Y TU DERROTA.'],
+    taunt: 'TODO TIENE ARREGLO'
   },
 
   {
-    id: 'licuadora',
-    name: 'LICUADORA-MAX',
-    title: 'MODO TURBO 12 VELOCIDADES',
-    type: 'electro', sub: 'BATIDO',
-    bio: 'Solo tiene dos botones: "pulso" y "arruinar tu día".',
-    speed: 1.32, power: 1.1, weight: 1.15,
-    pal: { l: '#d7dbe6', c: '#bfe6ff', d: '#4a5265', p: '#f07ac0', k: '#1a1d26' },
-    head: [
-      '..dddddddd..',
-      '.llllllllll.',
-      '.lccccccccl.',
-      '.lccccccccl.',
-      '.lckcccckcl.',
-      '.lccccccccl.',
-      '.lppppppppl.',
-      '.lppppppppl.',
-      '.lppppppppl.',
-      '.llllllllll.',
-      '...dddddd...',
-      '...dddddd...'
-    ],
-    body: { style: 'machine', main: '#c9cfdd', dark: '#8d94a6', light: '#f07ac0', accent: '#e0343c', skin: '#d7dbe6' },
-    special: {
-      name: 'TURBO LICUADO', cost: 30, kind: 'dash', dmg: 8, hits: 3, speed: 4.0, dur: 30,
-      say: '¡VELOCIDAD DOCE!'
-    },
-    superMove: {
-      name: 'BATIDO MORTAL', cost: 100, kind: 'projectile', dmg: 13, count: 5, spread: 0.6,
-      speed: 3.2, art: 'blade', oy: -30, life: 120,
-      say: '¡SIN GRUMOS!'
-    },
-    quotes: ['Quedaste bien batido.', 'Te licué en dos velocidades menos de las que tengo.', 'Modo pulso. Ni lo viste venir.', 'Te dejé cremoso y sin grumos.'],
-    taunt: '¡BRRRRR!'
+    id: 'roca', name: 'LA ROCA', short: 'LA ROCA', real: 'EL DE LA CEJA',
+    title: '¿HUELES ESO?', type: 'roca', sub: 'CEJA',
+    bio: 'DESAYUNA MÁS CALORÍAS QUE TÚ EN UNA SEMANA. Y LEVANTA UNA CEJA.',
+    speed: 1.05, power: 1.30,
+    pal: { s: '#b0774a', S: '#8a5a34', k: '#181818', m: '#7a3b3b' },
+    head: ['............', '...ssssss...', '..ssssssss..', '.ssssssssss.',
+           '.sssssskkss.', '.skksssksss.', '.ssssssssss.', '.sssmmmmsss.',
+           '.ssssssssss.', '..ssssssss..', '...SSSSSS...', '....ssss....'],
+    body: { style: 'tee', main: '#22252f', dark: '#141620', light: '#b0774a', accent: '#c9a06d', skin: '#b0774a', bulk: true },
+    special: { name: 'CEJA LEVANTADA', cost: 30, kind: 'projectile', dmg: 8,
+      speed: 2.2, art: 'ceja', oy: -34, life: 120, effect: 'slow', say: '¿HUELES LO QUE ESTOY COCINANDO?' },
+    superMove: { name: 'CODAZO DEL PUEBLO', cost: 100, kind: 'dash', dmg: 14, hits: 2, speed: 4.0, dur: 32,
+      say: '¡ESTO VA POR EL PUEBLO!' },
+    quotes: ['¿SABES LO QUE ESTABA COCINANDO? ESTO.', 'LEVANTÉ UNA CEJA Y TE CAÍSTE SOLO.',
+             'NO ERES DEMASIADO PEQUEÑO. SOY YO, QUE SOY ENORME.'],
+    taunt: '¿HUELES ESO?'
   },
 
   {
-    id: 'gato',
-    name: 'NINJA SUSHI GATO',
-    title: 'SOMBRA CON HAMBRE',
-    type: 'sushi', sub: 'SIGILO',
-    bio: 'Entrenó veinte años en las artes marciales y once minutos en modales.',
-    speed: 1.5, power: 0.92, weight: 0.85,
-    pal: { d: '#3a3f52', D: '#22263a', w: '#f2f0e6', k: '#111', r: '#c0392b', m: '#e08aa0' },
-    head: [
-      '..dd....dd..',
-      '.dddd..dddd.',
-      '.dddddddddd.',
-      '.rrrrrrrrrr.',
-      '.dwkddddkwd.',
-      '.dddddddddd.',
-      '..ddwwwwdd..',
-      '..dwwmmwwd..',
-      '...wwwwww...',
-      '...dddddd...',
-      '....dddd....',
-      '....dddd....'
-    ],
-    body: { style: 'ninja', main: '#3a3f52', dark: '#22263a', light: '#f2f0e6', accent: '#c0392b', skin: '#3a3f52' },
-    special: {
-      name: 'SHURIKEN MAKI', cost: 30, kind: 'projectile', dmg: 9, count: 2, spread: 0.25,
-      speed: 3.6, art: 'maki', oy: -30, life: 110,
-      say: '¡PEDIDO PARA LLEVAR!'
-    },
-    superMove: {
-      name: 'NUEVE VIDAS', cost: 100, kind: 'teleport', dmg: 22,
-      say: '¡NO ME VISTE VENIR, HUMANO!'
-    },
-    quotes: ['Tiré tu vaso de la mesa. Y también tu récord.', 'Miau. (Es un insulto en su idioma.)', 'Ahora duermo catorce horas. Me lo gané.', 'Tu comida ya no es tuya. Nada es tuyo.'],
-    taunt: '¡MIAU!'
+    id: 'zuck', name: 'ZUCK-BOT', short: 'ZUCK', real: 'EL DE LA RED',
+    title: 'HUMANO VERIFICADO', type: 'algoritmo', sub: 'CAPTCHA',
+    bio: 'JURA QUE ES UNA PERSONA. TIENE TODOS TUS DATOS PARA DEMOSTRARLO.',
+    speed: 1.18, power: 0.95,
+    pal: { s: '#f0e4dc', S: '#c9bdb4', h: '#8a6a44', c: '#48e0d0', k: '#3a4560' },
+    head: ['............', '..hhhhhhhh..', '.hhhhhhhhhh.', '.hhhhhhhhhh.',
+           '.ssssssssss.', '.scssscssss.', '.ssssssssss.', '.sskkkkkkss.',
+           '.ssssssssss.', '..ssssssss..', '...ssssss...', '....ssss....'],
+    body: { style: 'tee', main: '#5a6478', dark: '#3a4560', light: '#8d97ad', accent: '#48e0d0', skin: '#f0e4dc' },
+    special: { name: 'VERIFICA QUE NO ERES UN ROBOT', cost: 30, kind: 'projectile', dmg: 9, count: 2, spread: 0.3,
+      speed: 3.4, art: 'captcha', oy: -30, life: 120, effect: 'slow', say: 'SELECCIONA TODOS LOS SEMÁFOROS' },
+    superMove: { name: 'NUEVOS TÉRMINOS Y CONDICIONES', cost: 100, kind: 'rain', dmg: 9, count: 8, art: 'doc',
+      say: 'ACEPTAR O ACEPTAR' },
+    quotes: ['HE ACEPTADO LOS TÉRMINOS DE TU DERROTA.', 'TU PARTIDA SE GUARDÓ. Y SE VENDIÓ.',
+             'ESTO ES LO QUE UN HUMANO NORMAL DIRÍA AHORA.'],
+    taunt: 'ESTOY OPTIMIZANDO'
   }
 ];
 
