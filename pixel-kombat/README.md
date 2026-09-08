@@ -275,6 +275,17 @@ subir los píxeles **del personaje**:
   espinilla, muslo, cadera, pecho, hombros y cuello, con brazo y antebrazo
   separados y un hueco entre las dos piernas para que no se lean como un bloque.
   Ocupan la mitad del alto de pantalla, como en una recreativa.
+- **La ropa tiene prendas, no manchas de color**: cada estilo lleva cuello,
+  costuras, botonadura, bolsillos, puños y bajo. Antes un traje era un
+  rectángulo oscuro con una raya blanca y una camisa era una mancha azul de los
+  hombros a los pies. Ahora el traje cierra bajo la corbata y asoma el puño
+  blanco, la camisa lleva tapeta, botones y mangas remangadas, la bata tiene
+  solapas y bolsillos con bolis, y la casaca de arquero tiene franja y dorsal.
+- **Los brazos se despegan del cuerpo sin cambiar de color**: llevan un filo de
+  luz por fuera y una costura oscura por dentro. Antes se pintaban de un tono
+  más claro y salían brazos grises pegados a una cazadora negra, como si fueran
+  otra prenda. El puño solo se pinta si contrasta: en una bata blanca se
+  oscurece para que se vea.
 - **Anticipación en los golpes**: durante el arranque el brazo se recoge y el
   cuerpo se inclina hacia atrás; al impactar sale disparado hacia delante. Es
   lo que da sensación de peso.
