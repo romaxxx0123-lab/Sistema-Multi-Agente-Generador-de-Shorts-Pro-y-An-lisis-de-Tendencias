@@ -15,6 +15,19 @@ function headOf(def) {
   return def;
 }
 
+/* Duelo espejo: el jugador 2 pelea con otra paleta, como en las
+   recreativas. La piel no cambia; sí la ropa y el pelo. */
+function mirrorDef(def) {
+  const sw = c => (typeof c === 'string' && c[0] === '#') ? mix(c, '#8d5ad4', 0.45) : c;
+  const body = {};
+  for (const k in def.body) body[k] = sw(def.body[k]);
+  const pal = {};
+  for (const k in def.pal) pal[k] = (k === 's' || k === 'S' || k === 'L') ? def.pal[k] : sw(def.pal[k]);
+  const out = Object.assign({}, def, { body, pal });
+  out._head = undefined; out._pal = undefined;
+  return out;
+}
+
 /* ---------------------------------------------------------
    Piezas del cuerpo: devuelve rectángulos en coordenadas
    locales (pies en 0,0 mirando a la derecha).
@@ -23,125 +36,139 @@ function bodyRects(def, A) {
   const B = def.body;
   const legC = B.legs || B.main, legD = B.legsDark || B.dark;
   const skin = B.skin;
-  const aw = B.bulk ? 5 : 4;
+  const aw = B.bulk ? 6 : 5;
   const R = [];
   const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
 
-  const cr = A.crouch;                       // 0..8
-  const shinH = 10 - cr * 0.5, thighH = 10 - cr * 0.5;
+  const cr = A.crouch;                          // 0..12
+  const lean = A.lean || 0;                     // peso del cuerpo
+  const shinH = 12 - cr * 0.4, thighH = 13 - cr * 0.5;
   const hipY = -(shinH + thighH);
-  const waistY = hipY - 6 + (A.bob || 0);
-  const chestY = waistY - 8;
-  const shoulderY = chestY - 4;
-  const neckY = shoulderY - 2;
+  const hipH = 8;
+  const chestH = 14;
+  const chestY = hipY - hipH - chestH + (A.bob || 0);
+  const shY = chestY - 6;
+  const neckY = shY - 3;
+  const boot = tint(legD, -0.5);
 
   /* ---- piernas ---- */
   if (A.kick > 0) {
-    add(-6, hipY, 6, thighH, legD);
-    add(-5, hipY + thighH, 5, shinH, legD);
-    add(-7, -2, 7, 2, tint(legD, -0.45));
-    const ky = A.kickHigh ? chestY + 2 : hipY + 4;
-    const kl = 6 + 12 * A.kick;
-    add(0, ky, kl, 5, legC);
-    add(kl, ky - 1, 6, 6, tint(legC, -0.3));
+    add(-7, hipY, 8, thighH, legD);
+    add(-6, hipY + thighH, 6, shinH, legD);
+    add(-8, -3, 9, 3, boot);
+    const ky = A.kickHigh ? chestY + 3 : hipY + 6;
+    const kl = 8 + 18 * A.kick;
+    add(0, ky, kl, 7, legC);
+    add(kl, ky - 1, 8, 8, boot);
   } else if (A.air) {
-    add(-6, hipY + 3, 6, thighH, legD);
-    add(-8, hipY + thighH + 2, 6, shinH - 2, legD);
-    add(-9, hipY + thighH + shinH - 1, 7, 3, tint(legD, -0.45));
-    add(1, hipY, 6, thighH, legC);
-    add(2, hipY + thighH - 1, 6, shinH - 3, legC);
-    add(2, hipY + thighH + shinH - 4, 7, 3, tint(legC, -0.3));
+    add(-8, hipY + 4, 8, thighH, legD);
+    add(-11, hipY + thighH + 3, 8, shinH - 3, legD);
+    add(-12, hipY + thighH + shinH - 1, 9, 3, boot);
+    add(1, hipY, 8, thighH, legC);
+    add(2, hipY + thighH - 2, 7, shinH - 4, legC);
+    add(1, hipY + thighH + shinH - 6, 9, 3, boot);
   } else {
-    const sw = Math.round(Math.sin(A.walk) * 3);
-    add(-6 - sw, hipY, 6, thighH, legD);
-    add(-5 - sw, hipY + thighH, 5, shinH, legD);
-    add(-7 - sw, -2, 7, 2, tint(legD, -0.45));
-    add(0 + sw, hipY, 6, thighH, legC);
-    add(1 + sw, hipY + thighH, 5, shinH, legC);
-    add(0 + sw, -2, 7, 2, tint(legC, -0.3));
+    const sw = Math.round(Math.sin(A.walk) * 4);
+    add(-7 - sw, hipY, 8, thighH, legD);
+    add(-6 - sw, hipY + thighH, 6, shinH, legD);
+    add(-8 - sw, -3, 9, 3, boot);
+    add(0 + sw, hipY, 8, thighH, legC);
+    add(1 + sw, hipY + thighH, 6, shinH, legC);
+    add(-1 + sw, -3, 9, 3, tint(legC, -0.42));
   }
 
-  /* ---- torso: cintura, pecho y hombros ---- */
-  add(-5, waistY, 11, 7, B.main);
-  add(-6, chestY, 13, 8, B.main);
-  add(-7, shoulderY, 15, 4, tint(B.main, 0.06));
-  add(-2, neckY, 5, 3, skin);
+  /* ---- tronco ---- */
+  add(-7 + lean * 0.4, hipY - hipH, 15, hipH + 2, tint(B.main, -0.10));
+  add(-9 + lean * 0.7, chestY, 18, chestH, B.main);
+  add(-11 + lean, shY + 1, 22, 6, tint(B.main, 0.08));
+  add(-9 + lean, shY, 18, 1, tint(B.main, 0.20));
+  add(-3 + lean, neckY, 6, 4, tint(skin, -0.12));
 
-  /* detalles según la ropa */
   const st = B.style;
+  const lx = Math.round(lean);
   if (st === 'suit') {
-    add(-3, shoulderY + 1, 6, 11, B.light);
-    add(-1, shoulderY + 2, 2, 9, B.accent);
-    add(-7, shoulderY, 4, 8, B.dark);
-    add(3, shoulderY, 4, 8, B.dark);
+    add(-4 + lx, shY + 2, 8, 16, B.light);
+    add(-2 + lx, shY + 3, 3, 13, B.accent);
+    add(-11 + lx, shY, 6, 12, B.dark);
+    add(5 + lx, shY, 6, 12, B.dark);
   } else if (st === 'jacket') {
-    add(-3, shoulderY + 1, 6, 15, B.light);
-    add(-7, shoulderY, 4, 15, B.dark);
-    add(3, shoulderY, 4, 15, B.dark);
-    add(-1, chestY + 2, 2, 2, B.accent);
+    add(-5 + lx, shY + 2, 10, 22, B.light);
+    add(-11 + lx, shY, 6, 22, B.dark);
+    add(5 + lx, shY, 6, 22, B.dark);
+    add(-2 + lx, chestY + 3, 3, 3, B.accent);
   } else if (st === 'stripes') {
-    add(-6, chestY, 2, 8, B.light);
-    add(-1, chestY, 2, 8, B.light);
-    add(4, chestY, 2, 8, B.light);
-    add(-4, waistY, 2, 7, B.light);
-    add(1, waistY, 2, 7, B.light);
-    add(-3, shoulderY, 6, 2, B.dark);
+    for (let i = -9; i < 9; i += 6) add(i + lx, chestY, 3, chestH, B.light);
+    for (let i = -7; i < 7; i += 6) add(i + Math.round(lean * 0.4), hipY - hipH, 3, hipH + 2, B.light);
+    add(-5 + lx, shY, 10, 3, B.dark);
   } else if (st === 'jersey') {
-    add(-3, shoulderY, 6, 2, B.light);
-    add(-7, shoulderY + 3, 15, 1, B.light);
-    add(2, chestY + 2, 2, 5, B.light);
-    add(1, chestY + 2, 3, 1, B.light);
+    add(-5 + lx, shY, 10, 3, B.light);
+    add(-11 + lx, shY + 5, 22, 2, B.light);
+    add(3 + lx, chestY + 4, 3, 7, B.light);
+    add(2 + lx, chestY + 4, 4, 2, B.light);
   } else if (st === 'chef') {
-    add(-6, shoulderY + 1, 13, 2, B.accent);
-    for (let i = 0; i < 3; i++) {
-      add(-3, chestY + 1 + i * 3, 1, 1, B.accent);
-      add(1, chestY + 1 + i * 3, 1, 1, B.accent);
+    add(-10 + lx, shY + 1, 21, 3, B.accent);
+    for (let i = 0; i < 4; i++) {
+      add(-5 + lx, chestY + 1 + i * 4, 2, 2, B.accent);
+      add(2 + lx, chestY + 1 + i * 4, 2, 2, B.accent);
     }
-    add(-5, waistY + 2, 11, 5, B.dark);
+    add(-7 + Math.round(lean * 0.4), hipY - hipH, 15, hipH + 2, B.dark);
   } else if (st === 'shirt') {
-    add(-3, shoulderY + 1, 6, 3, B.light);
-    add(-1, chestY + 2, 1, 10, B.dark);
-    add(-5, waistY + 4, 11, 3, B.dark);
+    add(-5 + lx, shY + 1, 10, 4, B.light);
+    add(-1 + lx, chestY + 2, 2, 14, B.dark);
+    add(-7 + Math.round(lean * 0.4), hipY - hipH + 4, 15, 3, B.dark);
+    add(6 + lx, shY + 3, 4, 8, B.light);
   } else if (st === 'tee') {
-    add(-3, shoulderY, 6, 2, B.dark);
-    add(-7, shoulderY, 3, 6, B.light);
-    add(4, shoulderY, 3, 6, B.light);
-    add(-2, chestY + 4, 4, 1, B.accent);
+    add(-5 + lx, shY, 10, 3, B.dark);
+    add(-11 + lx, shY, 4, 9, B.light);
+    add(7 + lx, shY, 4, 9, B.light);
+    add(-3 + lx, chestY + 6, 6, 2, B.accent);
   }
 
   /* ---- brazos (manga corta = antebrazo de piel) ---- */
   const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes');
   const foreC = shortSleeve ? skin : B.main;
   const foreD = shortSleeve ? tint(skin, -0.18) : B.dark;
+  const ay = shY + 2;
+
   if (A.cast > 0) {
-    add(-4, shoulderY - 3, 9, aw, B.dark);
-    add(5, shoulderY - 5, 5, 5, skin);
-    add(3, shoulderY - 6, 9, aw, B.main);
-    add(12, shoulderY - 8, 5, 5, skin);
-  } else if (A.punch > 0) {
-    const up = A.punchUp ? Math.round(11 * A.punch) : 0;
-    const len = 6 + 11 * A.punch;
-    add(-8, shoulderY + 2, aw, 6, B.dark);
-    add(-8, shoulderY + 8, aw, 5, foreD);
-    add(4, shoulderY + 2 - up, 5, aw + 1, B.main);
-    add(9, shoulderY + 2 - up, len - 5, aw + 1, foreC);
-    add(4 + len, shoulderY + 1 - up - (A.punchUp ? 3 : 0), 5, 5, skin);
+    add(-6, ay - 4, 12, aw, B.dark);
+    add(6, ay - 7, 7, 7, skin);
+    add(4, ay - 8, 12, aw, B.main);
+    add(16, ay - 11, 7, 7, skin);
+  } else if (A.punch !== 0) {
+    const p = A.punch;
+    const back = p < 0;
+    const up = A.punchUp ? Math.round(15 * Math.max(0, p)) : 0;
+    add(-11 + lx, ay, aw, 9, B.dark);
+    add(-11 + lx, ay + 9, aw, 8, foreD);
+    if (back) {
+      /* brazo recogido: toma impulso */
+      const off = Math.round(6 * -p);
+      add(2 - off, ay + 3, aw, 8, B.main);
+      add(1 - off, ay + 10, 7, 7, skin);
+    } else {
+      const len = 9 + 17 * p;
+      add(6, ay + 4 - up, 7, aw + 2, B.main);
+      add(13, ay + 4 - up, len - 7, aw + 2, foreC);
+      add(6 + len, ay + 2 - up - (A.punchUp ? 4 : 0), 7, 7, skin);
+    }
   } else if (A.block) {
-    add(-8, shoulderY + 2, aw, 11, B.dark);
-    add(3, shoulderY, aw + 1, 14, B.dark);
-    add(3, shoulderY, aw + 1, 3, B.light);
-    add(4, shoulderY + 12, 4, 4, skin);
+    add(-11 + lx, ay, aw, 9, B.dark);
+    add(-11 + lx, ay + 9, aw, 8, foreD);
+    add(4, ay - 1, aw + 2, 20, B.dark);
+    add(4, ay - 1, aw + 2, 4, B.light);
+    add(5, ay + 17, 6, 6, skin);
   } else {
-    const sw = Math.round(Math.sin(A.walk) * 3);
-    add(-8, shoulderY + 2 + sw, aw, 5, B.dark);
-    add(-8, shoulderY + 7 + sw, aw, 5, foreD);
-    add(-8, shoulderY + 11 + sw, 4, 4, tint(skin, -0.15));
-    add(5, shoulderY + 2 - sw, aw, 5, B.main);
-    add(5, shoulderY + 7 - sw, aw, 5, foreC);
-    add(5, shoulderY + 11 - sw, 4, 4, skin);
+    const sw = Math.round(Math.sin(A.walk) * 4);
+    add(-11 + lx, ay + sw, aw, 9, B.dark);
+    add(-11 + lx, ay + 9 + sw, aw, 8, foreD);
+    add(-11 + lx, ay + 16 + sw, 6, 6, tint(skin, -0.15));
+    add(6 + lx, ay - sw, aw, 9, B.main);
+    add(6 + lx, ay + 9 - sw, aw, 8, foreC);
+    add(6 + lx, ay + 16 - sw, 6, 6, skin);
   }
 
-  return { rects: R, headY: neckY - 12 };
+  return { rects: R, headY: neckY - 17, headX: -9 + Math.round(lean * 1.2) };
 }
 
 /* ---------------------------------------------------------
@@ -180,7 +207,7 @@ function drawFighter(ctx, f) {
   }
 
   /* 3) cabeza (ya trae su propio contorno) */
-  Pix.grid(ctx, def._head, A.flash ? WHITE_PAL : def._pal, -7, parts.headY - 1);
+  Pix.grid(ctx, def._head, A.flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
 
   ctx.restore();
 }
@@ -190,16 +217,16 @@ const WHITE_PAL = new Proxy({}, { get: (o, k) => k === '#' ? OUTLINE : '#ffffff'
 /* torbellino de los especiales de embestida */
 function drawSpin(ctx, def, A) {
   const B = def.body;
-  for (let i = 0; i < 6; i++) {
-    const y = -46 + i * 8;
-    const w = 24 - Math.abs(i - 2.5) * 4;
+  for (let i = 0; i < 8; i++) {
+    const y = -66 + i * 9;
+    const w = 34 - Math.abs(i - 3.5) * 5;
     const x = -w / 2 + Math.sin(A.walk * 2 + i) * 3;
     Pix.r(ctx, x - 1, y - 1, w + 2, 8, OUTLINE);
     Pix.shade(ctx, x, y, w, 6, i % 2 ? B.main : tint(B.main, 0.25));
   }
-  Pix.grid(ctx, headOf(def)._head, def._pal, -7, -58);
-  Pix.r(ctx, -16, -36, 2, 22, 'rgba(255,255,255,0.55)');
-  Pix.r(ctx, 14, -42, 2, 22, 'rgba(255,255,255,0.55)');
+  Pix.grid(ctx, headOf(def)._head, def._pal, -9, -82);
+  Pix.r(ctx, -22, -52, 2, 30, 'rgba(255,255,255,0.55)');
+  Pix.r(ctx, 20, -60, 2, 30, 'rgba(255,255,255,0.55)');
 }
 
 /* pose neutra */

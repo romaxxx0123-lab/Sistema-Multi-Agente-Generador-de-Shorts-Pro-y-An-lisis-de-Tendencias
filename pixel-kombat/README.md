@@ -128,6 +128,27 @@ rectángulos planos de un solo color. Ahora:
   junto a las barras de vida, cintas diagonales animadas y paleta cálida
   (morado y oro) en lugar del azul marino de modo oscuro.
 
+### Escala y animación de los sprites
+
+Los luchadores ocupaban un 30% del alto de pantalla cuando en una recreativa
+ocupan la mitad, y las caras eran rejillas de 12×12 con dos píxeles de ojo:
+
+- **Cabezas de 16×16 dibujadas una a una**: pelo a dos tonos, cejas, ojos con
+  blanco y pupila, nariz, boca y sombra de mandíbula. Cada personaje se
+  reconoce por la cara, no por el color de la camiseta.
+- **Cuerpos de 78px** (antes 54) montados por piezas reales: bota, espinilla,
+  muslo, cadera, pecho, hombros y cuello, con brazo y antebrazo separados.
+- **Anticipación en los golpes**: durante el arranque el brazo se recoge y el
+  cuerpo se inclina hacia atrás; al impactar sale disparado hacia delante. Es
+  lo que da sensación de peso.
+- **Peso y rebote**: el cuerpo se inclina según la acción, al aterrizar hay
+  amortiguación, al encajar un golpe el torso se va hacia atrás y en reposo
+  los brazos se mecen con la respiración.
+- **Destello de impacto** de varios fotogramas: núcleo blanco, rayos y anillo
+  en expansión, más grande en los golpes fuertes.
+- **Duelo espejo con paleta cambiada**: si los dos jugadores eligen el mismo
+  personaje, el segundo pelea con otra ropa (la piel no cambia).
+
 ### Tipografía y barras
 
 Los dos últimos detalles que delataban "texto de programador":

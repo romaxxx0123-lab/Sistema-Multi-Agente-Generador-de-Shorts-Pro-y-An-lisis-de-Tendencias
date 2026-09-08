@@ -181,7 +181,8 @@
   function startMatch() {
     G.world = new World(pick(STAGES).id);
     G.f1 = new Fighter(ROSTER[G.picks[0]], 92, 1, 1, false);
-    G.f2 = new Fighter(ROSTER[G.picks[1]], 228, -1, 2, G.mode === '1p');
+    const d2 = G.picks[0] === G.picks[1] ? mirrorDef(ROSTER[G.picks[1]]) : ROSTER[G.picks[1]];
+    G.f2 = new Fighter(d2, 228, -1, 2, G.mode === '1p');
     G.world.fighters = [G.f1, G.f2];
     G.round = 1;
     G.screen = 'fight';
@@ -262,7 +263,7 @@
   }
 
   function pushApart(a, b) {
-    const d = b.x - a.x, min = 15;
+    const d = b.x - a.x, min = 22;
     if (Math.abs(d) < min && a.state !== 'ko' && b.state !== 'ko') {
       const push = (min - Math.abs(d)) / 2 * (d >= 0 ? 1 : -1);
       a.x = clamp(a.x - push * 0.6, 12, W - 12);
@@ -282,7 +283,7 @@
     w.drawBack(ctx);
     for (const f of [f1, f2]) {
       const alt = clamp(GROUND - f.y, 0, 60);
-      Pix.shadow(ctx, f.x, GROUND, Math.max(8, 20 - alt * 0.22));
+      Pix.shadow(ctx, f.x, GROUND, Math.max(11, 28 - alt * 0.26));
       drawAura(f);
       drawFighter(ctx, f);
     }
@@ -293,14 +294,14 @@
   function drawAura(f) {
     if (f.guard > 0) for (let i = 0; i < 6; i++) {
       const a = f.t / 10 + i;
-      Pix.r(ctx, f.x + Math.cos(a) * 13, f.y - 22 + Math.sin(a) * 20, 2, 2, '#9bf59b');
+      Pix.r(ctx, f.x + Math.cos(a) * 18, f.y - 34 + Math.sin(a) * 30, 2, 2, '#9bf59b');
     }
     if (f.slow > 0 && f.t % 12 < 6) {
-      Pix.r(ctx, f.x - 10, f.y - 50, 3, 1, CO.cyan);
-      Pix.r(ctx, f.x + 8, f.y - 54, 3, 1, CO.cyan);
+      Pix.r(ctx, f.x - 13, f.y - 72, 3, 1, CO.cyan);
+      Pix.r(ctx, f.x + 11, f.y - 78, 3, 1, CO.cyan);
     }
-    if (f.burn > 0 && f.t % 8 < 4) Pix.r(ctx, f.x - 2, f.y - 46, 2, 2, '#f0932b');
-    if (f.meter >= 100 && f.state !== 'ko' && f.t % 20 < 10) Pix.r(ctx, f.x - 9, f.y + 1, 18, 1, CO.gold);
+    if (f.burn > 0 && f.t % 8 < 4) Pix.r(ctx, f.x - 2, f.y - 68, 2, 2, '#f0932b');
+    if (f.meter >= 100 && f.state !== 'ko' && f.t % 20 < 10) Pix.r(ctx, f.x - 12, f.y + 1, 24, 1, CO.gold);
   }
 
   /* =======================================================

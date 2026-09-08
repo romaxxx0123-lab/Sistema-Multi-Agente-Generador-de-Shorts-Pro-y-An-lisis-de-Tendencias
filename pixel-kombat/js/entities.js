@@ -8,7 +8,7 @@ class Proj {
     this.sp = sp;
     this.art = ART[sp.art] || ART.bill;
     this.dir = owner.dir;
-    this.x = o.x !== undefined ? o.x : owner.x + this.dir * 13;
+    this.x = o.x !== undefined ? o.x : owner.x + this.dir * 17;
     this.y = o.y !== undefined ? o.y : owner.y + (sp.oy || -30);
     this.vx = o.vx !== undefined ? o.vx : this.dir * (sp.speed || 2.4);
     this.vy = o.vy !== undefined ? o.vy : (sp.vy || 0);
@@ -30,7 +30,7 @@ class Proj {
   update(world) {
     const tgt = world.opponentOf(this.owner);
     if (this.hom && tgt) {
-      const dy = (tgt.y - 22) - this.y;
+      const dy = (tgt.y - 34) - this.y;
       this.vy += clamp(dy, -1, 1) * this.hom;
       this.vy = clamp(this.vy, -2.2, 2.2);
       if (Math.sign(tgt.x - this.x) !== 0) this.vx += Math.sign(tgt.x - this.x) * this.hom * 0.5;
@@ -94,9 +94,9 @@ class Wall {
   constructor(owner) {
     this.owner = owner;
     this.dir = owner.dir;
-    this.x = owner.x + this.dir * 26;
-    this.w = 11;
-    this.h = 30;
+    this.x = owner.x + this.dir * 32;
+    this.w = 14;
+    this.h = 44;
     this.hp = 42;
     this.life = 420;
     this.dead = false;
@@ -124,6 +124,42 @@ class Wall {
     }
     Pix.r(ctx, b.x - 1 + shake, b.y - 2, this.w + 2, 2, '#fff2a8');
     Pix.r(ctx, b.x - 2 + shake, GROUND - 2, this.w + 4, 2, '#a8811f');
+  }
+}
+
+/* destello de impacto: núcleo, rayos y anillo en expansión */
+class Impact {
+  constructor(x, y, big) {
+    this.x = x; this.y = y; this.big = !!big;
+    this.t = 0; this.max = big ? 11 : 8; this.dead = false;
+    this.rot = Math.random() * Math.PI;
+  }
+  update() { if (++this.t >= this.max) this.dead = true; }
+  draw(ctx) {
+    const p = this.t / this.max;
+    const R = (this.big ? 19 : 12) * (0.35 + p * 1.05);
+    const c = p < 0.3 ? '#ffffff' : (p < 0.62 ? '#ffe9a8' : '#f0932b');
+    /* núcleo */
+    if (p < 0.45) {
+      const s = Math.round((this.big ? 8 : 5) * (1 - p * 1.6));
+      Pix.r(ctx, this.x - s / 2, this.y - s / 2, s, s, '#ffffff');
+    }
+    /* rayos */
+    const arms = this.big ? 8 : 6;
+    for (let i = 0; i < arms; i++) {
+      const a = this.rot + i * Math.PI * 2 / arms;
+      const dx = Math.cos(a), dy = Math.sin(a) * 0.75;
+      const w = Math.max(1, Math.round(3 * (1 - p)));
+      for (let d = R * 0.45; d < R; d += 2)
+        Pix.r(ctx, this.x + dx * d - w / 2, this.y + dy * d - w / 2, w, w, c);
+    }
+    /* anillo */
+    if (p > 0.25) {
+      for (let i = 0; i < 18; i++) {
+        const a = i * Math.PI / 9;
+        Pix.r(ctx, this.x + Math.cos(a) * R, this.y + Math.sin(a) * R * 0.75, 1, 1, c);
+      }
+    }
   }
 }
 
@@ -206,6 +242,8 @@ class World {
 
   opponentOf(f) { return this.fighters.find(o => o !== f); }
 
+  impact(x, y, big) { this.parts.push(new Impact(x, y, big)); }
+
   burst(x, y, n, color) {
     for (let i = 0; i < n; i++)
       this.parts.push(new Particle(x, y, rnd(-1.8, 1.8), rnd(-2.2, 0.6),
@@ -247,10 +285,10 @@ class World {
         const wl = new Wall(owner);
         this.walls.push(wl);
         const opp = this.opponentOf(owner);
-        if (opp && Math.abs(opp.x - wl.x) < 16) {
+        if (opp && Math.abs(opp.x - wl.x) < 22) {
           dealDamage(owner, opp, sp.dmg || 8, { push: 3.5, hitstun: 20 }, this);
         }
-        this.burst(wl.x, GROUND - 8, 14, '#f5c542');
+        this.burst(wl.x, GROUND - 12, 18, '#f5c542');
         this.shake = 8;
         Sfx.wall();
         break;
@@ -259,10 +297,10 @@ class World {
         owner.hp = Math.min(owner.maxHp, owner.hp + (sp.heal || 15));
         owner.guard = sp.guard || 120;
         for (let i = 0; i < 16; i++)
-          this.parts.push(new Particle(owner.x + rnd(-9, 9), owner.y - rnd(0, 42),
+          this.parts.push(new Particle(owner.x + rnd(-12, 12), owner.y - rnd(0, 62),
             rnd(-0.3, 0.3), rnd(-1.2, -0.4), irnd(20, 40), '#9bf59b', 1, -0.01));
-        this.popup(owner.x, owner.y - 52, '+' + (sp.heal || 15), '#4ad14a');
-        if (sp.art) this.decos.push(new Deco(owner.x - owner.dir * 16, GROUND, sp.art, 260));
+        this.popup(owner.x, owner.y - 78, '+' + (sp.heal || 15), '#4ad14a');
+        if (sp.art) this.decos.push(new Deco(owner.x - owner.dir * 22, GROUND, sp.art, 260));
         Sfx.heal();
         break;
       }
@@ -285,11 +323,11 @@ class World {
       case 'teleport': {
         const opp = this.opponentOf(owner);
         if (opp) {
-          this.burst(owner.x, owner.y - 22, 14, '#f2f0e6');
-          owner.x = clamp(opp.x - opp.dir * 16, 14, W - 14);
+          this.burst(owner.x, owner.y - 34, 16, '#f2f0e6');
+          owner.x = clamp(opp.x - opp.dir * 22, 16, W - 16);
           owner.dir = opp.dir;
           owner.y = GROUND; owner.vy = 0; owner.onGround = true;
-          this.burst(owner.x, owner.y - 22, 14, '#c0392b');
+          this.burst(owner.x, owner.y - 34, 16, '#c0392b');
           dealDamage(owner, opp, sp.dmg, { push: 4.2, hitstun: 30, launch: true }, this);
           this.shake = 12;
         }

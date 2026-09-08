@@ -254,10 +254,10 @@ const UI = {
 
     Pix.r(ctx, 7, 50, 152, 90, '#1b1030');
     for (let i = 0; i < 15; i++) Pix.r(ctx, 7, 50 + i * 6, 152, 3, 'rgba(255,255,255,0.025)');
-    Pix.circle(ctx, 84, 150, 46, '#2a1a52');
+    Pix.circle(ctx, 84, 148, 44, '#2a1a52');
     ctx.save();
     ctx.beginPath(); ctx.rect(7, 50, 152, 90); ctx.clip();
-    drawPose(ctx, hov, 84, 164, 1, 2, G.t % 44 < 22 ? undefined : {
+    drawPose(ctx, hov, 84, 208, 1, 2, G.t % 44 < 22 ? undefined : {
       crouch: 0, punch: 0, kick: 0, cast: 0, walk: 0, air: false, ko: 0, bob: 1,
       block: false, flash: false, spin: false, kickHigh: false, punchUp: false
     });
@@ -281,7 +281,7 @@ const UI = {
       Pix.r(ctx, r.x, r.y, r.w, 2, p1 || p2 ? '#5a3d96' : '#241546');
       ctx.save();
       ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-      drawPose(ctx, def, r.x + r.w / 2 + 1, r.y + r.h + 12, 1, 1);
+      drawPose(ctx, def, r.x + r.w / 2 + 1, r.y + r.h + 49, 1, 1);
       ctx.restore();
       drawTypeIcon(ctx, def.type, r.x + 1, r.y + 1);
       this.frame(ctx, r.x, r.y, r.w, r.h, '#000');
@@ -322,12 +322,12 @@ const UI = {
     const slide = Math.min(1, t / 18);
     const ax = Math.round(-40 + 116 * slide), bx = Math.round(W + 40 - 116 * slide);
 
-    Pix.circle(ctx, ax, 92, 38, 'rgba(62,224,208,0.16)');
-    Pix.circle(ctx, bx, 92, 38, 'rgba(255,77,90,0.16)');
-    Pix.r(ctx, ax - 30, 118, 60, 3, 'rgba(0,0,0,0.35)');
-    Pix.r(ctx, bx - 30, 118, 60, 3, 'rgba(0,0,0,0.35)');
-    drawPose(ctx, a, ax, 120, 1, 2);
-    drawPose(ctx, b, bx, 120, -1, 2);
+    Pix.circle(ctx, ax, 88, 40, 'rgba(62,224,208,0.16)');
+    Pix.circle(ctx, bx, 88, 40, 'rgba(255,77,90,0.16)');
+    Pix.r(ctx, ax - 26, 121, 52, 3, 'rgba(0,0,0,0.4)');
+    Pix.r(ctx, bx - 26, 121, 52, 3, 'rgba(0,0,0,0.4)');
+    drawPose(ctx, a, ax, 122, 1, 1);
+    drawPose(ctx, b, bx, 122, -1, 1);
 
     this.plate(ctx, 6, 126, 140, 26, CO.panel);
     this.plate(ctx, W - 146, 126, 140, 26, CO.panel);
@@ -340,29 +340,28 @@ const UI = {
       Text.draw(ctx, 'VS', W / 2 + 1, 71, '#000', 'center', 4, false);
       Text.draw(ctx, 'VS', W / 2, 70, CO.gold, 'center', 4);
     }
-    this.plate(ctx, 6, 158, W - 12, 15, CO.panel2);
-    const line = matchupLine(a.type, b.type);
-    Text.draw(ctx, line.length > 41 ? line.slice(0, 40) + '.' : line, W / 2, 162, CO.goldL, 'center', 1);
+    const mp = matchupParts(a.type, b.type);
+    this.plate(ctx, 6, 152, W - 12, 24, CO.panel2);
+    Text.draw(ctx, mp.tag, W / 2, 155, CO.gold, 'center', 1);
+    Text.draw(ctx, mp.msg.length > 41 ? mp.msg.slice(0, 40) + '.' : mp.msg, W / 2, 165, CO.goldL, 'center', 1);
   },
 
   /* ---------- MARCADOR DE COMBATE ---------- */
   hudSide(ctx, f, rtl, t) {
-    const px = rtl ? W - 20 : 2;
-    this.portrait(ctx, f.def, px, 3, rtl ? CO.red : CO.cyan, f.flash > 6);
+    const px = rtl ? W - 24 : 2;
+    this.portrait(ctx, f.def, px, 2, rtl ? CO.red : CO.cyan, f.flash > 6);
 
-    const bx = rtl ? W - 150 : 26;
-    this.lifeBar(ctx, bx, 6, 124, 10, f.hpShown / f.maxHp, f.hpGhost / f.maxHp, rtl);
-    this.meterBar(ctx, rtl ? W - 106 : 26, 21, 80, f.meter / 100, rtl, t);
+    const bx = rtl ? W - 148 : 28;
+    this.lifeBar(ctx, bx, 6, 120, 10, f.hpShown / f.maxHp, f.hpGhost / f.maxHp, rtl);
+    this.meterBar(ctx, rtl ? W - 106 : 28, 21, 78, f.meter / 100, rtl, t);
     this.pips(ctx, rtl ? W - 112 : 112, 21, f.wins, 2, rtl);
 
     const label = f.def.short + (f.cpu ? ' CPU' : '');
-    const nx = rtl ? W - 36 : 36;
-    drawTypeIcon(ctx, f.def.type, rtl ? W - 34 : 27, 29);
+    const nx = rtl ? W - 38 : 38;
+    drawTypeIcon(ctx, f.def.type, rtl ? W - 36 : 29, 29);
     Text.draw(ctx, label, nx, 29, CO.white, rtl ? 'right' : 'left', 1);
-    if (f.meter >= 100 && t % 24 < 16) {
-      const off = Text.w(label, 1) + 7;
-      Text.draw(ctx, '¡SUPER!', rtl ? nx - off : nx + off, 29, CO.gold, rtl ? 'right' : 'left', 1);
-    }
+    if (f.meter >= 100 && t % 24 < 16)
+      Text.draw(ctx, '¡SUPER!', rtl ? W - 28 : 28, 39, CO.gold, rtl ? 'right' : 'left', 1);
   },
 
   drawHud(ctx, G) {
@@ -379,8 +378,8 @@ const UI = {
       { ramp: urgent ? ['#ffd0d0', '#ff5a5a', '#a01020'] : ['#ffffff', '#d8d0f0', '#8f86b8'] });
     Text.draw(ctx, 'ROUND ' + G.round, W / 2, 30, CO.gold, 'center', 1);
 
-    if (f1.combo >= 2 && f1.comboT > 0) Text.draw(ctx, f1.combo + ' GOLPES', 8, 42, CO.cyan, 'left', 1);
-    if (f2.combo >= 2 && f2.comboT > 0) Text.draw(ctx, f2.combo + ' GOLPES', W - 8, 42, CO.red, 'right', 1);
+    if (f1.combo >= 2 && f1.comboT > 0) Text.draw(ctx, f1.combo + ' GOLPES', 8, 50, CO.cyan, 'left', 1);
+    if (f2.combo >= 2 && f2.comboT > 0) Text.draw(ctx, f2.combo + ' GOLPES', W - 8, 50, CO.red, 'right', 1);
 
     const ch = G.world && G.world.chyron;
     if (ch) {
@@ -437,8 +436,8 @@ const UI = {
     Text.draw(ctx, w.def.name, W / 2, 8, CO.goldL, 'center', 2);
     Text.draw(ctx, 'GANA EL COMBATE', W / 2, 32, CO.white, 'center', 1);
 
-    Pix.circle(ctx, 46, 92, 26, '#2a1a52');
-    drawPose(ctx, w.def, 46, 96, 1, 1, {
+    Pix.circle(ctx, 42, 88, 30, '#2a1a52');
+    drawPose(ctx, w.def, 42, 116, 1, 1, {
       crouch: 0, punch: Math.sin(G.t / 6) > 0 ? 0.6 : 0.25, punchUp: true, kick: 0, cast: 0,
       walk: 0, air: false, ko: 0, bob: Math.sin(G.t / 6) > 0 ? 1 : 0,
       block: false, flash: false, spin: false, kickHigh: false

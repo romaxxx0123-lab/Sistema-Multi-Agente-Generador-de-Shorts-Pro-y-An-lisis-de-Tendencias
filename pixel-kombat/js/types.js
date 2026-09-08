@@ -48,23 +48,23 @@ const CHART = {
 /* el chiste de cada cruce */
 const REASONS = {
   'dinero>algoritmo': 'COMPRÓ LA RED SOCIAL ENTERA',
-  'dinero>cocina':    'COMPRÓ EL RESTAURANTE Y LO CERRÓ',
+  'dinero>cocina':    'COMPRÓ EL RESTAURANTE',
   'cohete>ego':       'EL EGO NO LLEGA A MARTE',
   'cohete>roca':      'DESPEGA CON TODO Y PIEDRA',
-  'futbol>dinero':    'ESTO NO SE COMPRA... BUENO, A VECES SÍ',
+  'futbol>dinero':    'ESO NO SE COMPRA (CASI)',
   'futbol>ego':       'LOS TÍTULOS CALLAN BOCAS',
   'futbol>cohete':    'LO BAJÓ DE UN CABEZAZO',
   'ego>cocina':       'GRITÓ MÁS FUERTE QUE EL CHEF',
-  'ego>algoritmo':    'NINGÚN ALGORITMO ENTIENDE ESE GRITO',
+  'ego>algoritmo':    'NINGÚN ALGORITMO LO ENTIENDE',
   'cocina>oleo':      'EL FUEGO SE COMIÓ EL LIENZO',
   'cocina>algoritmo': 'NINGUNA IA SABE SAZONAR',
-  'oleo>dinero':      'EL ARTE NO SE PAGA EN EFECTIVO',
-  'oleo>cohete':      'LE PINTÓ UNA NUBECITA Y LO DESVIÓ',
-  'oleo>roca':        'LE PINTÓ UN BIGOTE Y PERDIÓ LA AUTORIDAD',
+  'oleo>dinero':      'EL ARTE NO SE PAGA EN CASH',
+  'oleo>cohete':      'LE PINTÓ UNA NUBECITA',
+  'oleo>roca':        'LE PINTÓ UN BIGOTE',
   'roca>cocina':      'SE COMIÓ LA COCINA ENTERA',
   'roca>futbol':      'NADIE LE REGATEA A ESE SEÑOR',
   'algoritmo>futbol': 'LO ANULÓ EL VAR',
-  'algoritmo>oleo':   'LA IA YA LO PINTÓ EN TRES SEGUNDOS',
+  'algoritmo>oleo':   'LA IA YA LO PINTÓ',
   'algoritmo>roca':   'LE CANCELÓ LA PELÍCULA'
 };
 
@@ -75,8 +75,8 @@ const RESIST = {
   futbol:    'SE TIRÓ, PERO NO ERA FALTA',
   ego:       'LE RESBALÓ POR EL EGO',
   cocina:    'LO DEVOLVIÓ A LA COCINA',
-  oleo:      'ESO NO FUE UN ERROR, FUE UN ACCIDENTE FELIZ',
-  roca:      '¿LE ESTÁS PEGANDO A ESE SEÑOR? ¿EN SERIO?',
+  oleo:      'FUE UN ACCIDENTE FELIZ',
+  roca:      '¿EN SERIO LE PEGAS A ESE SEÑOR?',
   algoritmo: 'ERROR 403: GOLPE NO AUTORIZADO'
 };
 
@@ -88,16 +88,22 @@ function typeMult(a, d) {
   return { m: 1, kind: 'normal', msg: '' };
 }
 
-function matchupLine(a, b) {
+function matchupParts(a, b) {
   const ta = TYPES[a], tb = TYPES[b];
   const ab = typeMult(a, b), ba = typeMult(b, a);
-  if (ab.kind === 'super' && ba.kind === 'super') return 'SE PEGAN FUERTE LOS DOS: ' + ab.msg;
-  if (ab.kind === 'super') return 'VENTAJA ' + ta.name + ': ' + ab.msg;
-  if (ba.kind === 'super') return 'VENTAJA ' + tb.name + ': ' + ba.msg;
-  if (ab.kind === 'weak' && ba.kind === 'weak') return 'SE RESISTEN: ESTO VA PARA LARGO';
-  if (ab.kind === 'weak') return tb.name + ' AGUANTA: ' + ab.msg;
-  if (ba.kind === 'weak') return ta.name + ' AGUANTA: ' + ba.msg;
-  return 'SIN VENTAJAS: QUE GANE EL MÁS RIDÍCULO';
+  if (ab.kind === 'super' && ba.kind === 'super') return { tag: 'SE PEGAN FUERTE LOS DOS', msg: ab.msg };
+  if (ab.kind === 'super') return { tag: 'VENTAJA ' + ta.name, msg: ab.msg };
+  if (ba.kind === 'super') return { tag: 'VENTAJA ' + tb.name, msg: ba.msg };
+  if (ab.kind === 'weak' && ba.kind === 'weak') return { tag: 'SE RESISTEN', msg: 'ESTO VA PARA LARGO' };
+  if (ab.kind === 'weak') return { tag: tb.name + ' AGUANTA', msg: ab.msg };
+  if (ba.kind === 'weak') return { tag: ta.name + ' AGUANTA', msg: ba.msg };
+  return { tag: 'SIN VENTAJAS DE TIPO', msg: 'QUE GANE EL MÁS RIDÍCULO' };
+}
+
+/* versión de una línea, para el pie de pantalla y el comentarista */
+function matchupLine(a, b) {
+  const p = matchupParts(a, b);
+  return p.msg;
 }
 
 /* dibuja el icono del tipo (7x7) */
