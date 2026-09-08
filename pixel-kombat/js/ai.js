@@ -20,7 +20,7 @@ const AI = {
     /* --- reacciones: proyectiles y golpes cercanos --- */
     const danger = world.projs.some(p =>
       p.owner !== f && Math.abs(p.x - f.x) < 52 && Math.sign(p.vx || 0.001) === Math.sign(f.x - p.x));
-    const meleeThreat = opp.state === 'attack' && dist < 30;
+    const meleeThreat = opp.state === 'attack' && dist < 37;
     const reactChance = [0.35, 0.6, 0.85][level];
 
     if ((danger || meleeThreat) && a.react <= 0 && Math.random() < reactChance) {
@@ -43,11 +43,11 @@ const AI = {
       a.fire = true;
       const r = Math.random();
       if (f.meter >= 100 && r < 0.55) { a.plan = 'super'; a.t = 24; }
-      else if (f.meter >= f.def.special.cost && r < 0.42 && (dist > 34 || f.def.special.kind === 'heal' || f.def.special.kind === 'wall')) {
+      else if (f.meter >= f.def.special.cost && r < 0.42 && (dist > 42 || f.def.special.kind === 'heal' || f.def.special.kind === 'wall')) {
         a.plan = 'special'; a.t = 26;
       }
-      else if (dist > 62) { a.plan = r < 0.78 ? 'approach' : 'jump'; a.t = irnd(16, 34); }
-      else if (dist > 26) { a.plan = r < 0.6 ? 'approach' : (r < 0.8 ? 'poke' : 'block'); a.t = irnd(12, 26); }
+      else if (dist > 76) { a.plan = r < 0.78 ? 'approach' : 'jump'; a.t = irnd(16, 34); }
+      else if (dist > 32) { a.plan = r < 0.6 ? 'approach' : (r < 0.8 ? 'poke' : 'block'); a.t = irnd(12, 26); }
       else {
         if (r < [0.42, 0.58, 0.72][level]) { a.plan = 'poke'; a.t = irnd(10, 20); }
         else if (r < 0.78) { a.plan = 'block'; a.t = irnd(14, 28); }
@@ -55,7 +55,7 @@ const AI = {
       }
       if (f.hp < 30 && f.def.special.kind === 'heal' && f.meter >= f.def.special.cost) { a.plan = 'special'; a.t = 26; }
       /* si va ganando de sobra y está lejos, se burla (y se lo hace pagar) */
-      if (f.hp - opp.hp > 35 && dist > 55 && Math.random() < 0.16) { a.plan = 'taunt'; a.t = 34; }
+      if (f.hp - opp.hp > 35 && dist > 68 && Math.random() < 0.16) { a.plan = 'taunt'; a.t = 34; }
       /* con ventaja de tipo se envalentona */
       if (a.plan === 'retreat' && typeMult(f.def.type, opp.def.type).kind === 'super' && Math.random() < 0.6) {
         a.plan = 'approach'; a.t = 22;
@@ -67,7 +67,7 @@ const AI = {
     switch (a.plan) {
       case 'approach':
         inp[toward] = true;
-        if (dist < 30 && a.fire) { inp.punch = true; }
+        if (dist < 37 && a.fire) { inp.punch = true; }
         break;
       case 'retreat':
         inp[away] = true;
@@ -79,10 +79,10 @@ const AI = {
       case 'jump':
         if (a.fire) inp.up = true;
         inp[toward] = true;
-        if (!f.onGround && dist < 34 && Math.random() < 0.2) inp.kick = true;
+        if (!f.onGround && dist < 42 && Math.random() < 0.2) inp.kick = true;
         break;
       case 'poke':
-        if (dist > 24) inp[toward] = true;
+        if (dist > 33) inp[toward] = true;
         if (a.fire) {
           const r = Math.random();
           if (r < 0.42) inp.punch = true;
@@ -91,7 +91,7 @@ const AI = {
         }
         break;
       case 'special':
-        if (f.def.special.kind === 'dash' && dist > 90) inp[toward] = true;
+        if (f.def.special.kind === 'dash' && dist > 110) inp[toward] = true;
         else if (a.fire) inp.special = true;
         break;
       case 'super':

@@ -125,12 +125,16 @@ const UI = {
 
   /* retrato con marco */
   portrait(ctx, def, x, y, ring, flash) {
-    this.plate(ctx, x, y, 18, 18, '#241546', 3);
-    Pix.r(ctx, x + 2, y + 2, 14, 14, flash ? '#ffffff' : '#170d2c');
-    for (let i = 0; i < 7; i++) Pix.r(ctx, x + 2, y + 2 + i * 2, 14, 1, 'rgba(255,255,255,0.03)');
-    drawHeadIcon(ctx, def, x + 2, y + 3);
-    Pix.r(ctx, x + 2, y + 2, 14, 1, ring);
-    Pix.r(ctx, x + 2, y + 15, 14, 1, tint(ring, -0.45));
+    this.plate(ctx, x, y, 24, 24, '#241546', 3);
+    Pix.r(ctx, x + 2, y + 2, 20, 20, flash ? '#ffffff' : '#170d2c');
+    for (let i = 0; i < 10; i++) Pix.r(ctx, x + 2, y + 2 + i * 2, 20, 1, 'rgba(255,255,255,0.03)');
+    /* la cabeza mide 26 px: se recorta la cara dentro del marco */
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x + 2, y + 2, 20, 20); ctx.clip();
+    drawHeadIcon(ctx, def, x - 1, y + 1);
+    ctx.restore();
+    Pix.r(ctx, x + 2, y + 2, 20, 1, ring);
+    Pix.r(ctx, x + 2, y + 21, 20, 1, tint(ring, -0.45));
   },
 
   menuBackdrop(ctx, alpha) {
@@ -228,7 +232,7 @@ const UI = {
   },
 
   /* ---------- SELECCIÓN ---------- */
-  CELL: { w: 27, h: 30, gx: 3, gy: 3, x0: 167, y0: 22 },
+  CELL: { w: 31, h: 30, gx: 3, gy: 3, x0: 141, y0: 22 },
   cellRect(i) {
     const c = this.CELL;
     return { x: c.x0 + (i % 5) * (c.w + c.gx), y: c.y0 + Math.floor(i / 5) * (c.h + c.gy), w: c.w, h: c.h };
@@ -250,31 +254,33 @@ const UI = {
     Text.draw(ctx, 'ELIGE · ESC VOLVER', W - 10, 5, CO.dim, 'right', 1);
 
     /* escaparate: busto recortado del personaje señalado */
-    this.plate(ctx, 4, 18, 158, 140, CO.panel);
-    Text.draw(ctx, hov.name, 84, 21, CO.goldL, 'center', 2);
-    Text.draw(ctx, hov.real, 84, 39, CO.cyan, 'center', 1);
+    this.plate(ctx, 4, 18, 130, 140, CO.panel);
+    let ns = 2;                                  // el nombre se encoge si no cabe
+    while (ns > 1 && Text.w(hov.name, ns) > 124) ns--;
+    Text.draw(ctx, hov.name, 69, ns === 2 ? 21 : 25, CO.goldL, 'center', ns);
+    Text.draw(ctx, hov.real, 69, 39, CO.cyan, 'center', 1);
 
-    Pix.r(ctx, 7, 50, 152, 90, '#1b1030');
-    for (let i = 0; i < 15; i++) Pix.r(ctx, 7, 50 + i * 6, 152, 3, 'rgba(255,255,255,0.025)');
-    Pix.circle(ctx, 84, 148, 44, '#2a1a52');
+    Pix.r(ctx, 7, 50, 124, 90, '#1b1030');
+    for (let i = 0; i < 15; i++) Pix.r(ctx, 7, 50 + i * 6, 124, 3, 'rgba(255,255,255,0.025)');
+    Pix.circle(ctx, 69, 150, 40, '#2a1a52');
     ctx.save();
-    ctx.beginPath(); ctx.rect(7, 50, 152, 90); ctx.clip();
-    drawPose(ctx, hov, 84, 208, 1, 2, G.t % 44 < 22 ? undefined : {
+    ctx.beginPath(); ctx.rect(7, 50, 124, 90); ctx.clip();
+    drawPose(ctx, hov, 69, 242, 1, 2, G.t % 44 < 22 ? undefined : {
       crouch: 0, punch: 0, kick: 0, cast: 0, walk: 0, air: false, ko: 0, bob: 1,
       block: false, flash: false, spin: false, kickHigh: false, punchUp: false
     });
     ctx.restore();
-    Pix.r(ctx, 7, 50, 152, 1, '#000');
-    Pix.r(ctx, 7, 139, 152, 1, '#000');
+    Pix.r(ctx, 7, 50, 124, 1, '#000');
+    Pix.r(ctx, 7, 139, 124, 1, '#000');
 
     const tw = 9 + Text.w(TYPES[hov.type].name, 1);
     const subw = Text.w('/ ' + hov.sub, 1);
-    Pix.r(ctx, 6, 143, 154, 13, '#1b1030');
-    drawTypeTag(ctx, hov.type, 84 - Math.round((tw + subw + 5) / 2), 146, 1);
-    Text.draw(ctx, '/ ' + hov.sub, 84 - Math.round((tw + subw + 5) / 2) + tw + 5, 146, CO.dim, 'left', 1);
+    Pix.r(ctx, 6, 143, 126, 13, '#1b1030');
+    drawTypeTag(ctx, hov.type, 69 - Math.round((tw + subw + 5) / 2), 146, 1);
+    Text.draw(ctx, '/ ' + hov.sub, 69 - Math.round((tw + subw + 5) / 2) + tw + 5, 146, CO.dim, 'left', 1);
 
     /* rejilla de retratos */
-    this.plate(ctx, 164, 18, W - 168, 102, CO.panel);
+    this.plate(ctx, 136, 18, W - 140, 102, CO.panel);
     ROSTER.forEach((def, i) => {
       const r = this.cellRect(i);
       const p1 = (G.picks[0] === null ? G.cur[0] : G.picks[0]) === i;
@@ -283,7 +289,7 @@ const UI = {
       Pix.r(ctx, r.x, r.y, r.w, 2, p1 || p2 ? '#5a3d96' : '#241546');
       ctx.save();
       ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-      drawPose(ctx, def, r.x + r.w / 2 + 1, r.y + r.h + 51, 1, 1);
+      drawPose(ctx, def, r.x + r.w / 2, r.y + r.h + 64, 1, 1);
       ctx.restore();
       drawTypeIcon(ctx, def.type, r.x + 1, r.y + 1);
       this.frame(ctx, r.x, r.y, r.w, r.h, '#000');
@@ -294,10 +300,10 @@ const UI = {
     });
 
     /* fichas del personaje */
-    this.plate(ctx, 164, 124, W - 168, 34, CO.panel);
-    Text.draw(ctx, hov.title.slice(0, 20), 170, 127, CO.cyan, 'left', 1);
-    Text.draw(ctx, hov.special.name.slice(0, 20), 170, 137, CO.white, 'left', 1);
-    Text.draw(ctx, hov.superMove.name.slice(0, 20), 170, 147, CO.gold, 'left', 1);
+    this.plate(ctx, 136, 124, W - 140, 34, CO.panel);
+    Text.draw(ctx, hov.title.slice(0, 24), 142, 127, CO.cyan, 'left', 1);
+    Text.draw(ctx, hov.special.name.slice(0, 24), 142, 137, CO.white, 'left', 1);
+    Text.draw(ctx, hov.superMove.name.slice(0, 24), 142, 147, CO.gold, 'left', 1);
 
     /* franja inferior */
     let footer;
@@ -348,7 +354,7 @@ const UI = {
 
   /* ---------- MARCADOR DE COMBATE ---------- */
   hudSide(ctx, f, rtl, t) {
-    const px = rtl ? W - 24 : 2;
+    const px = rtl ? W - 26 : 2;
     this.portrait(ctx, f.def, px, 2, rtl ? CO.red : CO.cyan, f.flash > 6);
 
     const bx = rtl ? W - 148 : 28;
@@ -436,9 +442,9 @@ const UI = {
     Text.draw(ctx, w.def.name, W / 2, 8, CO.goldL, 'center', 2);
     Text.draw(ctx, 'GANA EL COMBATE', W / 2, 32, CO.white, 'center', 1);
 
-    Pix.circle(ctx, 42, 88, 30, '#2a1a52');
-    drawPose(ctx, w.def, 42, 116, 1, 1, {
-      crouch: 0, punch: Math.sin(G.t / 6) > 0 ? 0.6 : 0.25, punchUp: true, kick: 0, cast: 0,
+    Pix.circle(ctx, 38, 82, 34, '#2a1a52');
+    drawPose(ctx, w.def, 38, 120, 1, 1, {
+      crouch: 0, punch: Math.sin(G.t / 6) > 0 ? 0.34 : 0.1, punchUp: true, kick: 0, cast: 0,
       walk: 0, air: false, ko: 0, bob: Math.sin(G.t / 6) > 0 ? 1 : 0,
       block: false, flash: false, spin: false, kickHigh: false
     });

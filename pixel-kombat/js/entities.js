@@ -8,8 +8,8 @@ class Proj {
     this.sp = sp;
     this.art = ART[sp.art] || ART.bill;
     this.dir = owner.dir;
-    this.x = o.x !== undefined ? o.x : owner.x + this.dir * 17;
-    this.y = o.y !== undefined ? o.y : owner.y + (sp.oy || -30);
+    this.x = o.x !== undefined ? o.x : owner.x + this.dir * 21;
+    this.y = o.y !== undefined ? o.y : owner.y + (sp.oy || -37);
     this.vx = o.vx !== undefined ? o.vx : this.dir * (sp.speed || 2.4);
     this.vy = o.vy !== undefined ? o.vy : (sp.vy || 0);
     this.g = o.g !== undefined ? o.g : (sp.gravity || 0);
@@ -69,7 +69,7 @@ class Proj {
 
     if (tgt && !tgt.dead && tgt.catchT > 0 && !this.rogue && aabb(this.box(), tgt.hurtbox())) {
       tgt.meter = Math.min(100, tgt.meter + 14);
-      world.popup(this.x, this.y - 14, '¡ATAJADA!', '#c9f542');
+      world.popup(this.x, this.y - 18, '¡ATAJADA!', '#c9f542');
       world.parts.push(new Shock(this.x, this.y, '#c9f542', 34, 14));
       world.duel(tgt, this.owner, 'catch', '¡ATAJADA!');
       Sfx.block();
@@ -114,9 +114,9 @@ class Wall {
   constructor(owner) {
     this.owner = owner;
     this.dir = owner.dir;
-    this.x = owner.x + this.dir * 32;
-    this.w = 14;
-    this.h = 44;
+    this.x = owner.x + this.dir * 38;
+    this.w = 16;
+    this.h = 56;
     this.hp = 42;
     this.life = 420;
     this.dead = false;
@@ -287,7 +287,7 @@ class Marcher {
     this.t++;
     this.x += this.dir * 1.6;
     const opp = world.opponentOf(this.owner);
-    if (!this.hit && opp && opp.state !== 'ko' && Math.abs(opp.x - this.x) < 13 && opp.y > GROUND - 44) {
+    if (!this.hit && opp && opp.state !== 'ko' && Math.abs(opp.x - this.x) < 16 && opp.y > GROUND - 54) {
       this.hit = true;
       dealDamage(this.owner, opp, this.dmg, { push: 1.5, hitstun: 10 }, world);
     }
@@ -337,8 +337,9 @@ class Emote {
     if (this.life < 10 && this.life % 4 < 2) return;
     const pop = Math.min(3, this.t);
     const w = 14, h = 14;
-    const x = Math.round(clamp(this.f.x - w / 2, 3, W - w - 3));
-    const y = Math.round(Math.max(44, this.f.y - 94)) + (3 - pop);
+    /* al lado de la cabeza, no encima: arriba está el marcador */
+    const x = Math.round(clamp(this.f.x - this.f.dir * 26 - w / 2, 3, W - w - 3));
+    const y = Math.round(Math.max(48, this.f.y - 96)) + (3 - pop);
     Pix.r(ctx, x - 1, y - 1, w + 2, h + 2, '#000');
     Pix.r(ctx, x, y, w, h, '#f4eeff');
     Pix.r(ctx, x + 1, y + 1, w - 2, 2, '#ffffff');
@@ -483,7 +484,7 @@ class World {
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * (sp.spread || 0);
           this.projs.push(new Proj(owner, sp, {
-            y: backfire ? owner.y - 40 : owner.y + (sp.oy || -30) - i * (sp.gravity ? 3 : 0),
+            y: backfire ? owner.y - 49 : owner.y + (sp.oy || -37) - i * (sp.gravity ? 3 : 0),
             x: backfire ? owner.x - owner.dir * 2 : undefined,
             vx: backfire ? -owner.dir * 1.6 : undefined,
             vy: backfire ? 0 : ((sp.vy || 0) + off * 1.6),
@@ -497,10 +498,10 @@ class World {
       case 'cone': {                          // MEGAFONAZO: onda corta que revienta la guardia
         const opp = this.opponentOf(owner);
         for (let i = 0; i < 3; i++)
-          this.parts.push(new Shock(owner.x + owner.dir * (14 + i * 14), owner.y - 44, '#f050a0', 40 + i * 12, 16 + i * 4));
+          this.parts.push(new Shock(owner.x + owner.dir * (17 + i * 17), owner.y - 54, '#f050a0', 40 + i * 12, 16 + i * 4));
         this.shake = 10;
         Sfx.super();
-        if (opp && Math.sign(opp.x - owner.x) === owner.dir && Math.abs(opp.x - owner.x) < 84)
+        if (opp && Math.sign(opp.x - owner.x) === owner.dir && Math.abs(opp.x - owner.x) < 100)
           dealDamage(owner, opp, sp.dmg, { push: sp.push || 6, hitstun: 26, unblockable: true, bounce: true }, this);
         break;
       }
@@ -521,15 +522,15 @@ class World {
         let killed = 0;
         for (const p of this.projs) if (p.owner !== owner) { this.burst(p.x, p.y, 7, '#f0932b'); p.pop(this); killed++; }
         for (const wl of this.walls) if (wl.owner !== owner) { wl.hp = 0; killed++; }
-        this.parts.push(new Shock(owner.x, owner.y - 38, '#f0932b', 96, 26));
+        this.parts.push(new Shock(owner.x, owner.y - 47, '#f0932b', 96, 26));
         this.shake = 8;
         Sfx.wall();
         if (opp) {
           const rico = opp.def.type === 'dinero';         // contra el dinero es demoledor
           const drain = rico ? 100 : (sp.drain || 40);
           opp.meter = Math.max(0, opp.meter - drain);
-          if (drain > 0) this.popup(opp.x, opp.y - 92, '-' + drain + ' SUPER', '#f0932b');
-          if (Math.abs(opp.x - owner.x) < 70)
+          if (drain > 0) this.popup(opp.x, opp.y - 100, '-' + drain + ' SUPER', '#f0932b');
+          if (Math.abs(opp.x - owner.x) < 86)
             dealDamage(owner, opp, sp.dmg * (rico ? 2 : 1), { push: 2.5, hitstun: 16 }, this);
           if (killed || rico) this.duel(owner, opp, 'nullify', sp.say);
           else this.bark(owner, sp.say, true);
@@ -538,8 +539,8 @@ class World {
       }
       case 'catch': {                          // ATAJADA
         owner.catchT = sp.frames || 100;
-        this.parts.push(new Shock(owner.x, owner.y - 38, '#c9f542', 44, 16));
-        this.popup(owner.x, owner.y - 92, 'ATAJADA', '#c9f542');
+        this.parts.push(new Shock(owner.x, owner.y - 47, '#c9f542', 54, 20));
+        this.popup(owner.x, owner.y - 100, 'ATAJADA', '#c9f542');
         Sfx.block();
         break;
       }
@@ -551,9 +552,9 @@ class World {
           opp.meter -= st;
           owner.meter = Math.min(100, owner.meter + st * 0.4);
           dealDamage(owner, opp, sp.dmg, { push: 1.2, hitstun: 12, unblockable: true }, this);
-          this.popup(opp.x, opp.y - 92, '¡ATURDIDO!', '#c9f542');
-          if (st > 0) this.popup(opp.x, opp.y - 106, '-' + Math.round(st) + ' SUPER', '#c9f542');
-          this.parts.push(new Shock(opp.x, opp.y - 38, '#c9f542', 70, 20));
+          this.popup(opp.x, opp.y - 100, '¡ATURDIDO!', '#c9f542');
+          if (st > 0) this.popup(opp.x, opp.y - 114, '-' + Math.round(st) + ' SUPER', '#c9f542');
+          this.parts.push(new Shock(opp.x, opp.y - 47, '#c9f542', 70, 20));
         }
         this.flash = 8; this.shake = 8;
         Sfx.super();
@@ -583,10 +584,10 @@ class World {
         owner.hp = Math.min(owner.maxHp, owner.hp + (sp.heal || 15));
         owner.guard = sp.guard || 120;
         for (let i = 0; i < 16; i++)
-          this.parts.push(new Particle(owner.x + rnd(-12, 12), owner.y - rnd(0, 62),
+          this.parts.push(new Particle(owner.x + rnd(-14, 14), owner.y - rnd(0, 78),
             rnd(-0.3, 0.3), rnd(-1.2, -0.4), irnd(20, 40), '#9bf59b', 1, -0.01));
-        this.popup(owner.x, owner.y - 78, '+' + (sp.heal || 15), '#4ad14a');
-        if (sp.art) this.decos.push(new Deco(owner.x - owner.dir * 22, GROUND, sp.art, 260));
+        this.popup(owner.x, owner.y - 96, '+' + (sp.heal || 15), '#4ad14a');
+        if (sp.art) this.decos.push(new Deco(owner.x - owner.dir * 27, GROUND, sp.art, 260));
         Sfx.heal();
         break;
       }
@@ -609,11 +610,11 @@ class World {
       case 'teleport': {
         const opp = this.opponentOf(owner);
         if (opp) {
-          this.burst(owner.x, owner.y - 34, 16, '#f2f0e6');
-          owner.x = clamp(opp.x - opp.dir * 22, 16, W - 16);
+          this.burst(owner.x, owner.y - 42, 16, '#f2f0e6');
+          owner.x = clamp(opp.x - opp.dir * 27, 16, W - 16);
           owner.dir = opp.dir;
           owner.y = GROUND; owner.vy = 0; owner.onGround = true;
-          this.burst(owner.x, owner.y - 34, 16, '#c0392b');
+          this.burst(owner.x, owner.y - 42, 16, '#c0392b');
           dealDamage(owner, opp, sp.dmg, { push: 4.2, hitstun: 30, launch: true }, this);
           this.shake = 12;
         }
@@ -645,7 +646,7 @@ class World {
         if (aabb(a.box(), b.box())) {
           const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
           this.impact(cx, cy, false);
-          this.popup(cx, cy - 12, '¡CHOQUE!', '#ffe9a8');
+          this.popup(cx, cy - 16, '¡CHOQUE!', '#ffe9a8');
           this.duel(a.owner, b.owner, 'clash');
           a.pop(this); b.pop(this);
         }

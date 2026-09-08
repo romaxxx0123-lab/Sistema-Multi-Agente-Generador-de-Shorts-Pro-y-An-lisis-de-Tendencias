@@ -252,7 +252,7 @@
           Sfx.baby();
         }
         if (G.phaseT > 56 && G.phaseT < 124 && G.phaseT % 7 === 0)
-          w.parts.push(new Particle(L.x + rnd(-7, 7), L.y - 30, rnd(-0.7, 0.7), -0.5, 34, '#8ee0f0', 2, 0.14));
+          w.parts.push(new Particle(L.x + rnd(-9, 9), L.y - 37, rnd(-0.7, 0.7), -0.5, 34, '#8ee0f0', 2, 0.14));
         if (G.phaseT === 124) {
           Wn.dir = L.x > Wn.x ? 1 : -1;
           Wn.startAttack(ATTACKS.kick);
@@ -260,7 +260,7 @@
         if (G.phaseT === 138) {
           L.launched = true;
           L.vx = Wn.dir * 9.5; L.vy = -7.5;
-          w.impact(L.x, L.y - 22, true);
+          w.impact(L.x, L.y - 27, true);
           w.shake = 16; w.flash = 8;
           Sfx.punt();
           w.say('Y AHÍ VA. QUE TENGA BUEN VIAJE.', 200, '#f07ac0');
@@ -302,11 +302,11 @@
   }
 
   function pushApart(a, b) {
-    const d = b.x - a.x, min = 22;
+    const d = b.x - a.x, min = 27;
     if (Math.abs(d) < min && a.state !== 'ko' && b.state !== 'ko') {
       const push = (min - Math.abs(d)) / 2 * (d >= 0 ? 1 : -1);
-      a.x = clamp(a.x - push * 0.6, 12, W - 12);
-      b.x = clamp(b.x + push * 0.6, 12, W - 12);
+      a.x = clamp(a.x - push * 0.6, 15, W - 15);
+      b.x = clamp(b.x + push * 0.6, 15, W - 15);
     }
   }
   function faceEachOther(a, b) {
@@ -322,7 +322,7 @@
     w.drawBack(ctx);
     for (const f of [f1, f2]) {
       const alt = clamp(GROUND - f.y, 0, 60);
-      Pix.shadow(ctx, f.x, GROUND, Math.max(11, 28 - alt * 0.26));
+      Pix.shadow(ctx, f.x, GROUND, Math.max(13, 34 - alt * 0.26));
       drawAura(f);
       drawFighter(ctx, f);
     }
@@ -333,14 +333,14 @@
   function drawAura(f) {
     if (f.guard > 0) for (let i = 0; i < 6; i++) {
       const a = f.t / 10 + i;
-      Pix.r(ctx, f.x + Math.cos(a) * 18, f.y - 34 + Math.sin(a) * 30, 2, 2, '#9bf59b');
+      Pix.r(ctx, f.x + Math.cos(a) * 22, f.y - 42 + Math.sin(a) * 37, 2, 2, '#9bf59b');
     }
     if (f.slow > 0 && f.t % 12 < 6) {
-      Pix.r(ctx, f.x - 13, f.y - 72, 3, 1, CO.cyan);
-      Pix.r(ctx, f.x + 11, f.y - 78, 3, 1, CO.cyan);
+      Pix.r(ctx, f.x - 16, f.y - 89, 3, 1, CO.cyan);
+      Pix.r(ctx, f.x + 14, f.y - 96, 3, 1, CO.cyan);
     }
-    if (f.burn > 0 && f.t % 8 < 4) Pix.r(ctx, f.x - 2, f.y - 68, 2, 2, '#f0932b');
-    if (f.meter >= 100 && f.state !== 'ko' && f.t % 20 < 10) Pix.r(ctx, f.x - 12, f.y + 1, 24, 1, CO.gold);
+    if (f.burn > 0 && f.t % 8 < 4) Pix.r(ctx, f.x - 2, f.y - 84, 2, 2, '#f0932b');
+    if (f.meter >= 100 && f.state !== 'ko' && f.t % 20 < 10) Pix.r(ctx, f.x - 15, f.y + 1, 30, 1, CO.gold);
   }
 
   /* =======================================================

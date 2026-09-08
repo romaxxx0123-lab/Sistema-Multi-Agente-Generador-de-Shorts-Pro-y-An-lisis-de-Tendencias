@@ -37,123 +37,125 @@ function bodyRects(def, A) {
   if (A.baby) return babyRects(B);
   const legC = B.legs || B.main, legD = B.legsDark || B.dark;
   const skin = B.skin;
-  const aw = B.bulk ? 6 : 5;
+  const aw = B.bulk ? 8 : 6;                     // grosor de brazo
   const R = [];
   const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
 
   const cr = A.crouch;                          // 0..12
   const lean = A.lean || 0;                     // peso del cuerpo
-  const sh = B.short ? 3 : 0;                    // personajes bajitos
-  const shinH = 12 - cr * 0.4 - sh, thighH = 13 - cr * 0.5 - sh;
+  const sh = B.short ? 4 : 0;                    // personajes bajitos
+  const shinH = 15 - cr * 0.5 - sh, thighH = 16 - cr * 0.6 - sh;
   const hipY = -(shinH + thighH);
-  const hipH = 8;
-  const chestH = 14;
+  const hipH = 10;
+  const chestH = 17;
   const chestY = hipY - hipH - chestH + (A.bob || 0);
-  const shY = chestY - 6;
-  const neckY = shY - 3;
+  const shY = chestY - 7;
+  const neckY = shY - 4;
   const boot = tint(legD, -0.5);
 
   /* ---- piernas ---- */
   if (A.kick > 0) {
-    add(-7, hipY, 8, thighH, legD);
-    add(-6, hipY + thighH, 6, shinH, legD);
-    add(-8, -3, 9, 3, boot);
-    const ky = A.kickHigh ? chestY + 3 : hipY + 6;
-    const kl = 8 + 18 * A.kick;
-    add(0, ky, kl, 7, legC);
-    add(kl, ky - 1, 8, 8, boot);
+    add(-10, hipY, 9, thighH, legD);
+    add(-9, hipY + thighH, 8, shinH, legD);
+    add(-11, -4, 10, 4, boot);
+    const ky = A.kickHigh ? chestY + 4 : hipY + 7;
+    const kl = 10 + 22 * A.kick;
+    add(0, ky, kl, 9, legC);
+    add(kl, ky - 1, 10, 10, boot);
   } else if (A.air) {
-    add(-8, hipY + 4, 8, thighH, legD);
-    add(-11, hipY + thighH + 3, 8, shinH - 3, legD);
-    add(-12, hipY + thighH + shinH - 1, 9, 3, boot);
-    add(1, hipY, 8, thighH, legC);
-    add(2, hipY + thighH - 2, 7, shinH - 4, legC);
-    add(1, hipY + thighH + shinH - 6, 9, 3, boot);
+    add(-10, hipY + 5, 10, thighH, legD);
+    add(-14, hipY + thighH + 4, 10, shinH - 4, legD);
+    add(-15, hipY + thighH + shinH - 1, 11, 4, boot);
+    add(1, hipY, 10, thighH, legC);
+    add(2, hipY + thighH - 2, 9, shinH - 5, legC);
+    add(1, hipY + thighH + shinH - 7, 11, 4, boot);
   } else {
-    const sw = Math.round(Math.sin(A.walk) * 4);
-    add(-7 - sw, hipY, 8, thighH, legD);
-    add(-6 - sw, hipY + thighH, 6, shinH, legD);
-    add(-8 - sw, -3, 9, 3, boot);
-    add(0 + sw, hipY, 8, thighH, legC);
-    add(1 + sw, hipY + thighH, 6, shinH, legC);
-    add(-1 + sw, -3, 9, 3, tint(legC, -0.42));
+    /* las dos piernas dejan un hueco en medio: sin él el cuerpo
+       se lee como un bloque y no como alguien de pie */
+    const sw = Math.round(Math.sin(A.walk) * 5);
+    add(-10 - sw, hipY, 9, thighH, legD);
+    add(-9 - sw, hipY + thighH, 8, shinH, legD);
+    add(-11 - sw, -4, 10, 4, boot);
+    add(1 + sw, hipY, 9, thighH, legC);
+    add(2 + sw, hipY + thighH, 8, shinH, legC);
+    add(1 + sw, -4, 10, 4, tint(legC, -0.42));
   }
 
   /* ---- tronco ---- */
-  add(-7 + lean * 0.4, hipY - hipH, 15, hipH + 2, tint(B.main, -0.10));
-  add(-9 + lean * 0.7, chestY, 18, chestH, B.main);
-  add(-11 + lean, shY + 1, 22, 6, tint(B.main, 0.08));
-  add(-9 + lean, shY, 18, 1, tint(B.main, 0.20));
-  add(-3 + lean, neckY, 6, 4, tint(skin, -0.12));
+  add(-9 + lean * 0.4, hipY - hipH, 19, hipH + 2, tint(B.main, -0.10));
+  add(-11 + lean * 0.7, chestY, 22, chestH, B.main);
+  add(-14 + lean, shY + 1, 27, 7, tint(B.main, 0.08));
+  add(-11 + lean, shY, 22, 1, tint(B.main, 0.20));
+  add(-4 + lean, neckY, 8, 5, tint(skin, -0.12));
 
   const st = B.style;
   const lx = Math.round(lean);
   if (st === 'suit') {
-    add(-4 + lx, shY + 2, 8, 16, B.light);
-    add(-2 + lx, shY + 3, 3, 13, B.accent);
-    add(-11 + lx, shY, 6, 12, B.dark);
-    add(5 + lx, shY, 6, 12, B.dark);
+    add(-5 + lx, shY + 2, 10, 20, B.light);
+    add(-3 + lx, shY + 3, 4, 16, B.accent);
+    add(-14 + lx, shY, 7, 15, B.dark);
+    add(7 + lx, shY, 7, 15, B.dark);
   } else if (st === 'jacket') {
-    add(-5 + lx, shY + 2, 10, 22, B.light);
-    add(-11 + lx, shY, 6, 22, B.dark);
-    add(5 + lx, shY, 6, 22, B.dark);
-    add(-2 + lx, chestY + 3, 3, 3, B.accent);
+    add(-6 + lx, shY + 2, 12, 27, B.light);
+    add(-14 + lx, shY, 7, 27, B.dark);
+    add(7 + lx, shY, 7, 27, B.dark);
+    add(-3 + lx, chestY + 4, 4, 4, B.accent);
   } else if (st === 'stripes') {
-    for (let i = -9; i < 9; i += 6) add(i + lx, chestY, 3, chestH, B.light);
-    for (let i = -7; i < 7; i += 6) add(i + Math.round(lean * 0.4), hipY - hipH, 3, hipH + 2, B.light);
-    add(-5 + lx, shY, 10, 3, B.dark);
+    for (let i = -11; i < 11; i += 7) add(i + lx, chestY, 4, chestH, B.light);
+    for (let i = -9; i < 9; i += 7) add(i + Math.round(lean * 0.4), hipY - hipH, 4, hipH + 2, B.light);
+    add(-6 + lx, shY, 12, 4, B.dark);
   } else if (st === 'jersey') {
-    add(-5 + lx, shY, 10, 3, B.light);
-    add(-11 + lx, shY + 5, 22, 2, B.light);
-    add(3 + lx, chestY + 4, 3, 7, B.light);
-    add(2 + lx, chestY + 4, 4, 2, B.light);
+    add(-6 + lx, shY, 12, 4, B.light);
+    add(-14 + lx, shY + 6, 27, 3, B.light);
+    add(4 + lx, chestY + 5, 4, 9, B.light);
+    add(2 + lx, chestY + 5, 5, 3, B.light);
   } else if (st === 'chef') {
-    add(-10 + lx, shY + 1, 21, 3, B.accent);
+    add(-12 + lx, shY + 1, 26, 4, B.accent);
     for (let i = 0; i < 4; i++) {
-      add(-5 + lx, chestY + 1 + i * 4, 2, 2, B.accent);
-      add(2 + lx, chestY + 1 + i * 4, 2, 2, B.accent);
+      add(-6 + lx, chestY + 1 + i * 5, 3, 3, B.accent);
+      add(3 + lx, chestY + 1 + i * 5, 3, 3, B.accent);
     }
-    add(-7 + Math.round(lean * 0.4), hipY - hipH, 15, hipH + 2, B.dark);
+    add(-9 + Math.round(lean * 0.4), hipY - hipH, 19, hipH + 2, B.dark);
   } else if (st === 'shirt') {
-    add(-5 + lx, shY + 1, 10, 4, B.light);
-    add(-1 + lx, chestY + 2, 2, 14, B.dark);
-    add(-7 + Math.round(lean * 0.4), hipY - hipH + 4, 15, 3, B.dark);
-    add(6 + lx, shY + 3, 4, 8, B.light);
+    add(-6 + lx, shY + 1, 12, 5, B.light);
+    add(-1 + lx, chestY + 2, 3, 17, B.dark);
+    add(-9 + Math.round(lean * 0.4), hipY - hipH + 5, 19, 4, B.dark);
+    add(7 + lx, shY + 4, 5, 10, B.light);
   } else if (st === 'stage') {                   // traje de escenario
-    add(-9 + lx, chestY, 18, 8, B.main);
-    add(-9 + lx, chestY, 18, 2, B.light);
-    add(-6 + lx, chestY + 8, 12, 6, tint(skin, -0.05));
-    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 2, B.main);
-    for (let i = -8; i < 9; i += 4) add(i, hipY, 3, 5, B.light);
-    add(-3 + lx, chestY + 2, 6, 2, B.accent);
+    add(-11 + lx, chestY, 22, 10, B.main);
+    add(-11 + lx, chestY, 22, 3, B.light);
+    add(-7 + lx, chestY + 10, 15, 7, tint(skin, -0.05));
+    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.main);
+    for (let i = -10; i < 11; i += 5) add(i, hipY, 4, 6, B.light);
+    add(-4 + lx, chestY + 2, 8, 3, B.accent);
   } else if (st === 'labcoat') {                 // bata de laboratorio
-    add(-9 + lx, chestY, 18, chestH, B.light);
-    add(-2 + lx, chestY, 4, chestH, B.accent);
-    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 6, B.light);
-    add(-2 + Math.round(lean * 0.4), hipY - hipH, 4, hipH + 4, B.accent);
-    add(-9 + lx, shY + 1, 18, 2, B.dark);
-    add(5 + lx, chestY + 3, 3, 3, B.dark);
+    add(-11 + lx, chestY, 22, chestH, B.light);
+    add(-3 + lx, chestY, 5, chestH, B.accent);
+    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 7, B.light);
+    add(-3 + Math.round(lean * 0.4), hipY - hipH, 5, hipH + 5, B.accent);
+    add(-11 + lx, shY + 1, 22, 3, B.dark);
+    add(6 + lx, chestY + 4, 4, 4, B.dark);
   } else if (st === 'punk') {                    // cazadora con parches
-    add(-9 + lx, chestY, 18, chestH, B.main);
-    add(-4 + lx, shY + 2, 8, chestH + 4, tint(B.main, 0.22));
-    add(-11 + lx, shY, 5, 4, B.light);
-    add(6 + lx, shY, 5, 4, B.light);
-    add(-8 + lx, chestY + 4, 4, 4, B.light);
-    add(3 + lx, chestY + 8, 4, 3, B.accent);
-    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 2, B.dark);
-    for (let i = -7; i < 8; i += 4) add(i, hipY - hipH, 2, 2, B.accent);
+    add(-11 + lx, chestY, 22, chestH, B.main);
+    add(-5 + lx, shY + 2, 10, chestH + 5, tint(B.main, 0.22));
+    add(-14 + lx, shY, 6, 5, B.light);
+    add(8 + lx, shY, 6, 5, B.light);
+    add(-10 + lx, chestY + 5, 5, 5, B.light);
+    add(4 + lx, chestY + 10, 5, 4, B.accent);
+    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.dark);
+    for (let i = -9; i < 10; i += 5) add(i, hipY - hipH, 3, 3, B.accent);
   } else if (st === 'keeper') {                  // camiseta de arquero
-    add(-9 + lx, chestY, 18, chestH, B.main);
-    add(-9 + lx, chestY + 4, 18, 3, B.light);
-    add(-5 + lx, shY, 10, 3, B.accent);
-    add(-11 + lx, shY, 4, 8, B.light);
-    add(7 + lx, shY, 4, 8, B.light);
-    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 2, B.dark);
+    add(-11 + lx, chestY, 22, chestH, B.main);
+    add(-11 + lx, chestY + 5, 22, 4, B.light);
+    add(-6 + lx, shY, 12, 4, B.accent);
+    add(-14 + lx, shY, 5, 10, B.light);
+    add(9 + lx, shY, 5, 10, B.light);
+    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.dark);
   } else if (st === 'tee') {
-    add(-5 + lx, shY, 10, 3, B.dark);
-    add(-11 + lx, shY, 4, 9, B.light);
-    add(7 + lx, shY, 4, 9, B.light);
-    add(-3 + lx, chestY + 6, 6, 2, B.accent);
+    add(-6 + lx, shY, 12, 4, B.dark);
+    add(-14 + lx, shY, 5, 11, B.light);
+    add(9 + lx, shY, 5, 11, B.light);
+    add(-4 + lx, chestY + 7, 8, 3, B.accent);
   }
 
   /* ---- brazos (manga corta = antebrazo de piel) ---- */
@@ -161,48 +163,48 @@ function bodyRects(def, A) {
   const foreC = shortSleeve ? skin : B.main;
   const foreD = shortSleeve ? tint(skin, -0.18) : B.dark;
   const hand = B.gloves || skin;                 // guantazos de portero
-  const hs = B.gloves ? 8 : 6;
+  const hs = B.gloves ? 10 : 8;
   const ay = shY + 2;
 
   if (A.cast > 0) {
-    add(-6, ay - 4, 12, aw, B.dark);
-    add(6, ay - 7, 7, 7, skin);
-    add(4, ay - 8, 12, aw, B.main);
-    add(16, ay - 11, 7, 7, skin);
+    add(-8, ay - 5, 15, aw, B.dark);
+    add(7, ay - 9, 9, 9, skin);
+    add(5, ay - 10, 15, aw, B.main);
+    add(20, ay - 14, 9, 9, skin);
   } else if (A.punch !== 0) {
     const p = A.punch;
     const back = p < 0;
-    const up = A.punchUp ? Math.round(15 * Math.max(0, p)) : 0;
-    add(-11 + lx, ay, aw, 9, B.dark);
-    add(-11 + lx, ay + 9, aw, 8, foreD);
+    const up = A.punchUp ? Math.round(18 * Math.max(0, p)) : 0;
+    add(-14 + lx, ay, aw, 11, B.dark);
+    add(-14 + lx, ay + 11, aw, 10, foreD);
     if (back) {
       /* brazo recogido: toma impulso */
-      const off = Math.round(6 * -p);
-      add(2 - off, ay + 3, aw, 8, B.main);
-      add(1 - off, ay + 10, hs, hs, hand);
+      const off = Math.round(7 * -p);
+      add(3 - off, ay + 4, aw, 10, B.main);
+      add(1 - off, ay + 12, hs, hs, hand);
     } else {
-      const len = 9 + 17 * p;
-      add(6, ay + 4 - up, 7, aw + 2, B.main);
-      add(13, ay + 4 - up, len - 7, aw + 2, foreC);
-      add(6 + len, ay + 1 - up - (A.punchUp ? 4 : 0), hs, hs, hand);
+      const len = 11 + 21 * p;
+      add(7, ay + 5 - up, 9, aw + 2, B.main);
+      add(16, ay + 5 - up, len - 9, aw + 2, foreC);
+      add(7 + len, ay + 1 - up - (A.punchUp ? 5 : 0), hs, hs, hand);
     }
   } else if (A.block) {
-    add(-11 + lx, ay, aw, 9, B.dark);
-    add(-11 + lx, ay + 9, aw, 8, foreD);
-    add(4, ay - 1, aw + 2, 20, B.dark);
-    add(4, ay - 1, aw + 2, 4, B.light);
-    add(5, ay + 17, hs, hs, hand);
+    add(-14 + lx, ay, aw, 11, B.dark);
+    add(-14 + lx, ay + 11, aw, 10, foreD);
+    add(5, ay - 1, aw + 2, 25, B.dark);
+    add(5, ay - 1, aw + 2, 5, B.light);
+    add(6, ay + 21, hs, hs, hand);
   } else {
-    const sw = Math.round(Math.sin(A.walk) * 4);
-    add(-11 + lx, ay + sw, aw, 9, B.dark);
-    add(-11 + lx, ay + 9 + sw, aw, 8, foreD);
-    add(-11 + lx, ay + 16 + sw, hs, hs, tint(hand, -0.15));
-    add(6 + lx, ay - sw, aw, 9, B.main);
-    add(6 + lx, ay + 9 - sw, aw, 8, foreC);
-    add(6 + lx, ay + 16 - sw, hs, hs, hand);
+    const sw = Math.round(Math.sin(A.walk) * 5);
+    add(-14 + lx, ay + sw, aw, 11, B.dark);
+    add(-14 + lx, ay + 11 + sw, aw, 10, foreD);
+    add(-14 + lx, ay + 20 + sw, hs, hs, tint(hand, -0.15));
+    add(7 + lx, ay - sw, aw, 11, B.main);
+    add(7 + lx, ay + 11 - sw, aw, 10, foreC);
+    add(7 + lx, ay + 20 - sw, hs, hs, hand);
   }
 
-  return { rects: R, headY: neckY - 17, headX: -9 + Math.round(lean * 1.2) };
+  return { rects: R, headY: neckY - 21, headX: -13 + Math.round(lean * 1.2) };
 }
 
 /* Cuerpo de bebé: cabeza normal sobre un cuerpecito, que es lo que
@@ -211,16 +213,16 @@ function babyRects(B) {
   const skin = B.skin;
   const R = [];
   const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
-  add(-7, -7, 5, 7, skin);
-  add(2, -7, 5, 7, skin);
-  add(-8, -2, 7, 2, tint(skin, -0.3));
-  add(1, -2, 7, 2, tint(skin, -0.3));
-  add(-6, -16, 12, 15, '#f4eeff');
-  add(-6, -16, 12, 3, '#ffffff');
-  add(-6, -6, 12, 2, '#d8cfee');
-  add(-10, -14, 5, 8, skin);
-  add(5, -14, 5, 8, skin);
-  return { rects: R, headY: -33, headX: -9 };
+  add(-9, -9, 6, 9, skin);
+  add(3, -9, 6, 9, skin);
+  add(-10, -3, 9, 3, tint(skin, -0.3));
+  add(1, -3, 9, 3, tint(skin, -0.3));
+  add(-8, -20, 16, 19, '#f4eeff');
+  add(-8, -20, 16, 4, '#ffffff');
+  add(-8, -8, 16, 3, '#d8cfee');
+  add(-13, -18, 6, 10, skin);
+  add(7, -18, 6, 10, skin);
+  return { rects: R, headY: -41, headX: -13 };
 }
 
 /* ---------------------------------------------------------
@@ -243,38 +245,21 @@ function drawFighter(ctx, f) {
     ctx.translate(0, 6);
   }
 
-  if (A.spin) { drawSpin(ctx, def, A); ctx.restore(); return; }
+  if (A.spin) drawStreaks(ctx, def, A);   // estelas de la embestida, por detrás
 
   const parts = bodyRects(def, A);
-  const R = parts.rects;
-
-  /* 1) silueta: se calca todo en oscuro alrededor */
-  ctx.fillStyle = OUTLINE;
-  const OFF = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-  for (const o of OFF)
-    for (const p of R)
-      ctx.fillRect(Math.round(p.x + o[0]), Math.round(p.y + o[1]), Math.round(p.w), Math.round(p.h));
-
-  /* 2) relleno con luz arriba y sombra abajo */
-  for (const p of R) {
-    if (A.flash) Pix.r(ctx, p.x, p.y, p.w, p.h, '#ffffff');
-    else if (p.h >= 4 && p.w >= 3) Pix.shade(ctx, p.x, p.y, p.w, p.h, p.c);
-    else Pix.r(ctx, p.x, p.y, p.w, p.h, p.c);
-  }
-
-  /* 3) cabeza (ya trae su propio contorno) */
-  Pix.grid(ctx, def._head, A.flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
+  paintBody(ctx, def, parts, A.flash);
 
   /* 4) el narizón: le crece y pica con ella */
   if (A.nose > 0) {
-    const len = Math.round(8 + 48 * A.nose);
-    const ny = parts.headY + 10;
-    Pix.r(ctx, 6, ny - 1, len + 2, 6, OUTLINE);
-    Pix.r(ctx, 6, ny, len, 4, def.body.skin);
-    Pix.r(ctx, 6, ny, len, 1, tint(def.body.skin, 0.3));
-    Pix.r(ctx, 6, ny + 3, len, 1, tint(def.body.skin, -0.25));
-    Pix.r(ctx, 6 + len, ny - 2, 4, 8, OUTLINE);
-    Pix.r(ctx, 6 + len, ny - 1, 3, 6, tint(def.body.skin, -0.15));
+    const len = Math.round(10 + 58 * A.nose);
+    const ny = parts.headY + 15;
+    Pix.r(ctx, 8, ny - 1, len + 2, 7, OUTLINE);
+    Pix.r(ctx, 8, ny, len, 5, def.body.skin);
+    Pix.r(ctx, 8, ny, len, 1, tint(def.body.skin, 0.3));
+    Pix.r(ctx, 8, ny + 4, len, 1, tint(def.body.skin, -0.25));
+    Pix.r(ctx, 8 + len, ny - 2, 5, 9, OUTLINE);
+    Pix.r(ctx, 8 + len, ny - 1, 4, 7, tint(def.body.skin, -0.15));
   }
 
   ctx.restore();
@@ -282,19 +267,42 @@ function drawFighter(ctx, f) {
 
 const WHITE_PAL = new Proxy({}, { get: (o, k) => k === '#' ? OUTLINE : '#ffffff' });
 
-/* torbellino de los especiales de embestida */
-function drawSpin(ctx, def, A) {
+/* Embestida: en vez de un amasijo abstracto se dibuja al luchador de
+   verdad con estelas detrás. Se reconoce quién embiste y hacia dónde. */
+function drawStreaks(ctx, def, A) {
   const B = def.body;
-  for (let i = 0; i < 8; i++) {
-    const y = -66 + i * 9;
-    const w = 34 - Math.abs(i - 3.5) * 5;
-    const x = -w / 2 + Math.sin(A.walk * 2 + i) * 3;
-    Pix.r(ctx, x - 1, y - 1, w + 2, 8, OUTLINE);
-    Pix.shade(ctx, x, y, w, 6, i % 2 ? B.main : tint(B.main, 0.25));
+  /* dos siluetas rezagadas: la típica estela de las recreativas */
+  for (let k = 2; k >= 1; k--) {
+    const dx = -k * 9;
+    const gh = bodyRects(def, Object.assign({}, A, { spin: false, walk: A.walk - k * 0.9 }));
+    ctx.globalAlpha = 0.30 - k * 0.08;
+    for (const p of gh.rects) Pix.r(ctx, p.x + dx, p.y, p.w, p.h, tint(B.main, 0.35));
+    Pix.r(ctx, gh.headX + dx + 4, gh.headY + 5, 18, 18, tint(B.main, 0.35));
+    ctx.globalAlpha = 1;
   }
-  Pix.grid(ctx, headOf(def)._head, def._pal, -9, -82);
-  Pix.r(ctx, -22, -52, 2, 30, 'rgba(255,255,255,0.55)');
-  Pix.r(ctx, 20, -60, 2, 30, 'rgba(255,255,255,0.55)');
+  /* líneas de velocidad */
+  for (let i = 0; i < 5; i++) {
+    const y = -84 + ((i * 23 + Math.round(A.walk * 9)) % 78);
+    const len = 16 + (i % 3) * 9;
+    Pix.r(ctx, -18 - len, y, len, 2, 'rgba(255,255,255,0.5)');
+  }
+}
+
+/* pinta un cuerpo ya montado: silueta oscura, relleno con volumen y cabeza */
+function paintBody(ctx, def, parts, flash) {
+  const R = parts.rects;
+  ctx.fillStyle = OUTLINE;
+  const OFF = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const o of OFF)
+    for (const p of R)
+      ctx.fillRect(Math.round(p.x + o[0]), Math.round(p.y + o[1]), Math.round(p.w), Math.round(p.h));
+
+  for (const p of R) {
+    if (flash) Pix.r(ctx, p.x, p.y, p.w, p.h, '#ffffff');
+    else if (p.h >= 4 && p.w >= 3) Pix.shade(ctx, p.x, p.y, p.w, p.h, p.c);
+    else Pix.r(ctx, p.x, p.y, p.w, p.h, p.c);
+  }
+  Pix.grid(ctx, def._head, flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
 }
 
 /* pose neutra */

@@ -129,7 +129,7 @@ El resto de reacciones son mudas:
   balbuceo (12 perfiles distintos). Ramsés y La Roca gruñen grave y rasgado,
   La Loba y Siuuu suenan agudos y terminan hacia arriba, Zuck habla plano y
   robótico, Albertito ondula. No dicen palabras: se entiende por el tono.
-- **Emotes con icono** sobre la cabeza: impacto, dolor, escudo, gafas de
+- **Emotes con icono** al lado de la cabeza: impacto, dolor, escudo, gafas de
   chulo, alarma, corona, prohibido, guante... o el **icono de su tipo** cuando
   lanzan un especial.
 - El **texto solo aparece en los momentos escritos** (pique de arranque, cruces
@@ -235,19 +235,31 @@ rectángulos planos de un solo color. Ahora:
 ### Escala y animación de los sprites
 
 Los luchadores ocupaban un 30% del alto de pantalla cuando en una recreativa
-ocupan la mitad, y las caras eran rejillas de 12×12 con dos píxeles de ojo:
+ocupan la mitad, y las caras eran rejillas de 12×12 con dos píxeles de ojo. En
+una cara así no caben rasgos: cinco morenos con barba salían iguales. La
+solución no fue subir la resolución del lienzo (eso solo aleja la cámara), sino
+subir los píxeles **del personaje**:
 
-- **Cabezas de 16×16 dibujadas una a una**: pelo a dos tonos, cejas, ojos con
-  blanco y pupila, nariz, boca y sombra de mandíbula. Cada personaje se
+- **Cabezas de 24×24** (antes 16×16, o sea 2,25× más píxeles por cara): pelo a
+  tres tonos, cejas con humor propio, ojos con pestaña, blanco, pupila mirando
+  al rival y brillo, nariz, boca, barba y sombra de mandíbula. Cada personaje se
   reconoce por la cara, no por el color de la camiseta.
-- **Cuerpos de 78px** (antes 54) montados por piezas reales: bota, espinilla,
-  muslo, cadera, pecho, hombros y cuello, con brazo y antebrazo separados.
+- **Cuerpos de 90px** (antes 78, antes 54) montados por piezas reales: bota,
+  espinilla, muslo, cadera, pecho, hombros y cuello, con brazo y antebrazo
+  separados y un hueco entre las dos piernas para que no se lean como un bloque.
+  Ocupan la mitad del alto de pantalla, como en una recreativa.
 - **Anticipación en los golpes**: durante el arranque el brazo se recoge y el
   cuerpo se inclina hacia atrás; al impactar sale disparado hacia delante. Es
   lo que da sensación de peso.
 - **Peso y rebote**: el cuerpo se inclina según la acción, al aterrizar hay
   amortiguación, al encajar un golpe el torso se va hacia atrás y en reposo
   los brazos se mecen con la respiración.
+- **Embestidas con estela**: al lanzarse se dibuja al luchador de verdad,
+  escorado y con el hombro por delante, con dos siluetas rezagadas y líneas de
+  velocidad detrás. Se ve quién embiste, no un amasijo de barras.
+- **Retratos del marcador recortados**: la cabeza ya no cabe entera en el marco,
+  así que se encuadra la cara. En la parrilla de selección los personajes se
+  distinguen de un vistazo.
 - **Destello de impacto** de varios fotogramas: núcleo blanco, rayos y anillo
   en expansión, más grande en los golpes fuertes.
 - **Duelo espejo con paleta cambiada**: si los dos jugadores eligen el mismo
@@ -293,4 +305,4 @@ pixel-kombat/
 
 Lienzo interno de **320×180**; bucle de paso fijo a 60 fps con acumulador;
 cuerpos dibujados por partes (piernas, torso, brazos) y cabezas como rejillas de
-píxeles de 12×12 por personaje; escenarios y sonido generados por código.
+píxeles de 24×24 por personaje; escenarios y sonido generados por código.

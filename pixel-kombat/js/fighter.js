@@ -34,16 +34,16 @@ function introLine(f, opp) {
 }
 
 const GRAV = 0.42;
-const JUMP_V = -6.3;
+const JUMP_V = -6.6;
 
 const ATTACKS = {
-  punch: { startup: 3, active: 3, recover: 7, dmg: 5, reach: 22, h: 12, oy: -48, push: 1.7, hitstun: 11, anim: 'punch', name: 'PUÑO' },
-  kick: { startup: 6, active: 4, recover: 12, dmg: 9, reach: 32, h: 13, oy: -38, push: 3.4, hitstun: 17, anim: 'kick', name: 'PATADA' },
-  low: { startup: 5, active: 4, recover: 11, dmg: 7, reach: 29, h: 10, oy: -14, push: 2.0, hitstun: 15, anim: 'kick', low: true, name: 'BARRIDA' },
-  upper: { startup: 5, active: 5, recover: 17, dmg: 13, reach: 22, h: 32, oy: -62, push: 2.4, hitstun: 26, anim: 'upper', launch: true, name: 'UPPERCUT' },
-  air: { startup: 4, active: 9, recover: 7, dmg: 8, reach: 26, h: 14, oy: -29, push: 2.9, hitstun: 16, anim: 'kick', air: true, name: 'PATADA AÉREA' },
+  punch: { startup: 3, active: 3, recover: 7, dmg: 5, reach: 27, h: 15, oy: -59, push: 1.7, hitstun: 11, anim: 'punch', name: 'PUÑO' },
+  kick: { startup: 6, active: 4, recover: 12, dmg: 9, reach: 39, h: 16, oy: -47, push: 3.4, hitstun: 17, anim: 'kick', name: 'PATADA' },
+  low: { startup: 5, active: 4, recover: 11, dmg: 7, reach: 36, h: 13, oy: -18, push: 2.0, hitstun: 15, anim: 'kick', low: true, name: 'BARRIDA' },
+  upper: { startup: 5, active: 5, recover: 17, dmg: 13, reach: 27, h: 39, oy: -76, push: 2.4, hitstun: 26, anim: 'upper', launch: true, name: 'UPPERCUT' },
+  air: { startup: 4, active: 9, recover: 7, dmg: 8, reach: 32, h: 17, oy: -36, push: 2.9, hitstun: 16, anim: 'kick', air: true, name: 'PATADA AÉREA' },
   cast: { startup: 9, active: 1, recover: 15, anim: 'cast', name: 'ESPECIAL' },
-  nose: { startup: 9, active: 13, recover: 18, dmg: 12, reach: 54, h: 8, oy: -62, push: 3.2, hitstun: 20, anim: 'nose', name: 'NARIZÓN' },
+  nose: { startup: 9, active: 13, recover: 18, dmg: 12, reach: 66, h: 10, oy: -76, push: 3.2, hitstun: 20, anim: 'nose', name: 'NARIZÓN' },
   taunt: { startup: 8, active: 1, recover: 22, anim: 'taunt', name: 'BURLA' }
 };
 
@@ -90,15 +90,15 @@ class Fighter {
 
   hurtbox() {
     const low = this.crouching || (this.atk && this.atk.low);
-    const h = low ? 50 : 74;
-    return { x: this.x - 10, y: this.y - h, w: 20, h };
+    const h = low ? 62 : 91;
+    return { x: this.x - 12, y: this.y - h, w: 25, h };
   }
 
   attackBox() {
     const a = this.atk;
     if (!a || !a.reach || !this.isActive()) return null;
     return {
-      x: this.dir > 0 ? this.x + 7 : this.x - 7 - a.reach,
+      x: this.dir > 0 ? this.x + 9 : this.x - 9 - a.reach,
       y: this.y + a.oy,
       w: a.reach,
       h: a.h
@@ -151,8 +151,8 @@ class Fighter {
       this.burn--;
       if (this.burn % 26 === 0 && this.hp > 1) {
         this.hp = Math.max(1, this.hp - 1);
-        world.parts.push(new Particle(this.x + rnd(-6, 6), this.y - rnd(14, 58), rnd(-.3, .3), -0.5, 22, '#f0932b', 1, -0.02));
-        if (this.burn % 78 === 0) world.popup(this.x, this.y - 80, '¡AY!', '#f0932b');
+        world.parts.push(new Particle(this.x + rnd(-8, 8), this.y - rnd(17, 72), rnd(-.3, .3), -0.5, 22, '#f0932b', 1, -0.02));
+        if (this.burn % 78 === 0) world.popup(this.x, this.y - 98, '¡AY!', '#f0932b');
       }
     }
     if (this.comboT > 0 && --this.comboT === 0) this.combo = 0;
@@ -260,7 +260,7 @@ class Fighter {
     this.state = 'attack';
     this.blocking = false;
     this.crouching = false;
-    world.popup(this.x, this.y - 64, sp.name, isSuper ? '#f5c542' : '#48e0d0');
+    world.popup(this.x, this.y - 79, sp.name, isSuper ? '#f5c542' : '#48e0d0');
     if (isSuper) { world.flash = 10; world.shake = 6; }
   }
 
@@ -361,7 +361,12 @@ class Fighter {
     };
     if (this.squash > 0) A.crouch = this.squash * 1.6;
     if (this.state === 'ko') { A.ko = this.koT; A.baby = this.baby; return A; }
-    if (this.state === 'dash') { A.spin = true; A.walk = this.t * 0.6; return A; }
+    /* embestida: cuerpo escorado hacia delante y hombro por delante */
+    if (this.state === 'dash') {
+      A.spin = true; A.walk = this.t * 0.6;
+      A.lean = 6; A.crouch = 5; A.punch = 0.9;
+      return A;
+    }
     if (!this.onGround) A.air = true;
     if (this.state === 'hit') { A.crouch = 3; A.lean = -5; return A; }
     if (this.crouching) A.crouch = 11;
@@ -409,7 +414,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
 
   const dirAway = Math.sign(tgt.x - src.x) || src.dir;
   const cx = (src.x + tgt.x) / 2;
-  const cy = tgt.y - 40;
+  const cy = tgt.y - 49;
 
   if (blocked) {
     tgt.vx = dirAway * (opts.push || 1) * 0.5;
@@ -417,7 +422,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
     world.impact(cx, cy, false);
     world.burst(cx, cy, 5, '#a8d8ff');
     if (Math.random() < 0.18) world.emote(tgt, 'escudo');
-    world.popup(tgt.x, tgt.y - 74, 'BLOQUEO', '#a8d8ff');
+    world.popup(tgt.x, tgt.y - 91, 'BLOQUEO', '#a8d8ff');
     world.shake = 2;
     world.hitstop = 2;
     Sfx.block();
@@ -437,7 +442,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
     const big = d > 9 || tm.kind === 'super';
     world.impact(cx, cy, big);
     world.burst(cx, cy, big ? 12 : 7, tm.kind === 'super' ? '#f5c542' : (big ? '#ffe07a' : '#ffffff'));
-    world.popup(tgt.x, tgt.y - 78, '-' + d, tm.kind === 'super' ? '#f5c542' : (tm.kind === 'weak' ? '#9aa6bd' : '#ffffff'));
+    world.popup(tgt.x, tgt.y - 96, '-' + d, tm.kind === 'super' ? '#f5c542' : (tm.kind === 'weak' ? '#9aa6bd' : '#ffffff'));
     world.shake = big ? 8 : 4;
     world.hitstop = big ? 6 : 3;
     if (big) Sfx.bigHit(); else Sfx.hit();
@@ -446,11 +451,11 @@ function dealDamage(src, tgt, dmg, opts, world) {
     if (tm.kind !== 'normal' && world.t - src.lastTypeSay > 110) {
       src.lastTypeSay = world.t;
       if (tm.kind === 'super') {
-        world.popup(tgt.x, tgt.y - 96, '¡SUPER EFECTIVO!', '#f5c542');
+        world.popup(tgt.x, tgt.y - 112, '¡SUPER EFECTIVO!', '#f5c542');
         world.flash = 6;
         Sfx.superEff();
       } else {
-        world.popup(tgt.x, tgt.y - 96, 'poco efectivo...', '#9aa6bd');
+        world.popup(tgt.x, tgt.y - 112, 'poco efectivo...', '#9aa6bd');
       }
       world.say(tm.msg);
     }
@@ -458,15 +463,15 @@ function dealDamage(src, tgt, dmg, opts, world) {
 
   if (opts.effect === 'slow' && !blocked) {
     tgt.slow = 260;
-    world.popup(tgt.x, tgt.y - 90, 'LAG', '#48e0d0');
+    world.popup(tgt.x, tgt.y - 106, 'LAG', '#48e0d0');
   }
   if (opts.effect === 'stun' && !blocked) {
     tgt.stunT = 105;
-    world.popup(tgt.x, tgt.y - 90, '¡ATURDIDO!', '#f07ac0');
+    world.popup(tgt.x, tgt.y - 106, '¡ATURDIDO!', '#f07ac0');
   }
   if (opts.effect === 'burn' && !blocked) {
     tgt.burn = 300;
-    world.popup(tgt.x, tgt.y - 90, '¡QUEMA!', '#f0932b');
+    world.popup(tgt.x, tgt.y - 106, '¡QUEMA!', '#f0932b');
     world.say('LA SOPA ESTABA HIRVIENDO. SIEMPRE ESTÁ HIRVIENDO.');
   }
 
@@ -476,8 +481,8 @@ function dealDamage(src, tgt, dmg, opts, world) {
     if (room < 48) {
       const extra = Math.max(2, Math.round(d * 0.5));
       tgt.hp = Math.max(0, tgt.hp - extra);
-      world.popup(tgt.x, tgt.y - 96, 'CONTRA LAS CUERDAS -' + extra, '#f050a0');
-      world.impact(clamp(tgt.x + dirAway * 12, 8, W - 8), tgt.y - 42, true);
+      world.popup(tgt.x, tgt.y - 112, 'CONTRA LAS CUERDAS -' + extra, '#f050a0');
+      world.impact(clamp(tgt.x + dirAway * 14, 8, W - 8), tgt.y - 52, true);
       world.shake = 13;
       Sfx.bigHit();
     }
@@ -496,7 +501,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
     tgt.hitstun = 0;
     world.flash = 12;
     world.shake = 16;
-    world.burst(tgt.x, tgt.y - 36, 30, '#e0343c');
+    world.burst(tgt.x, tgt.y - 44, 30, '#e0343c');
     Sfx.ko();
   }
   return !blocked;
