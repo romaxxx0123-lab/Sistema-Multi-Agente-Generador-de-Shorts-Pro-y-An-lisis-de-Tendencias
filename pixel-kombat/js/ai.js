@@ -31,6 +31,13 @@ const AI = {
     }
     if (a.react > 0) a.react--;
 
+    /* --- reacción: si me llega algo y sé anularlo o atajarlo, lo uso --- */
+    const k = f.def.special.kind;
+    if ((k === 'nullify' || k === 'catch') && f.meter >= f.def.special.cost &&
+        a.t <= 6 && world.projs.some(p => p.owner !== f && Math.abs(p.x - f.x) < 90)) {
+      a.plan = 'special'; a.t = 24; a.fire = true;
+    }
+
     /* --- elegir plan nuevo --- */
     if (a.t <= 0) {
       a.fire = true;

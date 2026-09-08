@@ -54,7 +54,7 @@ Necesita teclado (no hay controles táctiles). Los menús también aceptan rató
 
 ---
 
-## 👥 El elenco (10 luchadores)
+## 👥 El elenco (12 luchadores)
 
 Nadie repite arquetipo: cada uno tiene **vida, velocidad, salto, alcance y
 ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
@@ -62,25 +62,41 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 | Personaje | Tipo | Arquetipo | Vida | Vel. | Especial → SUPER |
 |---|---|---|---|---|---|
 | **TRUMPO** *(el magnate)* | 💵 DINERO | Tortuga | 120 | 1.05 | `MURO DE ORO` (barrera) → `LLUVIA DE BILLETES` |
-| **MUSKO** *(el de los cohetes)* | 🚀 COHETE | Riesgo | **85** | 1.45 | `COHETE INESTABLE` (**30% le vuelve encima**) → `HYPERLOOP` (teletransporte) |
+| **MUSKO** *(el de los cohetes)* | 🚀 COHETE | Riesgo | **85** | 1.45 | `COHETE INESTABLE` (**30% le vuelve encima**) → `HYPERLOOP` |
 | **EL PULGA** *(el de la zurda)* | ⚽ FÚTBOL | Velocidad | 95 | **1.60** | `TIRO LIBRE` (teledirigido) → `GAMBETA INFINITA` |
-| **SIUUU** *(el del salto)* | 👑 EGO | Aéreo | 100 | 1.35 | `CABEZAZO ORBITAL` (embestida aérea) → `GRITO SIUUU` |
-| **CHEF RAMSÉS** | 🔥 COCINA | Presión | 105 | 1.25 | `¡ESTÁ CRUDO!` (platos) → `PESADILLA EN COCINA` (quema) |
+| **SIUUU** *(el del salto)* | 👑 EGO | Aéreo | 100 | 1.35 | `CABEZAZO ORBITAL` → `GRITO SIUUU` |
+| **CHEF RAMSÉS** | 🔥 COCINA | Presión | 105 | 1.25 | `¡ESTÁ CRUDO!` (platos) → `PESADILLA EN COCINA` |
 | **BOB LA BROCHA** | 🎨 ÓLEO | Soporte | 115 | 1.10 | `ARBOLITO FELIZ` (cura) → `ACCIDENTE FELIZ` |
-| **LA ROCA** *(el de la ceja)* | 🪨 ROCA | Tanque | **130** | 0.95 | `CEJA LEVANTADA` (ralentiza) → `CODAZO DEL PUEBLO` |
-| **ZUCK-BOT** | 🤖 ALGORITMO | Control | 95 | 1.20 | `¿ERES UN ROBOT?` (captcha) → `TÉRMINOS NUEVOS` |
-| **LA LOBA** *(la de las caderas)* | 💃 RITMO | Cercanía | 100 | 1.30 | `CADERAZO` (onda que empuja) → `AULLIDO` (**aturde**) |
-| **ALBERTITO** *(el del pelo)* | ⚛️ CIENCIA | Zoner | **85** | 1.00 | `E = M C 2` (**crece al viajar**) → `AGUJERO NEGRO` (**te atrae**) |
+| **LA ROCA** *(el de la ceja)* | 🪨 ROCA | Tanque | **130** | 0.95 | `CEJA LEVANTADA` → `CODAZO DEL PUEBLO` |
+| **ZUCK-BOT** | 🤖 ALGORITMO | Control | 95 | 1.20 | `¿ERES UN ROBOT?` → `TÉRMINOS NUEVOS` |
+| **LA LOBA** *(la de las caderas)* | 💃 RITMO | Cercanía | 100 | 1.30 | `CADERAZO` → `AULLIDO` (**aturde**) |
+| **ALBERTITO** *(el del pelo)* | ⚛️ CIENCIA | Zoner | **85** | 1.00 | `E = M C 2` (**crece al viajar**) → `AGUJERO NEGRO` (**atrae**) |
+| **EL PELUCA** *(el de la motosierra)* | 🪚 MOTOSIERRA | Anulador | 95 | 1.35 | `¡NO HAY PLATA!` (**anula todo lo lanzado**) → `MOTOSIERRA` |
+| **EL DIBU** *(el de los penales)* | 🧤 ARQUERO | Contragolpe | 115 | 1.15 | `ATAJADA` (**caza proyectiles**) → `TE LO ATAJO` (aturde y roba super) |
 
-Mecánicas que no comparte nadie más: el **muro** de Trumpo, el **cohete que se
-le vuelve en la cara** a Musko, la **cura** de Bob, el **aturdimiento** de La
-Loba, el **proyectil que crece con la distancia** y el **agujero negro que
-arrastra** de Albertito, y el **teletransporte** de Musko.
+Mecánicas exclusivas: el **muro** de Trumpo, el **cohete que se le vuelve en la
+cara** a Musko, la **cura** de Bob, el **aturdimiento** de La Loba, el
+**proyectil que crece** y el **agujero negro** de Albertito, el **teletransporte**
+de Musko, la **anulación** del Peluca y la **atajada** del Dibu.
 
-Además hay diferencias que se notan al jugar: La Roca pega lento pero larguísimo
-y aguanta 130 de vida; Albertito pega flojo, corto y salta poco, pero controla la
-pantalla; Musko es el más frágil y el más explosivo; Siuuu salta un 35% más alto
-que nadie; El Pulga golpea un 20% más rápido.
+## 🤝 Interacciones entre personajes
+
+Algunos cruces tienen guion propio: no solo cambia el daño, cambia lo que pasa
+en pantalla y lo que se dicen.
+
+| Cruce | Qué ocurre |
+|---|---|
+| **TRUMPO lanza billetes + EL PELUCA usa ¡NO HAY PLATA!** | Los billetes **se desintegran en el aire** y Trumpo **pierde toda la barra de super**. PELUCA: *"¡NO HAY PLATA!"* → TRUMPO: *"¡ESO ES SOCIALISMO!"* |
+| PELUCA anula el cohete de MUSKO | *"NO FINANCIO COHETES"* → *"LO PAGO YO, TRANQUILO"* |
+| PELUCA anula el arbolito de BOB | *"EL ARTE NO SE SUBVENCIONA"* → *"PERO SI ERA GRATIS..."* |
+| **EL DIBU ataja el tiro libre de EL PULGA** | El proyectil **se queda en sus guantes**, cero daño y +14 de super. DIBU: *"PERDÓN LEO"* → PULGA: *"DALE DIBU, SOLTALA"* |
+| DIBU ataja un billete de TRUMPO | *"ESTA PLATA ES MÍA"* → *"¡ESO ES ROBO!"* |
+| DIBU ataja el cohete de MUSKO | *"ATAJÉ UN COHETE"* → *"IMPOSIBLE, ERA BALÍSTICO"* |
+| Dos proyectiles rivales chocan en el aire | Se anulan con destello. Si el cruce está escrito (TRUMPO/ZUCK, MUSKO/ALBERTITO, RAMSÉS/BOB, PULGA/SIUUU) se dicen lo suyo |
+
+Además, contra el tipo 💵 DINERO el `¡NO HAY PLATA!` hace **el doble de daño** y
+vacía la barra entera, y la tabla de tipos ya dice que el dinero le hace un 30%
+menos de daño al de la motosierra.
 
 ## 🧬 Tipos (como en Pokémon, pero con peor criterio)
 
@@ -100,6 +116,8 @@ y existe solo para el chiste.
 | ALGORITMO | FÚTBOL, ÓLEO, ROCA | *lo anuló el VAR* / *le canceló la película* |
 | RITMO | EGO, CIENCIA | *las caderas no mienten, el ego sí* / *eso no lo explica la física* |
 | CIENCIA | COHETE, ALGORITMO | *él inventó ese cohete* / *la IA le copió los deberes* |
+| MOTOSIERRA | DINERO, ALGORITMO, ARQUERO | ***¡no hay plata!*** / *le cortó el presupuesto* |
+| ARQUERO | FÚTBOL, COHETE | *le ataja hasta los penales* / *también ataja cohetes* |
 
 La tabla es simétrica. Al conectar con ventaja salta **¡SUPER EFECTIVO!** con su
 chiste; al revés sale *poco efectivo* y la excusa del que aguanta (*"error 403:
@@ -216,6 +234,7 @@ pixel-kombat/
     ├── pixel.js        # utilidades de dibujo (rejillas, rects, sombras)
     ├── font.js         # fuente de mapa de bits 5x7 propia
     ├── types.js        # tabla de tipos, multiplicadores e iconos
+    ├── interactions.js # cruces escritos entre personajes concretos
     ├── audio.js        # efectos sintetizados con WebAudio (cero archivos)
     ├── roster.js       # los 8 personajes y el arte de proyectiles
     ├── render.js       # luchadores paramétricos y 4 escenarios

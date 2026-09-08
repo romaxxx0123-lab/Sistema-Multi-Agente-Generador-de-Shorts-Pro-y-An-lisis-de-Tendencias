@@ -226,10 +226,10 @@ const UI = {
   },
 
   /* ---------- SELECCIÓN ---------- */
-  CELL: { w: 27, h: 28, gx: 3, gy: 4, x0: 167, y0: 24 },
+  CELL: { w: 22, h: 28, gx: 3, gy: 4, x0: 167, y0: 24 },
   cellRect(i) {
     const c = this.CELL;
-    return { x: c.x0 + (i % 5) * (c.w + c.gx), y: c.y0 + Math.floor(i / 5) * (c.h + c.gy), w: c.w, h: c.h };
+    return { x: c.x0 + (i % 6) * (c.w + c.gx), y: c.y0 + Math.floor(i / 6) * (c.h + c.gy), w: c.w, h: c.h };
   },
 
   drawSelect(ctx, G) {

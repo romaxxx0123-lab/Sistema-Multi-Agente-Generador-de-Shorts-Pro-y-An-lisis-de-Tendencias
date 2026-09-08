@@ -67,6 +67,15 @@ class Proj {
       }
     }
 
+    if (tgt && !tgt.dead && tgt.catchT > 0 && !this.rogue && aabb(this.box(), tgt.hurtbox())) {
+      tgt.meter = Math.min(100, tgt.meter + 14);
+      world.popup(this.x, this.y - 14, '¡ATAJADA!', '#c9f542');
+      world.parts.push(new Shock(this.x, this.y, '#c9f542', 34, 14));
+      world.duel(tgt, this.owner, 'catch', '¡ATAJADA!');
+      Sfx.block();
+      this.pop(world);
+      return;
+    }
     if (tgt && !tgt.dead && aabb(this.box(), tgt.hurtbox())) {
       const src = this.rogue ? (world.opponentOf(this.owner) || this.owner) : this.owner;
       dealDamage(src, tgt, this.dmg * this.sc, {
@@ -173,6 +182,25 @@ class Impact {
         Pix.r(ctx, this.x + Math.cos(a) * R, this.y + Math.sin(a) * R * 0.75, 1, 1, c);
       }
     }
+  }
+}
+
+/* onda expansiva (¡NO HAY PLATA!, atajadas) */
+class Shock {
+  constructor(x, y, color, max, life) {
+    this.x = x; this.y = y; this.color = color;
+    this.max = max || 60; this.t = 0; this.life = life || 22; this.dead = false;
+  }
+  update() { if (++this.t >= this.life) this.dead = true; }
+  draw(ctx) {
+    const p = this.t / this.life, r = this.max * p;
+    const n = 26 + Math.round(r * 0.5);
+    for (let i = 0; i < n; i++) {
+      const a = i * Math.PI * 2 / n;
+      Pix.r(ctx, this.x + Math.cos(a) * r, this.y + Math.sin(a) * r * 0.6, 1, 1,
+        p < 0.4 ? '#ffffff' : this.color);
+    }
+    if (p < 0.5) Pix.circle(ctx, this.x, this.y, Math.round(6 * (1 - p * 2)), '#ffffff');
   }
 }
 
@@ -320,6 +348,7 @@ class World {
     this.walls = [];
     this.decos = [];
     this.bubbles = [];
+    this.pending = [];
     this.parts = [];
     this.pops = [];
     this.fighters = [];
@@ -329,6 +358,20 @@ class World {
     this.t = 0;
     this.chyron = null;      // linea del comentarista
     this.sayN = 0;
+  }
+
+  /* frase encadenada: la respuesta llega un momento después */
+  sayLater(f, text, delay) { this.pending.push({ f, text, at: this.t + (delay || 45) }); }
+
+  /* cruce escrito entre dos personajes concretos */
+  duel(a, b, ev, fallback) {
+    const lines = dueloLines(a, b, ev);
+    if (lines) {
+      this.bark(a, lines[0], true);
+      this.sayLater(b, lines[1], 50);
+    } else if (fallback) {
+      this.bark(a, fallback, true);
+    }
   }
 
   /* un luchador suelta una frase. prio = interrumpe lo que haya */
@@ -392,6 +435,49 @@ class World {
         }
         if (backfire) this.say('EL COHETE SALIÓ AL REVÉS. CLÁSICO.', 150);
         Sfx.shoot();
+        break;
+      }
+      case 'nullify': {                       // ¡NO HAY PLATA!
+        const opp = this.opponentOf(owner);
+        let killed = 0;
+        for (const p of this.projs) if (p.owner !== owner) { this.burst(p.x, p.y, 7, '#f0932b'); p.pop(this); killed++; }
+        for (const wl of this.walls) if (wl.owner !== owner) { wl.hp = 0; killed++; }
+        this.parts.push(new Shock(owner.x, owner.y - 38, '#f0932b', 96, 26));
+        this.shake = 8;
+        Sfx.wall();
+        if (opp) {
+          const rico = opp.def.type === 'dinero';         // contra el dinero es demoledor
+          const drain = rico ? 100 : (sp.drain || 40);
+          opp.meter = Math.max(0, opp.meter - drain);
+          if (drain > 0) this.popup(opp.x, opp.y - 92, '-' + drain + ' SUPER', '#f0932b');
+          if (Math.abs(opp.x - owner.x) < 70)
+            dealDamage(owner, opp, sp.dmg * (rico ? 2 : 1), { push: 2.5, hitstun: 16 }, this);
+          if (killed || rico) this.duel(owner, opp, 'nullify', sp.say);
+          else this.bark(owner, sp.say, true);
+        }
+        break;
+      }
+      case 'catch': {                          // ATAJADA
+        owner.catchT = sp.frames || 100;
+        this.parts.push(new Shock(owner.x, owner.y - 38, '#c9f542', 44, 16));
+        this.popup(owner.x, owner.y - 92, 'ATAJADA', '#c9f542');
+        Sfx.block();
+        break;
+      }
+      case 'psych': {                          // MIRÁ QUE TE LO ATAJO
+        const opp = this.opponentOf(owner);
+        if (opp) {
+          opp.stunT = 95;
+          const st = Math.min(opp.meter, sp.steal || 50);
+          opp.meter -= st;
+          owner.meter = Math.min(100, owner.meter + st * 0.4);
+          dealDamage(owner, opp, sp.dmg, { push: 1.2, hitstun: 12, unblockable: true }, this);
+          this.popup(opp.x, opp.y - 92, '¡ATURDIDO!', '#c9f542');
+          if (st > 0) this.popup(opp.x, opp.y - 106, '-' + Math.round(st) + ' SUPER', '#c9f542');
+          this.parts.push(new Shock(opp.x, opp.y - 38, '#c9f542', 70, 20));
+        }
+        this.flash = 8; this.shake = 8;
+        Sfx.super();
         break;
       }
       case 'vortex': {
@@ -461,11 +547,30 @@ class World {
   update() {
     this.t++;
     if (this.chyron && --this.chyron.t <= 0) this.chyron = null;
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      if (this.t >= this.pending[i].at) {
+        this.bark(this.pending[i].f, this.pending[i].text, true);
+        this.pending.splice(i, 1);
+      }
+    }
     if (this.shake > 0) this.shake--;
     if (this.flash > 0) this.flash--;
     for (const a of [this.projs, this.walls, this.parts, this.pops, this.decos, this.bubbles]) {
       for (const e of a) e.update(this);
     }
+    /* dos proyectiles rivales se anulan al chocar */
+    for (let i = 0; i < this.projs.length; i++)
+      for (let j = i + 1; j < this.projs.length; j++) {
+        const a = this.projs[i], b = this.projs[j];
+        if (a.dead || b.dead || a.owner === b.owner) continue;
+        if (aabb(a.box(), b.box())) {
+          const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+          this.impact(cx, cy, false);
+          this.popup(cx, cy - 12, '¡CHOQUE!', '#ffe9a8');
+          this.duel(a.owner, b.owner, 'clash');
+          a.pop(this); b.pop(this);
+        }
+      }
     this.projs = this.projs.filter(e => !e.dead);
     this.walls = this.walls.filter(e => !e.dead);
     this.decos = this.decos.filter(e => !e.dead);

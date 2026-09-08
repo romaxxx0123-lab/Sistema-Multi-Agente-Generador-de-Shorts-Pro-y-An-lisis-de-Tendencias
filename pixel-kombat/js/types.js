@@ -23,7 +23,12 @@ const TICONS = {
   ritmo: { pal: { n: '#f07ac0', l: '#ffc0e8', d: '#a03878' },
     rows: ['....ln.', '....ln.', '...lln.', '...nnn.', '.nnnnn.', 'lnnnn..', '.nnn...'] },
   ciencia: { pal: { c: '#8ee0f0', w: '#ffffff', y: '#f5c542' },
-    rows: ['.cc.cc.', 'c..c..c', 'c.cyc.c', '.cyyyc.', 'c.cyc.c', 'c..c..c', '.cc.cc.'] }
+    rows: ['.cc.cc.', 'c..c..c', 'c.cyc.c', '.cyyyc.', 'c.cyc.c', 'c..c..c', '.cc.cc.'] },
+  motosierra: { pal: { o: '#f0932b', d: '#3a3f52', l: '#d7dbe6', k: '#1a1a1a' },
+    rows: ['.......', 'ooo....', 'oooddddd', 'ooldldld', 'ooo.....', '..d....', '.......']
+      .map(r => (r + '.......').slice(0, 7)) },
+  arquero: { pal: { g: '#c9f542', d: '#2a5f56', w: '#ffffff' },
+    rows: ['.gg.gg.', 'ggggggg', 'ggggggg', 'gggdggg', '.ggggg.', '..ggg..', '...g...'] }
 };
 
 const TYPES = {
@@ -36,21 +41,25 @@ const TYPES = {
   roca:      { name: 'ROCA',      color: '#c9a06d', tag: 'PESA MÁS QUE TUS PROBLEMAS' },
   algoritmo: { name: 'ALGORITMO', color: '#48e0d0', tag: 'ACEPTA LOS TÉRMINOS Y CONDICIONES' },
   ritmo:     { name: 'RITMO',     color: '#f07ac0', tag: 'LAS CADERAS NO MIENTEN, NUNCA' },
-  ciencia:   { name: 'CIENCIA',   color: '#8ee0f0', tag: 'TODO ES RELATIVO MENOS ESTE PUÑO' }
+  ciencia:    { name: 'CIENCIA',    color: '#8ee0f0', tag: 'TODO ES RELATIVO MENOS ESTE PUÑO' },
+  motosierra: { name: 'MOTOSIERRA', color: '#f0932b', tag: 'AFUERA. TODO AFUERA.' },
+  arquero:    { name: 'ARQUERO',    color: '#c9f542', tag: 'TE LO ATAJA Y ENCIMA TE LO CUENTA' }
 };
 
 /* fuerte x1.4 · débil x0.7 (tabla simétrica) */
 const CHART = {
-  dinero:    { strong: ['algoritmo', 'cocina', 'ritmo'], weak: ['futbol', 'oleo'] },
-  cohete:    { strong: ['ego', 'roca'],                  weak: ['oleo', 'futbol', 'ciencia'] },
-  futbol:    { strong: ['dinero', 'ego', 'cohete'],      weak: ['roca', 'algoritmo'] },
-  ego:       { strong: ['cocina', 'algoritmo'],          weak: ['cohete', 'futbol', 'ritmo'] },
+  dinero:    { strong: ['algoritmo', 'cocina', 'ritmo'], weak: ['futbol', 'oleo', 'motosierra'] },
+  cohete:    { strong: ['ego', 'roca'],                  weak: ['oleo', 'futbol', 'ciencia', 'arquero'] },
+  futbol:    { strong: ['dinero', 'ego', 'cohete'],      weak: ['roca', 'algoritmo', 'arquero'] },
+  ego:       { strong: ['cocina', 'algoritmo', 'arquero'], weak: ['cohete', 'futbol', 'ritmo'] },
   cocina:    { strong: ['oleo', 'algoritmo', 'ritmo'],   weak: ['dinero', 'ego', 'roca'] },
-  oleo:      { strong: ['dinero', 'cohete', 'roca'],     weak: ['cocina', 'algoritmo'] },
-  roca:      { strong: ['cocina', 'futbol', 'ciencia'],  weak: ['cohete', 'oleo', 'algoritmo'] },
-  algoritmo: { strong: ['futbol', 'oleo', 'roca'],       weak: ['dinero', 'ego', 'cocina', 'ciencia'] },
+  oleo:      { strong: ['dinero', 'cohete', 'roca', 'motosierra'], weak: ['cocina', 'algoritmo'] },
+  roca:      { strong: ['cocina', 'futbol', 'ciencia', 'motosierra'], weak: ['cohete', 'oleo', 'algoritmo'] },
+  algoritmo: { strong: ['futbol', 'oleo', 'roca'],       weak: ['dinero', 'ego', 'cocina', 'ciencia', 'motosierra'] },
   ritmo:     { strong: ['ego', 'ciencia'],               weak: ['dinero', 'cocina'] },
-  ciencia:   { strong: ['cohete', 'algoritmo'],          weak: ['roca', 'ritmo'] }
+  ciencia:    { strong: ['cohete', 'algoritmo'],         weak: ['roca', 'ritmo'] },
+  motosierra: { strong: ['dinero', 'algoritmo', 'arquero'], weak: ['roca', 'oleo'] },
+  arquero:    { strong: ['futbol', 'cohete'],            weak: ['ego', 'motosierra'] }
 };
 
 /* el chiste de cada cruce */
@@ -80,7 +89,15 @@ const REASONS = {
   'ritmo>ciencia':    'ESO NO LO EXPLICA LA FÍSICA',
   'ciencia>cohete':   'ÉL INVENTÓ ESE COHETE',
   'ciencia>algoritmo':'LA IA LE COPIÓ LOS DEBERES',
-  'roca>ciencia':     'LA FÍSICA NO PARA A ESE SEÑOR'
+  'roca>ciencia':     'LA FÍSICA NO PARA A ESE SEÑOR',
+  'motosierra>dinero':    '¡NO HAY PLATA!',
+  'motosierra>algoritmo': 'LE CORTÓ EL PRESUPUESTO',
+  'motosierra>arquero':   'NO HAY GUANTE PARA ESO',
+  'roca>motosierra':      'ESA MOTOSIERRA NO CORTA ESO',
+  'oleo>motosierra':      'LE PINTÓ FLORES EN LA MOTOSIERRA',
+  'arquero>futbol':       'LE ATAJA HASTA LOS PENALES',
+  'arquero>cohete':       'TAMBIÉN ATAJA COHETES',
+  'ego>arquero':          'ESE EGO NO SE ATAJA'
 };
 
 /* excusa del que aguanta el golpe */
@@ -94,7 +111,9 @@ const RESIST = {
   roca:      '¿EN SERIO LE PEGAS A ESE SEÑOR?',
   algoritmo: 'ERROR 403: GOLPE NO AUTORIZADO',
   ritmo:     'ESO LO ESQUIVA BAILANDO',
-  ciencia:   'CALCULÓ ESE GOLPE HACE UN RATO'
+  ciencia:    'CALCULÓ ESE GOLPE HACE UN RATO',
+  motosierra: 'ESO NO ENTRA EN EL PRESUPUESTO',
+  arquero:    'ESA LA ATAJA CON LOS OJOS CERRADOS'
 };
 
 function typeMult(a, d) {

@@ -65,6 +65,7 @@ class Fighter {
     this.crouching = false; this.blocking = false;
     this.guard = 0; this.slow = 0; this.burn = 0;
     this.hpShown = this.maxHp; this.hpGhost = this.maxHp; this.ghostWait = 0;
+    this.catchT = 0;
     this.tauntPending = false; this.lastTypeSay = -999; this.barkCd = 0;
     this.combo = 0; this.comboT = 0;
     this.koT = 0; this.dead = false;
@@ -134,6 +135,7 @@ class Fighter {
     if (this.dashCd > 0) this.dashCd--;
     if (this.squash > 0) this.squash--;
     if (this.barkCd > 0) this.barkCd--;
+    if (this.catchT > 0) this.catchT--;
     if (this.burn > 0) {                       // la sopa de la abuela sigue quemando
       this.burn--;
       if (this.burn % 26 === 0 && this.hp > 1) {

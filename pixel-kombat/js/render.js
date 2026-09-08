@@ -132,6 +132,13 @@ function bodyRects(def, A) {
     add(-2 + Math.round(lean * 0.4), hipY - hipH, 4, hipH + 4, B.accent);
     add(-9 + lx, shY + 1, 18, 2, B.dark);
     add(5 + lx, chestY + 3, 3, 3, B.dark);
+  } else if (st === 'keeper') {                  // camiseta de arquero
+    add(-9 + lx, chestY, 18, chestH, B.main);
+    add(-9 + lx, chestY + 4, 18, 3, B.light);
+    add(-5 + lx, shY, 10, 3, B.accent);
+    add(-11 + lx, shY, 4, 8, B.light);
+    add(7 + lx, shY, 4, 8, B.light);
+    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 2, B.dark);
   } else if (st === 'tee') {
     add(-5 + lx, shY, 10, 3, B.dark);
     add(-11 + lx, shY, 4, 9, B.light);
@@ -140,9 +147,11 @@ function bodyRects(def, A) {
   }
 
   /* ---- brazos (manga corta = antebrazo de piel) ---- */
-  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage');
+  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage' || st === 'keeper');
   const foreC = shortSleeve ? skin : B.main;
   const foreD = shortSleeve ? tint(skin, -0.18) : B.dark;
+  const hand = B.gloves || skin;                 // guantazos de portero
+  const hs = B.gloves ? 8 : 6;
   const ay = shY + 2;
 
   if (A.cast > 0) {
@@ -160,27 +169,27 @@ function bodyRects(def, A) {
       /* brazo recogido: toma impulso */
       const off = Math.round(6 * -p);
       add(2 - off, ay + 3, aw, 8, B.main);
-      add(1 - off, ay + 10, 7, 7, skin);
+      add(1 - off, ay + 10, hs, hs, hand);
     } else {
       const len = 9 + 17 * p;
       add(6, ay + 4 - up, 7, aw + 2, B.main);
       add(13, ay + 4 - up, len - 7, aw + 2, foreC);
-      add(6 + len, ay + 2 - up - (A.punchUp ? 4 : 0), 7, 7, skin);
+      add(6 + len, ay + 1 - up - (A.punchUp ? 4 : 0), hs, hs, hand);
     }
   } else if (A.block) {
     add(-11 + lx, ay, aw, 9, B.dark);
     add(-11 + lx, ay + 9, aw, 8, foreD);
     add(4, ay - 1, aw + 2, 20, B.dark);
     add(4, ay - 1, aw + 2, 4, B.light);
-    add(5, ay + 17, 6, 6, skin);
+    add(5, ay + 17, hs, hs, hand);
   } else {
     const sw = Math.round(Math.sin(A.walk) * 4);
     add(-11 + lx, ay + sw, aw, 9, B.dark);
     add(-11 + lx, ay + 9 + sw, aw, 8, foreD);
-    add(-11 + lx, ay + 16 + sw, 6, 6, tint(skin, -0.15));
+    add(-11 + lx, ay + 16 + sw, hs, hs, tint(hand, -0.15));
     add(6 + lx, ay - sw, aw, 9, B.main);
     add(6 + lx, ay + 9 - sw, aw, 8, foreC);
-    add(6 + lx, ay + 16 - sw, 6, 6, skin);
+    add(6 + lx, ay + 16 - sw, hs, hs, hand);
   }
 
   return { rects: R, headY: neckY - 17, headX: -9 + Math.round(lean * 1.2) };
