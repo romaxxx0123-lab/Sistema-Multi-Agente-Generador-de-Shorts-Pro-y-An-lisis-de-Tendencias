@@ -78,7 +78,7 @@
   /* ---------- estado ---------- */
   const G = {
     t: 0, screen: 'title', mode: '1p', menu: 0,
-    picks: [null, null], cur: [0, 4], rouletteT: 0,
+    picks: [null, null], cur: [0, 6], rouletteT: 0,
     world: null, f1: null, f2: null,
     round: 1, timer: ROUND_FRAMES, phase: 'intro', phaseT: 0,
     winner: null, quote: '', ann: null, lowSaid: [false, false]
@@ -122,13 +122,13 @@
      ======================================================= */
   function gotoSelect(mode) {
     G.mode = mode; G.screen = 'select';
-    G.picks = [null, null]; G.cur = [0, 4]; G.rouletteT = 0;
+    G.picks = [null, null]; G.cur = [0, 6]; G.rouletteT = 0;
     Sfx.quiet = false;
     Sfx.confirm();
   }
 
   function moveCursor(p, dx, dy) {
-    const cols = 4, rows = Math.ceil(ROSTER.length / cols);
+    const cols = 5, rows = Math.ceil(ROSTER.length / cols);
     let cx = G.cur[p] % cols, cy = Math.floor(G.cur[p] / cols);
     cx = (cx + dx + cols) % cols; cy = (cy + dy + rows) % rows;
     const i = clamp(cy * cols + cx, 0, ROSTER.length - 1);

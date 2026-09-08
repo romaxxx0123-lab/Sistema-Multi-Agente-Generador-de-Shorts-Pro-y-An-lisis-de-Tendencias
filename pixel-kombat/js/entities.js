@@ -20,15 +20,23 @@ class Proj {
     this.effect = sp.effect || null;
     this.splash = !!sp.splash;
     this.rot = 0;
+    this.age = 0;
+    this.sc = 1;                       // los que crecen suben de tamaño
+    this.rogue = !!o.rogue;            // cohete que sale al revés
     this.dead = false;
     this.w = this.art.rows[0].length * (this.big ? 2 : 1);
     this.h = this.art.rows.length * (this.big ? 2 : 1);
   }
 
-  box() { return { x: this.x - this.w / 2, y: this.y - this.h / 2, w: this.w, h: this.h }; }
+  box() {
+    const w = this.w * this.sc, h = this.h * this.sc;
+    return { x: this.x - w / 2, y: this.y - h / 2, w, h };
+  }
 
   update(world) {
-    const tgt = world.opponentOf(this.owner);
+    this.age++;
+    if (this.sp.grow && this.age % 32 === 0 && this.sc < 3) this.sc++;   // cuanto más viaja, más pega
+    const tgt = this.rogue ? this.owner : world.opponentOf(this.owner);
     if (this.hom && tgt) {
       const dy = (tgt.y - 34) - this.y;
       this.vy += clamp(dy, -1, 1) * this.hom;
@@ -60,12 +68,14 @@ class Proj {
     }
 
     if (tgt && !tgt.dead && aabb(this.box(), tgt.hurtbox())) {
-      dealDamage(this.owner, tgt, this.dmg, {
-        push: this.big ? 3.4 : 2.2,
+      const src = this.rogue ? (world.opponentOf(this.owner) || this.owner) : this.owner;
+      dealDamage(src, tgt, this.dmg * this.sc, {
+        push: this.sp.push || (this.big ? 3.4 : 2.2),
         hitstun: this.big ? 22 : 16,
         effect: this.effect,
         projectile: true
       }, world);
+      if (this.rogue && tgt.def.barks) world.bark(tgt, pick(tgt.def.barks.hurt), true);
       world.burst(this.x, this.y, this.big ? 16 : 10, '#ffe07a');
       this.pop(world);
     }
@@ -83,6 +93,7 @@ class Proj {
     const step = Math.PI / 4;
     ctx.rotate(Math.round(this.rot / step) * step);
     if (this.big) ctx.scale(2, 2);
+    else if (this.sc > 1) ctx.scale(this.sc, this.sc);
     if (this.dir < 0) ctx.scale(-1, 1);
     Pix.grid(ctx, this.art.rows, this.art.pal,
       -this.art.rows[0].length / 2, -this.art.rows.length / 2);
@@ -183,6 +194,55 @@ class Particle {
   }
 }
 
+/* Agujero negro: atrae al rival y le va royendo la vida */
+class Vortex {
+  constructor(owner, x, y, dmg) {
+    this.owner = owner; this.x = x; this.y = y; this.dmg = dmg || 4;
+    this.t = 0; this.life = 160; this.dead = false;
+  }
+  update(world) {
+    this.t++;
+    const opp = world.opponentOf(this.owner);
+    if (opp && opp.state !== 'ko') {
+      const dx = this.x - opp.x;
+      opp.x = clamp(opp.x + clamp(dx * 0.04, -1.7, 1.7), 12, W - 12);
+      if (!opp.onGround) opp.vy -= 0.08;
+      if (this.t % 26 === 0)
+        dealDamage(this.owner, opp, this.dmg, { push: 0.2, hitstun: 8, unblockable: true }, world);
+      if (this.t % 3 === 0) {          // la materia del rival se va al agujero
+        const px = opp.x + rnd(-10, 10), py = opp.y - rnd(10, 60);
+        const a = Math.atan2(this.y - py, this.x - px);
+        world.parts.push(new Particle(px, py, Math.cos(a) * 1.6, Math.sin(a) * 1.6, 26,
+          Math.random() < 0.5 ? '#8ee0f0' : '#c9a6ff', 1, 0));
+      }
+    }
+    if (--this.life <= 0) this.dead = true;
+  }
+  draw(ctx) {
+    const grow = Math.min(1, this.t / 20), fade = this.life < 30 ? this.life / 30 : 1;
+    const scale = grow * fade;
+    /* disco de acreción */
+    for (let r = 38; r > 5; r -= 3) {
+      const rr = r * scale;
+      if (rr < 2) continue;
+      const a = this.t * 0.11 + r * 0.5;
+      const n = 10 + Math.round(r * 0.6);
+      for (let i = 0; i < n; i++) {
+        const ang = a + i * Math.PI * 2 / n;
+        Pix.r(ctx, this.x + Math.cos(ang) * rr, this.y + Math.sin(ang) * rr * 0.55, 1, 1,
+          r > 28 ? '#3a2a6b' : (r > 18 ? '#5a3d96' : (r > 10 ? '#8ee0f0' : '#ffffff')));
+      }
+    }
+    /* horizonte de sucesos */
+    Pix.circle(ctx, this.x, this.y, Math.round(9 * scale), '#0a0612');
+    Pix.circle(ctx, this.x, this.y, Math.round(6 * scale), '#150c28');
+    for (let i = 0; i < 12; i++) {
+      const ang = this.t * 0.2 + i * Math.PI / 6;
+      Pix.r(ctx, this.x + Math.cos(ang) * 10 * scale, this.y + Math.sin(ang) * 6 * scale, 1, 1, '#c9a6ff');
+    }
+  }
+}
+
 /* Bocadillo de diálogo: sigue al luchador, se voltea para no salirse
    de pantalla y apunta con el rabito a quien habla. */
 class Bubble {
@@ -239,7 +299,7 @@ class Popup {
     this.size = text.length > 14 ? 6 : 8;
     const half = text.length * this.size * 0.3;
     this.x = clamp(x, half + 4, W - half - 4);
-    this.y = Math.max(46, y);          // nunca por encima del marcador
+    this.y = Math.max(44, y);          // nunca por encima del marcador
     this.text = text; this.color = color;
     this.life = 52; this.dead = false;
   }
@@ -308,7 +368,9 @@ class World {
     /* nada de repetir el mismo aviso dos veces seguidas */
     if (this.pops.some(p => p.text === text && p.life > 28)) return;
     const near = this.pops.filter(p => Math.abs(p.x - x) < 110 && p.life > 18).length;
-    this.pops.push(new Popup(x, y - near * 15, text, color));
+    let py = y - near * 15;
+    if (py < 48) py = 48 + near * 13;      // si no cabe arriba, se apilan hacia abajo
+    this.pops.push(new Popup(x, py, text, color));
     while (this.pops.length > 4) this.pops.shift();
   }
 
@@ -317,14 +379,26 @@ class World {
     switch (sp.kind) {
       case 'projectile': {
         const n = sp.count || 1;
+        const backfire = sp.unstable && Math.random() < sp.unstable;   // le explota en la cara
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * (sp.spread || 0);
           this.projs.push(new Proj(owner, sp, {
-            vy: (sp.vy || 0) + off * 1.6,
-            y: owner.y + (sp.oy || -30) - i * (sp.gravity ? 3 : 0)
+            y: backfire ? owner.y - 40 : owner.y + (sp.oy || -30) - i * (sp.gravity ? 3 : 0),
+            x: backfire ? owner.x - owner.dir * 2 : undefined,
+            vx: backfire ? -owner.dir * 1.6 : undefined,
+            vy: backfire ? 0 : ((sp.vy || 0) + off * 1.6),
+            rogue: backfire
           }));
         }
+        if (backfire) this.say('EL COHETE SALIÓ AL REVÉS. CLÁSICO.', 150);
         Sfx.shoot();
+        break;
+      }
+      case 'vortex': {
+        const opp = this.opponentOf(owner);
+        this.decos.push(new Vortex(owner, opp ? opp.x : owner.x + owner.dir * 60, GROUND - 42, sp.dmg));
+        this.flash = 10; this.shake = 10;
+        Sfx.super();
         break;
       }
       case 'wall': {

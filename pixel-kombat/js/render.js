@@ -42,7 +42,8 @@ function bodyRects(def, A) {
 
   const cr = A.crouch;                          // 0..12
   const lean = A.lean || 0;                     // peso del cuerpo
-  const shinH = 12 - cr * 0.4, thighH = 13 - cr * 0.5;
+  const sh = B.short ? 3 : 0;                    // personajes bajitos
+  const shinH = 12 - cr * 0.4 - sh, thighH = 13 - cr * 0.5 - sh;
   const hipY = -(shinH + thighH);
   const hipH = 8;
   const chestH = 14;
@@ -117,6 +118,20 @@ function bodyRects(def, A) {
     add(-1 + lx, chestY + 2, 2, 14, B.dark);
     add(-7 + Math.round(lean * 0.4), hipY - hipH + 4, 15, 3, B.dark);
     add(6 + lx, shY + 3, 4, 8, B.light);
+  } else if (st === 'stage') {                   // traje de escenario
+    add(-9 + lx, chestY, 18, 8, B.main);
+    add(-9 + lx, chestY, 18, 2, B.light);
+    add(-6 + lx, chestY + 8, 12, 6, tint(skin, -0.05));
+    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 2, B.main);
+    for (let i = -8; i < 9; i += 4) add(i, hipY, 3, 5, B.light);
+    add(-3 + lx, chestY + 2, 6, 2, B.accent);
+  } else if (st === 'labcoat') {                 // bata de laboratorio
+    add(-9 + lx, chestY, 18, chestH, B.light);
+    add(-2 + lx, chestY, 4, chestH, B.accent);
+    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 6, B.light);
+    add(-2 + Math.round(lean * 0.4), hipY - hipH, 4, hipH + 4, B.accent);
+    add(-9 + lx, shY + 1, 18, 2, B.dark);
+    add(5 + lx, chestY + 3, 3, 3, B.dark);
   } else if (st === 'tee') {
     add(-5 + lx, shY, 10, 3, B.dark);
     add(-11 + lx, shY, 4, 9, B.light);
@@ -125,7 +140,7 @@ function bodyRects(def, A) {
   }
 
   /* ---- brazos (manga corta = antebrazo de piel) ---- */
-  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes');
+  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage');
   const foreC = shortSleeve ? skin : B.main;
   const foreD = shortSleeve ? tint(skin, -0.18) : B.dark;
   const ay = shY + 2;

@@ -44,7 +44,7 @@ class Fighter {
     this.dir = dir;
     this.vx = 0; this.vy = 0;
     this.onGround = true;
-    this.maxHp = 100; this.hp = 100;
+    this.maxHp = def.hp || 100; this.hp = this.maxHp;
     this.meter = 0;
     this.wins = 0;
     this.player = playerNum;
@@ -56,6 +56,7 @@ class Fighter {
     this.x = x; this.y = GROUND; this.dir = dir;
     this.vx = 0; this.vy = 0; this.onGround = true;
     this.hp = this.maxHp;
+    this.stunT = 0;
     this.state = 'idle';
     this.t = 0;
     this.atk = null; this.atkT = 0; this.hasHit = false;
@@ -169,6 +170,14 @@ class Fighter {
       if (this.hitstun === 0 && this.state === 'hit') this.state = 'idle';
       return;
     }
+    if (this.stunT > 0) {                       // aturdido: no responde
+      this.stunT--;
+      this.vx *= 0.85;
+      this.state = 'hit';
+      this.physics(world);
+      if (this.stunT === 0) this.state = 'idle';
+      return;
+    }
     if (this.state === 'dash') { this.dashUpdate(world, opp); return; }
     if (this.state === 'attack') { this.attackUpdate(world); this.physics(world); return; }
 
@@ -185,7 +194,7 @@ class Fighter {
     }
 
     if (pUp && this.onGround && !this.crouching) {
-      this.vy = JUMP_V;
+      this.vy = JUMP_V * (this.def.jump || 1);
       this.onGround = false;
       this.vx = (inp.left ? -1 : inp.right ? 1 : 0) * this.speed * 1.15;
       world.dust(this.x, GROUND - 1, 0);
@@ -203,7 +212,13 @@ class Fighter {
   }
 
   startAttack(a) {
-    this.atk = a;
+    /* cada personaje golpea a su ritmo y con su alcance */
+    const sp = this.def.atkSpeed || 1, rc = this.def.reach || 1;
+    this.atk = Object.assign({}, a, {
+      startup: Math.max(2, Math.round(a.startup / sp)),
+      recover: Math.max(3, Math.round(a.recover / sp)),
+      reach: Math.round(a.reach * rc)
+    });
     this.atkT = 0;
     this.hasHit = false;
     this.state = 'attack';
@@ -425,6 +440,10 @@ function dealDamage(src, tgt, dmg, opts, world) {
   if (opts.effect === 'slow' && !blocked) {
     tgt.slow = 260;
     world.popup(tgt.x, tgt.y - 90, 'LAG', '#48e0d0');
+  }
+  if (opts.effect === 'stun' && !blocked) {
+    tgt.stunT = 105;
+    world.popup(tgt.x, tgt.y - 90, '¡ATURDIDO!', '#f07ac0');
   }
   if (opts.effect === 'burn' && !blocked) {
     tgt.burn = 300;

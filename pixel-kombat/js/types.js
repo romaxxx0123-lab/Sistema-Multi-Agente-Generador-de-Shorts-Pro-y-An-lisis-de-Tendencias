@@ -19,7 +19,11 @@ const TICONS = {
   roca: { pal: { d: '#5a5044', l: '#9a8c78' },
     rows: ['.......', '..ddd..', '.dllld.', 'dlllldd', 'dllddld', '.ddddd.', '.......'] },
   algoritmo: { pal: { a: '#8d97ad', c: '#48e0d0', k: '#101726' },
-    rows: ['..a.a..', '.aaaaa.', 'accccca', 'ackckca', 'accccca', '.accca.', '..a.a..'] }
+    rows: ['..a.a..', '.aaaaa.', 'accccca', 'ackckca', 'accccca', '.accca.', '..a.a..'] },
+  ritmo: { pal: { n: '#f07ac0', l: '#ffc0e8', d: '#a03878' },
+    rows: ['....ln.', '....ln.', '...lln.', '...nnn.', '.nnnnn.', 'lnnnn..', '.nnn...'] },
+  ciencia: { pal: { c: '#8ee0f0', w: '#ffffff', y: '#f5c542' },
+    rows: ['.cc.cc.', 'c..c..c', 'c.cyc.c', '.cyyyc.', 'c.cyc.c', 'c..c..c', '.cc.cc.'] }
 };
 
 const TYPES = {
@@ -30,19 +34,23 @@ const TYPES = {
   cocina:    { name: 'COCINA',    color: '#f0932b', tag: 'TODO ESTÁ CRUDO. SIEMPRE' },
   oleo:      { name: 'ÓLEO',      color: '#9bb7f0', tag: 'AQUÍ NO HAY ERRORES, HAY ACCIDENTES' },
   roca:      { name: 'ROCA',      color: '#c9a06d', tag: 'PESA MÁS QUE TUS PROBLEMAS' },
-  algoritmo: { name: 'ALGORITMO', color: '#48e0d0', tag: 'ACEPTA LOS TÉRMINOS Y CONDICIONES' }
+  algoritmo: { name: 'ALGORITMO', color: '#48e0d0', tag: 'ACEPTA LOS TÉRMINOS Y CONDICIONES' },
+  ritmo:     { name: 'RITMO',     color: '#f07ac0', tag: 'LAS CADERAS NO MIENTEN, NUNCA' },
+  ciencia:   { name: 'CIENCIA',   color: '#8ee0f0', tag: 'TODO ES RELATIVO MENOS ESTE PUÑO' }
 };
 
 /* fuerte x1.4 · débil x0.7 (tabla simétrica) */
 const CHART = {
-  dinero:    { strong: ['algoritmo', 'cocina'],          weak: ['futbol', 'oleo'] },
-  cohete:    { strong: ['ego', 'roca'],                  weak: ['oleo', 'futbol'] },
+  dinero:    { strong: ['algoritmo', 'cocina', 'ritmo'], weak: ['futbol', 'oleo'] },
+  cohete:    { strong: ['ego', 'roca'],                  weak: ['oleo', 'futbol', 'ciencia'] },
   futbol:    { strong: ['dinero', 'ego', 'cohete'],      weak: ['roca', 'algoritmo'] },
-  ego:       { strong: ['cocina', 'algoritmo'],          weak: ['cohete', 'futbol'] },
-  cocina:    { strong: ['oleo', 'algoritmo'],            weak: ['dinero', 'ego', 'roca'] },
+  ego:       { strong: ['cocina', 'algoritmo'],          weak: ['cohete', 'futbol', 'ritmo'] },
+  cocina:    { strong: ['oleo', 'algoritmo', 'ritmo'],   weak: ['dinero', 'ego', 'roca'] },
   oleo:      { strong: ['dinero', 'cohete', 'roca'],     weak: ['cocina', 'algoritmo'] },
-  roca:      { strong: ['cocina', 'futbol'],             weak: ['cohete', 'oleo', 'algoritmo'] },
-  algoritmo: { strong: ['futbol', 'oleo', 'roca'],       weak: ['dinero', 'ego', 'cocina'] }
+  roca:      { strong: ['cocina', 'futbol', 'ciencia'],  weak: ['cohete', 'oleo', 'algoritmo'] },
+  algoritmo: { strong: ['futbol', 'oleo', 'roca'],       weak: ['dinero', 'ego', 'cocina', 'ciencia'] },
+  ritmo:     { strong: ['ego', 'ciencia'],               weak: ['dinero', 'cocina'] },
+  ciencia:   { strong: ['cohete', 'algoritmo'],          weak: ['roca', 'ritmo'] }
 };
 
 /* el chiste de cada cruce */
@@ -65,7 +73,14 @@ const REASONS = {
   'roca>futbol':      'NADIE LE REGATEA A ESE SEÑOR',
   'algoritmo>futbol': 'LO ANULÓ EL VAR',
   'algoritmo>oleo':   'LA IA YA LO PINTÓ',
-  'algoritmo>roca':   'LE CANCELÓ LA PELÍCULA'
+  'algoritmo>roca':   'LE CANCELÓ LA PELÍCULA',
+  'dinero>ritmo':     'LE COMPRÓ LA GIRA ENTERA',
+  'cocina>ritmo':     'BAILAR CON HAMBRE NO SE PUEDE',
+  'ritmo>ego':        'LAS CADERAS NO MIENTEN, EL EGO SÍ',
+  'ritmo>ciencia':    'ESO NO LO EXPLICA LA FÍSICA',
+  'ciencia>cohete':   'ÉL INVENTÓ ESE COHETE',
+  'ciencia>algoritmo':'LA IA LE COPIÓ LOS DEBERES',
+  'roca>ciencia':     'LA FÍSICA NO PARA A ESE SEÑOR'
 };
 
 /* excusa del que aguanta el golpe */
@@ -77,7 +92,9 @@ const RESIST = {
   cocina:    'LO DEVOLVIÓ A LA COCINA',
   oleo:      'FUE UN ACCIDENTE FELIZ',
   roca:      '¿EN SERIO LE PEGAS A ESE SEÑOR?',
-  algoritmo: 'ERROR 403: GOLPE NO AUTORIZADO'
+  algoritmo: 'ERROR 403: GOLPE NO AUTORIZADO',
+  ritmo:     'ESO LO ESQUIVA BAILANDO',
+  ciencia:   'CALCULÓ ESE GOLPE HACE UN RATO'
 };
 
 function typeMult(a, d) {

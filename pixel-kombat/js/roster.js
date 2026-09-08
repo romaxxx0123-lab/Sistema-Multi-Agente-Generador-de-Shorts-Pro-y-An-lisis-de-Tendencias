@@ -50,6 +50,18 @@ const ART = {
     pal: { k: '#101726', w: '#f2f2ef', c: '#48e0d0' },
     rows: ['kkkkkk', 'k.w.wk', 'kw.c.k', 'k.w.wk', 'kkkkkk']
   },
+  onda: {
+    pal: { p: '#f07ac0', l: '#ffc0e8', d: '#a03878' },
+    rows: ['..d.l..', '.d.l.p.', 'd.l.p.p', 'd.l.p.p', 'd.l.p.p', '.d.l.p.', '..d.l..']
+  },
+  aullido: {
+    pal: { l: '#ffc0e8', p: '#f07ac0', w: '#ffffff' },
+    rows: ['..w..', '.wpw.', 'wplpw', 'wplpw', '.wpw.', '..w..']
+  },
+  formula: {
+    pal: { w: '#ffffff', c: '#8ee0f0', k: '#1b3a4a' },
+    rows: ['ccccccc', 'cwkwkwc', 'cwkwwwc', 'cwkwkwc', 'ccccccc']
+  },
   doc: {
     pal: { w: '#f2f2ef', k: '#5a6478' },
     rows: ['wwwww', 'wkkkw', 'wwwww', 'wkkkw', 'wwwww']
@@ -62,7 +74,7 @@ const ROSTER = [
     id: 'trumpo', name: 'TRUMPO', short: 'TRUMPO', real: 'EL MAGNATE',
     title: 'CONSTRUCTOR DE MUROS', type: 'dinero', sub: 'LADRILLO',
     bio: 'PAGA EN EFECTIVO Y TE MANDA LA FACTURA.',
-    speed: 1.28, power: 1.05,
+    speed: 1.05, power: 1.00, hp: 120, jump: 0.85, reach: 0.95, atkSpeed: 0.95,
     pal: { h: '#f0d97a', H: '#c9ae4e', s: '#f0a878', S: '#c07f52', L: '#ffc79a', w: '#ffffff', k: '#1a1a1a', e: '#c9a24e', m: '#a8404a' },
     head: ['................',
            '.....hhhhhh.....',
@@ -95,7 +107,7 @@ const ROSTER = [
       low: ['NECESITO UN MURO MÁS ALTO', 'ESTO ES UNA CACERÍA DE BRUJAS'],
       win: ['GANÉ. ENORME VICTORIA.', 'LO DICE TODO EL MUNDO'],
       wall: ['¡ROMPISTE MI MURO!', '¡ESO LO PAGAS TÚ!', '¿QUIÉN TE DEJÓ ENTRAR?'],
-      vs: { musko: 'TE COMPRO LA EMPRESA', zuck: 'VÉNDEME ESOS DATOS', bob: 'PÍNTAME EL MURO' }
+      vs: { musko: 'TE COMPRO LA EMPRESA', zuck: 'VÉNDEME ESOS DATOS', bob: 'PÍNTAME EL MURO', shakira: 'TE COMPRO EL ESCENARIO', albertito: 'CÓRTATE ESE PELO' }
     },
     taunt: '¡TREMENDO!'
   },
@@ -103,8 +115,8 @@ const ROSTER = [
   {
     id: 'musko', name: 'MUSKO', short: 'MUSKO', real: 'EL DE LOS COHETES',
     title: 'DIRECTOR DE TODO', type: 'cohete', sub: 'BETA PERMANENTE',
-    bio: 'LANZA COHETES QUE A VECES ATERRIZAN.',
-    speed: 1.22, power: 1.0,
+    bio: 'SUS COHETES A VECES SALEN AL REVÉS.',
+    speed: 1.45, power: 1.15, hp: 85, jump: 1.15, reach: 1.0, atkSpeed: 1.10,
     pal: { h: '#4a3524', H: '#2e2016', s: '#f0c8a8', S: '#c49a78', L: '#ffe0c4', w: '#ffffff', k: '#1a1a1a', e: '#3a2a1c', m: '#a8555a' },
     head: ['................',
            '....hhhhhhhh....',
@@ -123,11 +135,11 @@ const ROSTER = [
            '..SSSSSSSSSSS...',
            '....ssssss......'],
     body: { style: 'jacket', main: '#22222c', dark: '#141419', light: '#3a3a4c', accent: '#e0343c', skin: '#f0c8a8', legs: '#39415e', legsDark: '#252b42' },
-    special: { name: 'ATERRIZAJE SUAVE', cost: 30, kind: 'projectile', dmg: 12,
-      speed: 2.7, gravity: 0.10, vy: -2.0, art: 'cohete', oy: -55, life: 150, splash: true,
-      say: 'ESTA VEZ SÍ ATERRIZA' },
-    superMove: { name: 'TUIT DE MADRUGADA', cost: 100, kind: 'projectile', dmg: 12, count: 3, spread: 0.4,
-      speed: 3.2, art: 'tuit', oy: -46, life: 130, effect: 'slow', say: '¡SE DESPLOMÓ LA BOLSA!' },
+    special: { name: 'COHETE INESTABLE', cost: 30, kind: 'projectile', dmg: 16,
+      speed: 3.1, gravity: 0.06, vy: -1.2, art: 'cohete', oy: -55, life: 150, splash: true,
+      unstable: 0.3, say: 'ESTA VEZ SÍ ATERRIZA' },
+    superMove: { name: 'HYPERLOOP', cost: 100, kind: 'teleport', dmg: 22,
+      say: '¡TÚNEL TERMINADO!' },
     quotes: ['LO ARREGLO CON UNA ACTUALIZACIÓN DE SOFTWARE.', 'COMPRÉ EL RING. AHORA SE LLAMA X.',
              'TU DERROTA ESTABA EN LA HOJA DE RUTA.'],
     barks: {
@@ -138,7 +150,7 @@ const ROSTER = [
       gloat: ['ESTABA EN LA HOJA DE RUTA'],
       low: ['REINICIANDO SISTEMAS', 'NECESITO MÁS FONDOS'],
       win: ['LO COMPRÉ TODO Y GANÉ'],
-      vs: { trumpo: 'TU MURO NO TIENE WIFI', zuck: 'TE RETO A UNA JAULA' }
+      vs: { trumpo: 'TU MURO NO TIENE WIFI', zuck: 'TE RETO A UNA JAULA', albertito: 'ÉL NO INVENTÓ MI COHETE' }
     },
     taunt: '¡AL ESPACIO!'
   },
@@ -147,7 +159,7 @@ const ROSTER = [
     id: 'pulga', name: 'EL PULGA', short: 'PULGA', real: 'EL DE LA ZURDA',
     title: 'ZURDA REGISTRADA', type: 'futbol', sub: 'TRANQUILO',
     bio: 'CAMINA, CAMINA Y DE PRONTO TE ELIMINA.',
-    speed: 1.55, power: 0.85,
+    speed: 1.60, power: 0.85, hp: 95, jump: 1.00, reach: 0.90, atkSpeed: 1.20,
     pal: { h: '#8a6a44', H: '#5f4830', s: '#e8b98f', S: '#bc8f66', L: '#ffd9b0', b: '#6b4f30', w: '#ffffff', k: '#1a1a1a', e: '#5f4830', m: '#8c4a4a' },
     head: ['................',
            '....hhhhhhhh....',
@@ -189,7 +201,7 @@ const ROSTER = [
     id: 'siuuu', name: 'SIUUU', short: 'SIUUU', real: 'EL DEL SALTO',
     title: 'MÁQUINA DE SALTAR', type: 'ego', sub: 'ABDOMINALES',
     bio: 'SALTA MÁS ALTO QUE TU AUTOESTIMA.',
-    speed: 1.42, power: 1.0,
+    speed: 1.35, power: 1.05, hp: 100, jump: 1.35, reach: 1.05, atkSpeed: 1.00,
     pal: { h: '#211a14', H: '#0f0c08', s: '#e0a878', S: '#b07f54', L: '#ffc99a', w: '#ffffff', k: '#2a1a1a', e: '#0f0c08', m: '#8c3b3b' },
     head: ['................',
            '....hhhhhhhh....',
@@ -222,7 +234,7 @@ const ROSTER = [
       gloat: ['POR ESO SOY YO'],
       low: ['ESTO NO SE ACABA', 'AÚN SOY EL MEJOR'],
       win: ['LO HICE YO SOLO'],
-      vs: { pulga: 'OTRA VEZ EL DE LA ZURDA', roca: 'YO TENGO MÁS ABDOMINALES' }
+      vs: { pulga: 'OTRA VEZ EL DE LA ZURDA', roca: 'YO TENGO MÁS ABDOMINALES', shakira: 'YO CANTO MEJOR' }
     },
     taunt: '¡SIUUU!'
   },
@@ -231,7 +243,7 @@ const ROSTER = [
     id: 'ramses', name: 'CHEF RAMSÉS', short: 'RAMSÉS', real: 'EL CHEF QUE GRITA',
     title: 'TODO ESTÁ CRUDO', type: 'cocina', sub: 'GRITO',
     bio: 'NUNCA VIO UN PLATO BIEN HECHO.',
-    speed: 1.25, power: 1.1,
+    speed: 1.25, power: 1.10, hp: 105, jump: 0.95, reach: 1.00, atkSpeed: 1.05,
     pal: { h: '#e8d9a0', H: '#c0ad72', s: '#f2c9a0', S: '#c79c74', L: '#ffe4c6', w: '#ffffff', k: '#7a2a2a', e: '#c0ad72', m: '#8c3b3b' },
     head: ['..h..h..h..h....',
            '..hh.hh.hh.hh...',
@@ -264,7 +276,7 @@ const ROSTER = [
       gloat: ['POR FIN ALGO AL PUNTO'],
       low: ['SE ME QUEMA TODO', 'EL SERVICIO ES UN CAOS'],
       win: ['POR FIN ALGO BIEN HECHO'],
-      vs: { bob: 'ESO NO SE COME', zuck: 'NINGUNA IA SABE SAZONAR' }
+      vs: { bob: 'ESO NO SE COME', zuck: 'NINGUNA IA SABE SAZONAR', shakira: 'MENOS BAILE Y MÁS FUEGO' }
     },
     taunt: '¡ESTÁ CRUDO!'
   },
@@ -273,7 +285,7 @@ const ROSTER = [
     id: 'bob', name: 'BOB LA BROCHA', short: 'BOB', real: 'EL PINTOR AMABLE',
     title: 'ACCIDENTES FELICES', type: 'oleo', sub: 'ARBOLITO',
     bio: 'NO CREE EN LOS ERRORES. PEGA IGUAL.',
-    speed: 1.10, power: 0.95,
+    speed: 1.10, power: 0.90, hp: 115, jump: 0.90, reach: 1.00, atkSpeed: 0.90,
     pal: { h: '#6b4a2a', H: '#4a331c', s: '#f2c9a0', S: '#c79c74', L: '#ffe4c6', b: '#5a3d22', w: '#ffffff', k: '#1a1a1a', e: '#4a331c', m: '#8c5b4b' },
     head: ['...hhhhhhhhhh...',
            '..hhhhhhhhhhhh..',
@@ -314,7 +326,7 @@ const ROSTER = [
     id: 'roca', name: 'LA ROCA', short: 'LA ROCA', real: 'EL DE LA CEJA',
     title: '¿HUELES ESO?', type: 'roca', sub: 'CEJA',
     bio: 'DESAYUNA MÁS QUE TÚ EN UNA SEMANA.',
-    speed: 1.05, power: 1.30,
+    speed: 0.95, power: 1.35, hp: 130, jump: 0.80, reach: 1.15, atkSpeed: 0.85,
     pal: { s: '#b0774a', S: '#8a5a34', L: '#c98f5e', w: '#ffffff', k: '#1a1a1a', e: '#3a2418', m: '#7a3b3b' },
     head: ['................',
            '.....ssssss.....',
@@ -347,7 +359,7 @@ const ROSTER = [
       gloat: ['DEMASIADO FÁCIL'],
       low: ['AHORA ME ENFADO', 'SE ACABÓ EL CALENTAMIENTO'],
       win: ['FIN DEL SERVICIO'],
-      vs: { zuck: '¿ESO ES UN HUMANO?', pulga: 'NO TE ME ESCAPES' }
+      vs: { zuck: '¿ESO ES UN HUMANO?', pulga: 'NO TE ME ESCAPES', shakira: '¿ESO ES BAILE O QUÉ?' }
     },
     taunt: '¿HUELES ESO?'
   },
@@ -356,7 +368,7 @@ const ROSTER = [
     id: 'zuck', name: 'ZUCK-BOT', short: 'ZUCK', real: 'EL DE LA RED',
     title: 'HUMANO VERIFICADO', type: 'algoritmo', sub: 'CAPTCHA',
     bio: 'JURA QUE ES UNA PERSONA NORMAL.',
-    speed: 1.18, power: 0.95,
+    speed: 1.20, power: 0.95, hp: 95, jump: 1.00, reach: 0.95, atkSpeed: 1.00,
     pal: { h: '#8a6a44', H: '#5f4830', s: '#f0e4dc', S: '#c9bdb4', L: '#fff6f0', c: '#48e0d0', w: '#ffffff', k: '#3a4560', e: '#5f4830', m: '#8c6b6b' },
     head: ['................',
            '...hhhhhhhhhh...',
@@ -389,9 +401,92 @@ const ROSTER = [
       gloat: ['EL ALGORITMO TE CONOCE'],
       low: ['MODO DE EMERGENCIA', 'GUARDANDO PARTIDA'],
       win: ['ACEPTASTE LOS TÉRMINOS'],
-      vs: { roca: 'MÚSCULO NO ES UN DATO', trumpo: 'YA TENGO TUS DATOS', musko: 'COPIÉ TU FUNCIÓN' }
+      vs: { roca: 'MÚSCULO NO ES UN DATO', trumpo: 'YA TENGO TUS DATOS', musko: 'COPIÉ TU FUNCIÓN', albertito: 'TU FÓRMULA ES OPEN SOURCE' }
     },
     taunt: 'ESTOY OPTIMIZANDO'
+  },
+
+  {
+    id: 'shakira', name: 'LA LOBA', short: 'LOBA', real: 'LA DE LAS CADERAS',
+    title: 'LAS CADERAS NO MIENTEN', type: 'ritmo', sub: 'ESCENARIO',
+    bio: 'TE DESARMA BAILANDO Y ENCIMA TE LO CANTA.',
+    speed: 1.30, power: 1.00, hp: 100, jump: 1.10, reach: 0.95, atkSpeed: 1.10,
+    pal: { h: '#e8c060', H: '#b8913a', s: '#e8b585', S: '#c08f60', L: '#ffd7a8', w: '#ffffff', k: '#1a1a1a', e: '#8a6a30', m: '#c05070' },
+    head: ['................',
+           '...hhhhhhhhhh...',
+           '..hhhhhhhhhhhh..',
+           '.hhhhhhhhhhhhhh.',
+           '.hhsssssssssshh.',
+           '.hssssssssssssh.',
+           '.hseeesseeesshh.',
+           '.hswkwsswkwsshh.',
+           '.hssssssssssshh.',
+           '.hsssssSSsssshh.',
+           '.hssssmmmmsshhh.',
+           '.hhsssssssshhhh.',
+           '.hhhSSSSSShhhhh.',
+           'hhhhSSSShhhhhhh.',
+           'hhh.ssssss.hhhh.',
+           'hh..ssssss..hhh.'],
+    body: { style: 'stage', main: '#d8447a', dark: '#9c2a54', light: '#ffd166', accent: '#f0e0a0', skin: '#e8b585', legs: '#3a2a4a', legsDark: '#241a30' },
+    special: { name: 'CADERAZO', cost: 30, kind: 'projectile', dmg: 12,
+      speed: 1.7, art: 'onda', oy: -46, life: 46, push: 5, say: 'LAS CADERAS NO MIENTEN' },
+    superMove: { name: 'AULLIDO', cost: 100, kind: 'projectile', dmg: 14, count: 2, spread: 0.45,
+      speed: 2.6, art: 'aullido', oy: -60, life: 120, big: true, effect: 'stun', say: '¡AUUUUU!' },
+    barks: {
+      intro: ['¿BAILAMOS O PELEAMOS?', 'ESTO ES UN ESPECTÁCULO', 'SUERTE, LA VAS A NECESITAR'],
+      hit: ['¡ESO SE SIENTE!', 'UN, DOS, TRES', 'AL RITMO, CARIÑO'],
+      hurt: ['¡ME PISASTE!', 'ESO NO ESTABA ENSAYADO', 'FUERA DE COMPÁS'],
+      block: ['NI ME DESPEINO', 'ESO NO ENTRA EN EL SHOW'],
+      gloat: ['LAS CADERAS NUNCA MIENTEN'],
+      low: ['ÚLTIMA CANCIÓN', 'ME QUEDA UN BIS'],
+      win: ['GRACIAS, BUENAS NOCHES'],
+      vs: { trumpo: 'TU MURO NO TIENE RITMO', albertito: 'ESTO NO SE CALCULA', siuuu: 'MENOS GRITO Y MÁS BAILE' }
+    },
+    quotes: ['LAS CADERAS NO MIENTEN. TÚ SÍ.', 'TE GANÉ Y ADEMÁS TE PUSE MÚSICA.',
+             'GRACIAS, BUENAS NOCHES, HE SIDO YO.'],
+    taunt: '¿ASÍ BAILAS?'
+  },
+
+  {
+    id: 'albertito', name: 'ALBERTITO', short: 'ALBERT', real: 'EL DEL PELO',
+    title: 'TODO ES RELATIVO', type: 'ciencia', sub: 'PIZARRA',
+    bio: 'PEGA POCO PERO YA CALCULÓ DÓNDE VAS A ESTAR.',
+    speed: 1.00, power: 0.85, hp: 85, jump: 0.85, reach: 0.85, atkSpeed: 0.95,
+    pal: { h: '#e8e8ee', H: '#b8b8c4', g: '#d8d8e0', s: '#f0d0b0', S: '#c9a883', L: '#fff0dc', w: '#ffffff', k: '#1a1a1a', e: '#c8c8d0', m: '#a8555a' },
+    head: ['.h.h.hhhh.h.h...',
+           '.hhhhhhhhhhhhh..',
+           'hhhhhhhhhhhhhhh.',
+           'hhh.ssssssss.hhh',
+           'hh.ssssssssss.hh',
+           '.sssssssssssss..',
+           '.seeessseeessss.',
+           '.sswkwsswkwssss.',
+           '.ssssssssssssss.',
+           '.sssssSSSssssss.',
+           '.sgggggggggggs..',
+           '.sgggggggggggs..',
+           '.sssmmmmmmsss...',
+           '.SsssssssssssS..',
+           '..SSSSSSSSSSS...',
+           '....ssssss......'],
+    body: { style: 'labcoat', main: '#e8e4dc', dark: '#b8b2a6', light: '#ffffff', accent: '#5a6478', skin: '#f0d0b0', legs: '#4a4740', legsDark: '#2e2c28', short: true },
+    special: { name: 'E = M C 2', cost: 30, kind: 'projectile', dmg: 7,
+      speed: 2.0, art: 'formula', oy: -49, life: 170, grow: true, say: 'ES SENCILLO, MIRA' },
+    superMove: { name: 'AGUJERO NEGRO', cost: 100, kind: 'vortex', dmg: 4, say: 'ESTO SE VA A PONER DENSO' },
+    barks: {
+      intro: ['TODO ES RELATIVO', 'YA CALCULÉ ESTO', 'LA IMAGINACIÓN ES MÁS ÚTIL'],
+      hit: ['LA FÓRMULA FUNCIONA', 'ERA PREVISIBLE', 'MASA POR VELOCIDAD'],
+      hurt: ['DATO INESPERADO', 'HAY QUE REVISAR EL MODELO', 'ERROR EXPERIMENTAL'],
+      block: ['CAMPO DE FUERZA', 'ESO YA LO PREVÍ'],
+      gloat: ['LA CIENCIA GANA SIEMPRE'],
+      low: ['NECESITO MÁS DATOS', 'REVISANDO HIPÓTESIS'],
+      win: ['LO PUBLICARÉ MAÑANA'],
+      vs: { musko: 'ESE COHETE ES MÍO', zuck: 'TU IA ME COPIÓ', roca: 'LA FÍSICA TIENE LÍMITES' }
+    },
+    quotes: ['TODO ES RELATIVO. TU DERROTA NO.', 'LA LOCURA ES REPETIR ESTO ESPERANDO GANAR.',
+             'NO ERA SUERTE, ERA GEOMETRÍA.'],
+    taunt: 'FASCINANTE'
   }
 ];
 

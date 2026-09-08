@@ -54,18 +54,33 @@ Necesita teclado (no hay controles táctiles). Los menús también aceptan rató
 
 ---
 
-## 👥 El elenco
+## 👥 El elenco (10 luchadores)
 
-| Personaje | Tipo | Especial | SUPER |
-|---|---|---|---|
-| **TRUMPO** *(el magnate)* | 💵 DINERO | `MURO DE ORO`: un muro que frena golpes y proyectiles | `LLUVIA DE BILLETES` |
-| **MUSKO** *(el de los cohetes)* | 🚀 COHETE | `ATERRIZAJE CONTROLADO`: cohete en parábola que explota | `TUIT DE MADRUGADA`: hunde la bolsa y ralentiza |
-| **EL PULGA** *(el de la zurda)* | ⚽ FÚTBOL | `TIRO LIBRE`: balón con efecto que persigue | `GAMBETA INFINITA`: se va de cuatro |
-| **SIUUU** *(el del salto)* | 👑 EGO | `CABEZAZO ORBITAL`: embestida aérea | `GRITO SIUUU`: onda que aturde |
-| **CHEF RAMSÉS** *(el que grita)* | 🔥 COCINA | `¡ESTÁ CRUDO!`: platos voladores | `PESADILLA EN LA COCINA`: lluvia de sartenes ardiendo |
-| **BOB LA BROCHA** *(el pintor amable)* | 🎨 ÓLEO | `ARBOLITO FELIZ`: se cura y aguanta más | `ACCIDENTE FELIZ`: lluvia de pintura |
-| **LA ROCA** *(el de la ceja)* | 🪨 ROCA | `CEJA LEVANTADA`: intimida y ralentiza | `CODAZO DEL PUEBLO` |
-| **ZUCK-BOT** *(el de la red)* | 🤖 ALGORITMO | `VERIFICA QUE NO ERES UN ROBOT`: captcha que ralentiza | `NUEVOS TÉRMINOS Y CONDICIONES` |
+Nadie repite arquetipo: cada uno tiene **vida, velocidad, salto, alcance y
+ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
+
+| Personaje | Tipo | Arquetipo | Vida | Vel. | Especial → SUPER |
+|---|---|---|---|---|---|
+| **TRUMPO** *(el magnate)* | 💵 DINERO | Tortuga | 120 | 1.05 | `MURO DE ORO` (barrera) → `LLUVIA DE BILLETES` |
+| **MUSKO** *(el de los cohetes)* | 🚀 COHETE | Riesgo | **85** | 1.45 | `COHETE INESTABLE` (**30% le vuelve encima**) → `HYPERLOOP` (teletransporte) |
+| **EL PULGA** *(el de la zurda)* | ⚽ FÚTBOL | Velocidad | 95 | **1.60** | `TIRO LIBRE` (teledirigido) → `GAMBETA INFINITA` |
+| **SIUUU** *(el del salto)* | 👑 EGO | Aéreo | 100 | 1.35 | `CABEZAZO ORBITAL` (embestida aérea) → `GRITO SIUUU` |
+| **CHEF RAMSÉS** | 🔥 COCINA | Presión | 105 | 1.25 | `¡ESTÁ CRUDO!` (platos) → `PESADILLA EN COCINA` (quema) |
+| **BOB LA BROCHA** | 🎨 ÓLEO | Soporte | 115 | 1.10 | `ARBOLITO FELIZ` (cura) → `ACCIDENTE FELIZ` |
+| **LA ROCA** *(el de la ceja)* | 🪨 ROCA | Tanque | **130** | 0.95 | `CEJA LEVANTADA` (ralentiza) → `CODAZO DEL PUEBLO` |
+| **ZUCK-BOT** | 🤖 ALGORITMO | Control | 95 | 1.20 | `¿ERES UN ROBOT?` (captcha) → `TÉRMINOS NUEVOS` |
+| **LA LOBA** *(la de las caderas)* | 💃 RITMO | Cercanía | 100 | 1.30 | `CADERAZO` (onda que empuja) → `AULLIDO` (**aturde**) |
+| **ALBERTITO** *(el del pelo)* | ⚛️ CIENCIA | Zoner | **85** | 1.00 | `E = M C 2` (**crece al viajar**) → `AGUJERO NEGRO` (**te atrae**) |
+
+Mecánicas que no comparte nadie más: el **muro** de Trumpo, el **cohete que se
+le vuelve en la cara** a Musko, la **cura** de Bob, el **aturdimiento** de La
+Loba, el **proyectil que crece con la distancia** y el **agujero negro que
+arrastra** de Albertito, y el **teletransporte** de Musko.
+
+Además hay diferencias que se notan al jugar: La Roca pega lento pero larguísimo
+y aguanta 130 de vida; Albertito pega flojo, corto y salta poco, pero controla la
+pantalla; Musko es el más frágil y el más explosivo; Siuuu salta un 35% más alto
+que nadie; El Pulga golpea un 20% más rápido.
 
 ## 🧬 Tipos (como en Pokémon, pero con peor criterio)
 
@@ -83,6 +98,8 @@ y existe solo para el chiste.
 | ÓLEO | DINERO, COHETE, ROCA | *el arte no se paga en efectivo* / *le pintó un bigote y perdió la autoridad* |
 | ROCA | COCINA, FÚTBOL | *se comió la cocina entera* / *nadie le regatea a ese señor* |
 | ALGORITMO | FÚTBOL, ÓLEO, ROCA | *lo anuló el VAR* / *le canceló la película* |
+| RITMO | EGO, CIENCIA | *las caderas no mienten, el ego sí* / *eso no lo explica la física* |
+| CIENCIA | COHETE, ALGORITMO | *él inventó ese cohete* / *la IA le copió los deberes* |
 
 La tabla es simétrica. Al conectar con ventaja salta **¡SUPER EFECTIVO!** con su
 chiste; al revés sale *poco efectivo* y la excusa del que aguanta (*"error 403:
