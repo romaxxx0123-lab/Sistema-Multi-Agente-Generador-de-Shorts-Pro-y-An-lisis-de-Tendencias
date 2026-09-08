@@ -72,7 +72,7 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 | **EL PELUCA** *(el de la motosierra)* | 🪚 MOTOSIERRA | Anulador | 95 | 1.35 | `¡NO HAY PLATA!` (**anula todo lo lanzado**) → `MOTOSIERRA` |
 | **EL DIBU** *(el de los penales)* | 🧤 ARQUERO | Contragolpe | 115 | 1.15 | `ATAJADA` (**caza proyectiles**) → `TE LO ATAJO` (aturde y roba super) |
 | **LA CRESTA** *(la de la pancarta)* | 📢 MEGÁFONO | Empuje | 100 | 1.25 | `MEGAFONAZO` (**rompe la guardia y te estampa**) → `MANIFESTACIÓN` |
-| **EL CHAD** *(el de la mandíbula)* | 👑 EGO | Contra | **125** | 0.92 | `POSE` (**no bloquea: devuelve el golpe**) → `CHADAZO` (presa imparable) |
+| **EL CHAD** *(el de la mandíbula)* | 👑 EGO | Contra | **125** | 0.92 | `POSE` (**no bloquea: devuelve el golpe**) → `CHADAZO` (presa imparable) · **el más grande del elenco** |
 | **EL MUSTANG** *(un coche, literal)* | 🏎️ MOTOR | Atropello | 105 | 1.38 | `DERRAPE` (**cortina de humo que se queda**) → `SE VA DEL MEET` |
 | **MICHAEL** *(el del sombrero)* | 💃 RITMO | Evasión | 100 | 1.30 | `MOONWALK` (**los proyectiles no le tocan**) → `THRILLER` (zombis) |
 
@@ -87,12 +87,16 @@ de La Cresta, la **contra** y la **presa** del Chad, la **zona de humo** y el
 
 **El Mustang es literalmente un coche.** No tiene cabeza ni brazos, y tampoco se
 monta por piezas como los demás: se dibuja de una **rejilla de píxeles propia de
-80x40**. Los rectángulos valen para un cuerpo, pero un coche necesita pasos de
-rueda redondos y un parabrisas inclinado, y eso pide rejilla. Lleva techo
-retrasado, capó largo, luneta y parabrisas con montante, faro, parrilla,
-paragolpes, pilotos de barras, alerón, escape y las ruedas metidas dentro de sus
-pasos. Pega con el parachoques, es mucho más bajo y más largo que el resto, y su
-retrato del marcador es el morro visto de frente.
+88x38**. Los rectángulos valen para un cuerpo, pero un coche necesita pasos de
+rueda redondos y un parabrisas inclinado, y eso pide rejilla.
+
+Lo que hace que se lea como Mustang y no como "un coche": **capó muy largo, cola
+muy corta y techo retrasado que cae en fastback** hasta el maletero. Encima
+lleva branquias en el pilar C, pilotos traseros de tres barras, toma de aire en
+el capó, branquias delante de la rueda trasera, colín levantado, franja lateral,
+corte de puerta con manilla, faro, parrilla con el caballito y escape. Pega con
+el parachoques, es mucho más bajo y más largo que el resto, y su retrato del
+marcador es el morro visto de frente.
 
 A escala real un muscle car mide tres veces y media más largo que alto y no
 cabría en la pantalla, así que está achatado a proporción de coche de juguete.
@@ -282,6 +286,10 @@ subir los píxeles **del personaje**:
   espinilla, muslo, cadera, pecho, hombros y cuello, con brazo y antebrazo
   separados y un hueco entre las dos piernas para que no se lean como un bloque.
   Ocupan la mitad del alto de pantalla, como en una recreativa.
+- **El esqueleto se puede ensanchar**: el Chad no es "un poco más alto", tiene el
+  torso, los hombros, la cadera, los brazos y las piernas más anchos, más
+  trapecios y 8px más de estatura. Con la cabeza del mismo tamaño que el resto,
+  que es lo que hace que un cuerpo parezca enorme.
 - **La ropa tiene prendas, no manchas de color**: cada estilo lleva cuello,
   costuras, botonadura, bolsillos, puños y bajo. Antes un traje era un
   rectángulo oscuro con una raya blanca y una camisa era una mancha azul de los

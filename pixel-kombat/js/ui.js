@@ -292,7 +292,8 @@ const UI = {
       ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
       /* el coche no tiene cara: en la parrilla se enseña su morro */
       if (def.body.kind === 'car') drawHeadIcon(ctx, def, r.x + Math.round(r.w / 2) - 13, r.y + 2);
-      else drawPose(ctx, def, r.x + r.w / 2, r.y + r.h + 64, 1, 1);
+      /* el armario mide más: si no se baja, la parrilla le corta la cabeza */
+      else drawPose(ctx, def, r.x + r.w / 2, r.y + r.h + 64 + (def.body.huge ? 8 : 0), 1, 1);
       ctx.restore();
       drawTypeIcon(ctx, def.type, r.x + 1, r.y + 1);
       this.frame(ctx, r.x, r.y, r.w, r.h, '#000');

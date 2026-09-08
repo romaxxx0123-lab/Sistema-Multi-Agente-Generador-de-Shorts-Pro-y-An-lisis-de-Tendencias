@@ -53,13 +53,20 @@ function bodyRects(def, A) {
   if (B.kind === 'car') return carRects(B, A);
   const legC = B.legs || B.main, legD = B.legsDark || B.dark;
   const skin = B.skin;
-  const aw = B.bulk ? 8 : 6;                     // grosor de brazo
+  const aw = B.huge ? 11 : (B.bulk ? 8 : 6);     // grosor de brazo
   const R = [];
   const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
 
   const cr = A.crouch;                          // 0..12
   const lean = A.lean || 0;                     // peso del cuerpo
-  const sh = B.short ? 4 : (B.tall ? -4 : 0);    // bajitos y armarios
+  const sh = B.huge ? -8 : (B.short ? 4 : (B.tall ? -4 : 0));   // bajitos y armarios
+  /* bw ensancha todo el esqueleto: es lo que separa a un armario del
+     resto del elenco. Sin esto, "grande" era solo un par de píxeles. */
+  const bw = B.huge ? 5 : 0;
+  const CX = -11 - bw, CW = 22 + bw * 2;        // pecho
+  const SX = -14 - bw * 2, SW = 27 + bw * 4;    // hombros
+  const HX = -9 - bw, HW = 19 + bw * 2;         // cadera
+  const AXB = -14 - bw * 2, AXF = 7 + bw * 2;   // dónde nacen los brazos
   const shinH = 15 - cr * 0.5 - sh, thighH = 16 - cr * 0.6 - sh;
   const hipY = -(shinH + thighH);
   const hipH = 10;
@@ -90,21 +97,26 @@ function bodyRects(def, A) {
     /* las dos piernas dejan un hueco en medio: sin él el cuerpo
        se lee como un bloque y no como alguien de pie */
     const sw = Math.round(Math.sin(A.walk) * 5);
-    add(-10 - sw, hipY, 9, thighH, legD);
-    add(-9 - sw, hipY + thighH, 8, shinH, legD);
-    add(-11 - sw, -4, 10, 4, boot);
-    add(1 + sw, hipY, 9, thighH, legC);
-    add(2 + sw, hipY + thighH, 8, shinH, legC);
-    add(1 + sw, -4, 10, 4, bootF);
+    add(-10 - bw - sw, hipY, 9 + bw, thighH, legD);
+    add(-9 - bw - sw, hipY + thighH, 8 + bw, shinH, legD);
+    add(-11 - bw - sw, -4, 10 + bw, 4, boot);
+    add(1 + sw, hipY, 9 + bw, thighH, legC);
+    add(2 + sw, hipY + thighH, 8 + bw, shinH, legC);
+    add(1 + sw, -4, 10 + bw, 4, bootF);
   }
 
   /* ---- tronco ---- */
-  add(-9 + lean * 0.4, hipY - hipH, 19, hipH + 2, tint(B.main, -0.10));
-  add(-9 + lean * 0.4, hipY + 1, 19, 1, tint(legD, -0.30));   // bajo del pantalón
-  add(-11 + lean * 0.7, chestY, 22, chestH, B.main);
-  add(-14 + lean, shY + 1, 27, 7, tint(B.main, 0.08));
-  add(-11 + lean, shY, 22, 1, tint(B.main, 0.20));
+  add(HX + lean * 0.4, hipY - hipH, HW, hipH + 2, tint(B.main, -0.10));
+  add(HX + lean * 0.4, hipY + 1, HW, 1, tint(legD, -0.30));   // bajo del pantalón
+  add(CX + lean * 0.7, chestY, CW, chestH, B.main);
+  add(SX + lean, shY + 1, SW, 7, tint(B.main, 0.08));
+  add(CX + lean, shY, CW, 1, tint(B.main, 0.20));
   add(-4 + lean, neckY, 8, 5, tint(skin, -0.12));
+  if (B.huge) {                                  // trapecios: suben del hombro al cuello
+    add(-11 + lean, neckY + 2, 22, 4, tint(skin, -0.06));
+    add(-8 + lean, neckY, 16, 3, tint(skin, 0.04));
+    add(SX + lean, shY + 1, SW, 2, tint(skin, 0.12));
+  }
 
   const st = B.style;
   const lx = Math.round(lean);
@@ -223,17 +235,17 @@ function bodyRects(def, A) {
     add(-11 + lx, hipY - hipH - 2, 23, 2, tint(B.dark, -0.2));
     add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.dark);
   } else if (st === 'torso') {                   // torso desnudo: pectorales y tableta
-    add(-11 + lx, chestY, 22, chestH, skin);
-    add(-11 + lx, chestY, 22, 3, tint(skin, 0.20));
-    add(-10 + lx, chestY + 3, 9, 7, tint(skin, 0.24));
-    add(1 + lx, chestY + 3, 9, 7, tint(skin, 0.34));
+    add(CX + lx, chestY, CW, chestH, skin);
+    add(CX + lx, chestY, CW, 3, tint(skin, 0.20));
+    add(CX + 1 + lx, chestY + 3, CW / 2 - 2, 8, tint(skin, 0.24));
+    add(1 + lx, chestY + 3, CW / 2 - 2, 8, tint(skin, 0.34));
     add(-1 + lx, chestY + 2, 2, chestH - 3, tint(skin, -0.42));
     for (let i = 0; i < 3; i++) {
-      add(-8 + lx, chestY + 10 + i * 3, 7, 2, tint(skin, -0.34));
-      add(2 + lx, chestY + 10 + i * 3, 7, 2, tint(skin, -0.34));
+      add(CX + 3 + lx, chestY + 11 + i * 3, CW / 2 - 4, 2, tint(skin, -0.34));
+      add(2 + lx, chestY + 11 + i * 3, CW / 2 - 4, 2, tint(skin, -0.34));
     }
-    add(-9 + Math.round(lean * 0.4), hipY - hipH, 19, hipH + 2, B.dark);
-    add(-9 + Math.round(lean * 0.4), hipY - hipH, 19, 3, B.accent);
+    add(HX + Math.round(lean * 0.4), hipY - hipH, HW, hipH + 2, B.dark);
+    add(HX + Math.round(lean * 0.4), hipY - hipH, HW, 3, B.accent);
   } else if (st === 'thriller') {                // cazadora roja con vivos negros
     add(-11 + lx, chestY, 22, chestH, B.main);
     add(-11 + lx, chestY, 22, 2, tint(B.main, 0.25));
@@ -301,11 +313,11 @@ function bodyRects(def, A) {
   };
 
   if (A.pose) {                                  // brazos cruzados: la POSE
-    add(-14 + lx, ay + 2, aw, 9, sleeveB);
+    add(AXB + lx, ay + 2, aw, 9, sleeveB);
     add(-11, ay + 13, 22, aw + 2, foreD);
     add(9, ay + 12, hs, hs, tint(handB, -0.15));
-    add(9 + lx, ay + 2, aw, 9, sleeveF);
-    add(9 + lx, ay + 2, aw, 2, tint(sleeveF, 0.20));
+    add(AXF + 2 + lx, ay + 2, aw, 9, sleeveF);
+    add(AXF + 2 + lx, ay + 2, aw, 2, tint(sleeveF, 0.20));
     add(-9, ay + 6, 22, aw + 2, foreC);
     add(-9, ay + 6, 22, 1, tint(foreC, 0.18));
     add(-14, ay + 5, hs, hs, hand);
@@ -319,7 +331,7 @@ function bodyRects(def, A) {
     const p = A.punch;
     const back = p < 0;
     const up = A.punchUp ? Math.round(18 * Math.max(0, p)) : 0;
-    arm(-14 + lx, ay, false);
+    arm(AXB + lx, ay, false);
     if (back) {
       /* brazo recogido: toma impulso */
       const off = Math.round(7 * -p);
@@ -335,15 +347,15 @@ function bodyRects(def, A) {
       add(7 + len, ay + 1 - up - (A.punchUp ? 5 : 0), hs, hs, hand);
     }
   } else if (A.block) {
-    arm(-14 + lx, ay, false);
+    arm(AXB + lx, ay, false);
     add(5, ay - 1, aw + 2, 25, sleeveF);
     add(5, ay - 1, aw + 2, 5, tint(sleeveF, 0.22));
     add(5, ay + 17, aw + 2, 3, cuffC);
     add(6, ay + 21, hs, hs, hand);
   } else {
     const sw = Math.round(Math.sin(A.walk) * 5);
-    arm(-14 + lx, ay + sw, false);
-    arm(7 + lx, ay - sw, true);
+    arm(AXB + lx, ay + sw, false);
+    arm(AXF + lx, ay - sw, true);
   }
 
   return { rects: R, headY: neckY - 21, headX: -13 + Math.round(lean * 1.2) };
