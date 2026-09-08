@@ -2,20 +2,29 @@
    fighter.js — maquina de estados del luchador y combate
    ========================================================= */
 
-const TAUNT_REACTIONS = [
-  'SE ESTÁ BURLANDO. QUÉ FALTA DE RESPETO.',
-  'ESO LO VA A PAGAR CARO.',
-  'EL PÚBLICO ABUCHEA. UN POCO.',
-  'PROVOCAR GRATIS NO EXISTE.',
-  'LA BURLA CARGA BARRA. LA VERGÜENZA NO SE VA.'
-];
-
 /* frase de un luchador según la situación */
 function barkLine(f, kind) {
   const b = f.def.barks;
   if (!b || !b[kind] || !b[kind].length) return null;
   return pick(b[kind]);
 }
+/* Frase al pulsar la tecla de hablar: la elige según cómo va el combate.
+   No es una frase fija: cambia si vas ganando, si estás al límite, si el
+   rival tiene pique escrito contigo o si lo tienes encima. */
+function tauntLine(f, opp) {
+  const b = f.def.barks;
+  if (!b) return { text: f.def.taunt, kind: 'burla' };
+  if (opp.state === 'ko' || opp.hp <= opp.maxHp * 0.22)
+    return { text: pick(b.win.concat(b.gloat)), kind: 'corona' };
+  if (f.hp <= f.maxHp * 0.3)
+    return { text: pick(b.low), kind: 'alerta' };
+  if (b.vs && b.vs[opp.def.id] && Math.random() < 0.6)
+    return { text: b.vs[opp.def.id], kind: 'chulo' };
+  if (Math.abs(opp.x - f.x) < 60)
+    return { text: pick(b.hit.concat([f.def.taunt])), kind: 'burla' };
+  return { text: pick(b.intro.concat(b.gloat)), kind: 'tipo' };
+}
+
 /* saludo inicial: si hay pique con ese rival, se usa el suyo */
 function introLine(f, opp) {
   const b = f.def.barks;
@@ -207,7 +216,7 @@ class Fighter {
 
     if (pSuper && this.meter >= 100) { this.startSpecial(this.def.superMove, world, true); return; }
     if (pSpec && this.meter >= this.def.special.cost) { this.startSpecial(this.def.special, world, false); return; }
-    if (pTaunt && this.onGround) { this.startTaunt(); return; }
+    if (pTaunt && this.onGround) { this.startTaunt(opp); return; }
     if (pPunch) { this.startAttack(!this.onGround ? ATTACKS.air : this.crouching ? ATTACKS.upper : ATTACKS.punch); return; }
     if (pKick) { this.startAttack(!this.onGround ? ATTACKS.air : this.crouching ? ATTACKS.low : ATTACKS.kick); return; }
 
@@ -230,7 +239,8 @@ class Fighter {
     Sfx.whiff();
   }
 
-  startTaunt() {
+  startTaunt(opp) {
+    this.tauntSay = opp ? tauntLine(this, opp) : { text: this.def.taunt, kind: 'burla' };
     this.atk = ATTACKS.taunt;
     this.atkT = 0;
     this.hasHit = true;
@@ -260,8 +270,8 @@ class Fighter {
     if (this.tauntPending && this.atkT === a.startup) {
       this.tauntPending = false;
       this.meter = Math.min(100, this.meter + 12);   // burlarse carga barra... si te dejan
-      world.emote(this, 'burla', this.def.taunt, true);
-      world.say(pick(TAUNT_REACTIONS));
+      const t = this.tauntSay || { text: this.def.taunt, kind: 'burla' };
+      world.emote(this, t.kind, t.text, true);      // su frase manda en el rótulo
       Sfx.taunt();
     }
     if (this.pendingSp && this.atkT === a.startup) {
@@ -406,7 +416,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
     tgt.hitstun = 7;
     world.impact(cx, cy, false);
     world.burst(cx, cy, 5, '#a8d8ff');
-    if (Math.random() < 0.30) world.emote(tgt, 'escudo');
+    if (Math.random() < 0.18) world.emote(tgt, 'escudo');
     world.popup(tgt.x, tgt.y - 74, 'BLOQUEO', '#a8d8ff');
     world.shake = 2;
     world.hitstop = 2;
@@ -421,9 +431,9 @@ function dealDamage(src, tgt, dmg, opts, world) {
     if (opts.launch) { tgt.vy = -5.2; tgt.onGround = false; }
     src.combo++; src.comboT = 90;
     /* comentario del que pega o del que lo recibe, nunca los dos a la vez */
-    if (tm.kind === 'super' && Math.random() < 0.6) world.emote(src, 'chulo');
-    else if (d >= 9 && Math.random() < 0.4) world.emote(src, 'golpe');
-    else if (Math.random() < 0.35) world.emote(tgt, 'dolor');
+    if (tm.kind === 'super' && Math.random() < 0.5) world.emote(src, 'chulo');
+    else if (d >= 9 && Math.random() < 0.26) world.emote(src, 'golpe');
+    else if (Math.random() < 0.22) world.emote(tgt, 'dolor');
     const big = d > 9 || tm.kind === 'super';
     world.impact(cx, cy, big);
     world.burst(cx, cy, big ? 12 : 7, tm.kind === 'super' ? '#f5c542' : (big ? '#ffe07a' : '#ffffff'));

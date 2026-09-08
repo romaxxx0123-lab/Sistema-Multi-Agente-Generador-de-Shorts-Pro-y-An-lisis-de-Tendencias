@@ -38,7 +38,7 @@ Necesita teclado (no hay controles táctiles). Los menús también aceptan rató
 | **SUPER** (barra al 100%) | `T` | `O` |
 | Uppercut | `S` + `F` | `↓` + `J` |
 | Barrida | `S` + `G` | `↓` + `K` |
-| Burla (+12% de barra) | `R` | `P` |
+| **Hablar** (+12% de barra) | `R` | `P` |
 
 - **Bloquear**: mantén la dirección contraria al rival (en el suelo).
 - `ESC` pausa · `M` silencia · `ENTER` confirma en los menús.
@@ -101,7 +101,24 @@ menos de daño al de la motosierra.
 
 ## 🔊 Cómo se expresan (sin bocadillos)
 
-Los personajes no se ponen a conversar en mitad de la pelea:
+Los personajes no se ponen a conversar en mitad de la pelea. **Hablar lo decides
+tú**: la tecla `R` (`P` para el jugador 2) hace que tu personaje suelte una
+frase, y la frase **depende de cómo va el combate**:
+
+| Situación | Qué dice TRUMPO al pulsar |
+|---|---|
+| Lejos, con el rival entero | *"GANO SIEMPRE, PREGUNTA"* |
+| Pegado al rival | *"¡TREMENDO!"* |
+| Tú al límite de vida | *"NECESITO UN MURO MÁS ALTO"* |
+| El rival casi muerto | *"LO DICE TODO EL MUNDO"* |
+| Contra un rival con pique escrito | *"CON ESE PELO NO SE NEGOCIA"* (al Peluca) |
+
+Hablar **carga un 12% de barra de super** pero te deja vendido medio segundo, y
+tiene enfriamiento: aunque machaques la tecla, sale una sola frase.
+
+En automático solo quedan los **momentos guionizados** (el pique antes del
+asalto, los cruces como el ¡NO HAY PLATA!, el muro roto y el final del asalto).
+El resto de reacciones son mudas:
 
 - **Voz sintetizada propia**: cada uno tiene su timbre, tono y ritmo de
   balbuceo (12 perfiles distintos). Ramsés y La Roca gruñen grave y rasgado,

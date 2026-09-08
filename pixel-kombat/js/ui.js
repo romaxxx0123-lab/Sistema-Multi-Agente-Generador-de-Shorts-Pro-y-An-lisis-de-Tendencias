@@ -199,7 +199,7 @@ const UI = {
     this.plate(ctx, 4, 20, 150, 100, CO.panel);
     const rows = [['', 'J1', 'J2'], ['MOVER', 'A/D', '< >'], ['SALTAR', 'W', 'ARR'],
       ['AGACHAR', 'S', 'ABA'], ['PUÑO', 'F', 'J'], ['PATADA', 'G', 'K'],
-      ['ESPECIAL', 'H', 'L'], ['SUPER', 'T', 'O'], ['BURLA', 'R', 'P']];
+      ['ESPECIAL', 'H', 'L'], ['SUPER', 'T', 'O'], ['HABLAR', 'R', 'P']];
     rows.forEach((r, i) => {
       const y = 24 + i * 10;
       if (i && i % 2) Pix.r(ctx, 6, y - 1, 146, 9, 'rgba(255,255,255,0.04)');
@@ -210,7 +210,9 @@ const UI = {
     Text.draw(ctx, 'BLOQUEO: ATRÁS', 8, 124, CO.gold, 'left', 1);
     Text.draw(ctx, 'ABAJO+PUÑO: UPPER', 8, 134, CO.gold, 'left', 1);
     Text.draw(ctx, 'ABAJO+PAT: BARRIDA', 8, 144, CO.gold, 'left', 1);
-    Text.draw(ctx, 'ESC PAUSA · M MUDO', 8, 158, CO.dim, 'left', 1);
+    Text.draw(ctx, 'HABLAR: FRASE SEGÚN', 8, 154, CO.cyan, 'left', 1);
+    Text.draw(ctx, 'CÓMO VA EL COMBATE', 8, 163, CO.cyan, 'left', 1);
+    Text.draw(ctx, 'ESC PAUSA · M MUDO', 8, 172, CO.dim, 'left', 1);
 
     this.plate(ctx, 160, 20, W - 164, 138, CO.panel);
     Text.draw(ctx, 'TIPOS: +40% A', 166, 24, CO.cyan, 'left', 1);

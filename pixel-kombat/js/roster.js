@@ -108,7 +108,7 @@ const ROSTER = [
       low: ['NECESITO UN MURO MÁS ALTO', 'ESTO ES UNA CACERÍA DE BRUJAS'],
       win: ['GANÉ. ENORME VICTORIA.', 'LO DICE TODO EL MUNDO'],
       wall: ['¡ROMPISTE MI MURO!', '¡ESO LO PAGAS TÚ!', '¿QUIÉN TE DEJÓ ENTRAR?'],
-      vs: { musko: 'TE COMPRO LA EMPRESA', zuck: 'VÉNDEME ESOS DATOS', bob: 'PÍNTAME EL MURO', shakira: 'TE COMPRO EL ESCENARIO', albertito: 'CÓRTATE ESE PELO' }
+      vs: { musko: 'TE COMPRO LA EMPRESA', zuck: 'VÉNDEME ESOS DATOS', bob: 'PÍNTAME EL MURO', shakira: 'TE COMPRO EL ESCENARIO', albertito: 'CÓRTATE ESE PELO', peluca: 'CON ESE PELO NO SE NEGOCIA', dibu: 'TE FICHO PARA MI CLUB' }
     },
     taunt: '¡TREMENDO!'
   },
@@ -194,7 +194,7 @@ const ROSTER = [
       gloat: ['ESTO NO SE ENSEÑA'],
       low: ['ME QUEDAN DOS MINUTOS', 'PIDO EL CAMBIO'],
       win: ['Y HOY TAMPOCO FUE PENAL'],
-      vs: { siuuu: 'OTRA VEZ VOS NO', roca: 'NO ME EMPUJES ASÍ' }
+      vs: { siuuu: 'OTRA VEZ VOS NO', roca: 'NO ME EMPUJES ASÍ', dibu: 'DALE DIBU, ES BROMA' }
     },
     taunt: 'ANDÁ P’ALLÁ'
   },
@@ -322,7 +322,7 @@ const ROSTER = [
       gloat: ['MIRA QUÉ ARMONÍA'],
       low: ['NECESITO MÁS BLANCO', 'CASI ACABO EL CUADRO'],
       win: ['QUEDÓ PRECIOSO'],
-      vs: { ramses: 'GRITAR NO PINTA NADA', trumpo: 'TE PINTO UNA PUERTA' }
+      vs: { ramses: 'GRITAR NO PINTA NADA', trumpo: 'TE PINTO UNA PUERTA', peluca: 'PINTAR NO CUESTA NADA' }
     },
     taunt: 'TODO TIENE ARREGLO'
   },
@@ -449,7 +449,7 @@ const ROSTER = [
       gloat: ['LAS CADERAS NUNCA MIENTEN'],
       low: ['ÚLTIMA CANCIÓN', 'ME QUEDA UN BIS'],
       win: ['GRACIAS, BUENAS NOCHES'],
-      vs: { trumpo: 'TU MURO NO TIENE RITMO', albertito: 'ESTO NO SE CALCULA', siuuu: 'MENOS GRITO Y MÁS BAILE' }
+      vs: { trumpo: 'TU MURO NO TIENE RITMO', albertito: 'ESTO NO SE CALCULA', siuuu: 'MENOS GRITO Y MÁS BAILE', dibu: 'ATAJAME ESTE PASO' }
     },
     quotes: ['LAS CADERAS NO MIENTEN. TÚ SÍ.', 'TE GANÉ Y ADEMÁS TE PUSE MÚSICA.',
              'GRACIAS, BUENAS NOCHES, HE SIDO YO.'],
@@ -491,7 +491,7 @@ const ROSTER = [
       gloat: ['LA CIENCIA GANA SIEMPRE'],
       low: ['NECESITO MÁS DATOS', 'REVISANDO HIPÓTESIS'],
       win: ['LO PUBLICARÉ MAÑANA'],
-      vs: { musko: 'ESE COHETE ES MÍO', zuck: 'TU IA ME COPIÓ', roca: 'LA FÍSICA TIENE LÍMITES' }
+      vs: { musko: 'ESE COHETE ES MÍO', zuck: 'TU IA ME COPIÓ', roca: 'LA FÍSICA TIENE LÍMITES', peluca: 'RECORTAR CIENCIA SALE CARO' }
     },
     quotes: ['TODO ES RELATIVO. TU DERROTA NO.', 'LA LOCURA ES REPETIR ESTO ESPERANDO GANAR.',
              'NO ERA SUERTE, ERA GEOMETRÍA.'],
