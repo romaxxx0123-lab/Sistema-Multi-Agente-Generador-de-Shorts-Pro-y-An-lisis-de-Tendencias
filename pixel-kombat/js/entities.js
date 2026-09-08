@@ -167,10 +167,11 @@ class Popup {
     this.size = text.length > 14 ? 6 : 8;
     const half = text.length * this.size * 0.3;
     this.x = clamp(x, half + 4, W - half - 4);
-    this.y = y; this.text = text; this.color = color;
+    this.y = Math.max(46, y);          // nunca por encima del marcador
+    this.text = text; this.color = color;
     this.life = 52; this.dead = false;
   }
-  update() { this.y -= 0.45; if (--this.life <= 0) this.dead = true; }
+  update() { this.y = Math.max(44, this.y - 0.45); if (--this.life <= 0) this.dead = true; }
   draw(ctx) {
     if (this.life < 14 && this.life % 2) return;
     Pix.text(ctx, this.text, this.x, this.y, this.color, 'center', this.size);
@@ -219,8 +220,10 @@ class World {
 
   popup(x, y, text, color) {
     /* escalona los avisos cercanos para que no se pisen */
-    const near = this.pops.filter(p => Math.abs(p.x - x) < 96 && p.life > 20).length;
-    this.pops.push(new Popup(x, y - near * 11, text, color));
+    /* nada de repetir el mismo aviso dos veces seguidas */
+    if (this.pops.some(p => p.text === text && p.life > 28)) return;
+    const near = this.pops.filter(p => Math.abs(p.x - x) < 110 && p.life > 18).length;
+    this.pops.push(new Popup(x, y - near * 15, text, color));
     while (this.pops.length > 4) this.pops.shift();
   }
 

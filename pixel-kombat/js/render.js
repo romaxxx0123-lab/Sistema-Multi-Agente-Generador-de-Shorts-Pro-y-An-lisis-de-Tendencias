@@ -385,7 +385,7 @@ function stageMercado(ctx, t) {
     Pix.r(ctx, x, GROUND - 34, 32, 34, '#241040');
   }
   /* puestos */
-  const cols = ['#e0343c', '#48e0d0', '#f5c542', '#4ad14a'];
+  const cols = ['#a02832', '#2f9a92', '#b8912e', '#3a9440'];
   for (let s = 0; s < 4; s++) {
     const x = 6 + s * 78, c = cols[s];
     Pix.r(ctx, x - 1, GROUND - 49, 64, 30, '#140a26');
@@ -412,6 +412,10 @@ function stageMercado(ctx, t) {
   crowd(ctx, GROUND - 22, t, ['#4a2a6b', '#6b2a4a']);
   Pix.r(ctx, 0, GROUND - 22, W, 22, 'rgba(16,8,32,0.5)');
   floor(ctx, '#6a4a9c', '#33224f', '#241a3c', '#8d5ad4');
+  for (let x = 0; x < W; x += 32) {                    // baldosas en perspectiva
+    Pix.r(ctx, x, GROUND + 3, 1, H - GROUND - 11, '#2a1c44');
+    Pix.r(ctx, x + 16, GROUND + 10, 1, H - GROUND - 18, '#2a1c44');
+  }
 }
 
 /* ---------- ring de salón ---------- */

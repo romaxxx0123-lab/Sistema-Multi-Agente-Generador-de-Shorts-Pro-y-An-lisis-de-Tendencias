@@ -49,6 +49,7 @@ class Fighter {
     this.hitstun = 0; this.flash = 0;
     this.crouching = false; this.blocking = false;
     this.guard = 0; this.slow = 0; this.burn = 0;
+    this.hpShown = this.maxHp; this.hpGhost = this.maxHp; this.ghostWait = 0;
     this.tauntPending = false; this.lastTypeSay = -999;
     this.combo = 0; this.comboT = 0;
     this.koT = 0; this.dead = false;
@@ -104,6 +105,13 @@ class Fighter {
 
   update(inp, opp, world) {
     this.t++;
+    /* la barra baja con inercia y deja un rastro que se vacía después */
+    this.hpShown += (this.hp - this.hpShown) * 0.45;
+    if (Math.abs(this.hpShown - this.hp) < 0.4) this.hpShown = this.hp;
+    if (this.hpGhost > this.hp) {
+      if (this.ghostWait > 0) this.ghostWait--;
+      else this.hpGhost = Math.max(this.hp, this.hpGhost - 0.55);
+    } else this.hpGhost = this.hp;
     if (this.flash > 0) this.flash--;
     if (this.guard > 0) this.guard--;
     if (this.slow > 0) this.slow--;
@@ -342,6 +350,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
 
   tgt.hp = Math.max(0, tgt.hp - d);
   tgt.flash = blocked ? 4 : 10;
+  tgt.ghostWait = 32;
   tgt.combo = 0; tgt.comboT = 0;
 
   const dirAway = Math.sign(tgt.x - src.x) || src.dir;

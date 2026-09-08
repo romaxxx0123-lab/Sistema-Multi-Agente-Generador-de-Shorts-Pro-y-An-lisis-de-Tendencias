@@ -128,6 +128,23 @@ rectángulos planos de un solo color. Ahora:
   junto a las barras de vida, cintas diagonales animadas y paleta cálida
   (morado y oro) en lugar del azul marino de modo oscuro.
 
+### Tipografía y barras
+
+Los dos últimos detalles que delataban "texto de programador":
+
+- **La fuente lleva contorno completo y relleno en degradado.** Cada carácter
+  precalcula su máscara de contorno (8 direcciones) una sola vez y se pinta
+  uniendo los píxeles contiguos de cada fila. Los títulos usan una rampa de
+  tres o cuatro tonos de arriba abajo. El interletraje es de 7px para que los
+  contornos de letras vecinas no se peguen.
+- **Las barras de vida ya no son rectángulos.** Llevan extremos inclinados
+  (se dibujan fila a fila con desplazamiento), rampa vertical de cinco tonos,
+  trama diagonal en el hueco vacío, muescas de segmento cada 12px y, sobre
+  todo, **barra fantasma**: al recibir daño queda un rastro blanco que espera
+  medio segundo y luego se vacía, mientras la barra real baja con inercia.
+- **El reloj va en placa achaflanada** y los anuncios entran con temblor y
+  rampa de color.
+
 ## 🗂️ Estructura
 
 ```
