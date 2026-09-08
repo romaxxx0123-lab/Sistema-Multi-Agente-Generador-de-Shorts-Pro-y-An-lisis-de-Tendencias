@@ -8,16 +8,13 @@ const DUELOS = {
   'peluca|musko':    { nullify: ['NO FINANCIO COHETES', 'LO PAGO YO, TRANQUILO'] },
   'peluca|bob':      { nullify: ['EL ARTE NO SE SUBVENCIONA', 'PERO SI ERA GRATIS...'] },
   'peluca|zuck':     { nullify: ['CORTAMOS LOS SERVIDORES', 'ESO VIOLA LOS TÉRMINOS'] },
-  'peluca|ramses':   { nullify: ['NO HAY PLATA PARA CENAR', '¡ENTONCES ESTÁ CRUDO!'] },
   'peluca|albertito':{ nullify: ['NI UN PESO PARA CIENCIA', 'ERROR DE CÁLCULO GRAVE'] },
   'peluca|shakira':  { nullify: ['LA GIRA NO SE SUBVENCIONA', 'YO ME LA PAGO SOLA'] },
 
   /* ---- el Dibu ataja lo que le tiren ---- */
   'dibu|pulga':      { catch: ['PERDÓN LEO', 'DALE DIBU, SOLTALA'] },
-  'dibu|siuuu':      { catch: ['MIRÁ QUE TE LO ATAJO', 'ESO FUE SUERTE'] },
   'dibu|trumpo':     { catch: ['ESTA PLATA ES MÍA', '¡ESO ES ROBO!'] },
   'dibu|musko':      { catch: ['ATAJÉ UN COHETE', 'IMPOSIBLE, ERA BALÍSTICO'] },
-  'dibu|ramses':     { catch: ['ESTE PLATO ES MÍO', '¡DEVUÉLVEMELO!'] },
   'dibu|albertito':  { catch: ['LA FÓRMULA AL CÓRNER', 'ESTADÍSTICAMENTE IMPOSIBLE'] },
   'dibu|peluca':     { catch: ['TRANQUILO, PRESIDENTE', 'ESE SÍ ES GASTO ÚTIL'] },
 
@@ -39,13 +36,13 @@ const DUELOS = {
 
   /* ---- proyectiles que chocan en el aire ---- */
   'trumpo|zuck':     { clash: ['MI DINERO CONTRA TUS DATOS', 'LOS DATOS VALEN MÁS'] },
-  'musko|albertito': { clash: ['MI COHETE ES MEJOR', 'YO ESCRIBÍ ESAS ECUACIONES'] },
+  'musko|albertito': { clash: ['LLEGO A MARTE ANTES QUE VOS', 'YO ESCRIBÍ ESAS ECUACIONES'] },
   'mustang|pulga':   { clash: ['¡CUIDADO CON LA PELOTA!', '¡ESA ERA MÍA!'] },
-  'michael|shakira': { clash: ['ESTO ES UN DUELO DE BAILE', 'Y LO VOY A GANAR'] },
+  'michael|shakira': { clash: ['ESTO ES UN DUELO DE BAILE', 'ENTONCES PON MÚSICA'] },
   'michael|zuck':    { clash: ['ESE PASO NO LO CLASIFICAS', 'CATEGORÍA: DESCONOCIDA'] },
   'mustang|trumpo':  { clash: ['NO ESTOY EN VENTA', 'TODO TIENE PRECIO'] },
   'chad|roca':       { clash: ['PRIMO.', 'PRIMO.'] },
-  'mustang|albertito': { clash: ['ESTO ES FÍSICA APLICADA', 'ESO ES FÍSICA MAL APLICADA'] }
+  'mustang|albertito': { clash: ['ESTO ES FÍSICA APLICADA', 'ESO ES UN CHOQUE, NO FÍSICA'] }
 };
 
 /* devuelve el par de frases para un cruce concreto, si existe */

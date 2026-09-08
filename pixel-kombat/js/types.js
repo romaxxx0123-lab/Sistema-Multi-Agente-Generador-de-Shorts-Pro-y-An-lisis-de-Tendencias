@@ -71,7 +71,7 @@ const REASONS = {
   'dinero>algoritmo': 'COMPRÓ LA RED SOCIAL ENTERA',
   'dinero>motor':     'LE COMPRÓ EL CONCESIONARIO',
   'cohete>ego':       'EL EGO NO LLEGA A MARTE',
-  'cohete>roca':      'DESPEGA CON TODO Y PIEDRA',
+  'cohete>roca':      'LA PIEDRA TAMBIÉN DESPEGA',
   'futbol>dinero':    'ESO NO SE COMPRA (CASI)',
   'futbol>ego':       'LOS TÍTULOS CALLAN BOCAS',
   'futbol>cohete':    'LO BAJÓ DE UN CABEZAZO',
@@ -90,22 +90,22 @@ const REASONS = {
   'dinero>ritmo':     'LE COMPRÓ LA GIRA ENTERA',
   'motor>ritmo':      'EL MOTOR TAPA CUALQUIER TEMA',
   'ritmo>ego':        'LAS CADERAS NO MIENTEN, EL EGO SÍ',
-  'ritmo>ciencia':    'ESO NO LO EXPLICA LA FÍSICA',
+  'ritmo>ciencia':    'ESE MOVIMIENTO NO SE PUBLICA',
   'ciencia>cohete':   'ÉL INVENTÓ ESE COHETE',
   'ciencia>algoritmo':'LA IA LE COPIÓ LOS DEBERES',
   'roca>ciencia':     'LA FÍSICA NO PARA A ESE SEÑOR',
   'motosierra>dinero':    '¡NO HAY PLATA!',
   'motosierra>algoritmo': 'LE CORTÓ EL PRESUPUESTO',
   'motosierra>arquero':   'NO HAY GUANTE PARA ESO',
-  'roca>motosierra':      'ESA MOTOSIERRA NO CORTA ESO',
+  'roca>motosierra':      'SE LE MELLÓ LA MOTOSIERRA',
   'oleo>motosierra':      'LE PINTÓ FLORES EN LA MOTOSIERRA',
   'arquero>futbol':       'LE ATAJA HASTA LOS PENALES',
-  'arquero>cohete':       'TAMBIÉN ATAJA COHETES',
+  'arquero>cohete':       'VOLÓ Y LO SACÓ AL CÓRNER',
   'ego>arquero':          'ESE EGO NO SE ATAJA',
   'megafono>ego':         'EL EGO NO SE OYE DESDE LA PLAZA',
   'megafono>algoritmo':   'NO HAY ALGORITMO QUE TAPE ESO',
-  'roca>megafono':        'A ESE SEÑOR NO LO MUEVE NADIE',
-  'motosierra>megafono':  'RECORTÓ EL PRESUPUESTO DEL ALTAVOZ'
+  'roca>megafono':        'GRITÓ Y NO SE MOVIÓ NI UN PELO',
+  'motosierra>megafono':  'LE CORTÓ EL CABLE AL MEGÁFONO'
 };
 
 /* excusa del que aguanta el golpe */
@@ -122,7 +122,7 @@ const RESIST = {
   ciencia:    'CALCULÓ ESE GOLPE HACE UN RATO',
   motosierra: 'ESO NO ENTRA EN EL PRESUPUESTO',
   arquero:    'ESA LA ATAJA CON LOS OJOS CERRADOS',
-  megafono:   'ESO SE LO GRITA MÁS FUERTE'
+  megafono:   'ESO SE CONTESTA GRITANDO'
 };
 
 function typeMult(a, d) {

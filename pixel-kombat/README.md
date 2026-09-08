@@ -199,8 +199,11 @@ vida baja, KO, burlas y ventajas de tipo).
 
 ## 💬 Hablan mientras pelean
 
-Cada personaje tiene unas 18 frases propias que salen en **bocadillos** según lo
-que pasa en el combate, más frases específicas contra ciertos rivales:
+Cada personaje tiene sus frases propias, que salen según lo que pasa en el
+combate, más frases específicas contra ciertos rivales. La regla al escribirlas
+es una: **si la podría decir cualquiera, no entra**. Nada de relleno tipo
+*"demasiado fácil"* o *"iteración exitosa"*; solo lo que diría esa persona y
+nadie más.
 
 | Situación | Ejemplo |
 |---|---|
@@ -211,11 +214,12 @@ que pasa en el combate, más frases específicas contra ciertos rivales:
 | Al bloquear | ZUCK: *"SOLICITUD DENEGADA"* · ROCA: *"NI ME MUEVO"* |
 | Con ventaja de tipo | ZUCK: *"EL ALGORITMO TE CONOCE"* |
 | Con poca vida | MUSTANG: *"HUELE A QUEMADO"* · ROCA: *"AHORA ME ENFADO"* |
-| Al ganar el asalto | BOB: *"QUEDÓ PRECIOSO"* |
+| Al ganar el asalto | BOB: *"QUEDÓ PRECIOSO"* · PELUCA: *"¡VIVA LA LIBERTAD, CARAJO!"* |
+| Chulearse con ventaja | **PELUCA: *"¿ESTÁS NERVIOSO?"*** |
 
-Los piques entre rivales concretos están escritos a mano: Pulga y Siuuu se
-reconocen, Ramsés le dice a Bob que *"eso no se come"*, Zuck le recuerda a
-La Roca que *"músculo no es un dato"*.
+Los piques entre rivales concretos están escritos a mano: El Peluca le suelta el
+*"¿estás nervioso?"* a quien le levante la voz, Zuck le recuerda a La Roca que
+*"músculo no es un dato"* y el Chad le contesta a La Cresta *"te escucho"*.
 
 Hay un límite: cada luchador no suelta otra frase hasta pasados ~2,5 segundos,
 así que no se solapan ni cansan.
