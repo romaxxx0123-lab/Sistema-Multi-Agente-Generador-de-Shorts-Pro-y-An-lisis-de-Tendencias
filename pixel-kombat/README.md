@@ -85,10 +85,17 @@ de La Cresta, la **contra** y la **presa** del Chad, la **zona de humo** y el
 **atropello con retroceso** del Mustang, y el **paso atrás intangible** y los
 **zombis** de Michael.
 
-**El Mustang es literalmente un coche.** No tiene cabeza ni brazos: se monta su
-propia chapa (ruedas, capó, alerón, faros), pega con el parachoques, es más bajo
-y mucho más ancho que el resto, y su retrato del marcador es el morro visto de
-frente.
+**El Mustang es literalmente un coche.** No tiene cabeza ni brazos, y tampoco se
+monta por piezas como los demás: se dibuja de una **rejilla de píxeles propia de
+80x40**. Los rectángulos valen para un cuerpo, pero un coche necesita pasos de
+rueda redondos y un parabrisas inclinado, y eso pide rejilla. Lleva techo
+retrasado, capó largo, luneta y parabrisas con montante, faro, parrilla,
+paragolpes, pilotos de barras, alerón, escape y las ruedas metidas dentro de sus
+pasos. Pega con el parachoques, es mucho más bajo y más largo que el resto, y su
+retrato del marcador es el morro visto de frente.
+
+A escala real un muscle car mide tres veces y media más largo que alto y no
+cabría en la pantalla, así que está achatado a proporción de coche de juguete.
 
 **Quién no está y por qué.** Fuera SIUUU (nadie lo pidió) y fuera CHEF RAMSÉS:
 era el único cuyas dos habilidades eran genéricas —un proyectil doble como el de

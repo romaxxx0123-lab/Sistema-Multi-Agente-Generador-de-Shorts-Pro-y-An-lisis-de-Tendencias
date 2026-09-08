@@ -12,6 +12,15 @@ function lum(c) {
   return ((n >> 16 & 255) * 0.30 + (n >> 8 & 255) * 0.59 + (n & 255) * 0.11) / 255;
 }
 
+/* perfil del coche con contorno, calculado una sola vez */
+function sideOf(def) {
+  if (!def._side) {
+    def._side = outlineGrid(def.side, '#');
+    def._sidePal = Object.assign({ '#': OUTLINE }, def.sidePal);
+  }
+  return def;
+}
+
 /* rejilla de cabeza con contorno, calculada una sola vez */
 function headOf(def) {
   if (!def._head) {
@@ -341,45 +350,14 @@ function bodyRects(def, A) {
 }
 
 /* El Mustang es literalmente un coche: no tiene cabeza ni brazos, así que
-   se monta su propia chapa. Los golpes los da con el parachoques. */
+   en vez de montarse por piezas se dibuja de una rejilla propia. Los
+   rectángulos van bien para un cuerpo; para un coche hacen falta pasos de
+   rueda redondos y un parabrisas inclinado, y eso pide rejilla. */
 function carRects(B, A) {
-  const R = [];
-  const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
-  const body = B.main, dark = B.dark, glass = '#39476b', rim = B.legs || '#15181d';
   const L = Math.round(13 * Math.max(A.punch, A.kick, 0));   // el morro va primero
-  const sus = Math.round(A.crouch * 0.4);                     // se hunde de suspensión
-  const bob = A.bob || 0;
-
-  /* ruedas */
-  for (const wx of [-26, 8]) {
-    add(wx + L, -18, 16, 18, rim);
-    add(wx + 2 + L, -15, 12, 12, '#2f343d');
-    add(wx + 5 + L, -12, 6, 6, '#8d97ad');
-  }
-  /* carrocería */
-  add(-32 + L, -36 + sus + bob, 64, 21, body);
-  add(-30 + L, -18, 60, 4, dark);                    // faldón
-  add(16 + L, -34 + sus + bob, 20, 18, body);        // capó
-  add(-30 + L, -36 + sus + bob, 62, 2, tint(body, 0.26));
-  add(-30 + L, -26 + sus + bob, 64, 3, B.light);     // franja de carreras
-  /* cabina */
-  add(-20 + L, -52 + sus + bob, 32, 17, body);
-  add(-20 + L, -52 + sus + bob, 32, 2, tint(body, 0.30));
-  add(-16 + L, -50 + sus + bob, 13, 11, glass);      // ventanilla (no se ve a nadie)
-  add(1 + L, -50 + sus + bob, 12, 12, glass);        // parabrisas
-  add(1 + L, -50 + sus + bob, 12, 2, tint(glass, 0.35));
-  /* alerón y escape */
-  add(-38 + L, -48 + sus + bob, 13, 5, dark);
-  add(-33 + L, -43 + sus + bob, 5, 8, dark);
-  add(-38 + L, -30 + sus + bob, 6, 13, dark);
-  add(-41 + L, -22, 6, 5, '#8d97ad');
-  /* morro: faro, parrilla y parachoques */
-  add(34 + L, -32 + sus + bob, 5, 6, B.accent);
-  add(34 + L, -32 + sus + bob, 5, 2, '#fff2a8');
-  add(34 + L, -24 + sus + bob, 5, 7, '#2a2f3d');
-  add(32 + L, -18, 8, 5, dark);
-
-  return { rects: R, headY: 0, headX: 0, noHead: true };
+  const sus = Math.round(A.crouch * 0.4);                    // se hunde de suspensión
+  return { rects: [], car: true, noHead: true, headX: 0, headY: 0,
+    gx: L, gy: sus + (A.bob || 0) };
 }
 
 /* Cuerpo de bebé: cabeza normal sobre un cuerpecito, que es lo que
@@ -464,6 +442,8 @@ function drawFighter(ctx, f) {
 }
 
 const WHITE_PAL = new Proxy({}, { get: (o, k) => k === '#' ? OUTLINE : '#ffffff' });
+/* paleta de un solo color, para las siluetas de la estela */
+const GHOST_PAL = c => new Proxy({}, { get: () => c });
 
 /* Embestida: en vez de un amasijo abstracto se dibuja al luchador de
    verdad con estelas detrás. Se reconoce quién embiste y hacia dónde. */
@@ -474,8 +454,14 @@ function drawStreaks(ctx, def, A) {
     const dx = -k * 9;
     const gh = bodyRects(def, Object.assign({}, A, { spin: false, walk: A.walk - k * 0.9 }));
     ctx.globalAlpha = 0.30 - k * 0.08;
-    for (const p of gh.rects) Pix.r(ctx, p.x + dx, p.y, p.w, p.h, tint(B.main, 0.35));
-    if (!gh.noHead) Pix.r(ctx, gh.headX + dx + 4, gh.headY + 5, 18, 18, tint(B.main, 0.35));
+    if (gh.car) {
+      const g = sideOf(def)._side;
+      Pix.grid(ctx, g, GHOST_PAL(tint(B.main, 0.35)),
+        -Math.floor(g[0].length / 2) + gh.gx + dx, -(g.length - 1) + gh.gy);
+    } else {
+      for (const p of gh.rects) Pix.r(ctx, p.x + dx, p.y, p.w, p.h, tint(B.main, 0.35));
+      if (!gh.noHead) Pix.r(ctx, gh.headX + dx + 4, gh.headY + 5, 18, 18, tint(B.main, 0.35));
+    }
     ctx.globalAlpha = 1;
   }
   /* líneas de velocidad */
@@ -488,6 +474,12 @@ function drawStreaks(ctx, def, A) {
 
 /* pinta un cuerpo ya montado: silueta oscura, relleno con volumen y cabeza */
 function paintBody(ctx, def, parts, flash) {
+  if (parts.car) {
+    const d = sideOf(def), g = d._side;
+    Pix.grid(ctx, g, flash ? WHITE_PAL : d._sidePal,
+      -Math.floor(g[0].length / 2) + parts.gx, -(g.length - 1) + parts.gy);
+    return;
+  }
   const R = parts.rects;
   ctx.fillStyle = OUTLINE;
   const OFF = [[-1, 0], [1, 0], [0, -1], [0, 1]];
