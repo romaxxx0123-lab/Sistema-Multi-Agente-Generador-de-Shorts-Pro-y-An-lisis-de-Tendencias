@@ -81,7 +81,7 @@
     picks: [null, null], cur: [0, 7], rouletteT: 0,
     world: null, f1: null, f2: null,
     round: 1, timer: ROUND_FRAMES, phase: 'intro', phaseT: 0,
-    winner: null, quote: '', ann: null, lowSaid: [false, false]
+    winner: null, quote: '', ann: null, lowSaid: [false, false], finisher: null
   };
   window.PK = G;
 
@@ -205,11 +205,21 @@
     Sfx.bell();
   }
 
+  function gotoResult() {
+    G.winner = G.f1.wins > G.f2.wins ? G.f1 : G.f2;
+    G.quote = pick(G.winner.def.quotes);
+    G.screen = 'result'; G.menu = 0;
+    Sfx.win();
+  }
+
   function endRound(winner, reason) {
     G.phase = 'ko'; G.phaseT = 0;
+    /* el combate se cierra con remate: solo por KO y solo el asalto final */
+    G.finisher = (winner && !reason && winner.wins + 1 >= WINS_NEEDED)
+      ? { loser: (winner === G.f1) ? G.f2 : G.f1 } : null;
     if (winner) {
       winner.wins++; winner.state = 'win'; winner.t = 0;
-      G.world.bark(winner, barkLine(winner, 'win'), true);
+      G.world.emote(winner, 'corona', barkLine(winner, 'win'), true);
       announce(reason || (G.world.koSuper ? '¡SUPER EFECTIVO!' : pick(FINISHERS)), 150, CO.red);
       G.world.say(reason ? pick(COMMENTS.timeout) : pick(COMMENTS.ko), 240);
       Sfx.win();
@@ -223,20 +233,41 @@
 
     if (G.phase === 'intro') {
       G.phaseT++;
-      if (G.phaseT === 12) w.bark(f1, introLine(f1, f2), true, 46);   // se pican antes de empezar
-      if (G.phaseT === 60) w.bark(f2, introLine(f2, f1), true, 46);
-      if (G.phaseT === 112) w.bubbles.length = 0;
+      if (G.phaseT === 12) w.emote(f1, 'tipo', introLine(f1, f2), true);   // se pican antes de empezar
+      if (G.phaseT === 60) w.emote(f2, 'tipo', introLine(f2, f1), true);
+      if (G.phaseT === 112) w.emotes.length = 0;
       if (G.phaseT === 118) announce('¡PELEA!', 55);
       if (G.phaseT > 150) { f1.frozen = 0; f2.frozen = 0; G.phase = 'fight'; }
     } else if (G.phase === 'ko') {
-      if (++G.phaseT === 150) {
-        if (f1.wins >= WINS_NEEDED || f2.wins >= WINS_NEEDED) {
-          G.winner = f1.wins > f2.wins ? f1 : f2;
-          G.quote = pick(G.winner.def.quotes);
-          G.screen = 'result'; G.menu = 0;
-          Sfx.win();
-          return;
+      G.phaseT++;
+      const fin = G.finisher;
+      if (fin) {
+        /* BEBALIDAD: el perdedor se hace bebé y sale de una patada */
+        const L = fin.loser, Wn = (L === f1) ? f2 : f1;
+        if (G.phaseT === 50) {
+          L.baby = true; L.koT = 0; L.vx = 0; L.vy = 0; L.y = GROUND; L.dir = Wn.x > L.x ? 1 : -1;
+          announce('¡BEBALIDAD!', 100, '#f07ac0');
+          w.flash = 12; w.shake = 6;
+          w.say('SE HIZO CHIQUITO. NO ESTABA EN EL PLAN.', 240, '#f07ac0');
+          Sfx.baby();
         }
+        if (G.phaseT > 56 && G.phaseT < 124 && G.phaseT % 7 === 0)
+          w.parts.push(new Particle(L.x + rnd(-7, 7), L.y - 30, rnd(-0.7, 0.7), -0.5, 34, '#8ee0f0', 2, 0.14));
+        if (G.phaseT === 124) {
+          Wn.dir = L.x > Wn.x ? 1 : -1;
+          Wn.startAttack(ATTACKS.kick);
+        }
+        if (G.phaseT === 138) {
+          L.launched = true;
+          L.vx = Wn.dir * 9.5; L.vy = -7.5;
+          w.impact(L.x, L.y - 22, true);
+          w.shake = 16; w.flash = 8;
+          Sfx.punt();
+          w.say('Y AHÍ VA. QUE TENGA BUEN VIAJE.', 200, '#f07ac0');
+        }
+        if (G.phaseT === 250) { gotoResult(); return; }
+      } else if (G.phaseT === 150) {
+        if (f1.wins >= WINS_NEEDED || f2.wins >= WINS_NEEDED) { gotoResult(); return; }
         G.round++; startRound();
       }
     } else if (G.phase === 'fight') {
@@ -260,7 +291,7 @@
           if (!G.lowSaid[i] && f.hp > 0 && f.hp <= 25) {
             G.lowSaid[i] = true;
             w.say(f.def.short + ': ' + pick(COMMENTS.low), 200);
-            w.bark(f, barkLine(f, 'low'), true);
+            w.emote(f, 'alerta', barkLine(f, 'low'), true);
           }
         });
         if (f1.state === 'ko') endRound(f2);

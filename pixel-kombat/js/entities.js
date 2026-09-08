@@ -84,7 +84,7 @@ class Proj {
         effect: this.effect,
         projectile: true
       }, world);
-      if (this.rogue && tgt.def.barks) world.bark(tgt, pick(tgt.def.barks.hurt), true);
+      if (this.rogue) world.emote(tgt, 'dolor', null, true);
       world.burst(this.x, this.y, this.big ? 16 : 10, '#ffe07a');
       this.pop(world);
     }
@@ -131,7 +131,7 @@ class Wall {
       world.burst(this.x, GROUND - this.h / 2, 18, '#f5c542');
       world.impact(this.x, GROUND - this.h / 2, true);
       if (this.owner.def.barks && this.owner.def.barks.wall)
-        world.bark(this.owner, pick(this.owner.def.barks.wall), true);
+        world.emote(this.owner, 'alerta', pick(this.owner.def.barks.wall), true);
       Sfx.wall();
     }
   }
@@ -271,37 +271,33 @@ class Vortex {
   }
 }
 
-/* Bocadillo de diálogo: sigue al luchador, se voltea para no salirse
-   de pantalla y apunta con el rabito a quien habla. */
-class Bubble {
-  constructor(fighter, text, life) {
-    this.f = fighter;
-    this.lines = Text.wrap(text, 17).slice(0, 2);
-    this.life = life || 115;
-    this.dead = false;
+/* Emote: icono sobre la cabeza. Se entiende de un vistazo y no
+   convierte la pelea en una conversación. */
+class Emote {
+  constructor(f, kind) {
+    this.f = f; this.kind = kind; this.t = 0; this.life = 64; this.dead = false;
   }
-  update() { if (--this.life <= 0) this.dead = true; }
+  update() { if (++this.t >= this.life) this.dead = true; }
   draw(ctx) {
-    if (this.life < 12 && this.life % 4 < 2) return;
-    const w = Math.max.apply(null, this.lines.map(l => Text.w(l, 1))) + 12;
-    const h = this.lines.length * 9 + 8;
+    if (this.life < 10 && this.life % 4 < 2) return;
+    const pop = Math.min(3, this.t);
+    const w = 14, h = 14;
     const x = Math.round(clamp(this.f.x - w / 2, 3, W - w - 3));
-    const y = Math.round(Math.max(46, this.f.y - 88 - h));
-    /* globo */
+    const y = Math.round(Math.max(44, this.f.y - 94)) + (3 - pop);
     Pix.r(ctx, x - 1, y - 1, w + 2, h + 2, '#000');
     Pix.r(ctx, x, y, w, h, '#f4eeff');
     Pix.r(ctx, x + 1, y + 1, w - 2, 2, '#ffffff');
-    Pix.r(ctx, x + 1, y + h - 3, w - 2, 2, '#cfc4e8');
-    /* rabito hacia el personaje */
-    const tx = Math.round(clamp(this.f.x - 2, x + 4, x + w - 10));
-    for (let i = 0; i < 5; i++) {
-      const tw = 5 - i;
-      Pix.r(ctx, tx, y + h + i, tw, 1, '#f4eeff');
-      Pix.r(ctx, tx - 1, y + h + i, 1, 1, '#000');
-      Pix.r(ctx, tx + tw, y + h + i, 1, 1, '#000');
+    Pix.r(ctx, x + 1, y + h - 2, w - 2, 1, '#cfc4e8');
+    const tx = Math.round(clamp(this.f.x - 2, x + 3, x + w - 7));
+    Pix.r(ctx, tx, y + h, 4, 2, '#f4eeff');
+    Pix.r(ctx, tx - 1, y + h, 1, 2, '#000');
+    Pix.r(ctx, tx + 4, y + h, 1, 2, '#000');
+    Pix.r(ctx, tx + 1, y + h + 2, 2, 2, '#f4eeff');
+    if (this.kind === 'tipo') drawTypeIcon(ctx, this.f.def.type, x + 4, y + 4);
+    else {
+      const e = EMOTES[this.kind] || EMOTES.duda;
+      Pix.grid(ctx, e.rows, e.pal, x + 3, y + 3);
     }
-    this.lines.forEach((l, i) =>
-      Text.draw(ctx, l, x + w / 2, y + 4 + i * 9, '#241546', 'center', 1, { outline: null }));
   }
 }
 
@@ -347,7 +343,7 @@ class World {
     this.projs = [];
     this.walls = [];
     this.decos = [];
-    this.bubbles = [];
+    this.emotes = [];
     this.pending = [];
     this.parts = [];
     this.pops = [];
@@ -365,29 +361,35 @@ class World {
 
   /* cruce escrito entre dos personajes concretos */
   duel(a, b, ev, fallback) {
+    const kind = ev === 'nullify' ? 'anula' : (ev === 'catch' ? 'guante' : 'golpe');
     const lines = dueloLines(a, b, ev);
     if (lines) {
-      this.bark(a, lines[0], true);
-      this.sayLater(b, lines[1], 50);
+      this.emote(a, kind, lines[0], true);
+      this.sayLater(b, lines[1], 55);
     } else if (fallback) {
-      this.bark(a, fallback, true);
+      this.emote(a, kind, fallback, true);
     }
   }
 
-  /* un luchador suelta una frase. prio = interrumpe lo que haya */
-  bark(f, text, prio, life) {
-    if (!f || !text || f.state === 'ko') return;
+  /* Un luchador reacciona: icono sobre la cabeza + su voz. El texto
+     (solo en los momentos escritos) va al rótulo de abajo. */
+  emote(f, kind, text, prio) {
+    if (!f || f.state === 'ko') return;
     if (f.barkCd > 0 && !prio) return;
-    f.barkCd = prio ? 50 : 150;
-    this.bubbles = this.bubbles.filter(b => b.f !== f);
-    this.bubbles.push(new Bubble(f, text, life || (prio ? 120 : 105)));
-    Sfx.voice();
+    f.barkCd = prio ? 45 : 115;
+    this.emotes = this.emotes.filter(e => e.f !== f);
+    this.emotes.push(new Emote(f, kind || 'duda'));
+    Sfx.speak(f.def.voice, text ? clamp(Math.round(text.length / 5), 2, 6) : 3);
+    if (text) this.say(f.def.short + ': ' + text, 165, TYPES[f.def.type].color);
   }
 
+  /* compatibilidad: hablar con texto equivale a emote de tipo */
+  bark(f, text, prio) { this.emote(f, 'tipo', text, prio); }
+
   /* el comentarista dice algo (lo pinta el HUD) */
-  say(text, frames) {
+  say(text, frames, color) {
     if (!text) return;
-    this.chyron = { text, t: frames || 170, id: ++this.sayN };
+    this.chyron = { text, t: frames || 170, id: ++this.sayN, color: color };
   }
 
   opponentOf(f) { return this.fighters.find(o => o !== f); }
@@ -435,6 +437,11 @@ class World {
         }
         if (backfire) this.say('EL COHETE SALIÓ AL REVÉS. CLÁSICO.', 150);
         Sfx.shoot();
+        break;
+      }
+      case 'poke': {                          // le crece la nariz y pica con ella
+        owner.startAttack(ATTACKS.nose);
+        Sfx.whiff();
         break;
       }
       case 'nullify': {                       // ¡NO HAY PLATA!
@@ -549,13 +556,13 @@ class World {
     if (this.chyron && --this.chyron.t <= 0) this.chyron = null;
     for (let i = this.pending.length - 1; i >= 0; i--) {
       if (this.t >= this.pending[i].at) {
-        this.bark(this.pending[i].f, this.pending[i].text, true);
+        this.emote(this.pending[i].f, 'alerta', this.pending[i].text, true);
         this.pending.splice(i, 1);
       }
     }
     if (this.shake > 0) this.shake--;
     if (this.flash > 0) this.flash--;
-    for (const a of [this.projs, this.walls, this.parts, this.pops, this.decos, this.bubbles]) {
+    for (const a of [this.projs, this.walls, this.parts, this.pops, this.decos, this.emotes]) {
       for (const e of a) e.update(this);
     }
     /* dos proyectiles rivales se anulan al chocar */
@@ -574,7 +581,7 @@ class World {
     this.projs = this.projs.filter(e => !e.dead);
     this.walls = this.walls.filter(e => !e.dead);
     this.decos = this.decos.filter(e => !e.dead);
-    this.bubbles = this.bubbles.filter(e => !e.dead && e.f.state !== 'ko');
+    this.emotes = this.emotes.filter(e => !e.dead && e.f.state !== 'ko');
     this.parts = this.parts.filter(e => !e.dead);
     this.pops = this.pops.filter(e => !e.dead);
   }
@@ -588,7 +595,7 @@ class World {
     for (const p of this.projs) p.draw(ctx);
     for (const p of this.parts) p.draw(ctx);
     for (const p of this.pops) p.draw(ctx);
-    for (const b of this.bubbles) b.draw(ctx);
+    for (const e of this.emotes) e.draw(ctx);
     if (this.flash > 0) {
       ctx.fillStyle = 'rgba(255,255,255,' + (this.flash / 14) + ')';
       ctx.fillRect(0, 0, W, H);

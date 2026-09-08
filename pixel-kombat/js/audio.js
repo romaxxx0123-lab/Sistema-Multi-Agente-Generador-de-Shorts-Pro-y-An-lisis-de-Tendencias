@@ -73,6 +73,23 @@ const Sfx = {
   win()     { [392, 523, 659, 784].forEach((f, i) => setTimeout(() => this.tone(f, 0.22, 'square', 0.38), i * 110)); },
   bell()    { this.tone(880, 0.18, 'square', 0.35); setTimeout(() => this.tone(1180, 0.22, 'square', 0.35), 120); },
   superEff() { [523, 659, 880, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.12, 'square', 0.32), i * 55)); this.noise(0.18, 0.5, 1800); },
-  voice()   { [520, 700, 620].forEach((f, i) => setTimeout(() => this.tone(f, 0.035, 'square', 0.14), i * 45)); },
+  /* Voz sintética: balbuceo con el timbre y el tono de cada personaje.
+     No dice palabras, se entiende por el tono (como en las consolas viejas). */
+  speak(v, syllables) {
+    if (!this.ctx || this.muted || this.quiet) return;
+    v = v || { f: 380, type: 'square', wob: 0.22, rate: 62 };
+    const n = clamp(syllables || 3, 2, 6);
+    for (let i = 0; i < n; i++) {
+      const up = (i === n - 1 && v.up) ? 1.35 : 1;
+      const f = v.f * up * (1 - v.wob / 2 + Math.random() * v.wob);
+      setTimeout(() => {
+        this.tone(f, 0.05 + Math.random() * 0.03, v.type, 0.17, v.slide || 0);
+        if (v.growl) this.noise(0.05, 0.10, f * 2);
+      }, i * (v.rate || 62));
+    }
+  },
+  voice()   { this.speak(null, 3); },
+  baby()    { [880, 990, 780, 990].forEach((f, i) => setTimeout(() => this.tone(f, 0.16, 'triangle', 0.3, 120), i * 190)); },
+  punt()    { this.noise(0.18, 0.9, 400); this.tone(140, 0.25, 'sawtooth', 0.5, 900); },
   taunt()   { [440, 392, 440, 523].forEach((f, i) => setTimeout(() => this.tone(f, 0.10, 'triangle', 0.3), i * 90)); }
 };

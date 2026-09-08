@@ -386,9 +386,9 @@ const UI = {
       const txt = ch.text.length > 41 ? ch.text.slice(0, 40) + '.' : ch.text;
       const w = Text.w(txt, 1) + 18;
       this.plate(ctx, (W - w) / 2, 160, w, 15, '#1b1030', 3);
-      Pix.r(ctx, (W - w) / 2 + 3, 163, 2, 9, CO.gold);
-      Pix.r(ctx, (W + w) / 2 - 5, 163, 2, 9, CO.gold);
-      Text.draw(ctx, txt, W / 2, 164, CO.goldL, 'center', 1);
+      Pix.r(ctx, (W - w) / 2 + 3, 163, 2, 9, ch.color || CO.gold);
+      Pix.r(ctx, (W + w) / 2 - 5, 163, 2, 9, ch.color || CO.gold);
+      Text.draw(ctx, txt, W / 2, 164, ch.color || CO.goldL, 'center', 1);
     }
   },
 

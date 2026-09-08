@@ -36,3 +36,30 @@ function dueloLines(a, b, ev) {
   if (r && r[ev]) return [r[ev][1], r[ev][0]];
   return null;
 }
+
+/* =========================================================
+   Emotes: lo que "dice" cada uno se ve como un icono sobre
+   la cabeza y se oye con su voz. Nada de bocadillos con texto.
+   ========================================================= */
+const EMOTES = {
+  golpe:  { pal: { y: '#ffd24a', w: '#ffffff' },
+    rows: ['...y....', '.y.y.y..', '..yyy...', 'yyywyyy.', '..yyy...', '.y.y.y..', '...y....', '........'] },
+  dolor:  { pal: { c: '#8ee0f0', w: '#ffffff' },
+    rows: ['...c....', '..ccc...', '..ccc...', '.ccccc..', '.ccwcc..', '.ccccc..', '..ccc...', '........'] },
+  escudo: { pal: { b: '#5a8fd8', w: '#ffffff' },
+    rows: ['.bbbbbb.', 'bbwwwwbb', 'bbwbbwbb', 'bbwwwwbb', '.bbwwbb.', '..bbbb..', '...bb...', '........'] },
+  chulo:  { pal: { k: '#1a1a1a', w: '#8ee0f0' },
+    rows: ['........', 'kkkkkkkk', 'kwwkkwwk', 'kwwkkwwk', '.kk..kk.', '........', '........', '........'] },
+  alerta: { pal: { r: '#ff4d5a' },
+    rows: ['...rr...', '...rr...', '...rr...', '...rr...', '...rr...', '........', '...rr...', '........'] },
+  corona: { pal: { y: '#ffcc33' },
+    rows: ['........', 'y..y..y.', 'yy.y.yy.', 'yyyyyyy.', 'yyyyyyy.', '.yyyyy..', '........', '........'] },
+  anula:  { pal: { r: '#ff4d5a', w: '#ffffff' },
+    rows: ['..rrrr..', '.r...wr.', 'r...ww.r', 'r..ww..r', 'r.ww...r', '.rww..r.', '..rrrr..', '........'] },
+  guante: { pal: { g: '#c9f542', w: '#ffffff' },
+    rows: ['.gg.gg..', 'ggggggg.', 'ggggggg.', 'ggggggg.', '.gggggg.', '..ggggg.', '..ggg...', '........'] },
+  burla:  { pal: { k: '#1a1a1a', p: '#f07a86' },
+    rows: ['..kk.kk.', '........', '.kkkkkk.', '.kppppk.', '..pppp..', '...pp...', '........', '........'] },
+  duda:   { pal: { w: '#f2ecff' },
+    rows: ['..wwww..', '.ww..ww.', '.....ww.', '...www..', '...ww...', '........', '...ww...', '........'] }
+};

@@ -34,6 +34,7 @@ function mirrorDef(def) {
    --------------------------------------------------------- */
 function bodyRects(def, A) {
   const B = def.body;
+  if (A.baby) return babyRects(B);
   const legC = B.legs || B.main, legD = B.legsDark || B.dark;
   const skin = B.skin;
   const aw = B.bulk ? 6 : 5;
@@ -195,6 +196,24 @@ function bodyRects(def, A) {
   return { rects: R, headY: neckY - 17, headX: -9 + Math.round(lean * 1.2) };
 }
 
+/* Cuerpo de bebé: cabeza normal sobre un cuerpecito, que es lo que
+   hace gracia. Se usa en el remate BEBALIDAD. */
+function babyRects(B) {
+  const skin = B.skin;
+  const R = [];
+  const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
+  add(-7, -7, 5, 7, skin);
+  add(2, -7, 5, 7, skin);
+  add(-8, -2, 7, 2, tint(skin, -0.3));
+  add(1, -2, 7, 2, tint(skin, -0.3));
+  add(-6, -16, 12, 15, '#f4eeff');
+  add(-6, -16, 12, 3, '#ffffff');
+  add(-6, -6, 12, 2, '#d8cfee');
+  add(-10, -14, 5, 8, skin);
+  add(5, -14, 5, 8, skin);
+  return { rects: R, headY: -33, headX: -9 };
+}
+
 /* ---------------------------------------------------------
    Dibujo del luchador: silueta + relleno con volumen
    --------------------------------------------------------- */
@@ -205,7 +224,11 @@ function drawFighter(ctx, f) {
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
   ctx.scale(f.dir, 1);
-  if (A.ko > 0) {
+  if (f.launched) {                        // sale volando dando vueltas
+    ctx.translate(0, -16);
+    ctx.rotate(f.t * 0.3);
+    ctx.translate(0, 16);
+  } else if (A.ko > 0) {
     ctx.translate(0, -6);
     ctx.rotate(-A.ko * Math.PI / 2);
     ctx.translate(0, 6);
@@ -232,6 +255,18 @@ function drawFighter(ctx, f) {
 
   /* 3) cabeza (ya trae su propio contorno) */
   Pix.grid(ctx, def._head, A.flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
+
+  /* 4) el narizón: le crece y pica con ella */
+  if (A.nose > 0) {
+    const len = Math.round(8 + 48 * A.nose);
+    const ny = parts.headY + 10;
+    Pix.r(ctx, 6, ny - 1, len + 2, 6, OUTLINE);
+    Pix.r(ctx, 6, ny, len, 4, def.body.skin);
+    Pix.r(ctx, 6, ny, len, 1, tint(def.body.skin, 0.3));
+    Pix.r(ctx, 6, ny + 3, len, 1, tint(def.body.skin, -0.25));
+    Pix.r(ctx, 6 + len, ny - 2, 4, 8, OUTLINE);
+    Pix.r(ctx, 6 + len, ny - 1, 3, 6, tint(def.body.skin, -0.15));
+  }
 
   ctx.restore();
 }

@@ -34,6 +34,7 @@ const ATTACKS = {
   upper: { startup: 5, active: 5, recover: 17, dmg: 13, reach: 22, h: 32, oy: -62, push: 2.4, hitstun: 26, anim: 'upper', launch: true, name: 'UPPERCUT' },
   air: { startup: 4, active: 9, recover: 7, dmg: 8, reach: 26, h: 14, oy: -29, push: 2.9, hitstun: 16, anim: 'kick', air: true, name: 'PATADA AÉREA' },
   cast: { startup: 9, active: 1, recover: 15, anim: 'cast', name: 'ESPECIAL' },
+  nose: { startup: 9, active: 13, recover: 18, dmg: 12, reach: 54, h: 8, oy: -62, push: 3.2, hitstun: 20, anim: 'nose', name: 'NARIZÓN' },
   taunt: { startup: 8, active: 1, recover: 22, anim: 'taunt', name: 'BURLA' }
 };
 
@@ -66,6 +67,7 @@ class Fighter {
     this.guard = 0; this.slow = 0; this.burn = 0;
     this.hpShown = this.maxHp; this.hpGhost = this.maxHp; this.ghostWait = 0;
     this.catchT = 0;
+    this.baby = false; this.launched = false;
     this.tauntPending = false; this.lastTypeSay = -999; this.barkCd = 0;
     this.combo = 0; this.comboT = 0;
     this.koT = 0; this.dead = false;
@@ -155,7 +157,7 @@ class Fighter {
     const pTaunt = this.edge(inp, 'taunt');
 
     if (this.state === 'ko') {
-      this.koT = Math.min(1, this.koT + 0.14);
+      if (!this.baby) this.koT = Math.min(1, this.koT + 0.14);
       this.physics(world);
       return;
     }
@@ -248,7 +250,7 @@ class Fighter {
     this.state = 'attack';
     this.blocking = false;
     this.crouching = false;
-    world.popup(this.x, this.y - 82, sp.name, isSuper ? '#f5c542' : '#48e0d0');
+    world.popup(this.x, this.y - 64, sp.name, isSuper ? '#f5c542' : '#48e0d0');
     if (isSuper) { world.flash = 10; world.shake = 6; }
   }
 
@@ -258,7 +260,7 @@ class Fighter {
     if (this.tauntPending && this.atkT === a.startup) {
       this.tauntPending = false;
       this.meter = Math.min(100, this.meter + 12);   // burlarse carga barra... si te dejan
-      world.bark(this, this.def.taunt, true);
+      world.emote(this, 'burla', this.def.taunt, true);
       world.say(pick(TAUNT_REACTIONS));
       Sfx.taunt();
     }
@@ -266,7 +268,7 @@ class Fighter {
       const sp = this.pendingSp;
       this.pendingSp = null;          // se limpia antes: 'dash' cambia de estado
       world.fire(this, sp);
-      if (sp.say) world.bark(this, sp.say, true);
+      if (sp.say) world.emote(this, 'tipo', sp.say, true);
       if (this.state !== 'attack') return;
     }
     if (this.atkT >= a.startup + a.active + a.recover) {
@@ -322,6 +324,10 @@ class Fighter {
       }
     }
 
+    if (this.launched) {                       // va por el aire tras el remate
+      this.vy += GRAV * 0.6;
+      return;
+    }
     if (this.y >= GROUND) {
       if (!this.onGround) {
         this.squash = 6;
@@ -334,17 +340,17 @@ class Fighter {
     } else {
       this.onGround = false;
     }
-    this.x = clamp(this.x, 12, W - 12);
+    if (!this.launched) this.x = clamp(this.x, 12, W - 12);
   }
 
   animParams() {
     const A = {
-      crouch: 0, punch: 0, kick: 0, kickHigh: false, cast: 0, walk: 0, lean: 0,
+      crouch: 0, punch: 0, kick: 0, kickHigh: false, cast: 0, walk: 0, lean: 0, nose: 0, baby: false,
       air: false, ko: 0, bob: 0, block: false, spin: false, punchUp: false,
       flash: this.flash > 0 && this.flash % 4 < 2
     };
     if (this.squash > 0) A.crouch = this.squash * 1.6;
-    if (this.state === 'ko') { A.ko = this.koT; return A; }
+    if (this.state === 'ko') { A.ko = this.koT; A.baby = this.baby; return A; }
     if (this.state === 'dash') { A.spin = true; A.walk = this.t * 0.6; return A; }
     if (!this.onGround) A.air = true;
     if (this.state === 'hit') { A.crouch = 3; A.lean = -5; return A; }
@@ -355,6 +361,7 @@ class Fighter {
       if (a.anim === 'punch') { A.punch = p; A.lean = p > 0 ? 3 * p : 6 * p; }
       else if (a.anim === 'upper') { A.punch = p; A.punchUp = true; A.lean = p > 0 ? -2 * p : 5 * p; }
       else if (a.anim === 'kick') { A.kick = Math.max(0, p); A.kickHigh = !a.low; A.lean = p > 0 ? -3 * p : 5 * p; }
+      else if (a.anim === 'nose') { A.nose = Math.max(0, p); A.lean = 4 * Math.max(0, p); }
       else if (a.anim === 'cast') A.cast = Math.max(0, p);
       else if (a.anim === 'taunt') { A.cast = Math.max(0, p); A.bob = this.atkT % 8 < 4 ? 1 : 0; }
       if (a.low) A.crouch = 9;
@@ -399,7 +406,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
     tgt.hitstun = 7;
     world.impact(cx, cy, false);
     world.burst(cx, cy, 5, '#a8d8ff');
-    if (Math.random() < 0.14) world.bark(tgt, barkLine(tgt, 'block'));
+    if (Math.random() < 0.30) world.emote(tgt, 'escudo');
     world.popup(tgt.x, tgt.y - 74, 'BLOQUEO', '#a8d8ff');
     world.shake = 2;
     world.hitstop = 2;
@@ -414,9 +421,9 @@ function dealDamage(src, tgt, dmg, opts, world) {
     if (opts.launch) { tgt.vy = -5.2; tgt.onGround = false; }
     src.combo++; src.comboT = 90;
     /* comentario del que pega o del que lo recibe, nunca los dos a la vez */
-    if (tm.kind === 'super' && Math.random() < 0.5) world.bark(src, barkLine(src, 'gloat'));
-    else if (d >= 9 && Math.random() < 0.3) world.bark(src, barkLine(src, 'hit'));
-    else if (Math.random() < 0.22) world.bark(tgt, barkLine(tgt, 'hurt'));
+    if (tm.kind === 'super' && Math.random() < 0.6) world.emote(src, 'chulo');
+    else if (d >= 9 && Math.random() < 0.4) world.emote(src, 'golpe');
+    else if (Math.random() < 0.35) world.emote(tgt, 'dolor');
     const big = d > 9 || tm.kind === 'super';
     world.impact(cx, cy, big);
     world.burst(cx, cy, big ? 12 : 7, tm.kind === 'super' ? '#f5c542' : (big ? '#ffe07a' : '#ffffff'));

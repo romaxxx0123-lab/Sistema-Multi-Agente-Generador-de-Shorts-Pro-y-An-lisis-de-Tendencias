@@ -63,7 +63,7 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 |---|---|---|---|---|---|
 | **TRUMPO** *(el magnate)* | 💵 DINERO | Tortuga | 120 | 1.05 | `MURO DE ORO` (barrera) → `LLUVIA DE BILLETES` |
 | **MUSKO** *(el de los cohetes)* | 🚀 COHETE | Riesgo | **85** | 1.45 | `COHETE INESTABLE` (**30% le vuelve encima**) → `HYPERLOOP` |
-| **EL PULGA** *(el de la zurda)* | ⚽ FÚTBOL | Velocidad | 95 | **1.60** | `TIRO LIBRE` (teledirigido) → `GAMBETA INFINITA` |
+| **EL PULGA** *(el de la zurda)* | ⚽ FÚTBOL | Velocidad | 95 | **1.60** | `NARIZÓN` (**le crece la nariz y pica con ella**) → `GAMBETA INFINITA` |
 | **SIUUU** *(el del salto)* | 👑 EGO | Aéreo | 100 | 1.35 | `CABEZAZO ORBITAL` → `GRITO SIUUU` |
 | **CHEF RAMSÉS** | 🔥 COCINA | Presión | 105 | 1.25 | `¡ESTÁ CRUDO!` (platos) → `PESADILLA EN COCINA` |
 | **BOB LA BROCHA** | 🎨 ÓLEO | Soporte | 115 | 1.10 | `ARBOLITO FELIZ` (cura) → `ACCIDENTE FELIZ` |
@@ -75,9 +75,10 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 | **EL DIBU** *(el de los penales)* | 🧤 ARQUERO | Contragolpe | 115 | 1.15 | `ATAJADA` (**caza proyectiles**) → `TE LO ATAJO` (aturde y roba super) |
 
 Mecánicas exclusivas: el **muro** de Trumpo, el **cohete que se le vuelve en la
-cara** a Musko, la **cura** de Bob, el **aturdimiento** de La Loba, el
-**proyectil que crece** y el **agujero negro** de Albertito, el **teletransporte**
-de Musko, la **anulación** del Peluca y la **atajada** del Dibu.
+cara** a Musko, la **nariz que crece** del Pulga (el golpe con más alcance del
+juego), la **cura** de Bob, el **aturdimiento** de La Loba, el **proyectil que
+crece** y el **agujero negro** de Albertito, el **teletransporte** de Musko, la
+**anulación** del Peluca y la **atajada** del Dibu.
 
 ## 🤝 Interacciones entre personajes
 
@@ -97,6 +98,28 @@ en pantalla y lo que se dicen.
 Además, contra el tipo 💵 DINERO el `¡NO HAY PLATA!` hace **el doble de daño** y
 vacía la barra entera, y la tabla de tipos ya dice que el dinero le hace un 30%
 menos de daño al de la motosierra.
+
+## 🔊 Cómo se expresan (sin bocadillos)
+
+Los personajes no se ponen a conversar en mitad de la pelea:
+
+- **Voz sintetizada propia**: cada uno tiene su timbre, tono y ritmo de
+  balbuceo (12 perfiles distintos). Ramsés y La Roca gruñen grave y rasgado,
+  La Loba y Siuuu suenan agudos y terminan hacia arriba, Zuck habla plano y
+  robótico, Albertito ondula. No dicen palabras: se entiende por el tono.
+- **Emotes con icono** sobre la cabeza: impacto, dolor, escudo, gafas de
+  chulo, alarma, corona, prohibido, guante... o el **icono de su tipo** cuando
+  lanzan un especial.
+- El **texto solo aparece en los momentos escritos** (pique de arranque, cruces
+  entre personajes, remates) y lo hace en el **rótulo inferior**, con el color
+  del tipo de quien habla, como un subtítulo de retransmisión.
+
+## 💀 Remate: ¡BEBALIDAD!
+
+Guiño a la *Babality* de Mortal Kombat II: cuando un combate se cierra por KO,
+el perdedor **se convierte en bebé** (cabeza normal sobre un cuerpecito con
+pañal, llorando a lágrima viva) y el ganador **lo saca de la arena de una
+patada**, dando vueltas por el aire.
 
 ## 🧬 Tipos (como en Pokémon, pero con peor criterio)
 
