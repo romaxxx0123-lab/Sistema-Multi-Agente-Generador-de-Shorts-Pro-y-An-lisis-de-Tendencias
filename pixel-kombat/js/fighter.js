@@ -61,7 +61,7 @@ class Fighter {
 
   hurtbox() {
     const low = this.crouching || (this.atk && this.atk.low);
-    const h = low ? 30 : 44;
+    const h = low ? 34 : 50;
     return { x: this.x - 7, y: this.y - h, w: 14, h };
   }
 

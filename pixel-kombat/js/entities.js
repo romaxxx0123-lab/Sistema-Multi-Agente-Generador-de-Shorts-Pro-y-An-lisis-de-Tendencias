@@ -219,9 +219,9 @@ class World {
 
   popup(x, y, text, color) {
     /* escalona los avisos cercanos para que no se pisen */
-    const near = this.pops.filter(p => Math.abs(p.x - x) < 56 && p.life > 26).length;
-    this.pops.push(new Popup(x, y - near * 10, text, color));
-    if (this.pops.length > 6) this.pops.shift();
+    const near = this.pops.filter(p => Math.abs(p.x - x) < 96 && p.life > 20).length;
+    this.pops.push(new Popup(x, y - near * 11, text, color));
+    while (this.pops.length > 4) this.pops.shift();
   }
 
   /* --- disparo de especiales --- */
