@@ -470,6 +470,19 @@ function dealDamage(src, tgt, dmg, opts, world) {
     world.say('LA SOPA ESTABA HIRVIENDO. SIEMPRE ESTÁ HIRVIENDO.');
   }
 
+  /* si el empujón lo estampa contra el borde, duele más */
+  if (opts.bounce && !blocked) {
+    const room = dirAway > 0 ? (W - 12 - tgt.x) : (tgt.x - 12);
+    if (room < 48) {
+      const extra = Math.max(2, Math.round(d * 0.5));
+      tgt.hp = Math.max(0, tgt.hp - extra);
+      world.popup(tgt.x, tgt.y - 96, 'CONTRA LAS CUERDAS -' + extra, '#f050a0');
+      world.impact(clamp(tgt.x + dirAway * 12, 8, W - 8), tgt.y - 42, true);
+      world.shake = 13;
+      Sfx.bigHit();
+    }
+  }
+
   src.meter = Math.min(100, src.meter + (blocked ? 4 : 9));
   tgt.meter = Math.min(100, tgt.meter + (blocked ? 3 : 6));
 

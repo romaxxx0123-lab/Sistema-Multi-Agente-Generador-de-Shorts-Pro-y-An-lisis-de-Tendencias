@@ -28,7 +28,9 @@ const TICONS = {
     rows: ['.......', 'ooo....', 'oooddddd', 'ooldldld', 'ooo.....', '..d....', '.......']
       .map(r => (r + '.......').slice(0, 7)) },
   arquero: { pal: { g: '#c9f542', d: '#2a5f56', w: '#ffffff' },
-    rows: ['.gg.gg.', 'ggggggg', 'ggggggg', 'gggdggg', '.ggggg.', '..ggg..', '...g...'] }
+    rows: ['.gg.gg.', 'ggggggg', 'ggggggg', 'gggdggg', '.ggggg.', '..ggg..', '...g...'] },
+  megafono: { pal: { p: '#f050a0', l: '#ffb0d8', d: '#7a1e50', w: '#ffffff' },
+    rows: ['.....pp', '....ppp', '..pppp.', 'dppppl.', '..pppp.', '....ppp', '.....pp'] }
 };
 
 const TYPES = {
@@ -43,7 +45,8 @@ const TYPES = {
   ritmo:     { name: 'RITMO',     color: '#f07ac0', tag: 'LAS CADERAS NO MIENTEN, NUNCA' },
   ciencia:    { name: 'CIENCIA',    color: '#8ee0f0', tag: 'TODO ES RELATIVO MENOS ESTE PUÑO' },
   motosierra: { name: 'MOTOSIERRA', color: '#f0932b', tag: 'AFUERA. TODO AFUERA.' },
-  arquero:    { name: 'ARQUERO',    color: '#c9f542', tag: 'TE LO ATAJA Y ENCIMA TE LO CUENTA' }
+  arquero:    { name: 'ARQUERO',    color: '#c9f542', tag: 'TE LO ATAJA Y ENCIMA TE LO CUENTA' },
+  megafono:   { name: 'MEGÁFONO',   color: '#f050a0', tag: 'SE ESCUCHA DESDE LA PLAZA' }
 };
 
 /* fuerte x1.4 · débil x0.7 (tabla simétrica) */
@@ -51,15 +54,16 @@ const CHART = {
   dinero:    { strong: ['algoritmo', 'cocina', 'ritmo'], weak: ['futbol', 'oleo', 'motosierra'] },
   cohete:    { strong: ['ego', 'roca'],                  weak: ['oleo', 'futbol', 'ciencia', 'arquero'] },
   futbol:    { strong: ['dinero', 'ego', 'cohete'],      weak: ['roca', 'algoritmo', 'arquero'] },
-  ego:       { strong: ['cocina', 'algoritmo', 'arquero'], weak: ['cohete', 'futbol', 'ritmo'] },
+  ego:       { strong: ['cocina', 'algoritmo', 'arquero'], weak: ['cohete', 'futbol', 'ritmo', 'megafono'] },
   cocina:    { strong: ['oleo', 'algoritmo', 'ritmo'],   weak: ['dinero', 'ego', 'roca'] },
   oleo:      { strong: ['dinero', 'cohete', 'roca', 'motosierra'], weak: ['cocina', 'algoritmo'] },
-  roca:      { strong: ['cocina', 'futbol', 'ciencia', 'motosierra'], weak: ['cohete', 'oleo', 'algoritmo'] },
-  algoritmo: { strong: ['futbol', 'oleo', 'roca'],       weak: ['dinero', 'ego', 'cocina', 'ciencia', 'motosierra'] },
+  roca:      { strong: ['cocina', 'futbol', 'ciencia', 'motosierra', 'megafono'], weak: ['cohete', 'oleo', 'algoritmo'] },
+  algoritmo: { strong: ['futbol', 'oleo', 'roca'],       weak: ['dinero', 'ego', 'cocina', 'ciencia', 'motosierra', 'megafono'] },
   ritmo:     { strong: ['ego', 'ciencia'],               weak: ['dinero', 'cocina'] },
   ciencia:    { strong: ['cohete', 'algoritmo'],         weak: ['roca', 'ritmo'] },
-  motosierra: { strong: ['dinero', 'algoritmo', 'arquero'], weak: ['roca', 'oleo'] },
-  arquero:    { strong: ['futbol', 'cohete'],            weak: ['ego', 'motosierra'] }
+  motosierra: { strong: ['dinero', 'algoritmo', 'arquero', 'megafono'], weak: ['roca', 'oleo'] },
+  arquero:    { strong: ['futbol', 'cohete'],            weak: ['ego', 'motosierra'] },
+  megafono:   { strong: ['ego', 'algoritmo'],            weak: ['roca', 'motosierra'] }
 };
 
 /* el chiste de cada cruce */
@@ -97,7 +101,11 @@ const REASONS = {
   'oleo>motosierra':      'LE PINTÓ FLORES EN LA MOTOSIERRA',
   'arquero>futbol':       'LE ATAJA HASTA LOS PENALES',
   'arquero>cohete':       'TAMBIÉN ATAJA COHETES',
-  'ego>arquero':          'ESE EGO NO SE ATAJA'
+  'ego>arquero':          'ESE EGO NO SE ATAJA',
+  'megafono>ego':         'EL EGO NO SE OYE DESDE LA PLAZA',
+  'megafono>algoritmo':   'NO HAY ALGORITMO QUE TAPE ESO',
+  'roca>megafono':        'A ESE SEÑOR NO LO MUEVE NADIE',
+  'motosierra>megafono':  'RECORTÓ EL PRESUPUESTO DEL ALTAVOZ'
 };
 
 /* excusa del que aguanta el golpe */
@@ -113,7 +121,8 @@ const RESIST = {
   ritmo:     'ESO LO ESQUIVA BAILANDO',
   ciencia:    'CALCULÓ ESE GOLPE HACE UN RATO',
   motosierra: 'ESO NO ENTRA EN EL PRESUPUESTO',
-  arquero:    'ESA LA ATAJA CON LOS OJOS CERRADOS'
+  arquero:    'ESA LA ATAJA CON LOS OJOS CERRADOS',
+  megafono:   'ESO SE LO GRITA MÁS FUERTE'
 };
 
 function typeMult(a, d) {

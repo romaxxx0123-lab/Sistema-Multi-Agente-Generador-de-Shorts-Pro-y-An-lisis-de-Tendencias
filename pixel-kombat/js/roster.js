@@ -62,6 +62,10 @@ const ART = {
     pal: { w: '#ffffff', c: '#8ee0f0', k: '#1b3a4a' },
     rows: ['ccccccc', 'cwkwkwc', 'cwkwwwc', 'cwkwkwc', 'ccccccc']
   },
+  grito2: {
+    pal: { p: '#f050a0', l: '#ffb0d8', w: '#ffffff' },
+    rows: ['..w..', '.wpw.', 'wplpw', 'wplpw', '.wpw.', '..w..']
+  },
   doc: {
     pal: { w: '#f2f2ef', k: '#5a6478' },
     rows: ['wwwww', 'wkkkw', 'wwwww', 'wkkkw', 'wwwww']
@@ -580,6 +584,49 @@ const ROSTER = [
     quotes: ['TE LO ATAJÉ Y ENCIMA TE LO CUENTO.', 'ESTO SE DEFINÍA EN PENALES. SIEMPRE.',
              'MIRÁ QUE TE LO ATAJO. TE LO DIJE.'],
     taunt: 'ACÁ NO ENTRA'
+  },
+
+  {
+    id: 'cresta', name: 'LA CRESTA', short: 'CRESTA', real: 'LA DE LA PANCARTA',
+    title: 'SE ESCUCHA DESDE LA PLAZA', type: 'megafono', sub: 'ASAMBLEA',
+    bio: 'TRAE MEGÁFONO, PANCARTA Y CERO GANAS DE DEBATIR AHORA.',
+    voice: { f: 400, type: 'square', wob: 0.24, rate: 46, up: true },
+    speed: 1.25, power: 1.05, hp: 100, jump: 1.05, reach: 1.20, atkSpeed: 0.95,
+    pal: { p: '#f050a0', P: '#c02a78', H: '#3a2a3a', s: '#e8b98f', S: '#bc8f66', L: '#ffd9b0', w: '#ffffff', k: '#1a1a1a', e: '#3a2a3a', m: '#a8404a' },
+    head: ['......pppp......',
+           '.....pppppp.....',
+           '....pppppppp....',
+           '...HHppppppHH...',
+           '..HHHssssssHHH..',
+           '.HHssssssssssH..',
+           '.HseeesseeessH..',
+           '.HswkwsswkwssH..',
+           '.HssssssssssH...',
+           '.sssssSSSsssss..',
+           '.sssmmmmmmsss...',
+           '.ssssssssssss...',
+           '.SsssssssssS....',
+           '..SSSSSSSSS.....',
+           '....ssssss......',
+           '....ssssss......'],
+    body: { style: 'punk', main: '#2e2836', dark: '#1a1620', light: '#f050a0', accent: '#ffd166', skin: '#e8b98f', legs: '#3d3348', legsDark: '#241d2c' },
+    special: { name: 'MEGAFONAZO', cost: 30, kind: 'cone', dmg: 13, push: 7.5, say: '¡SE VA A OÍR!' },
+    superMove: { name: 'MANIFESTACIÓN', cost: 100, kind: 'march', dmg: 7, count: 6, say: '¡NO VENGO SOLA!' },
+    barks: {
+      intro: ['ESTO SE DEBATE FUERA', 'TENGO FIRMAS PARA ESTO', 'VENGO CON MEGÁFONO'],
+      hit: ['¡SE VA A OÍR!', 'ESO POR NO ESCUCHAR', '¡ORDEN EN LA SALA!'],
+      hurt: ['NO ME LEVANTES LA VOZ', 'ESO LO DENUNCIO', 'SIGO AQUÍ, ¿EH?'],
+      block: ['LA PANCARTA AGUANTA', 'ESO NO ME CALLA'],
+      gloat: ['TE LO DIJE POR MEGÁFONO'],
+      low: ['NO ME PIENSO CALLAR', 'QUEDA ASAMBLEA'],
+      win: ['ACTA APROBADA POR UNANIMIDAD'],
+      vs: { trumpo: 'CONTIGO TENGO PANCARTAS DE SOBRA', siuuu: 'MENOS EGO Y MÁS ESCUCHAR',
+            zuck: 'BÓRRAME LOS DATOS', roca: 'EL TAMAÑO NO ES UN ARGUMENTO',
+            peluca: 'ESTO NO SE RECORTA', ramses: 'A MÍ NO ME GRITAS' }
+    },
+    quotes: ['ACTA APROBADA. TE GANÉ POR UNANIMIDAD.', 'TE LO AVISÉ POR MEGÁFONO Y NO ESCUCHASTE.',
+             'LA PRÓXIMA TRAIGO A TODA LA PLAZA.'],
+    taunt: '¡MÁS ALTO!'
   }
 ];
 

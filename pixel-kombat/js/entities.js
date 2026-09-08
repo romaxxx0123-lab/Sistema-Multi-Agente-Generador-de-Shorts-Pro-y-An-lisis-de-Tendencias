@@ -271,6 +271,61 @@ class Vortex {
   }
 }
 
+/* Manifestante del super MANIFESTACIÓN: cruza la pantalla con su
+   pancarta y le da un empujón a quien pille por delante. */
+class Marcher {
+  constructor(owner, dmg, delay) {
+    this.owner = owner; this.dir = owner.dir; this.dmg = dmg;
+    this.x = this.dir > 0 ? -12 : W + 12;
+    this.delay = delay; this.t = 0; this.hit = false; this.dead = false;
+    this.tint = ['#f050a0', '#ffd166', '#8ee0f0', '#c9f542'][irnd(0, 3)];
+    this.tall = irnd(0, 4);                         // no todos miden igual
+    this.skin = ['#e8b98f', '#f0d0b0', '#b0774a', '#dda87c'][irnd(0, 3)];
+  }
+  update(world) {
+    if (this.delay > 0) { this.delay--; return; }
+    this.t++;
+    this.x += this.dir * 1.6;
+    const opp = world.opponentOf(this.owner);
+    if (!this.hit && opp && opp.state !== 'ko' && Math.abs(opp.x - this.x) < 13 && opp.y > GROUND - 44) {
+      this.hit = true;
+      dealDamage(this.owner, opp, this.dmg, { push: 1.5, hitstun: 10 }, world);
+    }
+    if (this.x < -24 || this.x > W + 24) this.dead = true;
+  }
+  draw(ctx) {
+    if (this.delay > 0) return;
+    const bob = Math.sin(this.t * 0.28) > 0 ? 1 : 0;
+    const y = GROUND - bob;
+    const sx = Math.round(this.x), d = this.dir, h = this.tall;
+    const legY = -13, bodyY = -32 - h, headY = -43 - h;
+    /* pancarta en alto */
+    Pix.r(ctx, sx + d * 5 - 1, y + headY - 12, 3, 16, '#7a5a34');
+    Pix.r(ctx, sx + d * 5 - 10, y + headY - 27, 20, 16, '#000');
+    Pix.r(ctx, sx + d * 5 - 9, y + headY - 26, 18, 14, '#f4eeff');
+    Pix.r(ctx, sx + d * 5 - 7, y + headY - 22, 14, 2, '#2e2836');
+    Pix.r(ctx, sx + d * 5 - 7, y + headY - 18, 10, 2, '#2e2836');
+    Pix.r(ctx, sx + d * 5 - 7, y + headY - 14, 12, 2, this.tint);
+    /* piernas */
+    Pix.r(ctx, sx - 5, y + legY, 4, 13, '#241d2c');
+    Pix.r(ctx, sx + 1, y + legY, 4, 13, '#241d2c');
+    Pix.r(ctx, sx - 6, y - 2, 5, 2, '#12101a');
+    Pix.r(ctx, sx + 1, y - 2, 5, 2, '#12101a');
+    /* cuerpo */
+    Pix.r(ctx, sx - 7, y + bodyY - 1, 14, 21, '#000');
+    Pix.r(ctx, sx - 6, y + bodyY, 12, 19, this.tint);
+    Pix.r(ctx, sx - 6, y + bodyY, 12, 3, tint(this.tint, 0.3));
+    /* brazo en alto sujetando la pancarta */
+    Pix.r(ctx, sx + d * 2, y + headY + 2, 4, 12, this.skin);
+    /* cabeza */
+    Pix.r(ctx, sx - 6, y + headY - 1, 12, 12, '#000');
+    Pix.r(ctx, sx - 5, y + headY, 10, 10, this.skin);
+    Pix.r(ctx, sx - 5, y + headY, 10, 3, tint(this.tint, -0.3));
+    Pix.r(ctx, sx - 3, y + headY + 5, 2, 2, '#1a1a1a');
+    Pix.r(ctx, sx + 1, y + headY + 5, 2, 2, '#1a1a1a');
+  }
+}
+
 /* Emote: icono sobre la cabeza. Se entiende de un vistazo y no
    convierte la pelea en una conversación. */
 class Emote {
@@ -437,6 +492,23 @@ class World {
         }
         if (backfire) this.say('EL COHETE SALIÓ AL REVÉS. CLÁSICO.', 150);
         Sfx.shoot();
+        break;
+      }
+      case 'cone': {                          // MEGAFONAZO: onda corta que revienta la guardia
+        const opp = this.opponentOf(owner);
+        for (let i = 0; i < 3; i++)
+          this.parts.push(new Shock(owner.x + owner.dir * (14 + i * 14), owner.y - 44, '#f050a0', 40 + i * 12, 16 + i * 4));
+        this.shake = 10;
+        Sfx.super();
+        if (opp && Math.sign(opp.x - owner.x) === owner.dir && Math.abs(opp.x - owner.x) < 84)
+          dealDamage(owner, opp, sp.dmg, { push: sp.push || 6, hitstun: 26, unblockable: true, bounce: true }, this);
+        break;
+      }
+      case 'march': {                         // MANIFESTACIÓN: no viene sola
+        for (let i = 0; i < (sp.count || 6); i++)
+          this.parts.push(new Marcher(owner, sp.dmg, i * 16));
+        this.shake = 6;
+        Sfx.super();
         break;
       }
       case 'poke': {                          // le crece la nariz y pica con ella

@@ -133,6 +133,15 @@ function bodyRects(def, A) {
     add(-2 + Math.round(lean * 0.4), hipY - hipH, 4, hipH + 4, B.accent);
     add(-9 + lx, shY + 1, 18, 2, B.dark);
     add(5 + lx, chestY + 3, 3, 3, B.dark);
+  } else if (st === 'punk') {                    // cazadora con parches
+    add(-9 + lx, chestY, 18, chestH, B.main);
+    add(-4 + lx, shY + 2, 8, chestH + 4, tint(B.main, 0.22));
+    add(-11 + lx, shY, 5, 4, B.light);
+    add(6 + lx, shY, 5, 4, B.light);
+    add(-8 + lx, chestY + 4, 4, 4, B.light);
+    add(3 + lx, chestY + 8, 4, 3, B.accent);
+    add(-8 + Math.round(lean * 0.4), hipY - hipH, 17, hipH + 2, B.dark);
+    for (let i = -7; i < 8; i += 4) add(i, hipY - hipH, 2, 2, B.accent);
   } else if (st === 'keeper') {                  // camiseta de arquero
     add(-9 + lx, chestY, 18, chestH, B.main);
     add(-9 + lx, chestY + 4, 18, 3, B.light);
@@ -148,7 +157,7 @@ function bodyRects(def, A) {
   }
 
   /* ---- brazos (manga corta = antebrazo de piel) ---- */
-  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage' || st === 'keeper');
+  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage' || st === 'keeper' || st === 'punk');
   const foreC = shortSleeve ? skin : B.main;
   const foreD = shortSleeve ? tint(skin, -0.18) : B.dark;
   const hand = B.gloves || skin;                 // guantazos de portero

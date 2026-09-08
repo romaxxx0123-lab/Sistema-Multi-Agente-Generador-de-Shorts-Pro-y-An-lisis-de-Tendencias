@@ -54,7 +54,7 @@ Necesita teclado (no hay controles táctiles). Los menús también aceptan rató
 
 ---
 
-## 👥 El elenco (12 luchadores)
+## 👥 El elenco (13 luchadores)
 
 Nadie repite arquetipo: cada uno tiene **vida, velocidad, salto, alcance y
 ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
@@ -73,12 +73,17 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 | **ALBERTITO** *(el del pelo)* | ⚛️ CIENCIA | Zoner | **85** | 1.00 | `E = M C 2` (**crece al viajar**) → `AGUJERO NEGRO` (**atrae**) |
 | **EL PELUCA** *(el de la motosierra)* | 🪚 MOTOSIERRA | Anulador | 95 | 1.35 | `¡NO HAY PLATA!` (**anula todo lo lanzado**) → `MOTOSIERRA` |
 | **EL DIBU** *(el de los penales)* | 🧤 ARQUERO | Contragolpe | 115 | 1.15 | `ATAJADA` (**caza proyectiles**) → `TE LO ATAJO` (aturde y roba super) |
+| **LA CRESTA** *(la de la pancarta)* | 📢 MEGÁFONO | Empuje | 100 | 1.25 | `MEGAFONAZO` (**rompe la guardia y te estampa**) → `MANIFESTACIÓN` |
 
 Mecánicas exclusivas: el **muro** de Trumpo, el **cohete que se le vuelve en la
 cara** a Musko, la **nariz que crece** del Pulga (el golpe con más alcance del
 juego), la **cura** de Bob, el **aturdimiento** de La Loba, el **proyectil que
 crece** y el **agujero negro** de Albertito, el **teletransporte** de Musko, la
-**anulación** del Peluca y la **atajada** del Dibu.
+**anulación** del Peluca, la **atajada** del Dibu y el **megafonazo imbloqueable**
+de La Cresta, que además estampa contra el borde de la arena.
+
+**Contra las cuerdas**: si un empujón fuerte te estampa contra el borde te llevas
+un 50% de daño extra. De momento solo lo provoca el megafonazo.
 
 ## 🤝 Interacciones entre personajes
 
@@ -158,6 +163,7 @@ y existe solo para el chiste.
 | CIENCIA | COHETE, ALGORITMO | *él inventó ese cohete* / *la IA le copió los deberes* |
 | MOTOSIERRA | DINERO, ALGORITMO, ARQUERO | ***¡no hay plata!*** / *le cortó el presupuesto* |
 | ARQUERO | FÚTBOL, COHETE | *le ataja hasta los penales* / *también ataja cohetes* |
+| MEGÁFONO | EGO, ALGORITMO | *el ego no se oye desde la plaza* / *no hay algoritmo que tape eso* |
 
 La tabla es simétrica. Al conectar con ventaja salta **¡SUPER EFECTIVO!** con su
 chiste; al revés sale *poco efectivo* y la excusa del que aguanta (*"error 403:

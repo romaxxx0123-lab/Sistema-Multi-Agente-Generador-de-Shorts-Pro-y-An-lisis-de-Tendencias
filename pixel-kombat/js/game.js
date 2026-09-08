@@ -128,7 +128,7 @@
   }
 
   function moveCursor(p, dx, dy) {
-    const cols = 6, rows = Math.ceil(ROSTER.length / cols);
+    const cols = 5, rows = Math.ceil(ROSTER.length / cols);
     let cx = G.cur[p] % cols, cy = Math.floor(G.cur[p] / cols);
     cx = (cx + dx + cols) % cols; cy = (cy + dy + rows) % rows;
     const i = clamp(cy * cols + cx, 0, ROSTER.length - 1);

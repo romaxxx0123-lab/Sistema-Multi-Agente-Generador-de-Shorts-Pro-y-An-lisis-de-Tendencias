@@ -228,10 +228,10 @@ const UI = {
   },
 
   /* ---------- SELECCIÓN ---------- */
-  CELL: { w: 22, h: 28, gx: 3, gy: 4, x0: 167, y0: 24 },
+  CELL: { w: 27, h: 30, gx: 3, gy: 3, x0: 167, y0: 22 },
   cellRect(i) {
     const c = this.CELL;
-    return { x: c.x0 + (i % 6) * (c.w + c.gx), y: c.y0 + Math.floor(i / 6) * (c.h + c.gy), w: c.w, h: c.h };
+    return { x: c.x0 + (i % 5) * (c.w + c.gx), y: c.y0 + Math.floor(i / 5) * (c.h + c.gy), w: c.w, h: c.h };
   },
 
   drawSelect(ctx, G) {
@@ -274,7 +274,7 @@ const UI = {
     Text.draw(ctx, '/ ' + hov.sub, 84 - Math.round((tw + subw + 5) / 2) + tw + 5, 146, CO.dim, 'left', 1);
 
     /* rejilla de retratos */
-    this.plate(ctx, 164, 18, W - 168, 76, CO.panel);
+    this.plate(ctx, 164, 18, W - 168, 102, CO.panel);
     ROSTER.forEach((def, i) => {
       const r = this.cellRect(i);
       const p1 = (G.picks[0] === null ? G.cur[0] : G.picks[0]) === i;
@@ -283,7 +283,7 @@ const UI = {
       Pix.r(ctx, r.x, r.y, r.w, 2, p1 || p2 ? '#5a3d96' : '#241546');
       ctx.save();
       ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-      drawPose(ctx, def, r.x + r.w / 2 + 1, r.y + r.h + 53, 1, 1);
+      drawPose(ctx, def, r.x + r.w / 2 + 1, r.y + r.h + 51, 1, 1);
       ctx.restore();
       drawTypeIcon(ctx, def.type, r.x + 1, r.y + 1);
       this.frame(ctx, r.x, r.y, r.w, r.h, '#000');
@@ -294,12 +294,10 @@ const UI = {
     });
 
     /* fichas del personaje */
-    this.plate(ctx, 164, 98, W - 168, 60, CO.panel);
-    Text.draw(ctx, hov.title, 170, 102, CO.cyan, 'left', 1);
-    Text.wrap(hov.bio, 20).slice(0, 2).forEach((l, i) => Text.draw(ctx, l, 170, 112 + i * 9, CO.gray, 'left', 1));
-    Pix.r(ctx, 168, 130, W - 176, 1, 'rgba(255,255,255,0.10)');
-    Text.draw(ctx, hov.special.name.slice(0, 20), 170, 134, CO.white, 'left', 1);
-    Text.draw(ctx, hov.superMove.name.slice(0, 20), 170, 145, CO.gold, 'left', 1);
+    this.plate(ctx, 164, 124, W - 168, 34, CO.panel);
+    Text.draw(ctx, hov.title.slice(0, 20), 170, 127, CO.cyan, 'left', 1);
+    Text.draw(ctx, hov.special.name.slice(0, 20), 170, 137, CO.white, 'left', 1);
+    Text.draw(ctx, hov.superMove.name.slice(0, 20), 170, 147, CO.gold, 'left', 1);
 
     /* franja inferior */
     let footer;
