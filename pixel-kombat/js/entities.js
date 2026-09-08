@@ -108,8 +108,10 @@ class Wall {
     this.life--;
     if (this.life <= 0 || this.hp <= 0) {
       this.dead = true;
-      world.burst(this.x, GROUND - this.h / 2, 16, '#f5c542');
-      world.popup(this.x, GROUND - this.h - 6, '¡SE CAYÓ!', '#f5c542');
+      world.burst(this.x, GROUND - this.h / 2, 18, '#f5c542');
+      world.impact(this.x, GROUND - this.h / 2, true);
+      if (this.owner.def.barks && this.owner.def.barks.wall)
+        world.bark(this.owner, pick(this.owner.def.barks.wall), true);
       Sfx.wall();
     }
   }
@@ -181,6 +183,40 @@ class Particle {
   }
 }
 
+/* Bocadillo de diálogo: sigue al luchador, se voltea para no salirse
+   de pantalla y apunta con el rabito a quien habla. */
+class Bubble {
+  constructor(fighter, text, life) {
+    this.f = fighter;
+    this.lines = Text.wrap(text, 17).slice(0, 2);
+    this.life = life || 115;
+    this.dead = false;
+  }
+  update() { if (--this.life <= 0) this.dead = true; }
+  draw(ctx) {
+    if (this.life < 12 && this.life % 4 < 2) return;
+    const w = Math.max.apply(null, this.lines.map(l => Text.w(l, 1))) + 12;
+    const h = this.lines.length * 9 + 8;
+    const x = Math.round(clamp(this.f.x - w / 2, 3, W - w - 3));
+    const y = Math.round(Math.max(46, this.f.y - 88 - h));
+    /* globo */
+    Pix.r(ctx, x - 1, y - 1, w + 2, h + 2, '#000');
+    Pix.r(ctx, x, y, w, h, '#f4eeff');
+    Pix.r(ctx, x + 1, y + 1, w - 2, 2, '#ffffff');
+    Pix.r(ctx, x + 1, y + h - 3, w - 2, 2, '#cfc4e8');
+    /* rabito hacia el personaje */
+    const tx = Math.round(clamp(this.f.x - 2, x + 4, x + w - 10));
+    for (let i = 0; i < 5; i++) {
+      const tw = 5 - i;
+      Pix.r(ctx, tx, y + h + i, tw, 1, '#f4eeff');
+      Pix.r(ctx, tx - 1, y + h + i, 1, 1, '#000');
+      Pix.r(ctx, tx + tw, y + h + i, 1, 1, '#000');
+    }
+    this.lines.forEach((l, i) =>
+      Text.draw(ctx, l, x + w / 2, y + 4 + i * 9, '#241546', 'center', 1, { outline: null }));
+  }
+}
+
 /* adorno decorativo (el arbolito feliz de Bob) */
 class Deco {
   constructor(x, y, artId, life) {
@@ -223,6 +259,7 @@ class World {
     this.projs = [];
     this.walls = [];
     this.decos = [];
+    this.bubbles = [];
     this.parts = [];
     this.pops = [];
     this.fighters = [];
@@ -232,6 +269,16 @@ class World {
     this.t = 0;
     this.chyron = null;      // linea del comentarista
     this.sayN = 0;
+  }
+
+  /* un luchador suelta una frase. prio = interrumpe lo que haya */
+  bark(f, text, prio, life) {
+    if (!f || !text || f.state === 'ko') return;
+    if (f.barkCd > 0 && !prio) return;
+    f.barkCd = prio ? 50 : 150;
+    this.bubbles = this.bubbles.filter(b => b.f !== f);
+    this.bubbles.push(new Bubble(f, text, life || (prio ? 120 : 105)));
+    Sfx.voice();
   }
 
   /* el comentarista dice algo (lo pinta el HUD) */
@@ -342,12 +389,13 @@ class World {
     if (this.chyron && --this.chyron.t <= 0) this.chyron = null;
     if (this.shake > 0) this.shake--;
     if (this.flash > 0) this.flash--;
-    for (const a of [this.projs, this.walls, this.parts, this.pops, this.decos]) {
+    for (const a of [this.projs, this.walls, this.parts, this.pops, this.decos, this.bubbles]) {
       for (const e of a) e.update(this);
     }
     this.projs = this.projs.filter(e => !e.dead);
     this.walls = this.walls.filter(e => !e.dead);
     this.decos = this.decos.filter(e => !e.dead);
+    this.bubbles = this.bubbles.filter(e => !e.dead && e.f.state !== 'ko');
     this.parts = this.parts.filter(e => !e.dead);
     this.pops = this.pops.filter(e => !e.dead);
   }
@@ -361,6 +409,7 @@ class World {
     for (const p of this.projs) p.draw(ctx);
     for (const p of this.parts) p.draw(ctx);
     for (const p of this.pops) p.draw(ctx);
+    for (const b of this.bubbles) b.draw(ctx);
     if (this.flash > 0) {
       ctx.fillStyle = 'rgba(255,255,255,' + (this.flash / 14) + ')';
       ctx.fillRect(0, 0, W, H);

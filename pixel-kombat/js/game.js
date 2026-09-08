@@ -209,6 +209,7 @@
     G.phase = 'ko'; G.phaseT = 0;
     if (winner) {
       winner.wins++; winner.state = 'win'; winner.t = 0;
+      G.world.bark(winner, barkLine(winner, 'win'), true);
       announce(reason || (G.world.koSuper ? '¡SUPER EFECTIVO!' : pick(FINISHERS)), 150, CO.red);
       G.world.say(reason ? pick(COMMENTS.timeout) : pick(COMMENTS.ko), 240);
       Sfx.win();
@@ -222,8 +223,11 @@
 
     if (G.phase === 'intro') {
       G.phaseT++;
-      if (G.phaseT === 70) announce('¡PELEA!', 55);
-      if (G.phaseT > 100) { f1.frozen = 0; f2.frozen = 0; G.phase = 'fight'; }
+      if (G.phaseT === 12) w.bark(f1, introLine(f1, f2), true, 46);   // se pican antes de empezar
+      if (G.phaseT === 60) w.bark(f2, introLine(f2, f1), true, 46);
+      if (G.phaseT === 112) w.bubbles.length = 0;
+      if (G.phaseT === 118) announce('¡PELEA!', 55);
+      if (G.phaseT > 150) { f1.frozen = 0; f2.frozen = 0; G.phase = 'fight'; }
     } else if (G.phase === 'ko') {
       if (++G.phaseT === 150) {
         if (f1.wins >= WINS_NEEDED || f2.wins >= WINS_NEEDED) {
@@ -253,7 +257,11 @@
       w.update();
       if (G.phase === 'fight') {
         [f1, f2].forEach((f, i) => {
-          if (!G.lowSaid[i] && f.hp > 0 && f.hp <= 25) { G.lowSaid[i] = true; w.say(f.def.short + ': ' + pick(COMMENTS.low), 200); }
+          if (!G.lowSaid[i] && f.hp > 0 && f.hp <= 25) {
+            G.lowSaid[i] = true;
+            w.say(f.def.short + ': ' + pick(COMMENTS.low), 200);
+            w.bark(f, barkLine(f, 'low'), true);
+          }
         });
         if (f1.state === 'ko') endRound(f2);
         else if (f2.state === 'ko') endRound(f1);

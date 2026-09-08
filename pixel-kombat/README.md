@@ -93,6 +93,29 @@ y la de CONTROLES tiene la tabla entera.
 **Comentarista**: una línea abajo que narra el desastre (arranque de asalto,
 vida baja, KO, burlas y ventajas de tipo).
 
+## 💬 Hablan mientras pelean
+
+Cada personaje tiene unas 18 frases propias que salen en **bocadillos** según lo
+que pasa en el combate, más frases específicas contra ciertos rivales:
+
+| Situación | Ejemplo |
+|---|---|
+| Pique antes del asalto | TRUMPO: *"TE COMPRO LA EMPRESA"* → MUSKO: *"TU MURO NO TIENE WIFI"* |
+| **Le rompen el muro** | TRUMPO: *"¡ROMPISTE MI MURO!"* / *"¡ESO LO PAGAS TÚ!"* |
+| Al pegar fuerte | RAMSÉS: *"¡FUERA DE MI COCINA!"* · SIUUU: *"¡SIUUU!"* |
+| Al recibir | TRUMPO: *"¡ESTO ES FRAUDE!"* · PULGA: *"¡ESO ES FALTA!"* |
+| Al bloquear | ZUCK: *"SOLICITUD DENEGADA"* · ROCA: *"NI ME MUEVO"* |
+| Con ventaja de tipo | ZUCK: *"EL ALGORITMO TE CONOCE"* |
+| Con poca vida | RAMSÉS: *"SE ME QUEMA TODO"* · ROCA: *"AHORA ME ENFADO"* |
+| Al ganar el asalto | BOB: *"QUEDÓ PRECIOSO"* |
+
+Los piques entre rivales concretos están escritos a mano: Pulga y Siuuu se
+reconocen, Ramsés le dice a Bob que *"eso no se come"*, Zuck le recuerda a
+La Roca que *"músculo no es un dato"*.
+
+Hay un límite: cada luchador no suelta otra frase hasta pasados ~2,5 segundos,
+así que no se solapan ni cansan.
+
 ---
 
 ## 🖥️ Por qué no parece una página web

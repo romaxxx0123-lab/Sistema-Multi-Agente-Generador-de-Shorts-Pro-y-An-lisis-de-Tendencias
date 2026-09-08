@@ -10,6 +10,20 @@ const TAUNT_REACTIONS = [
   'LA BURLA CARGA BARRA. LA VERGÜENZA NO SE VA.'
 ];
 
+/* frase de un luchador según la situación */
+function barkLine(f, kind) {
+  const b = f.def.barks;
+  if (!b || !b[kind] || !b[kind].length) return null;
+  return pick(b[kind]);
+}
+/* saludo inicial: si hay pique con ese rival, se usa el suyo */
+function introLine(f, opp) {
+  const b = f.def.barks;
+  if (!b) return null;
+  if (b.vs && b.vs[opp.def.id]) return b.vs[opp.def.id];
+  return barkLine(f, 'intro');
+}
+
 const GRAV = 0.42;
 const JUMP_V = -6.3;
 
@@ -50,7 +64,7 @@ class Fighter {
     this.crouching = false; this.blocking = false;
     this.guard = 0; this.slow = 0; this.burn = 0;
     this.hpShown = this.maxHp; this.hpGhost = this.maxHp; this.ghostWait = 0;
-    this.tauntPending = false; this.lastTypeSay = -999;
+    this.tauntPending = false; this.lastTypeSay = -999; this.barkCd = 0;
     this.combo = 0; this.comboT = 0;
     this.koT = 0; this.dead = false;
     this.frozen = 0;
@@ -118,6 +132,7 @@ class Fighter {
     if (this.slow > 0) this.slow--;
     if (this.dashCd > 0) this.dashCd--;
     if (this.squash > 0) this.squash--;
+    if (this.barkCd > 0) this.barkCd--;
     if (this.burn > 0) {                       // la sopa de la abuela sigue quemando
       this.burn--;
       if (this.burn % 26 === 0 && this.hp > 1) {
@@ -226,7 +241,7 @@ class Fighter {
     if (this.tauntPending && this.atkT === a.startup) {
       this.tauntPending = false;
       this.meter = Math.min(100, this.meter + 12);   // burlarse carga barra... si te dejan
-      world.popup(this.x, this.y - 86, this.def.taunt, '#f5c542');
+      world.bark(this, this.def.taunt, true);
       world.say(pick(TAUNT_REACTIONS));
       Sfx.taunt();
     }
@@ -234,7 +249,7 @@ class Fighter {
       const sp = this.pendingSp;
       this.pendingSp = null;          // se limpia antes: 'dash' cambia de estado
       world.fire(this, sp);
-      if (sp.say && sp.cost >= 100) world.popup(this.x, this.y - 94, sp.say, '#ffffff');
+      if (sp.say) world.bark(this, sp.say, true);
       if (this.state !== 'attack') return;
     }
     if (this.atkT >= a.startup + a.active + a.recover) {
@@ -367,6 +382,7 @@ function dealDamage(src, tgt, dmg, opts, world) {
     tgt.hitstun = 7;
     world.impact(cx, cy, false);
     world.burst(cx, cy, 5, '#a8d8ff');
+    if (Math.random() < 0.14) world.bark(tgt, barkLine(tgt, 'block'));
     world.popup(tgt.x, tgt.y - 74, 'BLOQUEO', '#a8d8ff');
     world.shake = 2;
     world.hitstop = 2;
@@ -380,6 +396,10 @@ function dealDamage(src, tgt, dmg, opts, world) {
     tgt.blocking = false;
     if (opts.launch) { tgt.vy = -5.2; tgt.onGround = false; }
     src.combo++; src.comboT = 90;
+    /* comentario del que pega o del que lo recibe, nunca los dos a la vez */
+    if (tm.kind === 'super' && Math.random() < 0.5) world.bark(src, barkLine(src, 'gloat'));
+    else if (d >= 9 && Math.random() < 0.3) world.bark(src, barkLine(src, 'hit'));
+    else if (Math.random() < 0.22) world.bark(tgt, barkLine(tgt, 'hurt'));
     const big = d > 9 || tm.kind === 'super';
     world.impact(cx, cy, big);
     world.burst(cx, cy, big ? 12 : 7, tm.kind === 'super' ? '#f5c542' : (big ? '#ffe07a' : '#ffffff'));

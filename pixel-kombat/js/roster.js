@@ -86,6 +86,17 @@ const ROSTER = [
       speed: 2.1, gravity: 0.045, art: 'bill', oy: -49, life: 130, say: '¡EFECTIVO, MUCHO EFECTIVO!' },
     quotes: ['GANÉ. ENORME VICTORIA. LA MÁS GRANDE.', 'TE MANDÉ LA FACTURA DEL MURO.',
              'NADIE CONSTRUYE MUROS COMO YO. NADIE.'],
+    barks: {
+      intro: ['NADIE PELEA MEJOR QUE YO', 'ESTO VA A SER ENORME', 'GANO SIEMPRE, PREGUNTA'],
+      hit: ['¡TREMENDO!', 'FANTÁSTICO, DE VERDAD', 'ESO FUE PERFECTO'],
+      hurt: ['¡ESTO ES FRAUDE!', '¡ARBITRAJE AMAÑADO!', '¡LLAMEN A MIS ABOGADOS!'],
+      block: ['MURO. GRAN MURO.', 'NO PASAS. NADIE PASA.'],
+      gloat: ['TENGO EL MEJOR DINERO', 'LO COMPRÉ TODO YA'],
+      low: ['NECESITO UN MURO MÁS ALTO', 'ESTO ES UNA CACERÍA DE BRUJAS'],
+      win: ['GANÉ. ENORME VICTORIA.', 'LO DICE TODO EL MUNDO'],
+      wall: ['¡ROMPISTE MI MURO!', '¡ESO LO PAGAS TÚ!', '¿QUIÉN TE DEJÓ ENTRAR?'],
+      vs: { musko: 'TE COMPRO LA EMPRESA', zuck: 'VÉNDEME ESOS DATOS', bob: 'PÍNTAME EL MURO' }
+    },
     taunt: '¡TREMENDO!'
   },
 
@@ -119,6 +130,16 @@ const ROSTER = [
       speed: 3.2, art: 'tuit', oy: -46, life: 130, effect: 'slow', say: '¡SE DESPLOMÓ LA BOLSA!' },
     quotes: ['LO ARREGLO CON UNA ACTUALIZACIÓN DE SOFTWARE.', 'COMPRÉ EL RING. AHORA SE LLAMA X.',
              'TU DERROTA ESTABA EN LA HOJA DE RUTA.'],
+    barks: {
+      intro: ['ESTO SIGUE EN BETA', 'LO PROBAMOS EN VIVO', 'CONFÍA EN EL PROCESO'],
+      hit: ['¡A LA LUNA!', 'ITERACIÓN EXITOSA', 'ESTO ESCALA BIEN'],
+      hurt: ['ERA UNA PRUEBA', 'BUG CONOCIDO', 'LO PARCHEO LUEGO'],
+      block: ['ESCUDO TÉRMICO', 'REDUNDANCIA ACTIVA'],
+      gloat: ['ESTABA EN LA HOJA DE RUTA'],
+      low: ['REINICIANDO SISTEMAS', 'NECESITO MÁS FONDOS'],
+      win: ['LO COMPRÉ TODO Y GANÉ'],
+      vs: { trumpo: 'TU MURO NO TIENE WIFI', zuck: 'TE RETO A UNA JAULA' }
+    },
     taunt: '¡AL ESPACIO!'
   },
 
@@ -151,6 +172,16 @@ const ROSTER = [
       say: '¡SE FUE DE CUATRO!' },
     quotes: ['Y HOY TAMPOCO FUE PENAL.', 'LA PELOTA NO SE MANCHA. TU RÉCORD SÍ.',
              'ANDÁ, TRANQUILO, NO PASA NADA.'],
+    barks: {
+      intro: ['DALE, TRANQUILO', 'ANDÁ, VENÍ', 'JUGUEMOS Y YA'],
+      hit: ['¡GOLAZO!', 'ANDÁ P’ALLÁ', 'AL ÁNGULO'],
+      hurt: ['¡ESO ES FALTA!', '¡AMARILLA PARA ÉL!', 'ME PEGÓ, ÁRBITRO'],
+      block: ['LA TOQUÉ, ÁRBITRO', 'NO PASA NADA'],
+      gloat: ['ESTO NO SE ENSEÑA'],
+      low: ['ME QUEDAN DOS MINUTOS', 'PIDO EL CAMBIO'],
+      win: ['Y HOY TAMPOCO FUE PENAL'],
+      vs: { siuuu: 'OTRA VEZ VOS NO', roca: 'NO ME EMPUJES ASÍ' }
+    },
     taunt: 'ANDÁ P’ALLÁ'
   },
 
@@ -183,6 +214,16 @@ const ROSTER = [
       speed: 3.0, art: 'grito', oy: -49, life: 130, big: true, effect: 'slow', say: '¡SIUUUUUU!' },
     quotes: ['SOY EL MEJOR. LO DIGO YO, QUE SÉ DE ESTO.', 'ESAS CINCO LAS GANÉ SOLO.',
              'EL TALENTO SIN TRABAJO NO ES NADA. YO TENGO LOS DOS.'],
+    barks: {
+      intro: ['SIUUU', 'MÍRAME BIEN', 'SOY EL MEJOR, YA ESTÁ'],
+      hit: ['¡SIUUU!', 'CALIDAD Y TRABAJO', 'ESO ES TÉCNICA'],
+      hurt: ['¡ERA FALTA!', '¡ME EMPUJÓ!', 'ESO NO VALE'],
+      block: ['ABDOMINALES DE ACERO', 'NI ME DESPEINO'],
+      gloat: ['POR ESO SOY YO'],
+      low: ['ESTO NO SE ACABA', 'AÚN SOY EL MEJOR'],
+      win: ['LO HICE YO SOLO'],
+      vs: { pulga: 'OTRA VEZ EL DE LA ZURDA', roca: 'YO TENGO MÁS ABDOMINALES' }
+    },
     taunt: '¡SIUUU!'
   },
 
@@ -215,6 +256,16 @@ const ROSTER = [
       effect: 'burn', say: '¡FUERA DE MI COCINA!' },
     quotes: ['¡ESTO ESTÁ MÁS CRUDO QUE TU DEFENSA!', 'TE DEJÉ QUEMADO POR FUERA Y TEMBLANDO POR DENTRO.',
              '¿ESTO LO HICISTE TÚ? ¿CON LAS MANOS?'],
+    barks: {
+      intro: ['¡ESTO ESTÁ CRUDO!', '¿QUÉ ES ESTO?', '¡SERVICIO EN CINCO!'],
+      hit: ['¡FUERA DE MI COCINA!', '¡AL FUEGO!', '¡ASÍ SE HACE!'],
+      hurt: ['¡ESTÁ FRÍO Y SOSO!', '¡SIN SAL Y SIN GRACIA!', '¡ESTO ES UN DESASTRE!'],
+      block: ['SARTÉN ARRIBA', 'NO ENTRA NADA CRUDO'],
+      gloat: ['POR FIN ALGO AL PUNTO'],
+      low: ['SE ME QUEMA TODO', 'EL SERVICIO ES UN CAOS'],
+      win: ['POR FIN ALGO BIEN HECHO'],
+      vs: { bob: 'ESO NO SE COME', zuck: 'NINGUNA IA SABE SAZONAR' }
+    },
     taunt: '¡ESTÁ CRUDO!'
   },
 
@@ -246,6 +297,16 @@ const ROSTER = [
       effect: 'slow', say: 'NO HAY ERRORES, SOLO ACCIDENTES FELICES' },
     quotes: ['NO PERDISTE, TUVISTE UN ACCIDENTE FELIZ.', 'UN ARBOLITO AQUÍ, UN MORETÓN ALLÁ.',
              'HOY PINTAMOS UNA NUBECITA. Y TU DERROTA.'],
+    barks: {
+      intro: ['HOY PINTAMOS ALGO BONITO', 'RESPIRA HONDO', 'SIN PRISA, AMIGO'],
+      hit: ['ACCIDENTE FELIZ', 'UN TOQUECITO AQUÍ', 'QUEDA MUY BIEN'],
+      hurt: ['NO PASA NADA', 'ESO TIENE ARREGLO', 'VAYA, QUÉ TEXTURA'],
+      block: ['EL LIENZO AGUANTA', 'TRANQUILO, TRANQUILO'],
+      gloat: ['MIRA QUÉ ARMONÍA'],
+      low: ['NECESITO MÁS BLANCO', 'CASI ACABO EL CUADRO'],
+      win: ['QUEDÓ PRECIOSO'],
+      vs: { ramses: 'GRITAR NO PINTA NADA', trumpo: 'TE PINTO UNA PUERTA' }
+    },
     taunt: 'TODO TIENE ARREGLO'
   },
 
@@ -278,6 +339,16 @@ const ROSTER = [
       say: '¡ESTO VA POR EL PUEBLO!' },
     quotes: ['¿SABES LO QUE ESTABA COCINANDO? ESTO.', 'LEVANTÉ UNA CEJA Y TE CAÍSTE SOLO.',
              'NO ERES DEMASIADO PEQUEÑO. SOY YO, QUE SOY ENORME.'],
+    barks: {
+      intro: ['¿HUELES ESO?', 'MÍRAME A LA CEJA', 'VAMOS A TRABAJAR'],
+      hit: ['¡ESTO VA POR EL PUEBLO!', '¿SABES QUÉ COCINABA?', '¡ARRIBA!'],
+      hurt: ['ESO NI SE SIENTE', 'SIGUE INTENTÁNDOLO', 'ERA UN MASAJE'],
+      block: ['PARED DE MÚSCULO', 'NI ME MUEVO'],
+      gloat: ['DEMASIADO FÁCIL'],
+      low: ['AHORA ME ENFADO', 'SE ACABÓ EL CALENTAMIENTO'],
+      win: ['FIN DEL SERVICIO'],
+      vs: { zuck: '¿ESO ES UN HUMANO?', pulga: 'NO TE ME ESCAPES' }
+    },
     taunt: '¿HUELES ESO?'
   },
 
@@ -310,6 +381,16 @@ const ROSTER = [
       say: 'ACEPTAR O ACEPTAR' },
     quotes: ['HE ACEPTADO LOS TÉRMINOS DE TU DERROTA.', 'TU PARTIDA SE GUARDÓ. Y SE VENDIÓ.',
              'ESTO ES LO QUE UN HUMANO NORMAL DIRÍA AHORA.'],
+    barks: {
+      intro: ['HOLA. SOY HUMANO.', 'INICIANDO COMBATE', 'ME ALEGRA VERTE. ES CIERTO.'],
+      hit: ['DATO REGISTRADO', 'ME GUSTA ESTO', 'INTERACCIÓN POSITIVA'],
+      hurt: ['ERROR INESPERADO', 'REPORTANDO INCIDENCIA', 'ESO NO ESTABA EN EL PLAN'],
+      block: ['FIREWALL ACTIVO', 'SOLICITUD DENEGADA'],
+      gloat: ['EL ALGORITMO TE CONOCE'],
+      low: ['MODO DE EMERGENCIA', 'GUARDANDO PARTIDA'],
+      win: ['ACEPTASTE LOS TÉRMINOS'],
+      vs: { roca: 'MÚSCULO NO ES UN DATO', trumpo: 'YA TENGO TUS DATOS', musko: 'COPIÉ TU FUNCIÓN' }
+    },
     taunt: 'ESTOY OPTIMIZANDO'
   }
 ];
