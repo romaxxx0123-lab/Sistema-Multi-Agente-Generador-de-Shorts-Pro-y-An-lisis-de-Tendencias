@@ -108,6 +108,26 @@ lienzo**, no hay un solo elemento HTML de interfaz:
 - **Filtro CRT**: barrido de líneas y viñeta sobre la imagen.
 - **Iconos de tipo dibujados a mano** en vez de emojis del sistema operativo.
 
+### La pasada de arte
+
+Lo que hacía que siguiera oliendo a web era el dibujo, no el HTML: eran
+rectángulos planos de un solo color. Ahora:
+
+- **Siluetas calcadas**: cada luchador se dibuja primero en oscuro desplazado en
+  las cuatro direcciones, así todo el cuerpo queda perfilado. Las cabezas llevan
+  su contorno calculado con `outlineGrid()`.
+- **Volumen**: cada pieza del cuerpo lleva luz arriba y sombra abajo
+  (`Pix.shade`), y las mangas cortas dejan ver el antebrazo.
+- **Cielos con tramado** en damero (`Pix.ditherBand`), como en las consolas de
+  16 bits, en vez de degradados lisos.
+- **Escenarios por capas**: silueta lejana, edificios con ventanas encendidas,
+  velo atmosférico que separa el fondo de los personajes, público en penumbra
+  tras una barandilla haciendo la ola, suelo con textura y un borde oscuro en
+  primer plano.
+- **Chapa de recreativa**: placas biseladas con remaches, retratos enmarcados
+  junto a las barras de vida, cintas diagonales animadas y paleta cálida
+  (morado y oro) en lugar del azul marino de modo oscuro.
+
 ## 🗂️ Estructura
 
 ```
