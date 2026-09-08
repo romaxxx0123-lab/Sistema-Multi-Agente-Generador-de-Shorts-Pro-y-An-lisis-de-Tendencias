@@ -21,11 +21,31 @@ const DUELOS = {
   'dibu|albertito':  { catch: ['LA FÓRMULA AL CÓRNER', 'ESTADÍSTICAMENTE IMPOSIBLE'] },
   'dibu|peluca':     { catch: ['TRANQUILO, PRESIDENTE', 'ESE SÍ ES GASTO ÚTIL'] },
 
+  'peluca|mustang':  { nullify: ['ESO ES GASTO PÚBLICO', 'SOY PRIVADO, SEÑOR'] },
+  'peluca|michael':  { nullify: ['LA CULTURA NO SE PAGA', 'PUES BAILO GRATIS'] },
+
+  /* ---- el Dibu ataja lo que le tiren ---- */
+  'dibu|michael':    { catch: ['ESA LA VEÍA VENIR', 'IBA AL COMPÁS'] },
+  'dibu|chad':       { catch: ['A ESE LO ATAJO IGUAL', 'NO.'] },
+
+  /* ---- la POSE del Chad: no bloquea, devuelve ---- */
+  'chad|trumpo':     { nullify: ['ESO NO SE COMPRA', '¡TODO SE COMPRA!'] },
+  'chad|musko':      { nullify: ['NO.', 'ERA UN PROTOTIPO'] },
+  'chad|zuck':       { nullify: ['NO SOY UN ROBOT', 'VERIFICACIÓN FALLIDA'] },
+  'chad|cresta':     { nullify: ['TE ESCUCHO', 'PUES ESCUCHA MÁS'] },
+  'chad|shakira':    { nullify: ['SÍ.', '¿ESO ES UN SÍ?'] },
+  'chad|michael':    { nullify: ['BUEN SOMBRERO', 'GRACIAS, HOMBRE'] },
+  'chad|mustang':    { nullify: ['BONITO COCHE', 'NO ESTOY EN VENTA'] },
+
   /* ---- proyectiles que chocan en el aire ---- */
   'trumpo|zuck':     { clash: ['MI DINERO CONTRA TUS DATOS', 'LOS DATOS VALEN MÁS'] },
   'musko|albertito': { clash: ['MI COHETE ES MEJOR', 'YO ESCRIBÍ ESAS ECUACIONES'] },
-  'ramses|bob':      { clash: ['¡SACA ESO DE MI COCINA!', 'LE DABA COLOR AL PLATO'] },
-  'pulga|siuuu':     { clash: ['TIRÁ AL ARCO', 'MÍO ES MEJOR'] }
+  'mustang|pulga':   { clash: ['¡CUIDADO CON LA PELOTA!', '¡ESA ERA MÍA!'] },
+  'michael|shakira': { clash: ['ESTO ES UN DUELO DE BAILE', 'Y LO VOY A GANAR'] },
+  'michael|zuck':    { clash: ['ESE PASO NO LO CLASIFICAS', 'CATEGORÍA: DESCONOCIDA'] },
+  'mustang|trumpo':  { clash: ['NO ESTOY EN VENTA', 'TODO TIENE PRECIO'] },
+  'chad|roca':       { clash: ['PRIMO.', 'PRIMO.'] },
+  'mustang|albertito': { clash: ['ESTO ES FÍSICA APLICADA', 'ESO ES FÍSICA MAL APLICADA'] }
 };
 
 /* devuelve el par de frases para un cruce concreto, si existe */

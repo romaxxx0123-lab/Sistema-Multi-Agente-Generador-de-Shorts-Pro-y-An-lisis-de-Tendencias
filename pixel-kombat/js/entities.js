@@ -76,6 +76,10 @@ class Proj {
       this.pop(world);
       return;
     }
+    if (tgt && !tgt.dead && tgt.moonT > 0 && aabb(this.box(), tgt.hurtbox())) {
+      if (world.t % 9 === 0) world.popup(tgt.x, tgt.y - 106, 'NI LO ROZA', '#f0d97a');
+      return;                                  // el moonwalk le pasa por debajo
+    }
     if (tgt && !tgt.dead && aabb(this.box(), tgt.hurtbox())) {
       const src = this.rogue ? (world.opponentOf(this.owner) || this.owner) : this.owner;
       dealDamage(src, tgt, this.dmg * this.sc, {
@@ -390,6 +394,97 @@ class Popup {
   }
 }
 
+/* Cortina de humo del derrape: se queda en el suelo, tapa y araña.
+   No es un muro (no para nada), es una zona incómoda. */
+class Zona {
+  constructor(owner, x, w, dmg, life, effect) {
+    this.owner = owner; this.x = x; this.w = w; this.dmg = dmg;
+    this.life = life; this.t = 0; this.cd = 0; this.dead = false;
+    this.effect = effect;
+    this.puffs = [];
+    for (let i = 0; i < 16; i++)
+      this.puffs.push({ x: rnd(-w / 2, w / 2), y: rnd(-36, -2), r: irnd(4, 10), s: rnd(0.08, 0.4) });
+  }
+  update(world) {
+    this.t++;
+    if (--this.life <= 0) { this.dead = true; return; }
+    for (const p of this.puffs) {
+      p.x += p.s; p.y -= 0.05;
+      if (p.x > this.w / 2) { p.x = -this.w / 2; p.y = rnd(-14, -2); }
+    }
+    if (this.cd > 0) { this.cd--; return; }
+    const opp = world.opponentOf(this.owner);
+    if (opp && opp.state !== 'ko' && Math.abs(opp.x - this.x) < this.w / 2) {
+      this.cd = 36;
+      dealDamage(this.owner, opp, this.dmg,
+        { push: 0.3, hitstun: 4, effect: this.effect, noBlockStop: true }, world);
+      world.emote(opp, 'dolor', null, true);
+    }
+  }
+  draw(ctx) {
+    const fade = Math.min(1, this.life / 44) * Math.min(1, this.t / 10);
+    for (const p of this.puffs) {
+      ctx.globalAlpha = 0.30 * fade;
+      Pix.circle(ctx, this.x + p.x, GROUND + p.y, p.r, '#c8ccd4');
+      ctx.globalAlpha = 0.20 * fade;
+      Pix.circle(ctx, this.x + p.x + 2, GROUND + p.y - 2, Math.max(1, p.r - 3), '#ffffff');
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* THRILLER: salen del suelo, te agarran y no te dejan moverte. */
+class Zombi {
+  constructor(owner, x, dmg, delay) {
+    this.owner = owner; this.x = x; this.dmg = dmg;
+    this.delay = delay; this.t = 0; this.dead = false; this.hit = false;
+    this.tone = ['#7a8f6a', '#93a07e', '#66765a'][irnd(0, 2)];
+  }
+  update(world) {
+    if (this.delay > 0) { this.delay--; return; }
+    if (this.t === 0) Sfx.wall();
+    this.t++;
+    const opp = world.opponentOf(this.owner);
+    if (!this.hit && this.t === 15 && opp && opp.state !== 'ko' && Math.abs(opp.x - this.x) < 24) {
+      this.hit = true;
+      opp.stunT = Math.max(opp.stunT, 24);
+      dealDamage(this.owner, opp, this.dmg,
+        { push: 0.2, hitstun: 10, unblockable: true }, world);
+    }
+    if (this.t > 64) this.dead = true;
+  }
+  draw(ctx) {
+    if (this.delay > 0) return;
+    const up = Math.min(1, this.t / 15);
+    const out = this.t > 46 ? Math.max(0, 1 - (this.t - 46) / 18) : 1;
+    const h = Math.round(36 * up * out);
+    if (h <= 1) return;
+    const x = Math.round(this.x), y = GROUND - h;
+    const dk = tint(this.tone, -0.45);
+    /* primero los brazos: salen antes que el resto y buscan al rival */
+    if (h > 8) {
+      const ah = Math.min(14, h - 4);
+      Pix.r(ctx, x - 15, y + 2, 6, ah + 2, '#14101e');
+      Pix.r(ctx, x + 9, y + 2, 6, ah + 2, '#14101e');
+      Pix.r(ctx, x - 14, y + 3, 4, ah, this.tone);
+      Pix.r(ctx, x + 10, y + 3, 4, ah, this.tone);
+    }
+    /* tronco */
+    Pix.r(ctx, x - 8, y + 9, 16, Math.max(0, h - 9) + 1, '#14101e');
+    Pix.r(ctx, x - 7, y + 10, 14, Math.max(0, h - 10), dk);
+    /* cabeza */
+    if (h > 12) {
+      Pix.r(ctx, x - 7, y - 1, 14, 13, '#14101e');
+      Pix.r(ctx, x - 6, y, 12, 11, this.tone);
+      Pix.r(ctx, x - 6, y, 12, 2, tint(this.tone, 0.3));
+      Pix.r(ctx, x - 4, y + 3, 3, 3, '#f5c542');     // ojos que brillan
+      Pix.r(ctx, x + 1, y + 3, 3, 3, '#f5c542');
+      Pix.r(ctx, x - 4, y + 8, 8, 2, '#241a14');     // boca
+      for (let i = -3; i < 4; i += 3) Pix.r(ctx, x + i, y + 8, 1, 2, '#e8e0c8');
+    }
+  }
+}
+
 /* ---------------------------------------------------------
    Mundo: contiene entidades y utilidades de combate
    --------------------------------------------------------- */
@@ -604,6 +699,74 @@ class World {
       }
       case 'dash': {
         owner.startDash(sp);
+        Sfx.super();
+        break;
+      }
+      case 'contra': {                         // POSE: no bloquea, devuelve
+        owner.counterT = sp.frames || 96;
+        this.parts.push(new Shock(owner.x, owner.y - 52, '#e8ecf2', 58, 20));
+        this.popup(owner.x, owner.y - 100, 'POSE', '#d7dbe6');
+        for (let i = 0; i < 12; i++)
+          this.parts.push(new Particle(owner.x + rnd(-15, 15), owner.y - rnd(10, 84),
+            rnd(-0.2, 0.2), rnd(-0.9, -0.2), irnd(18, 36), '#f2f4f8', 1, -0.01));
+        Sfx.block();
+        break;
+      }
+      case 'agarre': {                         // CHADAZO: presa corta e imparable
+        const opp = this.opponentOf(owner);
+        if (opp && opp.state !== 'ko' && Math.abs(opp.x - owner.x) < (sp.range || 48)) {
+          opp.x = clamp(owner.x + owner.dir * 20, 14, W - 14);
+          this.hitstop = 12; this.flash = 12; this.shake = 16;
+          dealDamage(owner, opp, sp.dmg,
+            { push: 4.6, hitstun: 34, unblockable: true, launch: true }, this);
+          this.burst(opp.x, GROUND - 16, 26, '#d7dbe6');
+          this.popup(owner.x, owner.y - 112, '¡AL SUELO!', '#f5c542');
+          Sfx.bigHit();
+        } else {
+          this.popup(owner.x, owner.y - 100, 'AL AIRE', '#9aa6bd');
+          this.emote(owner, 'duda');
+          Sfx.block();
+        }
+        break;
+      }
+      case 'humo': {                           // DERRAPE: cortina que se queda
+        const zx = clamp(owner.x + owner.dir * 34, 26, W - 26);
+        const rival = this.opponentOf(owner);
+        /* el humo no se ataja: contra el arquero dura el doble */
+        const dur = (sp.life || 260) * (rival && rival.def.type === 'arquero' ? 2 : 1);
+        if (dur > (sp.life || 260)) {
+          this.popup(zx, GROUND - 76, 'ESTO NO SE ATAJA', '#d7dbe6');
+          this.duel(owner, rival, 'nullify', 'ESTO NO SE ATAJA');
+        }
+        this.parts.push(new Zona(owner, zx, sp.w || 66, sp.dmg || 4, dur, sp.effect));
+        for (let i = 0; i < 20; i++)
+          this.parts.push(new Particle(owner.x + rnd(-12, 12), GROUND - rnd(0, 16),
+            -owner.dir * rnd(0.4, 2.0), rnd(-0.8, -0.1), irnd(24, 48), '#d7dbe6', 2, -0.01));
+        this.shake = 6;
+        Sfx.wall();
+        break;
+      }
+      case 'estrellar': {                      // SE VA DEL MEET (y se estampa)
+        owner.startDash(sp);
+        this.shake = 9;
+        Sfx.super();
+        break;
+      }
+      case 'moonwalk': {
+        owner.state = 'moon';
+        owner.moonT = sp.frames || 72;
+        owner.moonSp = sp;
+        owner.atk = null; owner.pendingSp = null;
+        this.popup(owner.x, owner.y - 100, 'MOONWALK', '#f0d97a');
+        Sfx.taunt();
+        break;
+      }
+      case 'zombis': {                         // THRILLER
+        const opp = this.opponentOf(owner);
+        const cx = opp ? opp.x : owner.x + owner.dir * 60;
+        for (let i = 0; i < (sp.count || 5); i++)
+          this.parts.push(new Zombi(owner, clamp(cx + rnd(-28, 28), 12, W - 12), sp.dmg, i * 11));
+        this.flash = 6; this.shake = 7;
         Sfx.super();
         break;
       }

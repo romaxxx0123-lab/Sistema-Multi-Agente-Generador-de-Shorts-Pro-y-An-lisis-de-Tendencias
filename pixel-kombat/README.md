@@ -54,7 +54,7 @@ Necesita teclado (no hay controles táctiles). Los menús también aceptan rató
 
 ---
 
-## 👥 El elenco (13 luchadores)
+## 👥 El elenco (14 luchadores)
 
 Nadie repite arquetipo: cada uno tiene **vida, velocidad, salto, alcance y
 ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
@@ -64,8 +64,6 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 | **TRUMPO** *(el magnate)* | 💵 DINERO | Tortuga | 120 | 1.05 | `MURO DE ORO` (barrera) → `LLUVIA DE BILLETES` |
 | **MUSKO** *(el de los cohetes)* | 🚀 COHETE | Riesgo | **85** | 1.45 | `COHETE INESTABLE` (**30% le vuelve encima**) → `HYPERLOOP` |
 | **EL PULGA** *(el de la zurda)* | ⚽ FÚTBOL | Velocidad | 95 | **1.60** | `NARIZÓN` (**le crece la nariz y pica con ella**) → `GAMBETA INFINITA` |
-| **SIUUU** *(el del salto)* | 👑 EGO | Aéreo | 100 | 1.35 | `CABEZAZO ORBITAL` → `GRITO SIUUU` |
-| **CHEF RAMSÉS** | 🔥 COCINA | Presión | 105 | 1.25 | `¡ESTÁ CRUDO!` (platos) → `PESADILLA EN COCINA` |
 | **BOB LA BROCHA** | 🎨 ÓLEO | Soporte | 115 | 1.10 | `ARBOLITO FELIZ` (cura) → `ACCIDENTE FELIZ` |
 | **LA ROCA** *(el de la ceja)* | 🪨 ROCA | Tanque | **130** | 0.95 | `CEJA LEVANTADA` → `CODAZO DEL PUEBLO` |
 | **ZUCK-BOT** | 🤖 ALGORITMO | Control | 95 | 1.20 | `¿ERES UN ROBOT?` → `TÉRMINOS NUEVOS` |
@@ -74,13 +72,29 @@ ritmo de golpeo propios**, y ninguna pareja comparte las dos habilidades.
 | **EL PELUCA** *(el de la motosierra)* | 🪚 MOTOSIERRA | Anulador | 95 | 1.35 | `¡NO HAY PLATA!` (**anula todo lo lanzado**) → `MOTOSIERRA` |
 | **EL DIBU** *(el de los penales)* | 🧤 ARQUERO | Contragolpe | 115 | 1.15 | `ATAJADA` (**caza proyectiles**) → `TE LO ATAJO` (aturde y roba super) |
 | **LA CRESTA** *(la de la pancarta)* | 📢 MEGÁFONO | Empuje | 100 | 1.25 | `MEGAFONAZO` (**rompe la guardia y te estampa**) → `MANIFESTACIÓN` |
+| **EL CHAD** *(el de la mandíbula)* | 👑 EGO | Contra | **125** | 0.92 | `POSE` (**no bloquea: devuelve el golpe**) → `CHADAZO` (presa imparable) |
+| **EL MUSTANG** *(un coche, literal)* | 🏎️ MOTOR | Atropello | 105 | 1.38 | `DERRAPE` (**cortina de humo que se queda**) → `SE VA DEL MEET` |
+| **MICHAEL** *(el del sombrero)* | 💃 RITMO | Evasión | 100 | 1.30 | `MOONWALK` (**los proyectiles no le tocan**) → `THRILLER` (zombis) |
 
 Mecánicas exclusivas: el **muro** de Trumpo, el **cohete que se le vuelve en la
 cara** a Musko, la **nariz que crece** del Pulga (el golpe con más alcance del
 juego), la **cura** de Bob, el **aturdimiento** de La Loba, el **proyectil que
 crece** y el **agujero negro** de Albertito, el **teletransporte** de Musko, la
-**anulación** del Peluca, la **atajada** del Dibu y el **megafonazo imbloqueable**
-de La Cresta, que además estampa contra el borde de la arena.
+**anulación** del Peluca, la **atajada** del Dibu, el **megafonazo imbloqueable**
+de La Cresta, la **contra** y la **presa** del Chad, la **zona de humo** y el
+**atropello con retroceso** del Mustang, y el **paso atrás intangible** y los
+**zombis** de Michael.
+
+**El Mustang es literalmente un coche.** No tiene cabeza ni brazos: se monta su
+propia chapa (ruedas, capó, alerón, faros), pega con el parachoques, es más bajo
+y mucho más ancho que el resto, y su retrato del marcador es el morro visto de
+frente.
+
+**Quién no está y por qué.** Fuera SIUUU (nadie lo pidió) y fuera CHEF RAMSÉS:
+era el único cuyas dos habilidades eran genéricas —un proyectil doble como el de
+media plantilla y una lluvia que ya hacían Bob y Zuck—, así que no aportaba nada
+que no estuviera ya. Con él se fue el tipo 🔥 COCINA, cuyo hueco en la tabla lo
+ocupa 🏎️ MOTOR.
 
 **Contra las cuerdas**: si un empujón fuerte te estampa contra el borde te llevas
 un 50% de daño extra. De momento solo lo provoca el megafonazo.
@@ -98,7 +112,16 @@ en pantalla y lo que se dicen.
 | **EL DIBU ataja el tiro libre de EL PULGA** | El proyectil **se queda en sus guantes**, cero daño y +14 de super. DIBU: *"PERDÓN LEO"* → PULGA: *"DALE DIBU, SOLTALA"* |
 | DIBU ataja un billete de TRUMPO | *"ESTA PLATA ES MÍA"* → *"¡ESO ES ROBO!"* |
 | DIBU ataja el cohete de MUSKO | *"ATAJÉ UN COHETE"* → *"IMPOSIBLE, ERA BALÍSTICO"* |
-| Dos proyectiles rivales chocan en el aire | Se anulan con destello. Si el cruce está escrito (TRUMPO/ZUCK, MUSKO/ALBERTITO, RAMSÉS/BOB, PULGA/SIUUU) se dicen lo suyo |
+| **EL CHAD en POSE recibe un golpe** | No lo bloquea: lo **devuelve multiplicado** y el que pegó sale despedido. CHAD: *"NO."* |
+| **EL CHAD en POSE contra TRUMPO** | Contra el tipo 💵 DINERO devuelve **×2,2 en vez de ×1,5**. CHAD: *"ESO NO SE COMPRA"* → TRUMPO: *"¡TODO SE COMPRA!"* |
+| **MICHAEL en MOONWALK contra cualquier proyectil** | Le **pasa por debajo**: cero daño, y mientras tanto carga super. Sale *"NI LO ROZA"* |
+| **EL MUSTANG derrapa contra EL DIBU** | El humo **no se ataja**: la cortina le dura **el doble**. MUSTANG: *"ESTO NO SE ATAJA"* |
+| **EL MUSTANG termina el atropello contra el borde** | Se estampa y **se hace 12 de daño a sí mismo**: *"SE FUE DEL MEET. COMO SIEMPRE."* |
+| **THRILLER contra EL CHAD en POSE** | El primer zombi se lleva la contra. Sale solo si el Chad tenía la pose puesta |
+| PELUCA anula el derrape del MUSTANG | *"ESO ES GASTO PÚBLICO"* → *"SOY PRIVADO, SEÑOR"* |
+| MICHAEL y LA LOBA se cruzan los proyectiles | *"ESTO ES UN DUELO DE BAILE"* → *"Y LO VOY A GANAR"* |
+| EL CHAD y LA ROCA se cruzan | *"PRIMO."* → *"PRIMO."* |
+| Dos proyectiles rivales chocan en el aire | Se anulan con destello. Si el cruce está escrito (TRUMPO/ZUCK, MUSKO/ALBERTITO, MUSTANG/PULGA, MICHAEL/ZUCK...) se dicen lo suyo |
 
 Además, contra el tipo 💵 DINERO el `¡NO HAY PLATA!` hace **el doble de daño** y
 vacía la barra entera, y la tabla de tipos ya dice que el dinero le hace un 30%
@@ -151,13 +174,13 @@ y existe solo para el chiste.
 
 | Tipo | Pega +40% a | Porque |
 |---|---|---|
-| DINERO | ALGORITMO, COCINA | *compró la red social entera* / *compró el restaurante y lo cerró* |
+| DINERO | ALGORITMO, MOTOR | *compró la red social entera* / *le compró el concesionario* |
 | COHETE | EGO, ROCA | *el ego no llega a Marte* |
 | FÚTBOL | DINERO, EGO, COHETE | *los títulos callan bocas* / *lo bajó de un cabezazo* |
-| EGO | COCINA, ALGORITMO | *gritó más fuerte que el chef* |
-| COCINA | ÓLEO, ALGORITMO | *ninguna IA sabe sazonar* |
+| EGO | MOTOR, ALGORITMO | *se sacó una foto y lo eclipsó* |
+| MOTOR | ÓLEO, ALGORITMO | *un carburador no se hackea* / *pasó por encima del cuadro* |
 | ÓLEO | DINERO, COHETE, ROCA | *el arte no se paga en efectivo* / *le pintó un bigote y perdió la autoridad* |
-| ROCA | COCINA, FÚTBOL | *se comió la cocina entera* / *nadie le regatea a ese señor* |
+| ROCA | MOTOR, FÚTBOL | *levantó el coche entero* / *nadie le regatea a ese señor* |
 | ALGORITMO | FÚTBOL, ÓLEO, ROCA | *lo anuló el VAR* / *le canceló la película* |
 | RITMO | EGO, CIENCIA | *las caderas no mienten, el ego sí* / *eso no lo explica la física* |
 | CIENCIA | COHETE, ALGORITMO | *él inventó ese cohete* / *la IA le copió los deberes* |
@@ -183,11 +206,11 @@ que pasa en el combate, más frases específicas contra ciertos rivales:
 |---|---|
 | Pique antes del asalto | TRUMPO: *"TE COMPRO LA EMPRESA"* → MUSKO: *"TU MURO NO TIENE WIFI"* |
 | **Le rompen el muro** | TRUMPO: *"¡ROMPISTE MI MURO!"* / *"¡ESO LO PAGAS TÚ!"* |
-| Al pegar fuerte | RAMSÉS: *"¡FUERA DE MI COCINA!"* · SIUUU: *"¡SIUUU!"* |
+| Al pegar fuerte | MICHAEL: *"¡AAOW!"* · MUSTANG: *"¡PARACHOQUES!"* · CHAD: *"SÍ."* |
 | Al recibir | TRUMPO: *"¡ESTO ES FRAUDE!"* · PULGA: *"¡ESO ES FALTA!"* |
 | Al bloquear | ZUCK: *"SOLICITUD DENEGADA"* · ROCA: *"NI ME MUEVO"* |
 | Con ventaja de tipo | ZUCK: *"EL ALGORITMO TE CONOCE"* |
-| Con poca vida | RAMSÉS: *"SE ME QUEMA TODO"* · ROCA: *"AHORA ME ENFADO"* |
+| Con poca vida | MUSTANG: *"HUELE A QUEMADO"* · ROCA: *"AHORA ME ENFADO"* |
 | Al ganar el asalto | BOB: *"QUEDÓ PRECIOSO"* |
 
 Los piques entre rivales concretos están escritos a mano: Pulga y Siuuu se

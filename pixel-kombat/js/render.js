@@ -35,6 +35,7 @@ function mirrorDef(def) {
 function bodyRects(def, A) {
   const B = def.body;
   if (A.baby) return babyRects(B);
+  if (B.kind === 'car') return carRects(B, A);
   const legC = B.legs || B.main, legD = B.legsDark || B.dark;
   const skin = B.skin;
   const aw = B.bulk ? 8 : 6;                     // grosor de brazo
@@ -43,7 +44,7 @@ function bodyRects(def, A) {
 
   const cr = A.crouch;                          // 0..12
   const lean = A.lean || 0;                     // peso del cuerpo
-  const sh = B.short ? 4 : 0;                    // personajes bajitos
+  const sh = B.short ? 4 : (B.tall ? -4 : 0);    // bajitos y armarios
   const shinH = 15 - cr * 0.5 - sh, thighH = 16 - cr * 0.6 - sh;
   const hipY = -(shinH + thighH);
   const hipH = 10;
@@ -51,7 +52,8 @@ function bodyRects(def, A) {
   const chestY = hipY - hipH - chestH + (A.bob || 0);
   const shY = chestY - 7;
   const neckY = shY - 4;
-  const boot = tint(legD, -0.5);
+  const boot = B.boot || tint(legD, -0.5);
+  const bootF = B.boot || tint(legC, -0.42);   // el otro pie
 
   /* ---- piernas ---- */
   if (A.kick > 0) {
@@ -78,7 +80,7 @@ function bodyRects(def, A) {
     add(-11 - sw, -4, 10, 4, boot);
     add(1 + sw, hipY, 9, thighH, legC);
     add(2 + sw, hipY + thighH, 8, shinH, legC);
-    add(1 + sw, -4, 10, 4, tint(legC, -0.42));
+    add(1 + sw, -4, 10, 4, bootF);
   }
 
   /* ---- tronco ---- */
@@ -151,6 +153,29 @@ function bodyRects(def, A) {
     add(-14 + lx, shY, 5, 10, B.light);
     add(9 + lx, shY, 5, 10, B.light);
     add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.dark);
+  } else if (st === 'torso') {                   // torso desnudo: pectorales y tableta
+    add(-11 + lx, chestY, 22, chestH, skin);
+    add(-11 + lx, chestY, 22, 3, tint(skin, 0.20));
+    add(-10 + lx, chestY + 3, 9, 7, tint(skin, 0.24));
+    add(1 + lx, chestY + 3, 9, 7, tint(skin, 0.34));
+    add(-1 + lx, chestY + 2, 2, chestH - 3, tint(skin, -0.42));
+    for (let i = 0; i < 3; i++) {
+      add(-8 + lx, chestY + 10 + i * 3, 7, 2, tint(skin, -0.34));
+      add(2 + lx, chestY + 10 + i * 3, 7, 2, tint(skin, -0.34));
+    }
+    add(-9 + Math.round(lean * 0.4), hipY - hipH, 19, hipH + 2, B.dark);
+    add(-9 + Math.round(lean * 0.4), hipY - hipH, 19, 3, B.accent);
+  } else if (st === 'thriller') {                // cazadora roja con vivos negros
+    add(-11 + lx, chestY, 22, chestH, B.main);
+    add(-11 + lx, chestY, 22, 2, tint(B.main, 0.25));
+    add(-14 + lx, shY, 6, 20, B.light);
+    add(8 + lx, shY, 6, 20, B.light);
+    add(-4 + lx, shY + 2, 8, chestH + 5, B.light);
+    add(-1 + lx, shY + 3, 2, chestH + 3, B.accent);
+    add(-7 + lx, chestY + 5, 4, 3, B.accent);
+    add(3 + lx, chestY + 9, 4, 3, B.accent);
+    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.light);
+    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, 3, B.accent);
   } else if (st === 'tee') {
     add(-6 + lx, shY, 12, 4, B.dark);
     add(-14 + lx, shY, 5, 11, B.light);
@@ -159,14 +184,22 @@ function bodyRects(def, A) {
   }
 
   /* ---- brazos (manga corta = antebrazo de piel) ---- */
-  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage' || st === 'keeper' || st === 'punk');
+  const shortSleeve = (st === 'tee' || st === 'jersey' || st === 'stripes' || st === 'stage' || st === 'keeper' || st === 'punk' || st === 'torso');
   const foreC = shortSleeve ? skin : B.main;
   const foreD = shortSleeve ? tint(skin, -0.18) : B.dark;
   const hand = B.gloves || skin;                 // guantazos de portero
+  const handB = B.gloveOne ? skin : hand;        // Michael solo lleva uno
   const hs = B.gloves ? 10 : 8;
   const ay = shY + 2;
 
-  if (A.cast > 0) {
+  if (A.pose) {                                  // brazos cruzados: la POSE
+    add(-14 + lx, ay + 2, aw, 9, B.dark);
+    add(-11, ay + 13, 22, aw + 2, foreD);
+    add(9, ay + 12, hs, hs, tint(handB, -0.15));
+    add(9 + lx, ay + 2, aw, 9, B.main);
+    add(-9, ay + 6, 22, aw + 2, foreC);
+    add(-14, ay + 5, hs, hs, hand);
+  } else if (A.cast > 0) {
     add(-8, ay - 5, 15, aw, B.dark);
     add(7, ay - 9, 9, 9, skin);
     add(5, ay - 10, 15, aw, B.main);
@@ -198,13 +231,55 @@ function bodyRects(def, A) {
     const sw = Math.round(Math.sin(A.walk) * 5);
     add(-14 + lx, ay + sw, aw, 11, B.dark);
     add(-14 + lx, ay + 11 + sw, aw, 10, foreD);
-    add(-14 + lx, ay + 20 + sw, hs, hs, tint(hand, -0.15));
+    add(-14 + lx, ay + 20 + sw, hs, hs, tint(handB, -0.15));
     add(7 + lx, ay - sw, aw, 11, B.main);
     add(7 + lx, ay + 11 - sw, aw, 10, foreC);
     add(7 + lx, ay + 20 - sw, hs, hs, hand);
   }
 
   return { rects: R, headY: neckY - 21, headX: -13 + Math.round(lean * 1.2) };
+}
+
+/* El Mustang es literalmente un coche: no tiene cabeza ni brazos, así que
+   se monta su propia chapa. Los golpes los da con el parachoques. */
+function carRects(B, A) {
+  const R = [];
+  const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
+  const body = B.main, dark = B.dark, glass = '#39476b', rim = B.legs || '#15181d';
+  const L = Math.round(13 * Math.max(A.punch, A.kick, 0));   // el morro va primero
+  const sus = Math.round(A.crouch * 0.4);                     // se hunde de suspensión
+  const bob = A.bob || 0;
+
+  /* ruedas */
+  for (const wx of [-26, 8]) {
+    add(wx + L, -18, 16, 18, rim);
+    add(wx + 2 + L, -15, 12, 12, '#2f343d');
+    add(wx + 5 + L, -12, 6, 6, '#8d97ad');
+  }
+  /* carrocería */
+  add(-32 + L, -36 + sus + bob, 64, 21, body);
+  add(-30 + L, -18, 60, 4, dark);                    // faldón
+  add(16 + L, -34 + sus + bob, 20, 18, body);        // capó
+  add(-30 + L, -36 + sus + bob, 62, 2, tint(body, 0.26));
+  add(-30 + L, -26 + sus + bob, 64, 3, B.light);     // franja de carreras
+  /* cabina */
+  add(-20 + L, -52 + sus + bob, 32, 17, body);
+  add(-20 + L, -52 + sus + bob, 32, 2, tint(body, 0.30));
+  add(-16 + L, -50 + sus + bob, 13, 11, glass);      // ventanilla (no se ve a nadie)
+  add(1 + L, -50 + sus + bob, 12, 12, glass);        // parabrisas
+  add(1 + L, -50 + sus + bob, 12, 2, tint(glass, 0.35));
+  /* alerón y escape */
+  add(-38 + L, -48 + sus + bob, 13, 5, dark);
+  add(-33 + L, -43 + sus + bob, 5, 8, dark);
+  add(-38 + L, -30 + sus + bob, 6, 13, dark);
+  add(-41 + L, -22, 6, 5, '#8d97ad');
+  /* morro: faro, parrilla y parachoques */
+  add(34 + L, -32 + sus + bob, 5, 6, B.accent);
+  add(34 + L, -32 + sus + bob, 5, 2, '#fff2a8');
+  add(34 + L, -24 + sus + bob, 5, 7, '#2a2f3d');
+  add(32 + L, -18, 8, 5, dark);
+
+  return { rects: R, headY: 0, headX: 0, noHead: true };
 }
 
 /* Cuerpo de bebé: cabeza normal sobre un cuerpecito, que es lo que
@@ -250,16 +325,39 @@ function drawFighter(ctx, f) {
   const parts = bodyRects(def, A);
   paintBody(ctx, def, parts, A.flash);
 
-  /* 4) el narizón: le crece y pica con ella */
-  if (A.nose > 0) {
+  /* 4) el narizón. Un palo recto no parece una nariz: esta arranca del
+     puente de la cara, va afinando, cae hacia la punta y tiene ventana. */
+  if (A.nose > 0 && !parts.noHead) {
+    const sk = def.body.skin;
     const len = Math.round(10 + 58 * A.nose);
-    const ny = parts.headY + 15;
-    Pix.r(ctx, 8, ny - 1, len + 2, 7, OUTLINE);
-    Pix.r(ctx, 8, ny, len, 5, def.body.skin);
-    Pix.r(ctx, 8, ny, len, 1, tint(def.body.skin, 0.3));
-    Pix.r(ctx, 8, ny + 4, len, 1, tint(def.body.skin, -0.25));
-    Pix.r(ctx, 8 + len, ny - 2, 5, 9, OUTLINE);
-    Pix.r(ctx, 8 + len, ny - 1, 4, 7, tint(def.body.skin, -0.15));
+    const ny = parts.headY + 14;
+
+    /* puente: la une con la nariz que ya tiene dibujada la cara */
+    Pix.r(ctx, 3, ny + 1, 7, 8, OUTLINE);
+    Pix.r(ctx, 4, ny + 2, 6, 6, sk);
+    Pix.r(ctx, 4, ny + 2, 6, 1, tint(sk, 0.28));
+
+    /* caño: cinco tramos que van adelgazando y bajando */
+    const SEG = 5;
+    let x0 = 9, y0 = ny + 2, h = 6;
+    for (let i = 0; i < SEG; i++) {
+      const x1 = 9 + Math.round(len * (i + 1) / SEG);
+      const w = x1 - x0 + 1;
+      Pix.r(ctx, x0, y0 - 1, w + 1, h + 2, OUTLINE);
+      Pix.r(ctx, x0, y0, w, h, sk);
+      Pix.r(ctx, x0, y0, w, 1, tint(sk, 0.28));
+      Pix.r(ctx, x0, y0 + h - 1, w, 1, tint(sk, -0.28));
+      x0 = x1;
+      if (i % 2 === 0) { y0 += 1; h -= 1; }        // cae y adelgaza a la vez
+    }
+
+    /* punta redondeada, un poco más oscura */
+    Pix.r(ctx, x0 - 1, y0 - 2, 6, h + 4, OUTLINE);
+    Pix.r(ctx, x0, y0 - 1, 4, h + 2, tint(sk, -0.10));
+    Pix.r(ctx, x0, y0 - 1, 4, 1, tint(sk, 0.18));
+
+    /* ventana de la nariz, en la base: es lo que la delata */
+    Pix.r(ctx, 6, ny + 6, 3, 2, tint(sk, -0.62));
   }
 
   ctx.restore();
@@ -277,7 +375,7 @@ function drawStreaks(ctx, def, A) {
     const gh = bodyRects(def, Object.assign({}, A, { spin: false, walk: A.walk - k * 0.9 }));
     ctx.globalAlpha = 0.30 - k * 0.08;
     for (const p of gh.rects) Pix.r(ctx, p.x + dx, p.y, p.w, p.h, tint(B.main, 0.35));
-    Pix.r(ctx, gh.headX + dx + 4, gh.headY + 5, 18, 18, tint(B.main, 0.35));
+    if (!gh.noHead) Pix.r(ctx, gh.headX + dx + 4, gh.headY + 5, 18, 18, tint(B.main, 0.35));
     ctx.globalAlpha = 1;
   }
   /* líneas de velocidad */
@@ -302,7 +400,7 @@ function paintBody(ctx, def, parts, flash) {
     else if (p.h >= 4 && p.w >= 3) Pix.shade(ctx, p.x, p.y, p.w, p.h, p.c);
     else Pix.r(ctx, p.x, p.y, p.w, p.h, p.c);
   }
-  Pix.grid(ctx, def._head, flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
+  if (!parts.noHead) Pix.grid(ctx, def._head, flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
 }
 
 /* pose neutra */

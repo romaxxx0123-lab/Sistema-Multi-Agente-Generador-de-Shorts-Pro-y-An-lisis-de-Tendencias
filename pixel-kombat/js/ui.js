@@ -265,7 +265,8 @@ const UI = {
     Pix.circle(ctx, 69, 150, 40, '#2a1a52');
     ctx.save();
     ctx.beginPath(); ctx.rect(7, 50, 124, 90); ctx.clip();
-    drawPose(ctx, hov, 69, 242, 1, 2, G.t % 44 < 22 ? undefined : {
+    const bu = hov.bust || { y: 242, sc: 2 };     // el Mustang se encuadra entero
+    drawPose(ctx, hov, 69, bu.y, 1, bu.sc, G.t % 44 < 22 ? undefined : {
       crouch: 0, punch: 0, kick: 0, cast: 0, walk: 0, air: false, ko: 0, bob: 1,
       block: false, flash: false, spin: false, kickHigh: false, punchUp: false
     });
@@ -289,7 +290,9 @@ const UI = {
       Pix.r(ctx, r.x, r.y, r.w, 2, p1 || p2 ? '#5a3d96' : '#241546');
       ctx.save();
       ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-      drawPose(ctx, def, r.x + r.w / 2, r.y + r.h + 64, 1, 1);
+      /* el coche no tiene cara: en la parrilla se enseña su morro */
+      if (def.body.kind === 'car') drawHeadIcon(ctx, def, r.x + Math.round(r.w / 2) - 13, r.y + 2);
+      else drawPose(ctx, def, r.x + r.w / 2, r.y + r.h + 64, 1, 1);
       ctx.restore();
       drawTypeIcon(ctx, def.type, r.x + 1, r.y + 1);
       this.frame(ctx, r.x, r.y, r.w, r.h, '#000');

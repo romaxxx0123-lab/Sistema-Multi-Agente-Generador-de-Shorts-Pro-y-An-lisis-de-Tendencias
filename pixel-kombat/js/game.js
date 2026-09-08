@@ -302,7 +302,11 @@
   }
 
   function pushApart(a, b) {
-    const d = b.x - a.x, min = 27;
+    /* el que ocupa más sitio (el coche) separa más */
+    const half = f => (f.def.wide ? f.def.wide / 2 : (f.def.hurt ? f.def.hurt.w / 2 : 12.5));
+    const d = b.x - a.x, min = Math.max(27, half(a) + half(b) + 3);
+    /* durante una embestida no se separan: si no, el que embiste nunca llega */
+    if (a.state === 'dash' || b.state === 'dash') return;
     if (Math.abs(d) < min && a.state !== 'ko' && b.state !== 'ko') {
       const push = (min - Math.abs(d)) / 2 * (d >= 0 ? 1 : -1);
       a.x = clamp(a.x - push * 0.6, 15, W - 15);
@@ -322,7 +326,7 @@
     w.drawBack(ctx);
     for (const f of [f1, f2]) {
       const alt = clamp(GROUND - f.y, 0, 60);
-      Pix.shadow(ctx, f.x, GROUND, Math.max(13, 34 - alt * 0.26));
+      Pix.shadow(ctx, f.x, GROUND, Math.max(13, (f.def.wide || 34) - alt * 0.26));
       drawAura(f);
       drawFighter(ctx, f);
     }

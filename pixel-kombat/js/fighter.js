@@ -82,6 +82,8 @@ class Fighter {
     this.koT = 0; this.dead = false;
     this.frozen = 0;
     this.dashT = 0; this.dashSp = null; this.dashCd = 0; this.dashHits = 0;
+    this.counterT = 0;                  // postura de contra del Chad
+    this.moonT = 0; this.moonSp = null; // moonwalk de Michael
     this.squash = 0;
     this.prev = {};
   }
@@ -89,6 +91,8 @@ class Fighter {
   get speed() { return this.def.speed * (this.slow > 0 ? 0.45 : 1); }
 
   hurtbox() {
+    const hu = this.def.hurt;                    // el coche es bajo y ancho
+    if (hu) return { x: this.x - hu.w / 2, y: this.y - hu.h, w: hu.w, h: hu.h };
     const low = this.crouching || (this.atk && this.atk.low);
     const h = low ? 62 : 91;
     return { x: this.x - 12, y: this.y - h, w: 25, h };
@@ -97,9 +101,13 @@ class Fighter {
   attackBox() {
     const a = this.atk;
     if (!a || !a.reach || !this.isActive()) return null;
+    const hu = this.def.hurt;
+    /* el coche pega con el parachoques: sale de su morro y a su altura */
+    const off = hu ? hu.w / 2 - 5 : 9;
+    const oy = hu ? Math.max(a.oy, -(hu.h - a.h)) : a.oy;
     return {
-      x: this.dir > 0 ? this.x + 9 : this.x - 9 - a.reach,
-      y: this.y + a.oy,
+      x: this.dir > 0 ? this.x + off : this.x - off - a.reach,
+      y: this.y + oy,
       w: a.reach,
       h: a.h
     };
@@ -144,6 +152,7 @@ class Fighter {
     if (this.guard > 0) this.guard--;
     if (this.slow > 0) this.slow--;
     if (this.dashCd > 0) this.dashCd--;
+    if (this.counterT > 0 && --this.counterT === 0) world.emote(this, 'duda');
     if (this.squash > 0) this.squash--;
     if (this.barkCd > 0) this.barkCd--;
     if (this.catchT > 0) this.catchT--;
@@ -192,6 +201,13 @@ class Fighter {
       return;
     }
     if (this.state === 'dash') { this.dashUpdate(world, opp); return; }
+    if (this.state === 'moon') {
+      /* el paso se corta al pulsar cualquier cosa, y esa pulsación
+         se aprovecha en este mismo fotograma: nada de tragarse teclas */
+      if (inp.punch || inp.kick || inp.special || inp.super || inp.up) {
+        this.state = 'idle'; this.vx = 0; this.moonT = 0;
+      } else { this.moonUpdate(world); return; }
+    }
     if (this.state === 'attack') { this.attackUpdate(world); this.physics(world); return; }
 
     /* ---- estado libre ---- */
@@ -306,15 +322,39 @@ class Fighter {
     if (world.t % 3 === 0) world.dust(this.x - this.dir * 6, this.y - 2, this.dir);
     if (this.dashCd <= 0 && this.dashHits > 0 && opp && opp.state !== 'ko' &&
       aabb(this.hurtbox(), opp.hurtbox())) {
-      dealDamage(this, opp, sp.dmg, { push: 1.6, hitstun: 12, noBlockStop: true }, world);
+      dealDamage(this, opp, sp.dmg,
+        { push: 1.6, hitstun: 12, noBlockStop: true, unblockable: !!sp.unblockable }, world);
       this.dashHits--;
       this.dashCd = 7;
     }
-    if (--this.dashT <= 0 || this.x <= 14 || this.x >= W - 14) {
+    const chocado = this.x <= 14 || this.x >= W - 14;
+    if (--this.dashT <= 0 || chocado) {
       this.state = 'idle';
       this.vx = 0;
       this.vy = sp.air ? this.vy : 0;
+      /* SE VA DEL MEET: si acaba estampado contra el borde, se lo come él */
+      if (sp.recoil && chocado) {
+        this.hp = Math.max(1, this.hp - sp.recoil);
+        world.impact(this.x, this.y - 46, true);
+        world.burst(this.x, this.y - 46, 22, '#f0932b');
+        world.popup(this.x, this.y - 106, '-' + sp.recoil + ' CHAPA', '#f0932b');
+        world.shake = 14;
+        world.say('SE FUE DEL MEET. COMO SIEMPRE.', 190, '#c0392b');
+        this.squash = 8;
+        Sfx.bigHit();
+      }
     }
+  }
+
+  /* moonwalk: se desliza hacia atrás sin dejar de encarar al rival.
+     Mientras dura, los proyectiles le pasan de largo y carga barra. */
+  moonUpdate(world) {
+    const sp = this.moonSp;
+    this.vx = -this.dir * (sp.speed || 1.5);
+    this.physics(world);
+    this.meter = Math.min(100, this.meter + (sp.gain || 0.5));
+    if (world.t % 5 === 0) world.dust(this.x + this.dir * 8, GROUND - 1, -this.dir);
+    if (--this.moonT <= 0) { this.state = 'idle'; this.vx = 0; }
   }
 
   physics(world) {
@@ -355,7 +395,7 @@ class Fighter {
 
   animParams() {
     const A = {
-      crouch: 0, punch: 0, kick: 0, kickHigh: false, cast: 0, walk: 0, lean: 0, nose: 0, baby: false,
+      crouch: 0, punch: 0, kick: 0, kickHigh: false, cast: 0, walk: 0, lean: 0, nose: 0, baby: false, pose: false,
       air: false, ko: 0, bob: 0, block: false, spin: false, punchUp: false,
       flash: this.flash > 0 && this.flash % 4 < 2
     };
@@ -380,12 +420,17 @@ class Fighter {
       else if (a.anim === 'cast') A.cast = Math.max(0, p);
       else if (a.anim === 'taunt') { A.cast = Math.max(0, p); A.bob = this.atkT % 8 < 4 ? 1 : 0; }
       if (a.low) A.crouch = 9;
+    } else if (this.state === 'moon') {
+      A.walk = this.t * 0.34; A.lean = -4; A.crouch = 2;
     } else if (this.state === 'walk') {
       A.walk = this.t * 0.26;
     } else if (this.state === 'win') {
       A.bob = Math.sin(this.t / 6) > 0 ? 1 : 0;
       A.punch = Math.sin(this.t / 6) > 0 ? 0.5 : 0.2;
       A.punchUp = true;
+    } else if (this.counterT > 0) {
+      A.pose = true; A.lean = 2;                  // brazos cruzados, esperando
+      A.bob = this.t % 14 < 7 ? 1 : 0;
     } else {
       A.bob = Math.sin(this.t / 16) > 0.5 ? 1 : 0;
       A.walk = Math.sin(this.t / 22) * 0.22;      // respiración: los brazos se mecen
@@ -400,6 +445,22 @@ class Fighter {
 function dealDamage(src, tgt, dmg, opts, world) {
   opts = opts || {};
   if (!tgt || tgt.state === 'ko' || tgt.dead) return false;
+
+  /* POSE: el Chad no bloquea, devuelve. Se gasta con el primer golpe. */
+  if (tgt.counterT > 0 && !opts.noCounter && src.state !== 'ko') {
+    tgt.counterT = 0;
+    world.hitstop = 9; world.flash = 10; world.shake = 11;
+    world.popup(tgt.x, tgt.y - 112, '¡CONTRA!', '#d7dbe6');
+    world.emote(tgt, 'chulo');
+    world.duel(tgt, src, 'nullify', 'NO.');
+    world.parts.push(new Shock(tgt.x, tgt.y - 52, '#e8ecf2', 78, 24));
+    Sfx.superEff();
+    /* al dinero le tiene especial manía: eso se lo devuelve doble */
+    const rico = src.def.type === 'dinero';   /* la frase ya sale en el rótulo */
+    dealDamage(tgt, src, Math.round(dmg * (rico ? 2.2 : 1.5)) + 4,
+      { push: 3.4, hitstun: 24, unblockable: true, noCounter: true }, world);
+    return false;
+  }
 
   const blocked = !opts.unblockable && tgt.canBlock(src);
   const tm = typeMult(src.def.type, tgt.def.type);      // ventaja de tipo estilo Pokémon
