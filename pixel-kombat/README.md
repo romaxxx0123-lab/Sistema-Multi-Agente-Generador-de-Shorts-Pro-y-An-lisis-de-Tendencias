@@ -296,6 +296,15 @@ subir los píxeles **del personaje**:
   hombros a los pies. Ahora el traje cierra bajo la corbata y asoma el puño
   blanco, la camisa lleva tapeta, botones y mangas remangadas, la bata tiene
   solapas y bolsillos con bolis, y la casaca de arquero tiene franja y dorsal.
+- **Luz de canto**: un píxel claro en el borde de delante y uno oscuro en el de
+  atrás, en pecho, cadera, hombros y las dos piernas. Cuatro rectángulos por
+  pieza que convierten un montón de cajas apiladas en un cuerpo con volumen, y
+  que además separan la pierna de delante de la de atrás.
+- **Los adornos del pecho viven entre x -7 y +6**, porque fuera de ahí los
+  brazos los tapan a medias y lo que se ve es una astilla de color suelta que
+  parece un fallo. Ese era el motivo de los parches, bolsillos y bolis raros.
+- **La mano crece con el brazo** y va centrada en él. Antes era siempre de 8px:
+  en un brazo fino parecía un puño y en el del Chad, un muñón con escalón.
 - **Los brazos se despegan del cuerpo sin cambiar de color**: llevan un filo de
   luz por fuera y una costura oscura por dentro. Antes se pintaban de un tono
   más claro y salían brazos grises pegados a una cazadora negra, como si fueran

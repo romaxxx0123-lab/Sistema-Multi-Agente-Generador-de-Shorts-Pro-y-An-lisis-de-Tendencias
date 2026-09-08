@@ -65,8 +65,8 @@ function bodyRects(def, A) {
   const bw = B.huge ? 5 : 0;
   const CX = -11 - bw, CW = 22 + bw * 2;        // pecho
   const SX = -14 - bw * 2, SW = 27 + bw * 4;    // hombros
-  const HX = -9 - bw, HW = 19 + bw * 2;         // cadera
-  const AXB = -14 - bw * 2, AXF = 7 + bw * 2;   // dónde nacen los brazos
+  const HX = -9 - Math.round(bw / 2), HW = 19 + bw;   // cadera, más estrecha que el pecho
+  const AXB = -14 - bw * 2, AXF = 7 + bw;       // dónde nacen los brazos
   const shinH = 15 - cr * 0.5 - sh, thighH = 16 - cr * 0.6 - sh;
   const hipY = -(shinH + thighH);
   const hipH = 10;
@@ -103,19 +103,30 @@ function bodyRects(def, A) {
     add(1 + sw, hipY, 9 + bw, thighH, legC);
     add(2 + sw, hipY + thighH, 8 + bw, shinH, legC);
     add(1 + sw, -4, 10 + bw, 4, bootF);
+    /* canto de las piernas: la de delante recibe la luz, la de atrás no */
+    add(9 + bw + sw, hipY, 1, thighH, tint(legC, 0.24));
+    add(9 + bw + sw, hipY + thighH, 1, shinH, tint(legC, 0.24));
+    add(-10 - bw - sw, hipY, 1, thighH, tint(legD, -0.34));
+    add(-10 - bw - sw, hipY + thighH, 1, shinH, tint(legD, -0.34));
+    add(1 + sw, hipY, 1, thighH, tint(legC, -0.34));
   }
 
   /* ---- tronco ---- */
   add(HX + lean * 0.4, hipY - hipH, HW, hipH + 2, tint(B.main, -0.10));
   add(HX + lean * 0.4, hipY + 1, HW, 1, tint(legD, -0.30));   // bajo del pantalón
-  add(CX + lean * 0.7, chestY, CW, chestH, B.main);
+  if (B.huge) {                                  // la V del culturista
+    add(CX + lean * 0.7, chestY, CW, 7, B.main);
+    add(CX + 3 + lean * 0.7, chestY + 7, CW - 6, 6, B.main);
+    add(CX + 6 + lean * 0.7, chestY + 13, CW - 12, chestH - 13, B.main);
+  } else add(CX + lean * 0.7, chestY, CW, chestH, B.main);
   add(SX + lean, shY + 1, SW, 7, tint(B.main, 0.08));
   add(CX + lean, shY, CW, 1, tint(B.main, 0.20));
   add(-4 + lean, neckY, 8, 5, tint(skin, -0.12));
-  if (B.huge) {                                  // trapecios: suben del hombro al cuello
-    add(-11 + lean, neckY + 2, 22, 4, tint(skin, -0.06));
-    add(-8 + lean, neckY, 16, 3, tint(skin, 0.04));
-    add(SX + lean, shY + 1, SW, 2, tint(skin, 0.12));
+  if (B.huge) {          // trapecios: suben en rampa del hombro al cuello
+    add(SX + 3 + lean, shY, SW - 6, 3, tint(skin, -0.08));
+    add(-13 + lean, neckY + 3, 26, 4, tint(skin, -0.03));
+    add(-9 + lean, neckY, 18, 4, tint(skin, 0.05));
+    add(-5 + lean, neckY, 10, 2, tint(skin, -0.14));   // hueco del cuello
   }
 
   const st = B.style;
@@ -145,7 +156,7 @@ function bodyRects(def, A) {
     add(-13 + lx, shY, 7, 2, tint(B.dark, 0.28));
     add(6 + lx, shY, 7, 2, tint(B.dark, 0.28));
     add(-1 + lx, shY + 4, 2, 24, B.light);              // cremallera
-    add(-2 + lx, chestY + 9, 4, 2, B.accent);           // tirador
+    add(-2 + lx, chestY + 9, 3, 2, tint(B.accent, -0.35));   // tirador
     add(-7 + lx, shY + 1, 1, 26, tint(B.dark, -0.4));   // costura del paño
     add(6 + lx, shY + 1, 1, 26, tint(B.dark, -0.4));
     add(6 + lx, chestY + 11, 5, 2, tint(B.dark, -0.4)); // bolsillo
@@ -177,8 +188,8 @@ function bodyRects(def, A) {
     add(-2 + lx, shY + 2, 4, chestH + 6, B.light);      // tapeta
     for (let i = 0; i < 4; i++)
       add(-1 + lx, shY + 6 + i * 5, 2, 2, tint(B.dark, -0.2));   // botones
-    add(4 + lx, chestY + 6, 6, 6, tint(B.main, -0.14));  // bolsillo
-    add(4 + lx, chestY + 6, 6, 1, tint(B.main, 0.18));
+    add(1 + lx, chestY + 6, 6, 6, tint(B.main, -0.14));  // bolsillo
+    add(1 + lx, chestY + 6, 6, 1, tint(B.main, 0.18));
     add(-11 + lx, hipY - hipH - 1, 23, 2, tint(B.dark, -0.15));  // bajo dentro del pantalón
   } else if (st === 'stage') {                   // traje de escenario
     add(-11 + lx, chestY, 22, 10, B.main);              // top
@@ -187,31 +198,37 @@ function bodyRects(def, A) {
     add(4 + lx, shY + 1, 4, 4, B.main);
     add(-11 + lx, chestY + 9, 22, 1, tint(B.main, -0.4));  // bajo del top
     add(-6 + lx, chestY + 10, 13, 7, tint(skin, -0.05));   // cintura
-    add(-6 + lx, chestY + 10, 13, 1, tint(skin, -0.28));
-    add(-10 + Math.round(lean * 0.4), hipY - hipH - 1, 21, 3, B.accent);  // cinturón
+    add(-6 + lx, chestY + 10, 13, 1, tint(skin, -0.40));
+    add(-6 + lx, chestY + 16, 13, 1, tint(skin, -0.34));
+    add(-10 + Math.round(lean * 0.4), hipY - hipH - 1, 21, 3, tint(B.accent, -0.42));  // cinturón
     add(-10 + Math.round(lean * 0.4), hipY - hipH + 2, 21, hipH, B.main);
     for (let i = -10; i < 11; i += 5) add(i, hipY, 4, 6, B.light);
     add(-4 + lx, chestY + 3, 8, 2, B.accent);
-  } else if (st === 'labcoat') {                 // bata de laboratorio
-    add(-11 + lx, chestY, 22, chestH, B.light);
-    add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 7, B.light);
-    add(-11 + lx, chestY, 22, 2, tint(B.light, 0.18));
-    add(-6 + lx, shY, 12, 3, B.accent);                  // camisa que asoma
-    add(-3 + lx, shY + 2, 5, 6, B.accent);               // corbatín
-    /* solapas de la bata, escalonadas hacia el cuello */
-    add(-9 + lx, shY + 1, 4, 9, tint(B.light, -0.16));
-    add(-6 + lx, shY + 1, 3, 5, tint(B.light, -0.16));
-    add(5 + lx, shY + 1, 4, 9, tint(B.light, -0.16));
-    add(3 + lx, shY + 1, 3, 5, tint(B.light, -0.16));
-    add(-1 + lx, shY + 8, 2, chestH + 4, tint(B.light, -0.24));  // abertura central
+  } else if (st === 'labcoat') {
+    /* Bata. Antes era un mandil: un rectángulo blanco colgando de los
+       hombros. Lo que la hace bata es que cuerpo y mangas van del mismo
+       paño, que las solapas dibujan una V y que el cruce va descentrado. */
+    add(CX + lx, chestY, CW, chestH, B.main);
+    add(HX + Math.round(lean * 0.4), hipY - hipH, HW, hipH + 8, B.main);   // faldón
+    add(CX + lx, chestY, CW, 2, tint(B.main, 0.18));
+    add(-6 + lx, shY, 12, 3, B.accent);                        // camisa
+    add(-3 + lx, shY + 2, 5, 5, tint(B.accent, -0.32));        // corbata
+    /* solapas: dos escalones hacia el cuello, una a cada lado */
+    add(-10 + lx, shY + 1, 5, 11, B.light);
+    add(-6 + lx, shY + 1, 3, 6, B.light);
+    add(5 + lx, shY + 1, 5, 11, B.light);
+    add(3 + lx, shY + 1, 3, 6, B.light);
+    add(-10 + lx, shY + 1, 5, 1, tint(B.light, -0.22));
+    add(5 + lx, shY + 1, 5, 1, tint(B.light, -0.22));
+    /* el cruce de la bata, descentrado, con sus botones */
+    add(2 + lx, shY + 9, 1, chestH + 5, tint(B.main, -0.30));
     for (let i = 0; i < 3; i++)
-      add(1 + lx, chestY + 6 + i * 5, 2, 2, tint(B.dark, -0.1)); // botones
-    add(-10 + lx, chestY + 10, 7, 7, tint(B.light, -0.10));      // bolsillos
-    add(4 + lx, chestY + 10, 7, 7, tint(B.light, -0.10));
-    add(-10 + lx, chestY + 9, 7, 2, tint(B.dark, -0.15));        // costura de arriba
-    add(4 + lx, chestY + 9, 7, 2, tint(B.dark, -0.15));
-    add(-9 + lx, chestY + 11, 2, 4, B.dark);                     // bolis en el bolsillo
-    add(-6 + lx, chestY + 11, 2, 4, B.accent);
+      add(4 + lx, chestY + 5 + i * 5, 2, 2, tint(B.dark, -0.2));
+    /* bolsillo con los bolis asomando */
+    add(-6 + lx, chestY + 8, 2, 5, B.dark);
+    add(-3 + lx, chestY + 8, 2, 5, tint(B.accent, -0.25));
+    add(-7 + lx, chestY + 11, 6, 6, tint(B.main, -0.11));
+    add(-7 + lx, chestY + 10, 6, 1, tint(B.dark, -0.25));
   } else if (st === 'punk') {                    // cazadora con parches
     add(-11 + lx, chestY, 22, chestH, B.main);
     add(-5 + lx, shY + 2, 10, chestH + 5, tint(B.main, 0.22));
@@ -219,10 +236,10 @@ function bodyRects(def, A) {
     add(8 + lx, shY + 4, 5, 4, B.light);
     add(-13 + lx, shY + 4, 5, 1, tint(B.light, 0.3));
     add(8 + lx, shY + 4, 5, 1, tint(B.light, 0.3));
-    add(-10 + lx, chestY + 5, 5, 5, B.light);
-    add(4 + lx, chestY + 10, 5, 4, B.accent);
+    add(-7 + lx, chestY + 4, 5, 5, B.light);
+    add(1 + lx, chestY + 10, 5, 4, B.accent);
     add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.dark);
-    for (let i = -9; i < 10; i += 5) add(i, hipY - hipH, 3, 3, B.accent);
+    for (let i = -7; i < 7; i += 5) add(i, hipY - hipH, 3, 3, B.accent);
   } else if (st === 'keeper') {                  // camiseta de arquero
     add(-11 + lx, chestY, 22, chestH, B.main);
     add(-11 + lx, chestY, 22, 2, tint(B.main, 0.22));
@@ -235,17 +252,25 @@ function bodyRects(def, A) {
     add(-11 + lx, hipY - hipH - 2, 23, 2, tint(B.dark, -0.2));
     add(-10 + Math.round(lean * 0.4), hipY - hipH, 21, hipH + 2, B.dark);
   } else if (st === 'torso') {                   // torso desnudo: pectorales y tableta
-    add(CX + lx, chestY, CW, chestH, skin);
-    add(CX + lx, chestY, CW, 3, tint(skin, 0.20));
-    add(CX + 1 + lx, chestY + 3, CW / 2 - 2, 8, tint(skin, 0.24));
-    add(1 + lx, chestY + 3, CW / 2 - 2, 8, tint(skin, 0.34));
-    add(-1 + lx, chestY + 2, 2, chestH - 3, tint(skin, -0.42));
-    for (let i = 0; i < 3; i++) {
-      add(CX + 3 + lx, chestY + 11 + i * 3, CW / 2 - 4, 2, tint(skin, -0.34));
-      add(2 + lx, chestY + 11 + i * 3, CW / 2 - 4, 2, tint(skin, -0.34));
+    const hw = Math.round(CW / 2) - 2;
+    add(CX + lx, chestY, CW, 7, skin);           // misma V que la silueta
+    add(CX + 3 + lx, chestY + 7, CW - 6, 6, skin);
+    add(CX + 6 + lx, chestY + 13, CW - 12, chestH - 13, skin);
+    /* menos detalle y más contraste: lo que hace el volumen es la
+       silueta en V, no llenar el pecho de rayas */
+    add(CX + 1 + lx, chestY + 1, CW - 2, 4, tint(skin, 0.16));   // luz del pecho
+    add(CX + 2 + lx, chestY + 7, hw, 2, tint(skin, -0.40));      // bajo del pectoral
+    add(2 + lx, chestY + 7, hw, 2, tint(skin, -0.40));
+    add(-1 + lx, chestY + 1, 2, 7, tint(skin, -0.44));           // esternón
+    for (let i = 0; i < 3; i++) {                                // tableta
+      const w = 6 - i, y = chestY + 10 + i * 3;
+      add(-w - 2 + lx, y, w, 1, tint(skin, -0.34));
+      add(2 + lx, y, w, 1, tint(skin, -0.34));
     }
+    add(-1 + lx, chestY + 9, 2, chestH - 10, tint(skin, -0.30));
     add(HX + Math.round(lean * 0.4), hipY - hipH, HW, hipH + 2, B.dark);
-    add(HX + Math.round(lean * 0.4), hipY - hipH, HW, 3, B.accent);
+    add(HX + Math.round(lean * 0.4), hipY - hipH, HW, 2, tint(B.dark, -0.45));
+    add(-3 + Math.round(lean * 0.4), hipY - hipH, 6, 2, tint(B.accent, -0.3));  // hebilla
   } else if (st === 'thriller') {                // cazadora roja con vivos negros
     add(-11 + lx, chestY, 22, chestH, B.main);
     add(-11 + lx, chestY, 22, 2, tint(B.main, 0.25));
@@ -266,6 +291,34 @@ function bodyRects(def, A) {
     add(-11 + lx, hipY - hipH - 3, 23, 1, tint(B.main, 0.2));
   }
 
+  /* ---- luz de canto ----
+     Un píxel claro en el borde de delante y uno oscuro en el de atrás.
+     Es lo que convierte un montón de cajas apiladas en un cuerpo con
+     volumen, y cuesta cuatro rectángulos. Va después de la prenda para
+     que la recorte a ella también, y antes de los brazos, que van
+     delante y llevan la suya. */
+  const cLx = Math.round(lean * 0.7), hLx = Math.round(lean * 0.4);
+  const canto = (x, y, h, c) => {
+    add(x + CW - 1, y, 1, h, tint(c, 0.24));
+    add(x, y, 1, h, tint(c, -0.32));
+  };
+  const pielArriba = (st === 'torso');
+  const tonoTorso = pielArriba ? skin : B.main;
+  if (B.huge) {                                  // sigue la V del pecho
+    add(CX + CW - 1 + cLx, chestY, 1, 7, tint(tonoTorso, 0.24));
+    add(CX + cLx, chestY, 1, 7, tint(tonoTorso, -0.32));
+    add(CX + CW - 4 + cLx, chestY + 7, 1, 6, tint(tonoTorso, 0.24));
+    add(CX + 3 + cLx, chestY + 7, 1, 6, tint(tonoTorso, -0.32));
+    add(CX + CW - 7 + cLx, chestY + 13, 1, chestH - 13, tint(tonoTorso, 0.24));
+    add(CX + 6 + cLx, chestY + 13, 1, chestH - 13, tint(tonoTorso, -0.32));
+  } else canto(CX + cLx, chestY, chestH, tonoTorso);
+  add(HX + HW - 1 + hLx, hipY - hipH, 1, hipH + 2, tint(B.main, 0.20));
+  add(HX + hLx, hipY - hipH, 1, hipH + 2, tint(B.main, -0.30));
+  add(SX + SW - 1 + Math.round(lean), shY + 1, 1, 7, tint(B.main, 0.24));
+  add(SX + Math.round(lean), shY + 1, 1, 7, tint(B.main, -0.32));
+  /* y una sombra donde el cuello se mete en los hombros */
+  add(-5 + Math.round(lean), shY, 10, 1, tint(skin, -0.42));
+
   /* ---- brazos (manga corta = antebrazo de piel) ----
      La manga lleva un tono propio: si va del mismo color que el torso,
      el luchador se lee como una losa y no como alguien con brazos. */
@@ -275,52 +328,57 @@ function bodyRects(def, A) {
      de debajo: si no, salen brazos grises sobre una prenda negra */
   const sleeveBase = B.sleeve ||
     ((st === 'jacket' || st === 'suit' || st === 'thriller') ? mix(B.main, B.dark, 0.6) : B.main);
-  const sleeveF = st === 'torso' ? skin : tint(sleeveBase, 0.05);
-  const sleeveB = st === 'torso' ? tint(skin, -0.16) : tint(B.sleeveDark || B.dark, -0.05);
+  const sleeveF = st === 'torso' ? tint(skin, 0.16) : tint(sleeveBase, 0.05);
+  const sleeveB = st === 'torso' ? tint(skin, -0.30) : tint(B.sleeveDark || B.dark, -0.05);
   const foreC = shortSleeve ? skin : sleeveF;
   const foreD = shortSleeve ? tint(skin, -0.18) : sleeveB;
   /* el puño solo se ve si contrasta: en una bata blanca, B.light es
      blanco sobre blanco y desaparece, así que ahí se oscurece */
-  const cuffC = shortSleeve ? tint(B.main, -0.22)
+  const cuffC = st === 'torso' ? null : shortSleeve ? tint(B.main, -0.22)
     : (Math.abs(lum(B.light) - lum(sleeveF)) > 0.20 ? B.light
       : tint(sleeveF, lum(sleeveF) > 0.5 ? -0.30 : 0.34));
   const hand = B.gloves || skin;                 // guantazos de portero
   const handB = B.gloveOne ? skin : hand;        // Michael solo lleva uno
-  const hs = B.gloves ? 10 : 8;
+  const hs = aw + (B.gloves ? 4 : 2);            // el puño, algo más ancho que el brazo
+  const hoff = Math.floor((hs - aw) / 2);        // y centrado en él
   const ay = shY + 2;
 
   /* un brazo entero: hombro con luz, manga, puño y mano */
+  const bare = (st === 'torso');
   const arm = (x, y, front) => {
     const up = front ? sleeveF : sleeveB;
     const fo = front ? foreC : foreD;
     const hd = front ? hand : tint(handB, -0.15);
     add(x, y, aw, 11, up);
-    add(x, y, aw, 2, tint(up, 0.22));                 // redondeo del hombro
+    add(x, y, aw, 2, tint(up, bare ? 0.10 : 0.22));   // redondeo del hombro
     add(x, y + 11, aw, 10, fo);
     /* filo de luz por fuera y costura por dentro: así el brazo se
        despega del torso sin tener que pintarlo de otro color */
     add(front ? x + aw - 1 : x, y + 1, 1, 19, tint(up, 0.26));
-    add(front ? x : x + aw - 1, y + 1, 1, 19, tint(up, -0.30));
-    if (shortSleeve) add(x, y + 9, aw, 2, cuffC);     // donde acaba la manga
-    else add(x, y + 15, aw, 3, cuffC);                // puño
-    add(x, y + 19, hs, hs, hd);
+    add(front ? x : x + aw - 1, y + 1, 1, 19, tint(up, bare ? -0.44 : -0.30));
+    if (cuffC) {
+      if (shortSleeve) add(x, y + 9, aw, 2, cuffC);   // donde acaba la manga
+      else add(x, y + 15, aw, 3, cuffC);              // puño
+    }
+    add(x - hoff, y + 19, hs, hs, hd);
+    add(x - hoff, y + 19, hs, 1, tint(hd, -0.34));   // muñeca: separa mano de brazo
     if (B.gloves && (front || !B.gloveOne)) {
-      add(x, y + 19, hs, 2, tint(hd, -0.35));              // caña del guante
-      add(x, y + 21, hs, 2, tint(hd, 0.30));
-      add(x + 3, y + 24, 1, 4, tint(hd, -0.30));           // separación de dedos
-      add(x + 6, y + 24, 1, 4, tint(hd, -0.30));
+      add(x - hoff, y + 19, hs, 2, tint(hd, -0.35));       // caña del guante
+      add(x - hoff, y + 21, hs, 2, tint(hd, 0.30));
+      add(x - hoff + 3, y + 24, 1, 4, tint(hd, -0.30));    // separación de dedos
+      add(x - hoff + 6, y + 24, 1, 4, tint(hd, -0.30));
     }
   };
 
   if (A.pose) {                                  // brazos cruzados: la POSE
     add(AXB + lx, ay + 2, aw, 9, sleeveB);
     add(-11, ay + 13, 22, aw + 2, foreD);
-    add(9, ay + 12, hs, hs, tint(handB, -0.15));
+    add(9 - hoff, ay + 12, hs, hs, tint(handB, -0.15));
     add(AXF + 2 + lx, ay + 2, aw, 9, sleeveF);
     add(AXF + 2 + lx, ay + 2, aw, 2, tint(sleeveF, 0.20));
     add(-9, ay + 6, 22, aw + 2, foreC);
     add(-9, ay + 6, 22, 1, tint(foreC, 0.18));
-    add(-14, ay + 5, hs, hs, hand);
+    add(-14 - hoff, ay + 5, hs, hs, hand);
   } else if (A.cast > 0) {
     add(-8, ay - 5, 15, aw, sleeveB);
     add(7, ay - 9, 9, 9, skin);
@@ -337,21 +395,21 @@ function bodyRects(def, A) {
       const off = Math.round(7 * -p);
       add(3 - off, ay + 4, aw, 10, sleeveF);
       add(3 - off, ay + 4, aw, 2, tint(sleeveF, 0.20));
-      add(1 - off, ay + 12, hs, hs, hand);
+      add(1 - off - hoff, ay + 12, hs, hs, hand);
     } else {
       const len = 11 + 21 * p;
       add(7, ay + 5 - up, 9, aw + 2, sleeveF);
       add(7, ay + 5 - up, 9, 2, tint(sleeveF, 0.20));
       add(16, ay + 5 - up, len - 9, aw + 2, foreC);
-      add(4 + len, ay + 5 - up, 4, aw + 2, cuffC);            // puño en la muñeca
-      add(7 + len, ay + 1 - up - (A.punchUp ? 5 : 0), hs, hs, hand);
+      if (cuffC) add(4 + len, ay + 5 - up, 4, aw + 2, cuffC);  // puño en la muñeca
+      add(7 + len - hoff, ay + 1 - up - (A.punchUp ? 5 : 0), hs, hs, hand);
     }
   } else if (A.block) {
     arm(AXB + lx, ay, false);
     add(5, ay - 1, aw + 2, 25, sleeveF);
     add(5, ay - 1, aw + 2, 5, tint(sleeveF, 0.22));
-    add(5, ay + 17, aw + 2, 3, cuffC);
-    add(6, ay + 21, hs, hs, hand);
+    if (cuffC) add(5, ay + 17, aw + 2, 3, cuffC);
+    add(6 - hoff, ay + 21, hs, hs, hand);
   } else {
     const sw = Math.round(Math.sin(A.walk) * 5);
     arm(AXB + lx, ay + sw, false);
