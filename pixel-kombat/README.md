@@ -327,6 +327,13 @@ subir los píxeles **del personaje**:
   calca en una pasada anterior a **todos** los rellenos, así que la ropa,
   que se pinta después, se comía el canto del brazo. Las piezas marcadas
   `top` se recalcan justo antes de su propio relleno.
+- **La patada salía del pecho**. La pierna que patea nacía en el centro del
+  torso y se estiraba recta en horizontal: un tronco atravesando la
+  chaqueta. Ahora nace en la cadera, tiene rodilla, la bota sigue el eje de
+  la espinilla y el conjunto se pinta **al final de todo**, por delante del
+  cuerpo, en vez de quedar enterrado bajo la ropa. Y en el aire las piernas
+  se recogen: antes los pies seguían llegando al suelo, así que un salto se
+  leía igual que estar de pie.
 - **Piernas de una pieza**. Muslo y gemelo eran dos cápsulas pegadas y cada
   una traía su propia tapa con luz: en la rodilla salía una banda clara que
   se leía como una costura. Ahora la pierna es una sola cápsula que se afina
