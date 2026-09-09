@@ -321,6 +321,24 @@ subir los píxeles **del personaje**:
   marcada; y el torso, que terminaba en escuadra justo encima, lleva el bajo
   redondeado. Si el pantalón y la pierna son casi el mismo gris se separan a la
   fuerza, o la mitad de abajo se lee como un bloque sin forma.
+- **El contorno de los brazos**. Los brazos salían del mismo paño que la
+  chaqueta y desaparecían dentro de ella: solo se veía un puño colgando de
+  una masa oscura. La causa es del motor, no del dibujo: el contorno se
+  calca en una pasada anterior a **todos** los rellenos, así que la ropa,
+  que se pinta después, se comía el canto del brazo. Las piezas marcadas
+  `top` se recalcan justo antes de su propio relleno.
+- **Piernas de una pieza**. Muslo y gemelo eran dos cápsulas pegadas y cada
+  una traía su propia tapa con luz: en la rodilla salía una banda clara que
+  se leía como una costura. Ahora la pierna es una sola cápsula que se afina
+  del muslo al tobillo y la rodilla es un brillo encima, que es lo que se ve
+  en una pierna de verdad. El pie era un pegote de seis píxeles de alto;
+  ahora es bajo, largo y con suela.
+- **La cadera va del paño del pantalón**, no del de la chaqueta, y sin
+  recolorearla a la fuerza. Había una regla que separaba el tono de la
+  cadera del de la pierna si se parecían demasiado; aclaraba tanto que en un
+  traje salía una cadera gris clara sobre pantalón oscuro, o sea
+  calzoncillos. Si un personaje lleva pantalón corto, eso es color suyo, no
+  invento del motor.
 - **Postura de combate**: los brazos ya no cuelgan rectos y muertos. El
   antebrazo se adelanta, el puño queda por delante de la cadera y las rodillas
   van algo flexionadas con el peso adelante. La pose en reposo es la firma de un

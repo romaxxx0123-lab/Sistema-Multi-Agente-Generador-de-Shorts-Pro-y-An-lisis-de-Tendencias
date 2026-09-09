@@ -60,6 +60,9 @@ function bodyRects(def, A) {
      Es lo que convierte dos ladrillos apilados en un brazo. */
   const cap = (x0, y0, x1, y1, r0, r1, c, d) => R.push({ k: 'c', x0, y0, x1, y1, r0, r1, c, d });
   const ell = (cx, cy, rx, ry, c, d) => R.push({ k: 'e', cx, cy, rx, ry, c, d });
+  /* por delante: lleva su propio contorno aunque la ropa se pinte después */
+  const capT = (x0, y0, x1, y1, r0, r1, c, d) => R.push({ k: 'c', top: 1, x0, y0, x1, y1, r0, r1, c, d });
+  const ellT = (cx, cy, rx, ry, c, d) => R.push({ k: 'e', top: 1, cx, cy, rx, ry, c, d });
   /* detalle: se pinta plano y sin contorno, por encima de la forma madre */
   const ellD = (cx, cy, rx, ry, c) => R.push({ k: 'e', det: 1, cx, cy, rx, ry, c });
   const addD = (x, y, w, h, c) => R.push({ det: 1, x, y, w, h, c });
@@ -119,10 +122,18 @@ function bodyRects(def, A) {
     pierna(-5.5 - bw / 2 - sw, legD, -1);
     pierna(5.5 + bw / 2 + sw, legC, 1);
     function pierna(cx, col, d) {
-      cap(cx, hipY + 1, cx + d * 0.5, hipY + thighH, rM, rK, col, d);
-      cap(cx + d * 0.5, hipY + thighH - 1, cx + d * 0.8, -5, rK, rT, col, d);
+      /* De una pieza. Muslo y gemelo eran dos cápsulas pegadas, y cada
+         una traía su propia tapa con luz: en la rodilla salía una banda
+         clara que se leía como una costura. La rodilla ahora es un brillo
+         encima, que es lo que se ve en una pierna de verdad. */
+      cap(cx, hipY + 1, cx + d * 0.8, -4.5, rM, rT, col, d);
+      ellD(cx + d * 0.45, hipY + thighH, rK * 0.9, 2.0, tint(col, 0.16));
+      ellD(cx + d * 0.45, hipY + thighH + 2.5, rK * 0.8, 1.2, tint(col, -0.22));
+      /* pie: bajo y largo. Era un pegote de seis píxeles de alto. */
       const bc = d > 0 ? bootF : boot;
-      cap(cx + d * 0.8 - 1, -3, cx + d * 0.8 + 4, -3, 3.2, 2.6, bc, d);  // pie
+      const fx = cx + d * 0.8;
+      cap(fx - 1.5, -2.2, fx + 3.5, -2, 2.4, 1.9, bc, d);
+      addD(Math.round(fx - 4), -1, 9, 1, tint(bc, -0.45));               // suela
     }
   }
 
@@ -140,17 +151,19 @@ function bodyRects(def, A) {
      entrepierna marcada en medio. */
   const hlx = lean * 0.4, hipW = HW / 2;
   const wW = Math.round(hipW - 2.4);           // semiancho a la altura del cinturón
-  const cadera = (c0, dy) => {
-    /* si el pantalón y la pierna son casi el mismo gris, la mitad de
-       abajo se lee como un bloque sin forma: se separan a la fuerza */
-    const c = Math.abs(lum(c0) - lum(legD)) > 0.10 ? c0
-      : tint(c0, lum(c0) > 0.5 ? -0.26 : 0.30);
+  const cadera = (c, dy) => {
+    /* Aquí había un recoloreo a la fuerza para que el pantalón no se
+       fundiera con la pierna. Aclaraba tanto que en un traje salía una
+       cadera gris clara sobre pantalón oscuro: calzoncillos. Fuera; si
+       hacen falta pantalones cortos, es color de personaje, no del motor. */
     const y = dy || 0, wy = hipY - hipH + 2.4 + y;
     cap(hlx - hipW + 2.4, wy, hlx + hipW - 2.4, wy, 2.4, 2.4, c, 1);
     cap(hlx - 2.2, wy, hlx - hipW + 4.7, hipY - 0.5 + y, 3.9, 4.7, c, -1);
     cap(hlx + 2.2, wy, hlx + hipW - 4.7, hipY - 0.5 + y, 3.9, 4.7, c, 1);
   };
-  cadera(tint(B.main, -0.10));
+  /* la cadera va del paño del pantalón, no del de la chaqueta: con el
+     color del torso salía un escalón de tono a media pierna */
+  cadera(tint(legC, -0.14));
   if (B.huge) {                                  // la V del culturista
     add(CX + lean * 0.7, chestY, CW, 7, B.main);
     add(CX + 3 + lean * 0.7, chestY + 7, CW - 6, 6, B.main);
@@ -378,10 +391,12 @@ function bodyRects(def, A) {
   const hand = B.gloves || skin;                 // guantazos de portero
   const handB = B.gloveOne ? skin : hand;        // Michael solo lleva uno
   const ay = shY + 2;
-  const rH = aw / 2, rC = aw / 2 - 0.6, rW = aw / 2 - 1.1;   // hombro, codo, muñeca
+  /* hombro, codo y muñeca. El antebrazo se afinaba hasta 3,8 px en un
+     brazo de 6: quedaba un palillo con una bola en la punta. */
+  const rH = aw / 2, rC = aw / 2 - 0.4, rW = aw / 2 - 0.9;
   /* el guantazo de portero engorda el puño; el guante de lentejuelas de
      Michael es un guante, no un manopla, así que ese no */
-  const rP = rW + 1.7 + (B.gloves && !B.gloveOne ? 1.4 : 0);
+  const rP = rW + 1.3 + (B.gloves && !B.gloveOne ? 1.4 : 0);
 
   /* Un puño no es un cuadrado, ni una bola del color del brazo. Lo que lo
      hace mano son los nudillos cogiendo la luz por arriba, dos surcos de
@@ -390,7 +405,7 @@ function bodyRects(def, A) {
      anillos negros y vuelve a ser un borrón. */
   const puno = (px, py, c, d, gl) => {
     const r = rP;
-    ell(px, py, r, r * 0.96, c, d);                                        // el bloque
+    ellT(px, py, r, r * 0.96, c, d);                                        // el bloque
     ellD(px - d * r * 0.58, py + r * 0.36, r * 0.40, r * 0.46, tint(c, 0.02));   // pulgar
     ellD(px + d * r * 0.10, py - r * 0.44, r * 0.80, r * 0.36, tint(c, 0.20));   // nudillos
     const gx = Math.round(px + d * r * 0.15), gy = Math.round(py - r * 0.05);
@@ -411,9 +426,9 @@ function bodyRects(def, A) {
     const fo = front ? foreC : foreD;
     const hd = front ? hand : tint(handB, -0.15);
     const d = front ? 1 : -1, cx = x + aw / 2;
-    cap(cx, y + 2, cx, y + 11, rH, rC, up, d);
-    cap(cx, y + 10, cx, y + 20, rC, rW, fo, d);
-    if (cuffC) cap(cx, shortSleeve ? y + 10 : y + 17, cx, shortSleeve ? y + 11 : y + 19,
+    capT(cx, y + 2, cx, y + 11, rH, rC, up, d);
+    capT(cx, y + 10, cx, y + 20, rC, rW, fo, d);
+    if (cuffC) capT(cx, shortSleeve ? y + 10 : y + 17, cx, shortSleeve ? y + 11 : y + 19,
       rC, rC - 0.2, cuffC, d);
     muneca(cx, y + 20.5, fo, d);
     puno(cx, y + 23.5, hd, d, B.gloves && (front || !B.gloveOne));
@@ -429,24 +444,24 @@ function bodyRects(def, A) {
        arriba lleva su propia línea de sombra debajo. */
     const rX = rW - 0.7;                                          // antebrazos algo más finos
     const yB = ay + 12 + rX, yF = ay + 8 - rX;                    // uno debajo del otro
-    cap(bsx, ay + 4, bsx + 1, yB - 2, rH, rC, sleeveB, -1);       // el hombro de atrás baja
-    cap(bsx + 2, yB + 2, 9, yB, rC, rX, foreD, -1);               // y su antebrazo cruza abajo
+    capT(bsx, ay + 4, bsx + 1, yB - 2, rH, rC, sleeveB, -1);       // el hombro de atrás baja
+    capT(bsx + 2, yB + 2, 9, yB, rC, rX, foreD, -1);               // y su antebrazo cruza abajo
     muneca(10.5, yB - 0.5, foreD, 1);
     puno(13, yB - 1, tint(handB, -0.15), 1, B.gloves && !B.gloveOne);
-    cap(fsx, ay + 3, fsx - 1, yF + 3, rH, rC, sleeveF, 1);        // el de delante, por encima
-    cap(fsx - 2, yF + 2, -9, yF, rC, rX, foreC, -1);
+    capT(fsx, ay + 3, fsx - 1, yF + 3, rH, rC, sleeveF, 1);        // el de delante, por encima
+    capT(fsx - 2, yF + 2, -9, yF, rC, rX, foreC, -1);
     addD(-9, Math.round(yF + rX), Math.round(fsx + 7), 1, OUTLINE);   // el canto de abajo
     muneca(-10.5, yF - 0.5, foreC, -1);
     puno(-13, yF - 1, hand, -1, B.gloves);
   } else if (A.cast > 0) {                       // las dos manos por delante
     /* el de atrás cruza el pecho, pero con el codo caído: recto se leía
        como una barra horizontal pintada encima de la chaqueta */
-    cap(bsx, ay + 3, bsx + 4, ay + 9, rH, rC, sleeveB, -1);
-    cap(bsx + 4, ay + 9, bsx + 14, ay + 5, rC, rW, foreD, -1);
+    capT(bsx, ay + 3, bsx + 4, ay + 9, rH, rC, sleeveB, -1);
+    capT(bsx + 4, ay + 9, bsx + 14, ay + 5, rC, rW, foreD, -1);
     muneca(bsx + 15, ay + 4.5, foreD, 1);
     puno(bsx + 17.5, ay + 4, tint(handB, -0.15), 1, B.gloves && !B.gloveOne);
-    cap(fsx, ay + 3, fsx + 5, ay - 1, rH, rC, sleeveF, 1);        // el de delante empuja
-    cap(fsx + 5, ay - 1, fsx + 12, ay - 4, rC, rW, foreC, 1);
+    capT(fsx, ay + 3, fsx + 5, ay - 1, rH, rC, sleeveF, 1);        // el de delante empuja
+    capT(fsx + 5, ay - 1, fsx + 12, ay - 4, rC, rW, foreC, 1);
     muneca(fsx + 13, ay - 4.5, foreC, 1);
     puno(fsx + 15.5, ay - 5, hand, 1, B.gloves);
   } else if (A.punch !== 0) {
@@ -459,8 +474,8 @@ function bodyRects(def, A) {
          de las costillas. Antes se cruzaba por delante del pecho y
          parecía un bulto pegado al torso. */
       const off = 7 * -p, hx = fsx - off;
-      cap(fsx, ay + 3, hx + 1, ay + 12, rH, rC, sleeveF, 1);
-      cap(hx + 1, ay + 11, hx, ay + 19, rC, rW, foreC, 1);
+      capT(fsx, ay + 3, hx + 1, ay + 12, rH, rC, sleeveF, 1);
+      capT(hx + 1, ay + 11, hx, ay + 19, rC, rW, foreC, 1);
       muneca(hx, ay + 20, foreC, 1);
       puno(hx, ay + 23, hand, 1, B.gloves);
     } else {
@@ -469,9 +484,9 @@ function bodyRects(def, A) {
          claramente más gordo que la muñeca, no un cono. */
       const len = 11 + 21 * p;
       const y = ay + 9 - up;
-      cap(fsx, y + 2, fsx + 6, y, rH, rC, sleeveF, 1);
-      cap(fsx + 6, y, 6 + len, y, rC, rC - 0.5, foreC, 1);
-      if (cuffC) cap(3 + len, y, 5 + len, y, rC - 0.1, rC - 0.4, cuffC, 1);
+      capT(fsx, y + 2, fsx + 6, y, rH, rC, sleeveF, 1);
+      capT(fsx + 6, y, 6 + len, y, rC, rC - 0.5, foreC, 1);
+      if (cuffC) capT(3 + len, y, 5 + len, y, rC - 0.1, rC - 0.4, cuffC, 1);
       muneca(7 + len, y, foreC, 1);
       puno(10 + len, y - (A.punchUp ? 4 : 0), hand, 1, B.gloves);
     }
@@ -479,9 +494,9 @@ function bodyRects(def, A) {
     arm(AXB + lx, ay, false);
     /* el codo baja y el antebrazo sube pegado delante: la guardia alta
        de toda la vida, no un brazo colgando */
-    cap(fsx, ay + 3, fsx + 1, ay + 12, rH, rC, sleeveF, 1);
-    cap(fsx + 2, ay + 12, fsx + 3, ay - 4, rC, rW, foreC, 1);
-    if (cuffC) cap(fsx + 2.6, ay + 2, fsx + 2.8, ay + 4, rC - 0.1, rC - 0.3, cuffC, 1);
+    capT(fsx, ay + 3, fsx + 1, ay + 12, rH, rC, sleeveF, 1);
+    capT(fsx + 2, ay + 12, fsx + 3, ay - 4, rC, rW, foreC, 1);
+    if (cuffC) capT(fsx + 2.6, ay + 2, fsx + 2.8, ay + 4, rC - 0.1, rC - 0.3, cuffC, 1);
     muneca(fsx + 3, ay - 5, foreC, 1);
     puno(fsx + 3, ay - 8, hand, 1, B.gloves);
   } else {
@@ -496,11 +511,11 @@ function bodyRects(def, A) {
       const hd = front ? hand : tint(handB, -0.15);
       const d = front ? 1 : -1;
       const cx = x + aw / 2, dx = front ? 2.5 : 1.5;   // el codo se adelanta
-      cap(cx, y + 2, cx + d * dx, y + 11, rH, rC, up, d);                  // hombro a codo
-      cap(cx + d * dx, y + 10, cx + d * dx * 1.4, y + 19, rC, rW, fo, d);  // codo a muñeca
+      capT(cx, y + 2, cx + d * dx, y + 11, rH, rC, up, d);                  // hombro a codo
+      capT(cx + d * dx, y + 10, cx + d * dx * 1.4, y + 19, rC, rW, fo, d);  // codo a muñeca
       if (cuffC) {
         const cy = shortSleeve ? y + 10 : y + 17;
-        cap(cx + d * dx * (shortSleeve ? 1.0 : 1.35), cy,
+        capT(cx + d * dx * (shortSleeve ? 1.0 : 1.35), cy,
             cx + d * dx * (shortSleeve ? 1.05 : 1.4), cy + 2, rC, rC - 0.2, cuffC, d);
       }
       const px = cx + d * dx * 1.5;
@@ -665,8 +680,20 @@ function paintBody(ctx, def, parts, flash) {
       ctx.fillRect(Math.round(p.x + o[0]), Math.round(p.y + o[1]), Math.round(p.w), Math.round(p.h));
   }
 
-  /* 2) relleno con volumen */
+  /* 2) relleno con volumen.
+     Las piezas marcadas `top` (los brazos) se recalcan aquí: su contorno
+     lo dibujó la pasada 1, pero la ropa se rellena después y se lo come.
+     Sin ese canto, un brazo del mismo paño que la chaqueta desaparecía
+     dentro de ella y solo se veía el puño colgando. */
   for (const p of R) {
+    if (p.top) {
+      if (p.k === 'c') Pix.capsule(ctx, p.x0, p.y0, p.x1, p.y1, p.r0 + 1, p.r1 + 1, OUTLINE);
+      else if (p.k === 'e') Pix.ellipse(ctx, p.cx, p.cy, p.rx + 1, p.ry + 1, OUTLINE);
+      else for (const o of OFF) {
+        ctx.fillStyle = OUTLINE;
+        ctx.fillRect(Math.round(p.x + o[0]), Math.round(p.y + o[1]), Math.round(p.w), Math.round(p.h));
+      }
+    }
     if (p.k === 'c') {
       if (flash) Pix.capsule(ctx, p.x0, p.y0, p.x1, p.y1, p.r0, p.r1, '#ffffff');
       else if (p.det) Pix.capsule(ctx, p.x0, p.y0, p.x1, p.y1, p.r0, p.r1, p.c);

@@ -664,7 +664,7 @@ const ROSTER = [
            '.......sbbbbbbbbs.......',
            '.......SSSSSSSSSS.......',
            '.......SSSSSSSSSS.......'],
-    body: { style: 'torso', main: '#8b919b', dark: '#3d424a', light: '#d2d8e0', accent: '#f0f3f8', skin: '#c6ccd6', legs: '#31353c', legsDark: '#1c1f24', bulk: true, huge: true },
+    body: { style: 'torso', main: '#8b919b', dark: '#3d424a', light: '#d2d8e0', accent: '#f0f3f8', skin: '#c6ccd6', legs: '#22252b', legsDark: '#131519', bulk: true, huge: true },
     special: { name: 'POSE', cost: 30, kind: 'contra', frames: 100, say: 'MIRA.' },
     superMove: { name: 'CHADAZO', cost: 100, kind: 'agarre', dmg: 30, range: 50, say: 'SÍ.' },
     quotes: ['SÍ.', 'NO HACÍA FALTA HABLAR.', 'GANÉ ANTES DE EMPEZAR.'],
