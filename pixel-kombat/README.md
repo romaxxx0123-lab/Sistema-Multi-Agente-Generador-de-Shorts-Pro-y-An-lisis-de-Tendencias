@@ -305,7 +305,22 @@ subir los píxeles **del personaje**:
   grueso en la cadera y fino en la rodilla, el antebrazo se afina hacia la
   muñeca, el puño es redondo y los hombros y el cuello ya no tienen esquinas.
   Cada forma lleva tres capas desplazadas hacia la luz, o sea que además tiene
-  volumen de cilindro.
+  volumen de cilindro, y ese desplazamiento va **perpendicular al eje** del
+  miembro: si no, un brazo horizontal sale iluminado por la punta en vez de por
+  encima y vuelve a leerse como una plancha.
+- **Manos que son manos**. Los puños seguían siendo cuadrados literales en
+  puñetazo, bloqueo, pose y lanzamiento: solo la guardia se había arreglado. Un
+  puño no es un cuadrado ni una bola del color del brazo, así que ahora lleva
+  nudillos cogiendo la luz por arriba, dos surcos de dedos, el pulgar asomando
+  por detrás y una muñeca más estrecha delante. Ese detalle va marcado como
+  `det`: se pinta plano y sin contorno, porque si cada elipse interior se calca
+  en negro la mano se llena de anillos y vuelve a ser un borrón.
+- **Cadera y bajo de la prenda**. Un rectángulo plano entre las dos piernas se
+  lee como un pañal, y eso es exactamente lo que parecía. La cadera es ahora una
+  cintura estrecha que se abre en dos lóbulos, uno por pierna, con la entrepierna
+  marcada; y el torso, que terminaba en escuadra justo encima, lleva el bajo
+  redondeado. Si el pantalón y la pierna son casi el mismo gris se separan a la
+  fuerza, o la mitad de abajo se lee como un bloque sin forma.
 - **Postura de combate**: los brazos ya no cuelgan rectos y muertos. El
   antebrazo se adelanta, el puño queda por delante de la cadera y las rodillas
   van algo flexionadas con el peso adelante. La pose en reposo es la firma de un

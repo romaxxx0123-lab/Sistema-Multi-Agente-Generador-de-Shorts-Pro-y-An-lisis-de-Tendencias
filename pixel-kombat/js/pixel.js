@@ -91,19 +91,34 @@ const Pix = {
     }
   },
 
-  /* cilindro: base oscura y dos capas desplazadas hacia la luz */
+  /* Cilindro: base oscura y dos capas desplazadas hacia la luz, que viene
+     de arriba y de delante. El desplazamiento era siempre en x, así que un
+     miembro horizontal salía iluminado por la punta en vez de por encima y
+     volvía a leerse como una plancha. Ahora va perpendicular al eje. */
+  volDir(x0, y0, x1, y1, d) {
+    let ax = x1 - x0, ay = y1 - y0;
+    const len = Math.sqrt(ax * ax + ay * ay);
+    if (len < 0.001) return { ux: d, uy: -0.4 };
+    ax /= len; ay /= len;
+    let ux = -ay, uy = ax;
+    if (ux * d * 0.55 + uy * -0.84 < 0) { ux = -ux; uy = -uy; }
+    return { ux, uy };
+  },
+
   capsuleVol(ctx, x0, y0, x1, y1, r0, r1, c, dir) {
-    const d = dir || 1;
+    const d = dir || 1, u = this.volDir(x0, y0, x1, y1, d);
     this.capsule(ctx, x0, y0, x1, y1, r0, r1, tint(c, -0.26));
-    this.capsule(ctx, x0 + d * 0.8, y0, x1 + d * 0.8, y1, r0 - 0.7, r1 - 0.7, c);
-    this.capsule(ctx, x0 + d * 1.7, y0, x1 + d * 1.7, y1, r0 - 1.8, r1 - 1.8, tint(c, 0.22));
+    this.capsule(ctx, x0 + u.ux * 0.8, y0 + u.uy * 0.8, x1 + u.ux * 0.8, y1 + u.uy * 0.8,
+      r0 - 0.7, r1 - 0.7, c);
+    this.capsule(ctx, x0 + u.ux * 1.7, y0 + u.uy * 1.7, x1 + u.ux * 1.7, y1 + u.uy * 1.7,
+      r0 - 1.8, r1 - 1.8, tint(c, 0.22));
   },
 
   ellipseVol(ctx, cx, cy, rx, ry, c, dir) {
     const d = dir || 1;
     this.ellipse(ctx, cx, cy, rx, ry, tint(c, -0.26));
-    this.ellipse(ctx, cx + d * 0.7, cy - 0.4, rx - 0.8, ry - 0.8, c);
-    this.ellipse(ctx, cx + d * 1.3, cy - 1.0, rx - 2.0, ry - 2.0, tint(c, 0.22));
+    this.ellipse(ctx, cx + d * 0.6, cy - 0.6, rx - 0.8, ry - 0.8, c);
+    this.ellipse(ctx, cx + d * 1.1, cy - 1.2, rx - 2.0, ry - 2.0, tint(c, 0.22));
   },
 
   /* Sombra de contacto. Era una raya de 2px que no se veía contra el
