@@ -95,7 +95,11 @@ function bodyRects(def, A) {
     const kl = 10 + 22 * A.kick;
     cap(0, ky - 4, kl * 0.55, ky - 1, rM, rK, legC, 1);       // muslo que sube
     cap(kl * 0.55, ky - 1, kl, ky, rK, rT, legC, 1);          // gemelo estirado
-    cap(kl, ky - 0.5, kl + 5, ky, 3.0, 2.4, bootF, 1);        // bota
+    /* la bota era un pegote oscuro del tamaño de la pantorrilla: ahora
+       tiene empeine claro y suela, que es lo que la hace zapato */
+    cap(kl, ky - 0.5, kl + 5, ky + 0.5, 3.0, 2.4, bootF, 1);
+    ellD(kl + 1.5, ky - 1.5, 2.6, 1.1, tint(bootF, 0.30));    // empeine
+    addD(Math.round(kl + 1), Math.round(ky + 2), 6, 1, tint(bootF, -0.35));   // suela
   } else if (A.air) {
     const rM = (9 + bw) / 2, rK = (7.4 + bw) / 2, rT = (5.4 + bw) / 2;
     cap(-5, hipY + 6, -9, hipY + thighH + 4, rM, rK, legD, -1);
@@ -418,15 +422,22 @@ function bodyRects(def, A) {
   const bsx = AXB + lx + aw / 2, fsx = AXF + lx + aw / 2;   // hombros
 
   if (A.pose) {                                  // brazos cruzados: la POSE
+    /* Los dos antebrazos se tocan, que es lo que hacen los brazos
+       cruzados, pero el contorno del de delante lo borraba el relleno del
+       de atrás (el contorno va en una pasada anterior). Sin ese canto los
+       dos se leían como una sola masa, así que se separan más y el de
+       arriba lleva su propia línea de sombra debajo. */
     const rX = rW - 0.7;                                          // antebrazos algo más finos
-    cap(bsx, ay + 4, bsx + 1, ay + 15, rH, rC, sleeveB, -1);      // el hombro de atrás baja
-    cap(bsx + 2, ay + 17, 9, ay + 15, rC, rX, foreD, -1);         // y su antebrazo cruza abajo
-    muneca(10.5, ay + 14.5, foreD, 1);
-    puno(13, ay + 14, tint(handB, -0.15), 1, B.gloves && !B.gloveOne);
-    cap(fsx, ay + 3, fsx - 1, ay + 11, rH, rC, sleeveF, 1);       // el de delante, por encima
-    cap(fsx - 2, ay + 8, -9, ay + 6, rC, rX, foreC, -1);
-    muneca(-10.5, ay + 5.5, foreC, -1);
-    puno(-13, ay + 5, hand, -1, B.gloves);
+    const yB = ay + 12 + rX, yF = ay + 8 - rX;                    // uno debajo del otro
+    cap(bsx, ay + 4, bsx + 1, yB - 2, rH, rC, sleeveB, -1);       // el hombro de atrás baja
+    cap(bsx + 2, yB + 2, 9, yB, rC, rX, foreD, -1);               // y su antebrazo cruza abajo
+    muneca(10.5, yB - 0.5, foreD, 1);
+    puno(13, yB - 1, tint(handB, -0.15), 1, B.gloves && !B.gloveOne);
+    cap(fsx, ay + 3, fsx - 1, yF + 3, rH, rC, sleeveF, 1);        // el de delante, por encima
+    cap(fsx - 2, yF + 2, -9, yF, rC, rX, foreC, -1);
+    addD(-9, Math.round(yF + rX), Math.round(fsx + 7), 1, OUTLINE);   // el canto de abajo
+    muneca(-10.5, yF - 0.5, foreC, -1);
+    puno(-13, yF - 1, hand, -1, B.gloves);
   } else if (A.cast > 0) {                       // las dos manos por delante
     /* el de atrás cruza el pecho, pero con el codo caído: recto se leía
        como una barra horizontal pintada encima de la chaqueta */
