@@ -321,6 +321,23 @@ subir los píxeles **del personaje**:
   marcada; y el torso, que terminaba en escuadra justo encima, lleva el bajo
   redondeado. Si el pantalón y la pierna son casi el mismo gris se separan a la
   fuerza, o la mitad de abajo se lee como un bloque sin forma.
+- **El personaje estaba construido de frente y peleaba de perfil**. Esto era
+  lo grande, y explica por qué ningún ajuste del brazo terminaba de
+  funcionar. Todo el cuerpo era simétrico respecto al eje: los brazos
+  nacían en −18,5 y +17,5, uno a cada lado; las piernas iban una al lado de
+  la otra con un hueco en medio; hombros, pecho y cadera centrados; y los
+  **dos brazos se pintaban por delante del torso**, del mismo grosor. Eso es
+  una foto de carnet. Encima, `ctx.scale(dir, 1)` espeja una figura
+  simétrica, o sea que el luchador nunca se giraba hacia el rival. Y sobre
+  esa vista frontal se dibujaban los ataques en perfil: el puñetazo y la
+  patada salían de lado. Un torso de frente no puede producir un puñetazo
+  de perfil, y por eso el brazo parecía pegado en vez de articulado.
+  Ahora el cuerpo va en **tres cuartos**: el brazo de atrás se monta aparte
+  y se pinta **antes que la ropa**, así que el torso lo tapa y sólo asoma el
+  canto del hombro y el antebrazo; va más fino, por escorzo; la línea de
+  hombros se acorta por el lado de atrás; y las piernas se solapan en
+  profundidad en vez de ir en paralelo, con la de atrás más al centro y algo
+  más delgada.
 - **Un brazo eran tres bolas encadenadas**. Tres fallos a la vez, todos en
   el mismo sitio. Uno: el contorno de una pieza `top` se calcaba justo antes
   de su relleno, así que el aro negro del puño caía **encima** del antebrazo
