@@ -321,6 +321,23 @@ subir los píxeles **del personaje**:
   marcada; y el torso, que terminaba en escuadra justo encima, lleva el bajo
   redondeado. Si el pantalón y la pierna son casi el mismo gris se separan a la
   fuerza, o la mitad de abajo se lee como un bloque sin forma.
+- **Un brazo eran tres bolas encadenadas**. Tres fallos a la vez, todos en
+  el mismo sitio. Uno: el contorno de una pieza `top` se calcaba justo antes
+  de su relleno, así que el aro negro del puño caía **encima** del antebrazo
+  y el del puño de la manga encima del brazo. Dos: cada tramo se rellenaba
+  entero antes del siguiente, y la tapa oscura del tramo de abajo se pintaba
+  sobre la luz del de arriba, o sea una costura en el codo y otra en la
+  muñeca. Tres: el estrechamiento del brazo era una resta fija (-0,4 y -0,9)
+  sobre su ancho, así que en un armario de `aw=11` el brazo iba de 11 a 9,2
+  píxeles —un cilindro— y con el puño casi del mismo grosor salían tres
+  óvalos iguales en fila. Ahora las piezas de un miembro van agrupadas: se
+  calca el contorno de todas, y luego se rellenan **por capas** (todas las
+  bases, todos los medios, todas las luces), así que dentro del miembro no
+  hay costuras; y el estrechamiento escala con el ancho. Con el torso
+  desnudo, además, brazo y antebrazo van del mismo tono: son la misma piel.
+- **Y el puñetazo no salía del hombro**. Arrancaba once píxeles por debajo,
+  a media altura del pecho, como si le brotara de las costillas. Sale de
+  donde nace el brazo en la guardia.
 - **El contorno de los brazos**. Los brazos salían del mismo paño que la
   chaqueta y desaparecían dentro de ella: solo se veía un puño colgando de
   una masa oscura. La causa es del motor, no del dibujo: el contorno se

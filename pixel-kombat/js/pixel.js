@@ -114,6 +114,26 @@ const Pix = {
       r0 - 1.8, r1 - 1.8, tint(c, 0.22));
   },
 
+  /* Una sola capa del cilindro. Sirve para pintar un miembro entero por
+     capas: primero la base oscura de TODAS sus piezas, luego los medios,
+     luego las luces. Pieza a pieza, la tapa oscura de cada tramo se
+     dibujaba encima del tramo anterior y dejaba una costura en el codo. */
+  capsuleCapa(ctx, x0, y0, x1, y1, r0, r1, c, dir, n) {
+    const d = dir || 1, u = this.volDir(x0, y0, x1, y1, d);
+    if (n === 0) this.capsule(ctx, x0, y0, x1, y1, r0, r1, tint(c, -0.26));
+    else if (n === 1) this.capsule(ctx, x0 + u.ux * 0.8, y0 + u.uy * 0.8,
+      x1 + u.ux * 0.8, y1 + u.uy * 0.8, r0 - 0.7, r1 - 0.7, c);
+    else this.capsule(ctx, x0 + u.ux * 1.7, y0 + u.uy * 1.7,
+      x1 + u.ux * 1.7, y1 + u.uy * 1.7, r0 - 1.8, r1 - 1.8, tint(c, 0.22));
+  },
+
+  ellipseCapa(ctx, cx, cy, rx, ry, c, dir, n) {
+    const d = dir || 1;
+    if (n === 0) this.ellipse(ctx, cx, cy, rx, ry, tint(c, -0.26));
+    else if (n === 1) this.ellipse(ctx, cx + d * 0.6, cy - 0.6, rx - 0.8, ry - 0.8, c);
+    else this.ellipse(ctx, cx + d * 1.1, cy - 1.2, rx - 2.0, ry - 2.0, tint(c, 0.22));
+  },
+
   ellipseVol(ctx, cx, cy, rx, ry, c, dir) {
     const d = dir || 1;
     this.ellipse(ctx, cx, cy, rx, ry, tint(c, -0.26));
