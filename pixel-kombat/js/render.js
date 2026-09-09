@@ -119,15 +119,16 @@ function bodyRects(def, A) {
        cadera, tiene rodilla, y se pinta al final de todo para que quede
        por delante del cuerpo en vez de enterrada bajo la ropa. */
     /* La rodilla iba casi en línea con la cadera y el pie: 15 grados de
-       codo. Eso no es una patada, es un cono. La rodilla sube cerca y la
-       espinilla sale casi horizontal: unos 60 grados de rodilla, que es
-       lo que se ve en una patada de verdad. */
+       codo: eso es un cono, no una patada. Pero doblarla del todo tampoco
+       vale: en una vista de perfil plana una Z de sesenta grados se lee
+       como una pierna rota, porque no hay profundidad que la explique.
+       Treinta y pico grados es lo que se lee como pierna estirada. */
     const k = A.kick, alto = A.kickHigh;
     const hx = 1 + bw / 2, hy = hipY + 2;
-    const kx = hx + 5 + 4 * k;
-    const ky = hy - (alto ? 9 + 13 * k : 2 + 3 * k);
-    const fx = kx + 10 + 20 * k;
-    const fy = ky + (alto ? 2 - 6 * k : 0);
+    const kx = hx + 8 + 6 * k;
+    const ky = hy - (alto ? 6 + 9 * k : 2 + 3 * k);
+    const fx = kx + 10 + 18 * k;
+    const fy = ky - (alto ? 2 + 5 * k : 0);
     patada = () => {
       capT(hx, hy, kx, ky, rM, rK, legC, 1);               // muslo desde la cadera
       capT(kx, ky, fx, fy, rK, rT, legC, 1);               // gemelo estirado
@@ -176,10 +177,19 @@ function bodyRects(def, A) {
        fundiera con la pierna. Aclaraba tanto que en un traje salía una
        cadera gris clara sobre pantalón oscuro: calzoncillos. Fuera; si
        hacen falta pantalones cortos, es color de personaje, no del motor. */
-    const y = dy || 0, wy = hipY - hipH + 2.4 + y;
+    /* Eran dos lóbulos redondos, uno por pierna, y entre ellos quedaba un
+       hueco claro con forma de V: un bigote, o un pañal. Ahora la cadera
+       es una pieza —cintura estrecha, caderas anchas— y la entrepierna se
+       marca con una ranura corta, que es lo que se ve de perfil. */
+    const y = dy || 0;
+    const wy = hipY - hipH + 2.4 + y;             // cintura
+    const by = hipY - 1.5 + y;                    // caderas
     cap(hlx - hipW + 2.4, wy, hlx + hipW - 2.4, wy, 2.4, 2.4, c, 1);
-    cap(hlx - 2.2, wy, hlx - hipW + 4.7, hipY - 0.5 + y, 3.9, 4.7, c, -1);
-    cap(hlx + 2.2, wy, hlx + hipW - 4.7, hipY - 0.5 + y, 3.9, 4.7, c, 1);
+    cap(hlx - hipW + 4.2, by, hlx + hipW - 4.2, by, 4.2, 4.2, c, 1);
+    addD(Math.round(hlx) - 1, Math.round(by - 1), 2, 5, tint(c, -0.50));          // entrepierna
+    const hw = Math.round(hipW - 3);
+    addD(Math.round(hlx - hipW + 2), Math.round(by + 3), hw, 1, tint(c, -0.34));  // bajo del short
+    addD(Math.round(hlx + 2), Math.round(by + 3), hw, 1, tint(c, -0.34));
   };
   /* la cadera va del paño del pantalón, no del de la chaqueta: con el
      color del torso salía un escalón de tono a media pierna */
@@ -382,9 +392,11 @@ function bodyRects(def, A) {
     add(CX + 3 + cLx, chestY + 7, 1, 6, tint(tonoTorso, -0.32));
     add(CX + CW - 7 + cLx, chestY + 13, 1, chestH - 13, tint(tonoTorso, 0.24));
     add(CX + 6 + cLx, chestY + 13, 1, chestH - 13, tint(tonoTorso, -0.32));
-  } else canto(CX + cLx, chestY, chestH, tonoTorso);
-  add(HX + HW - 1 + hLx, hipY - hipH, 1, hipH + 2, tint(B.main, 0.20));
-  add(HX + hLx, hipY - hipH, 1, hipH + 2, tint(B.main, -0.30));
+  } else canto(CX + cLx, chestY, chestH - 3, tonoTorso);   // -3: el bajo va redondeado
+  /* La cadera ya no lleva canto: estos dos rectángulos de un píxel se
+     dibujaban en los bordes RECTOS de la cadera vieja. Al redondearla se
+     quedaron fuera de ella, dos barras claras flotando sobre los muslos.
+     La forma redonda ya trae su propio volumen. */
   add(SX + SW - 1 + Math.round(lean), shY + 1, 1, 7, tint(B.main, 0.24));
   add(SX + Math.round(lean), shY + 1, 1, 7, tint(B.main, -0.32));
   /* y una sombra donde el cuello se mete en los hombros */

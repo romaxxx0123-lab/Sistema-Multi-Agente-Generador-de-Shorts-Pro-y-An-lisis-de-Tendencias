@@ -327,6 +327,14 @@ subir los píxeles **del personaje**:
   calca en una pasada anterior a **todos** los rellenos, así que la ropa,
   que se pinta después, se comía el canto del brazo. Las piezas marcadas
   `top` se recalcan justo antes de su propio relleno.
+- **La pelvis: un pañal y dos barras flotando**. La cadera eran dos lóbulos
+  redondos, uno por pierna, y entre ellos quedaba un hueco claro con forma
+  de V. Eso no se lee como entrepierna, se lee como un pañal. Ahora es una
+  pieza —cintura estrecha, caderas anchas— con una ranura corta marcando la
+  entrepierna y el bajo del pantalón corto. Y encima había dos rectángulos
+  de un píxel de luz de canto dibujados en los **bordes rectos de la cadera
+  vieja**: al redondearla se quedaron fuera de ella, dos barras claras
+  flotando sobre los muslos. Fuera; la forma redonda ya trae su volumen.
 - **Las piernas de los armarios eran tubos**. Los radios de muslo, rodilla y
   tobillo se ensanchaban **sumando** `bw`, el ancho extra de un personaje
   grande: 4,5/3,7/2,7 pasaban a 7/6,2/5,2. El muslo engordaba, sí, pero el
@@ -339,8 +347,10 @@ subir los píxeles **del personaje**:
   la espinilla y el conjunto se pinta **al final de todo**, por delante del
   cuerpo, en vez de quedar enterrado bajo la ropa. La rodilla, además, iba
   casi en línea con la cadera y el pie —quince grados de codo—, o sea un
-  cono: ahora sube cerca del cuerpo y la espinilla sale casi horizontal,
-  unos sesenta grados. Y en el aire las piernas
+  cono. Pero doblarla del todo tampoco vale: en una vista de perfil plana
+  una Z de sesenta grados se lee como una pierna rota, porque no hay
+  profundidad que la explique. Treinta y pico grados es lo que se lee como
+  pierna estirada. Y en el aire las piernas
   se recogen: antes los pies seguían llegando al suelo, así que un salto se
   leía igual que estar de pie.
 - **Piernas de una pieza**. Muslo y gemelo eran dos cápsulas pegadas y cada
