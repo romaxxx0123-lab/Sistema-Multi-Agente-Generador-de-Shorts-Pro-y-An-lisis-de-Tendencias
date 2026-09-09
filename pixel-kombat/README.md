@@ -321,6 +321,16 @@ subir los píxeles **del personaje**:
   marcada; y el torso, que terminaba en escuadra justo encima, lleva el bajo
   redondeado. Si el pantalón y la pierna son casi el mismo gris se separan a la
   fuerza, o la mitad de abajo se lee como un bloque sin forma.
+- **Las caras se quedan de frente, y es una decisión, no una pereza**. Con
+  el cuerpo ya girado probé a girar también las cabezas. Primero por código,
+  remapeando las columnas de la rejilla 24×24: no sirve, sólo achata la
+  cara, porque a 24 píxeles no hay resolución que sobreviva a un
+  remuestreo. Luego a mano, tres versiones de la misma cabeza: las tres
+  salieron peores que la frontal. La asimetría que cabe en tan pocos
+  píxeles lee como cara rota, no como cara girada, y las caras son el chiste
+  del juego: tienen que leerse de un vistazo. Lo que sí se hace es apagar
+  **dos columnas del canto de atrás** de la cabeza, que es el truco de toda
+  la vida para sugerir el giro sin tocar el dibujo.
 - **El personaje estaba construido de frente y peleaba de perfil**. Esto era
   lo grande, y explica por qué ningún ajuste del brazo terminaba de
   funcionar. Todo el cuerpo era simétrico respecto al eje: los brazos

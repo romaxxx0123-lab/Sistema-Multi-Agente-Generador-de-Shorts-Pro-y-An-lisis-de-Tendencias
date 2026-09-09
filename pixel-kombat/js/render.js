@@ -26,6 +26,25 @@ function headOf(def) {
   if (!def._head) {
     def._head = outlineGrid(def.head, '#');
     def._pal = Object.assign({ '#': OUTLINE }, def.pal);
+    /* La cara sigue siendo frontal a propósito: a 24x24 girarla de verdad
+       exige redibujar los rasgos, y la asimetría que cabe en tan pocos
+       píxeles lee como cara rota, no como cara girada. Lo que sí se puede
+       es apagar el canto de atrás, que es el truco de toda la vida para
+       sugerir el giro sin tocar el dibujo: dos columnas más oscuras en el
+       lado que se aleja de la cámara. */
+    const ANCHO = 2;
+    def._headBack = def._head.map(fila => {
+      const out = new Array(fila.length).fill('.');
+      let n = 0;
+      for (let i = 0; i < fila.length && n < ANCHO; i++) {
+        const c = fila[i];
+        if (c === '.' || c === '#') continue;    // el contorno no se apaga
+        out[i] = c; n++;
+      }
+      return out.join('');
+    });
+    def._palBack = {};
+    for (const k in def._pal) def._palBack[k] = tint(def._pal[k], -0.24);
   }
   return def;
 }
@@ -827,7 +846,11 @@ function paintBody(ctx, def, parts, flash) {
     else if (p.h >= 4 && p.w >= 3) Pix.shade(ctx, p.x, p.y, p.w, p.h, p.c);
     else Pix.r(ctx, p.x, p.y, p.w, p.h, p.c);
   }
-  if (!parts.noHead) Pix.grid(ctx, def._head, flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
+  if (!parts.noHead) {
+    Pix.grid(ctx, def._head, flash ? WHITE_PAL : def._pal, parts.headX, parts.headY);
+    /* el canto de atrás, apagado: sugiere el giro sin deformar la cara */
+    if (!flash && def._headBack) Pix.grid(ctx, def._headBack, def._palBack, parts.headX, parts.headY);
+  }
 }
 
 /* pose neutra */
