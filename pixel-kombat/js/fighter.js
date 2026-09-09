@@ -432,8 +432,10 @@ class Fighter {
       A.pose = true; A.lean = 2;                  // brazos cruzados, esperando
       A.bob = this.t % 14 < 7 ? 1 : 0;
     } else {
+      /* postura de combate: rodillas algo flexionadas y peso adelante */
       A.bob = Math.sin(this.t / 16) > 0.5 ? 1 : 0;
       A.walk = Math.sin(this.t / 22) * 0.22;      // respiración: los brazos se mecen
+      A.crouch = 2; A.lean = 1;
     }
     return A;
   }

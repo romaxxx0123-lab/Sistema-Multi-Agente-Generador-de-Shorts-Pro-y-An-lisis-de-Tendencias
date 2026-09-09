@@ -296,6 +296,17 @@ subir los píxeles **del personaje**:
   hombros a los pies. Ahora el traje cierra bajo la corbata y asoma el puño
   blanco, la camisa lleva tapeta, botones y mangas remangadas, la bata tiene
   solapas y bolsillos con bolis, y la casaca de arquero tiene franja y dorsal.
+- **Postura de combate**: los brazos ya no cuelgan rectos y muertos. El
+  antebrazo se adelanta, el puño queda por delante de la cadera y las rodillas
+  van algo flexionadas con el peso adelante. La pose en reposo es la firma de un
+  juego de lucha, y antes parecían gente esperando el autobús. Lo justo: si la
+  guardia sube al pecho, tapa la ropa que tanto costó dibujar.
+- **Sombra de contacto**: era una raya de 2px que además tapaban las botas, así
+  que los luchadores parecían pegados encima del fondo. Ahora es un óvalo blando
+  de cinco filas, entero por debajo del pie.
+- **Charco de luz en el suelo** y rebote en la pared, con el color de cada
+  escenario: da profundidad, dice dónde se pelea y hace que la sombra se lea.
+  Más una sombra en la parte alta que hunde el fondo.
 - **Luz de canto**: un píxel claro en el borde de delante y uno oscuro en el de
   atrás, en pecho, cadera, hombros y las dos piernas. Cuatro rectángulos por
   pieza que convierten un montón de cajas apiladas en un cuerpo con volumen, y

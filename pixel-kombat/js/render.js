@@ -411,9 +411,38 @@ function bodyRects(def, A) {
     if (cuffC) add(5, ay + 17, aw + 2, 3, cuffC);
     add(6 - hoff, ay + 21, hs, hs, hand);
   } else {
-    const sw = Math.round(Math.sin(A.walk) * 5);
-    arm(AXB + lx, ay + sw, false);
-    arm(AXF + lx, ay - sw, true);
+    /* Guardia. Antes los brazos colgaban rectos y muertos: la pose en
+       reposo es la firma de un juego de lucha. Ahora el antebrazo se
+       adelanta y el puño queda por delante de la cadera, listo. Poco,
+       pero suficiente: si se sube a la altura del pecho tapa la ropa. */
+    const sw = Math.round(Math.sin(A.walk) * 4);
+    const brazo = (x, y, front) => {
+      const up = front ? sleeveF : sleeveB;
+      const fo = front ? foreC : foreD;
+      const hd = front ? hand : tint(handB, -0.15);
+      const dx = front ? 3 : 2;                      // el antebrazo se adelanta
+      add(x, y, aw, 11, up);
+      add(x, y, aw, 2, tint(up, bare ? 0.10 : 0.22));
+      add(front ? x + aw - 1 : x, y + 1, 1, 10, tint(up, bare ? 0.26 : 0.22));
+      add(front ? x : x + aw - 1, y + 1, 1, 10, tint(up, bare ? -0.44 : -0.30));
+      add(x + dx, y + 10, aw, 10, fo);
+      add(x + dx, y + 10, aw, 1, tint(fo, 0.20));
+      add(front ? x + dx + aw - 1 : x + dx, y + 11, 1, 8, tint(fo, front ? 0.24 : -0.30));
+      if (cuffC) {
+        if (shortSleeve) add(x + dx, y + 9, aw, 2, cuffC);
+        else add(x + dx, y + 15, aw, 3, cuffC);
+      }
+      add(x + dx - hoff, y + 19, hs, hs, hd);
+      add(x + dx - hoff, y + 19, hs, 1, tint(hd, -0.34));
+      if (B.gloves && (front || !B.gloveOne)) {
+        add(x + dx - hoff, y + 19, hs, 2, tint(hd, -0.35));
+        add(x + dx - hoff, y + 21, hs, 2, tint(hd, 0.30));
+        add(x + dx - hoff + 3, y + 24, 1, 4, tint(hd, -0.30));
+        add(x + dx - hoff + 6, y + 24, 1, 4, tint(hd, -0.30));
+      }
+    };
+    brazo(AXB + lx, ay + sw, false);
+    brazo(AXF + lx, ay - sw, true);
   }
 
   return { rects: R, headY: neckY - 21, headX: -13 + Math.round(lean * 1.2) };
@@ -595,6 +624,8 @@ const STAGES = [
   { id: 'dojo', name: 'DOJO DEL SÓTANO' }
 ];
 
+const FOCO = { azotea: '255,214,150', mercado: '190,160,255', salon: '255,196,120', dojo: '255,180,110' };
+
 function drawStage(ctx, id, t) {
   switch (id) {
     case 'azotea': stageAzotea(ctx, t); break;
@@ -602,6 +633,7 @@ function drawStage(ctx, id, t) {
     case 'salon': stageSalon(ctx, t); break;
     default: stageDojo(ctx, t); break;
   }
+  focoSuelo(ctx, FOCO[id] || FOCO.dojo);
   vignette(ctx);
 }
 
@@ -613,6 +645,30 @@ function vignette(ctx) {
     ctx.fillRect(i * 2, 0, 2, H);
     ctx.fillRect(W - i * 2 - 2, 0, 2, H);
   }
+  /* sombra en la parte alta: hunde el fondo y despega a los luchadores */
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = 'rgba(0,0,0,' + (0.055 * (8 - i) / 8) + ')';
+    ctx.fillRect(0, i * 3, W, 3);
+  }
+}
+
+/* Charco de luz en el centro del suelo: da profundidad al escenario y
+   dice dónde se pelea. Sin él, el suelo es una banda plana de color. */
+function focoSuelo(ctx, color) {
+  for (let i = 0; i < 7; i++) {
+    const w = 250 - i * 26, a = 0.035 + i * 0.020;
+    ctx.fillStyle = 'rgba(' + color + ',' + a + ')';
+    ctx.fillRect(Math.round((W - w) / 2), GROUND + i * 2, w, 2);
+  }
+  for (let i = 0; i < 3; i++) {                 // rebote de luz en la pared
+    const w = 170 - i * 30;
+    ctx.fillStyle = 'rgba(' + color + ',' + (0.030 - i * 0.008) + ')';
+    ctx.fillRect(Math.round((W - w) / 2), GROUND - 6 - i * 5, w, 5);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';           // junta pared-suelo
+  ctx.fillRect(0, GROUND - 2, W, 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.10)';
+  ctx.fillRect(0, GROUND - 5, W, 3);
 }
 
 /* cielo con transiciones tramadas */

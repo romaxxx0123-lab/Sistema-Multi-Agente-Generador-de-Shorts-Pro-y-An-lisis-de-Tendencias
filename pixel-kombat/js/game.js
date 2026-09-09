@@ -326,7 +326,7 @@
     w.drawBack(ctx);
     for (const f of [f1, f2]) {
       const alt = clamp(GROUND - f.y, 0, 60);
-      Pix.shadow(ctx, f.x, GROUND, Math.max(13, (f.def.wide || 34) - alt * 0.26));
+      Pix.shadow(ctx, f.x, GROUND, Math.max(16, (f.def.wide || 44) - alt * 0.30));
       drawAura(f);
       drawFighter(ctx, f);
     }

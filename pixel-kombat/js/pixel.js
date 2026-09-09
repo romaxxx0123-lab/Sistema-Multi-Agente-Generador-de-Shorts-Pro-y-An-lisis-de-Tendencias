@@ -49,9 +49,19 @@ const Pix = {
     Text.draw(ctx, str, x, y - 4 * sc, color, align, sc);
   },
 
+  /* Sombra de contacto. Era una raya de 2px que no se veía contra el
+     suelo, y por eso los luchadores parecían pegados encima del fondo en
+     vez de estar de pie en él. Ahora es un óvalo blando de cinco filas. */
   shadow(ctx, x, y, w) {
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
-    ctx.fillRect(Math.round(x - w / 2), Math.round(y - 1), Math.round(w), 2);
+    const cx = Math.round(x), cy = Math.round(y);
+    /* va entera por debajo de los pies: si se dibuja a su altura, las
+       botas la tapan y solo asoman dos alitas que no se ven */
+    const filas = [[1.00, 0.42], [0.96, 0.34], [0.82, 0.25], [0.62, 0.16], [0.38, 0.09]];
+    for (let i = 0; i < filas.length; i++) {
+      const ww = Math.max(2, Math.round(w * filas[i][0]));
+      ctx.fillStyle = 'rgba(0,0,0,' + filas[i][1] + ')';
+      ctx.fillRect(cx - Math.round(ww / 2), cy + i, ww, 1);
+    }
   }
 };
 
