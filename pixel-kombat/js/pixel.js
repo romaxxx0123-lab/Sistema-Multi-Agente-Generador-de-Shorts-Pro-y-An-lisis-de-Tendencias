@@ -49,6 +49,63 @@ const Pix = {
     Text.draw(ctx, str, x, y - 4 * sc, color, align, sc);
   },
 
+  /* ---------------------------------------------------------
+     Formas redondeadas en píxeles enteros.
+     Con rectángulos solo salen cajas: un brazo son dos ladrillos
+     apilados y una mano, un cuadrado. La cápsula (segmento grueso con
+     extremos redondos y radio que se estrecha) y la elipse son lo que
+     hace falta para que un miembro parezca un miembro.
+     --------------------------------------------------------- */
+  capsule(ctx, x0, y0, x1, y1, r0, r1, c) {
+    const rM = Math.max(r0, r1);
+    const minX = Math.floor(Math.min(x0, x1) - rM), maxX = Math.ceil(Math.max(x0, x1) + rM);
+    const minY = Math.floor(Math.min(y0, y1) - rM), maxY = Math.ceil(Math.max(y0, y1) + rM);
+    const dx = x1 - x0, dy = y1 - y0, len2 = dx * dx + dy * dy || 1;
+    ctx.fillStyle = c;
+    /* el centinela va en null, no en -1: media figura vive en x negativa
+       y con -1 los tramos de la izquierda no llegaban a pintarse nunca */
+    for (let y = minY; y <= maxY; y++) {
+      let run = null;
+      for (let x = minX; x <= maxX; x++) {
+        const px = x + 0.5, py = y + 0.5;
+        let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        const qx = x0 + dx * t, qy = y0 + dy * t, r = r0 + (r1 - r0) * t;
+        const on = (px - qx) * (px - qx) + (py - qy) * (py - qy) <= r * r;
+        if (on) { if (run === null) run = x; }
+        else if (run !== null) { ctx.fillRect(run, y, x - run, 1); run = null; }
+      }
+      if (run !== null) ctx.fillRect(run, y, maxX + 1 - run, 1);
+    }
+  },
+
+  ellipse(ctx, cx, cy, rx, ry, c) {
+    if (rx <= 0 || ry <= 0) return;
+    ctx.fillStyle = c;
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+      const dy = (y + 0.5 - cy) / ry;
+      if (dy * dy > 1) continue;
+      const half = rx * Math.sqrt(1 - dy * dy);
+      const a = Math.round(cx - half), b = Math.round(cx + half);
+      if (b > a) ctx.fillRect(a, y, b - a, 1);
+    }
+  },
+
+  /* cilindro: base oscura y dos capas desplazadas hacia la luz */
+  capsuleVol(ctx, x0, y0, x1, y1, r0, r1, c, dir) {
+    const d = dir || 1;
+    this.capsule(ctx, x0, y0, x1, y1, r0, r1, tint(c, -0.26));
+    this.capsule(ctx, x0 + d * 0.8, y0, x1 + d * 0.8, y1, r0 - 0.7, r1 - 0.7, c);
+    this.capsule(ctx, x0 + d * 1.7, y0, x1 + d * 1.7, y1, r0 - 1.8, r1 - 1.8, tint(c, 0.22));
+  },
+
+  ellipseVol(ctx, cx, cy, rx, ry, c, dir) {
+    const d = dir || 1;
+    this.ellipse(ctx, cx, cy, rx, ry, tint(c, -0.26));
+    this.ellipse(ctx, cx + d * 0.7, cy - 0.4, rx - 0.8, ry - 0.8, c);
+    this.ellipse(ctx, cx + d * 1.3, cy - 1.0, rx - 2.0, ry - 2.0, tint(c, 0.22));
+  },
+
   /* Sombra de contacto. Era una raya de 2px que no se veía contra el
      suelo, y por eso los luchadores parecían pegados encima del fondo en
      vez de estar de pie en él. Ahora es un óvalo blando de cinco filas. */

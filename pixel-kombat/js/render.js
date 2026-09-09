@@ -56,6 +56,10 @@ function bodyRects(def, A) {
   const aw = B.huge ? 11 : (B.bulk ? 8 : 6);     // grosor de brazo
   const R = [];
   const add = (x, y, w, h, c) => R.push({ x, y, w, h, c });
+  /* cápsula: segmento grueso que se estrecha, con extremos redondos.
+     Es lo que convierte dos ladrillos apilados en un brazo. */
+  const cap = (x0, y0, x1, y1, r0, r1, c, d) => R.push({ k: 'c', x0, y0, x1, y1, r0, r1, c, d });
+  const ell = (cx, cy, rx, ry, c, d) => R.push({ k: 'e', cx, cy, rx, ry, c, d });
 
   const cr = A.crouch;                          // 0..12
   const lean = A.lean || 0;                     // peso del cuerpo
@@ -79,49 +83,57 @@ function bodyRects(def, A) {
 
   /* ---- piernas ---- */
   if (A.kick > 0) {
-    add(-10, hipY, 9, thighH, legD);
-    add(-9, hipY + thighH, 8, shinH, legD);
-    add(-11, -4, 10, 4, boot);
-    const ky = A.kickHigh ? chestY + 4 : hipY + 7;
+    const rM = (9 + bw) / 2, rK = (7.4 + bw) / 2, rT = (5.4 + bw) / 2;
+    cap(-5.5, hipY + 1, -6, hipY + thighH, rM, rK, legD, -1);
+    cap(-6, hipY + thighH - 1, -6.5, -5, rK, rT, legD, -1);
+    cap(-7.5, -3, -2.5, -3, 3.2, 2.6, boot, -1);
+    const ky = A.kickHigh ? chestY + 8 : hipY + 11;
     const kl = 10 + 22 * A.kick;
-    add(0, ky, kl, 9, legC);
-    add(kl, ky - 1, 10, 10, boot);
+    cap(0, ky - 4, kl * 0.55, ky - 1, rM, rK, legC, 1);       // muslo que sube
+    cap(kl * 0.55, ky - 1, kl, ky, rK, rT, legC, 1);          // gemelo estirado
+    cap(kl + 1, ky, kl + 6, ky, 3.4, 2.8, boot, 1);           // bota
   } else if (A.air) {
-    add(-10, hipY + 5, 10, thighH, legD);
-    add(-14, hipY + thighH + 4, 10, shinH - 4, legD);
-    add(-15, hipY + thighH + shinH - 1, 11, 4, boot);
-    add(1, hipY, 10, thighH, legC);
-    add(2, hipY + thighH - 2, 9, shinH - 5, legC);
-    add(1, hipY + thighH + shinH - 7, 11, 4, boot);
+    const rM = (9 + bw) / 2, rK = (7.4 + bw) / 2, rT = (5.4 + bw) / 2;
+    cap(-5, hipY + 6, -9, hipY + thighH + 4, rM, rK, legD, -1);
+    cap(-9, hipY + thighH + 4, -11, hipY + thighH + shinH, rK, rT, legD, -1);
+    cap(-13, hipY + thighH + shinH + 1, -8, hipY + thighH + shinH + 1, 3.2, 2.6, boot, -1);
+    cap(6, hipY + 1, 7, hipY + thighH - 1, rM, rK, legC, 1);
+    cap(7, hipY + thighH - 1, 6, hipY + thighH + shinH - 6, rK, rT, legC, 1);
+    cap(4, hipY + thighH + shinH - 5, 9, hipY + thighH + shinH - 5, 3.2, 2.6, bootF, 1);
   } else {
     /* las dos piernas dejan un hueco en medio: sin él el cuerpo
        se lee como un bloque y no como alguien de pie */
+    /* Piernas de verdad: muslo grueso que se afina en la rodilla,
+       gemelo que se afina en el tobillo y un pie redondeado. Antes eran
+       tres cajas apiladas con un escalón entre cada una. */
     const sw = Math.round(Math.sin(A.walk) * 5);
-    add(-10 - bw - sw, hipY, 9 + bw, thighH, legD);
-    add(-9 - bw - sw, hipY + thighH, 8 + bw, shinH, legD);
-    add(-11 - bw - sw, -4, 10 + bw, 4, boot);
-    add(1 + sw, hipY, 9 + bw, thighH, legC);
-    add(2 + sw, hipY + thighH, 8 + bw, shinH, legC);
-    add(1 + sw, -4, 10 + bw, 4, bootF);
-    /* canto de las piernas: la de delante recibe la luz, la de atrás no */
-    add(9 + bw + sw, hipY, 1, thighH, tint(legC, 0.24));
-    add(9 + bw + sw, hipY + thighH, 1, shinH, tint(legC, 0.24));
-    add(-10 - bw - sw, hipY, 1, thighH, tint(legD, -0.34));
-    add(-10 - bw - sw, hipY + thighH, 1, shinH, tint(legD, -0.34));
-    add(1 + sw, hipY, 1, thighH, tint(legC, -0.34));
+    const rM = (9 + bw) / 2, rK = (7.4 + bw) / 2, rT = (5.4 + bw) / 2;
+    pierna(-5.5 - bw / 2 - sw, legD, -1);
+    pierna(5.5 + bw / 2 + sw, legC, 1);
+    function pierna(cx, col, d) {
+      cap(cx, hipY + 1, cx + d * 0.5, hipY + thighH, rM, rK, col, d);
+      cap(cx + d * 0.5, hipY + thighH - 1, cx + d * 0.8, -5, rK, rT, col, d);
+      const bc = d > 0 ? bootF : boot;
+      cap(cx + d * 0.8 - 1, -3, cx + d * 0.8 + 4, -3, 3.2, 2.6, bc, d);  // pie
+    }
   }
 
   /* ---- tronco ---- */
-  add(HX + lean * 0.4, hipY - hipH, HW, hipH + 2, tint(B.main, -0.10));
-  add(HX + lean * 0.4, hipY + 1, HW, 1, tint(legD, -0.30));   // bajo del pantalón
+  /* cadera: solo se redondean las esquinas de abajo, lo justo para que
+     las piernas salgan de ella y no parezcan encajadas a presión */
+  add(HX + lean * 0.4, hipY - hipH, HW, hipH, tint(B.main, -0.10));
+  const hcx = HX + HW / 2 + lean * 0.4;
+  cap(hcx - HW / 2 + 3, hipY - 2, hcx + HW / 2 - 3, hipY - 2, 3, 3, tint(B.main, -0.10), 1);
+  add(HX + 1 + lean * 0.4, hipY + 1, HW - 2, 1, tint(legD, -0.30));   // bajo del pantalón
   if (B.huge) {                                  // la V del culturista
     add(CX + lean * 0.7, chestY, CW, 7, B.main);
     add(CX + 3 + lean * 0.7, chestY + 7, CW - 6, 6, B.main);
     add(CX + 6 + lean * 0.7, chestY + 13, CW - 12, chestH - 13, B.main);
   } else add(CX + lean * 0.7, chestY, CW, chestH, B.main);
-  add(SX + lean, shY + 1, SW, 7, tint(B.main, 0.08));
+  /* hombros con los extremos redondos: cuadrados leen a robot */
+  cap(SX + 4 + lean, shY + 4, SX + SW - 4 + lean, shY + 4, 4.2, 4.2, tint(B.main, 0.08), 1);
   add(CX + lean, shY, CW, 1, tint(B.main, 0.20));
-  add(-4 + lean, neckY, 8, 5, tint(skin, -0.12));
+  cap(lean, neckY + 1, lean, neckY + 5, 3.6, 4.2, tint(skin, -0.12), 1);   // cuello
   if (B.huge) {          // trapecios: suben en rampa del hombro al cuello
     add(SX + 3 + lean, shY, SW - 6, 3, tint(skin, -0.08));
     add(-13 + lean, neckY + 3, 26, 4, tint(skin, -0.03));
@@ -349,24 +361,18 @@ function bodyRects(def, A) {
     const up = front ? sleeveF : sleeveB;
     const fo = front ? foreC : foreD;
     const hd = front ? hand : tint(handB, -0.15);
-    add(x, y, aw, 11, up);
-    add(x, y, aw, 2, tint(up, bare ? 0.10 : 0.22));   // redondeo del hombro
-    add(x, y + 11, aw, 10, fo);
-    /* filo de luz por fuera y costura por dentro: así el brazo se
-       despega del torso sin tener que pintarlo de otro color */
-    add(front ? x + aw - 1 : x, y + 1, 1, 19, tint(up, 0.26));
-    add(front ? x : x + aw - 1, y + 1, 1, 19, tint(up, bare ? -0.44 : -0.30));
-    if (cuffC) {
-      if (shortSleeve) add(x, y + 9, aw, 2, cuffC);   // donde acaba la manga
-      else add(x, y + 15, aw, 3, cuffC);              // puño
-    }
-    add(x - hoff, y + 19, hs, hs, hd);
-    add(x - hoff, y + 19, hs, 1, tint(hd, -0.34));   // muñeca: separa mano de brazo
+    const d = front ? 1 : -1, cx = x + aw / 2;
+    const rH = aw / 2, rC = aw / 2 - 0.6, rM = aw / 2 - 1.1;
+    cap(cx, y + 2, cx, y + 11, rH, rC, up, d);
+    cap(cx, y + 10, cx, y + 20, rC, rM, fo, d);
+    if (cuffC) cap(cx, shortSleeve ? y + 10 : y + 17, cx, shortSleeve ? y + 11 : y + 19,
+      rC, rC - 0.2, cuffC, d);
+    const py = y + 23.5, rp = rM + 1.5;
+    ell(cx, py, rp, rp * 0.94, hd, d);
     if (B.gloves && (front || !B.gloveOne)) {
-      add(x - hoff, y + 19, hs, 2, tint(hd, -0.35));       // caña del guante
-      add(x - hoff, y + 21, hs, 2, tint(hd, 0.30));
-      add(x - hoff + 3, y + 24, 1, 4, tint(hd, -0.30));    // separación de dedos
-      add(x - hoff + 6, y + 24, 1, 4, tint(hd, -0.30));
+      ell(cx, py - rp * 0.55, rp * 0.95, rp * 0.42, tint(hd, 0.26), d);
+      add(cx - 2, py, 1, Math.round(rp), tint(hd, -0.34));
+      add(cx + 1, py, 1, Math.round(rp), tint(hd, -0.34));
     }
   };
 
@@ -420,25 +426,23 @@ function bodyRects(def, A) {
       const up = front ? sleeveF : sleeveB;
       const fo = front ? foreC : foreD;
       const hd = front ? hand : tint(handB, -0.15);
-      const dx = front ? 3 : 2;                      // el antebrazo se adelanta
-      add(x, y, aw, 11, up);
-      add(x, y, aw, 2, tint(up, bare ? 0.10 : 0.22));
-      add(front ? x + aw - 1 : x, y + 1, 1, 10, tint(up, bare ? 0.26 : 0.22));
-      add(front ? x : x + aw - 1, y + 1, 1, 10, tint(up, bare ? -0.44 : -0.30));
-      add(x + dx, y + 10, aw, 10, fo);
-      add(x + dx, y + 10, aw, 1, tint(fo, 0.20));
-      add(front ? x + dx + aw - 1 : x + dx, y + 11, 1, 8, tint(fo, front ? 0.24 : -0.30));
+      const d = front ? 1 : -1;
+      const cx = x + aw / 2, dx = front ? 2.5 : 1.5;   // el codo se adelanta
+      const rH = aw / 2, rC = aw / 2 - 0.6, rM = aw / 2 - 1.1;
+      cap(cx, y + 2, cx + d * dx, y + 11, rH, rC, up, d);          // hombro a codo
+      cap(cx + d * dx, y + 10, cx + d * dx * 1.4, y + 19, rC, rM, fo, d);   // codo a muñeca
       if (cuffC) {
-        if (shortSleeve) add(x + dx, y + 9, aw, 2, cuffC);
-        else add(x + dx, y + 15, aw, 3, cuffC);
+        const cy = shortSleeve ? y + 10 : y + 17;
+        cap(cx + d * dx * (shortSleeve ? 1.0 : 1.35), cy,
+            cx + d * dx * (shortSleeve ? 1.05 : 1.4), cy + 2, rC, rC - 0.2, cuffC, d);
       }
-      add(x + dx - hoff, y + 19, hs, hs, hd);
-      add(x + dx - hoff, y + 19, hs, 1, tint(hd, -0.34));
+      /* el puño: una elipse algo más gorda que la muñeca */
+      const px = cx + d * dx * 1.5, py = y + 22.5, rp = rM + 1.5;
+      ell(px, py, rp, rp * 0.94, hd, d);
       if (B.gloves && (front || !B.gloveOne)) {
-        add(x + dx - hoff, y + 19, hs, 2, tint(hd, -0.35));
-        add(x + dx - hoff, y + 21, hs, 2, tint(hd, 0.30));
-        add(x + dx - hoff + 3, y + 24, 1, 4, tint(hd, -0.30));
-        add(x + dx - hoff + 6, y + 24, 1, 4, tint(hd, -0.30));
+        ell(px, py - rp * 0.55, rp * 0.95, rp * 0.42, tint(hd, 0.26), d);   // caña
+        add(px - 1, py, 1, Math.round(rp), tint(hd, -0.34));                // dedos
+        add(px + 2, py, 1, Math.round(rp), tint(hd, -0.34));
       }
     };
     brazo(AXB + lx, ay + sw, false);
@@ -558,7 +562,12 @@ function drawStreaks(ctx, def, A) {
       Pix.grid(ctx, g, GHOST_PAL(tint(B.main, 0.35)),
         -Math.floor(g[0].length / 2) + gh.gx + dx, -(g.length - 1) + gh.gy);
     } else {
-      for (const p of gh.rects) Pix.r(ctx, p.x + dx, p.y, p.w, p.h, tint(B.main, 0.35));
+      const gc = tint(B.main, 0.35);
+      for (const p of gh.rects) {
+        if (p.k === 'c') Pix.capsule(ctx, p.x0 + dx, p.y0, p.x1 + dx, p.y1, p.r0, p.r1, gc);
+        else if (p.k === 'e') Pix.ellipse(ctx, p.cx + dx, p.cy, p.rx, p.ry, gc);
+        else Pix.r(ctx, p.x + dx, p.y, p.w, p.h, gc);
+      }
       if (!gh.noHead) Pix.r(ctx, gh.headX + dx + 4, gh.headY + 5, 18, 18, tint(B.main, 0.35));
     }
     ctx.globalAlpha = 1;
@@ -580,14 +589,26 @@ function paintBody(ctx, def, parts, flash) {
     return;
   }
   const R = parts.rects;
-  ctx.fillStyle = OUTLINE;
   const OFF = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-  for (const o of OFF)
-    for (const p of R)
-      ctx.fillRect(Math.round(p.x + o[0]), Math.round(p.y + o[1]), Math.round(p.w), Math.round(p.h));
 
+  /* 1) silueta: cada forma se calca un píxel más gorda en oscuro */
+  ctx.fillStyle = OUTLINE;
   for (const p of R) {
-    if (flash) Pix.r(ctx, p.x, p.y, p.w, p.h, '#ffffff');
+    if (p.k === 'c') Pix.capsule(ctx, p.x0, p.y0, p.x1, p.y1, p.r0 + 1, p.r1 + 1, OUTLINE);
+    else if (p.k === 'e') Pix.ellipse(ctx, p.cx, p.cy, p.rx + 1, p.ry + 1, OUTLINE);
+    else for (const o of OFF)
+      ctx.fillRect(Math.round(p.x + o[0]), Math.round(p.y + o[1]), Math.round(p.w), Math.round(p.h));
+  }
+
+  /* 2) relleno con volumen */
+  for (const p of R) {
+    if (p.k === 'c') {
+      if (flash) Pix.capsule(ctx, p.x0, p.y0, p.x1, p.y1, p.r0, p.r1, '#ffffff');
+      else Pix.capsuleVol(ctx, p.x0, p.y0, p.x1, p.y1, p.r0, p.r1, p.c, p.d);
+    } else if (p.k === 'e') {
+      if (flash) Pix.ellipse(ctx, p.cx, p.cy, p.rx, p.ry, '#ffffff');
+      else Pix.ellipseVol(ctx, p.cx, p.cy, p.rx, p.ry, p.c, p.d);
+    } else if (flash) Pix.r(ctx, p.x, p.y, p.w, p.h, '#ffffff');
     else if (p.h >= 4 && p.w >= 3) Pix.shade(ctx, p.x, p.y, p.w, p.h, p.c);
     else Pix.r(ctx, p.x, p.y, p.w, p.h, p.c);
   }

@@ -296,6 +296,16 @@ subir los píxeles **del personaje**:
   hombros a los pies. Ahora el traje cierra bajo la corbata y asoma el puño
   blanco, la camisa lleva tapeta, botones y mangas remangadas, la bata tiene
   solapas y bolsillos con bolis, y la casaca de arquero tiene franja y dorsal.
+- **Miembros con forma, no cajas apiladas**. Este era el problema de fondo y
+  duró demasiado: el cuerpo se montaba **solo con rectángulos**, así que un brazo
+  eran dos ladrillos con un escalón entre ellos y una mano, un cuadrado. Con
+  rectángulos solo salen rectángulos, por muchos píxeles que haya. Ahora el
+  motor sabe dibujar **cápsulas** (segmento grueso, extremos redondos y radio que
+  se estrecha) y **elipses**, en píxeles enteros y sin suavizado: el muslo es
+  grueso en la cadera y fino en la rodilla, el antebrazo se afina hacia la
+  muñeca, el puño es redondo y los hombros y el cuello ya no tienen esquinas.
+  Cada forma lleva tres capas desplazadas hacia la luz, o sea que además tiene
+  volumen de cilindro.
 - **Postura de combate**: los brazos ya no cuelgan rectos y muertos. El
   antebrazo se adelanta, el puño queda por delante de la cadera y las rodillas
   van algo flexionadas con el peso adelante. La pose en reposo es la firma de un
