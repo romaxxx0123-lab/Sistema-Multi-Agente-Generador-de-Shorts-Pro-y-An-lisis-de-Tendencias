@@ -89,11 +89,16 @@ function bodyRects(def, A) {
   const bootF = B.boot || tint(legC, -0.42);   // el otro pie
 
   /* ---- piernas ---- */
-  const rM = (9 + bw) / 2, rK = (7.4 + bw) / 2, rT = (5.4 + bw) / 2;
+  /* Los radios de la pierna se ensanchaban SUMANDO bw, así que en un
+     armario pasaban de 4,5/3,7/2,7 a 7/6,2/5,2: el muslo engordaba, pero
+     el tobillo engordaba lo mismo y el estrechamiento desaparecía. Una
+     pierna sin estrechamiento es un tubo. Ahora se escala. */
+  const ls = 1 + bw * 0.09;
+  const rM = 4.5 * ls, rK = 3.7 * ls, rT = 2.7 * ls;
   /* pie: bajo y largo, con suela. Era un pegote de seis píxeles de alto. */
   const pie = (fx, fy, bc, d) => {
-    cap(fx - 1.5, fy - 0.2, fx + 3.5, fy, 2.4, 1.9, bc, d);
-    addD(Math.round(fx - 4), Math.round(fy + 1), 9, 1, tint(bc, -0.45));
+    cap(fx - 1.5 * ls, fy - 0.2, fx + 3.5 * ls, fy, 2.4 * ls, 1.9 * ls, bc, d);
+    addD(Math.round(fx - 4 * ls), Math.round(fy + 1), Math.round(9 * ls), 1, tint(bc, -0.45));
   };
   /* Una pierna de una pieza. Muslo y gemelo eran dos cápsulas pegadas, y
      cada una traía su propia tapa con luz: en la rodilla salía una banda
@@ -113,19 +118,25 @@ function bodyRects(def, A) {
        horizontal: un tronco atravesando la chaqueta. Ahora nace en la
        cadera, tiene rodilla, y se pinta al final de todo para que quede
        por delante del cuerpo en vez de enterrada bajo la ropa. */
+    /* La rodilla iba casi en línea con la cadera y el pie: 15 grados de
+       codo. Eso no es una patada, es un cono. La rodilla sube cerca y la
+       espinilla sale casi horizontal: unos 60 grados de rodilla, que es
+       lo que se ve en una patada de verdad. */
     const k = A.kick, alto = A.kickHigh;
     const hx = 1 + bw / 2, hy = hipY + 2;
-    const kx = hx + 8 + 7 * k;
-    const ky = hy - (alto ? 7 + 9 * k : 2 + 3 * k);
-    const fx = kx + 6 + 18 * k;
-    const fy = ky - (alto ? 4 + 11 * k : 0);
+    const kx = hx + 5 + 4 * k;
+    const ky = hy - (alto ? 9 + 13 * k : 2 + 3 * k);
+    const fx = kx + 10 + 20 * k;
+    const fy = ky + (alto ? 2 - 6 * k : 0);
     patada = () => {
       capT(hx, hy, kx, ky, rM, rK, legC, 1);               // muslo desde la cadera
       capT(kx, ky, fx, fy, rK, rT, legC, 1);               // gemelo estirado
       ellD(kx, ky, rK * 0.85, 2.0, tint(legC, 0.16));      // rodilla
       const a = Math.atan2(fy - ky, fx - kx);
-      capT(fx, fy, fx + Math.cos(a) * 5, fy + Math.sin(a) * 5, 2.8, 2.2, bootF, 1);
-      ellD(fx + Math.cos(a) * 1.5, fy + Math.sin(a) * 1.5 - 1.4, 2.4, 1.0, tint(bootF, 0.30));
+      /* la bota, del tono oscuro: con el claro se fundía con la espinilla
+         y la pierna acababa en punta como un cañón */
+      capT(fx, fy, fx + Math.cos(a) * 5.5, fy + Math.sin(a) * 5.5, 2.7 * ls, 2.1 * ls, boot, 1);
+      ellD(fx + Math.cos(a) * 2 - 0.5, fy + Math.sin(a) * 2 - 1.5, 2.4, 1.0, tint(boot, 0.34));
     };
   } else if (A.air) {
     /* En el aire las piernas se recogen. Antes los pies seguían llegando

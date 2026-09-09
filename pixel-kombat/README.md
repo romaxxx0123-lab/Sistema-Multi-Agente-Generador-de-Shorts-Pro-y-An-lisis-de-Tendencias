@@ -327,11 +327,20 @@ subir los píxeles **del personaje**:
   calca en una pasada anterior a **todos** los rellenos, así que la ropa,
   que se pinta después, se comía el canto del brazo. Las piezas marcadas
   `top` se recalcan justo antes de su propio relleno.
+- **Las piernas de los armarios eran tubos**. Los radios de muslo, rodilla y
+  tobillo se ensanchaban **sumando** `bw`, el ancho extra de un personaje
+  grande: 4,5/3,7/2,7 pasaban a 7/6,2/5,2. El muslo engordaba, sí, pero el
+  tobillo engordaba exactamente lo mismo, así que el estrechamiento
+  desaparecía. Y una pierna sin estrechamiento es un tubo. Ahora se escala
+  en vez de sumarse, y la proporción se mantiene a cualquier tamaño.
 - **La patada salía del pecho**. La pierna que patea nacía en el centro del
   torso y se estiraba recta en horizontal: un tronco atravesando la
   chaqueta. Ahora nace en la cadera, tiene rodilla, la bota sigue el eje de
   la espinilla y el conjunto se pinta **al final de todo**, por delante del
-  cuerpo, en vez de quedar enterrado bajo la ropa. Y en el aire las piernas
+  cuerpo, en vez de quedar enterrado bajo la ropa. La rodilla, además, iba
+  casi en línea con la cadera y el pie —quince grados de codo—, o sea un
+  cono: ahora sube cerca del cuerpo y la espinilla sale casi horizontal,
+  unos sesenta grados. Y en el aire las piernas
   se recogen: antes los pies seguían llegando al suelo, así que un salto se
   leía igual que estar de pie.
 - **Piernas de una pieza**. Muslo y gemelo eran dos cápsulas pegadas y cada
