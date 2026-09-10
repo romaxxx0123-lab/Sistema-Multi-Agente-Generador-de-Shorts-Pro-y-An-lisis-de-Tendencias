@@ -321,6 +321,17 @@ subir los píxeles **del personaje**:
   marcada; y el torso, que terminaba en escuadra justo encima, lleva el bajo
   redondeado. Si el pantalón y la pierna son casi el mismo gris se separan a la
   fuerza, o la mitad de abajo se lee como un bloque sin forma.
+- **Tres cosas que el giro dejó al descubierto**. Con el brazo de atrás ya
+  detrás del torso salieron a la luz fallos que hasta entonces tapaba él
+  mismo. Uno: el brazo recalcaba su contorno **por encima del hombro**, y
+  ese anillo negro lo cortaba del cuerpo —parecían mangas colgadas al lado
+  del torso—; el tramo del hombro nace dentro del cuerpo, así que ahora se
+  emite sin recalcar contorno y el relleno del torso se lo come por dentro.
+  Dos: el hombro de atrás iba del mismo tono claro que el de delante, así
+  que al destaparse quedaba un bulto claro justo en el lado que debería
+  apagarse. Tres: el brazo de atrás sacaba su color de `B.dark`, que en
+  varios personajes es **otra prenda**: a Michael le salía un brazo negro y
+  otro rojo. Ahora es la misma tela que el de delante, más lejos de la luz.
 - **Las caras se quedan de frente, y es una decisión, no una pereza**. Con
   el cuerpo ya girado probé a girar también las cabezas. Primero por código,
   remapeando las columnas de la rejilla 24×24: no sirve, sólo achata la
