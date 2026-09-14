@@ -150,6 +150,110 @@ def probe(
     console.print(Panel(table, title="probe", border_style="cyan"))
 
 
+@app.command()
+def analyze(
+    source: Path = typer.Argument(..., help="Video de entrada."),
+    tier: str = typer.Option(None, "--tier", help="light, balanced o max. Por defecto el de la config."),
+    language: str = typer.Option(None, "--lang", help="Fuerza el idioma (ej. es). Por defecto autodetecta."),
+    no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+    force: str = typer.Option(None, "--force", help="Etapas a rehacer separadas por coma, o 'all'."),
+    json_out: bool = typer.Option(False, "--json", help="Saca el analisis completo en JSON."),
+) -> None:
+    """Analiza el video: planos, movimiento, silencios, sonoridad y voz.
+
+    Cada etapa se cachea por separado, asi que repetir el comando sobre el mismo
+    fichero es instantaneo y una interrupcion se retoma donde iba.
+    """
+    from .analysis.pipeline import analyze as run_analysis
+    from .config import Tier
+
+    settings = Settings.load()
+    try:
+        tier_value = Tier(tier.lower()) if tier else None
+    except ValueError as exc:
+        err_console.print(f"[bold red]Error:[/bold red] tier desconocido: {tier}")
+        raise typer.Exit(code=1) from exc
+
+    forced = {s.strip() for s in force.split(",")} if force else None
+
+    with console.status("[cyan]analizando...", spinner="dots") as status:
+        def on_progress(stage: str, message: str) -> None:
+            status.update(f"[cyan]{message}...")
+
+        try:
+            result, warnings = run_analysis(
+                source,
+                settings,
+                tier=tier_value,
+                force=forced,
+                skip_speech=no_speech,
+                language=language,
+                progress=on_progress,
+            )
+        except ForgeError as exc:
+            raise _fail(exc) from exc
+
+    if json_out:
+        console.print_json(result.model_dump_json())
+        for w in warnings:
+            err_console.print(f"[yellow]aviso:[/yellow] {w}")
+        return
+
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_row("duracion", f"{result.duration:.2f} s")
+    table.add_row("planos", str(len(result.shots)))
+    if result.shots:
+        medio = sum(s.duration for s in result.shots) / len(result.shots)
+        table.add_row("plano medio", f"{medio:.2f} s")
+
+    if result.audio:
+        a = result.audio
+        pct = (a.silent_seconds / result.duration * 100) if result.duration else 0
+        table.add_row(
+            "silencio",
+            f"{a.silent_seconds:.2f} s ({pct:.0f}%) en {len(a.silences)} tramos",
+        )
+        if a.loudness.integrated_lufs is not None:
+            table.add_row("sonoridad", f"{a.loudness.integrated_lufs:.1f} LUFS")
+        if a.loudness.true_peak_db is not None:
+            table.add_row("pico real", f"{a.loudness.true_peak_db:.1f} dBFS")
+    else:
+        table.add_row("audio", "[yellow]sin pista de audio[/yellow]")
+
+    if result.transcript:
+        t = result.transcript
+        table.add_row("idioma", f"{t.language} ({(t.language_probability or 0) * 100:.0f}%)")
+        table.add_row("voz", f"{len(t.words)} palabras en {t.speech_seconds:.1f} s")
+        table.add_row("modelo", t.model or "-")
+        table.add_row("proporcion de voz", f"{result.speech_ratio * 100:.0f}%")
+    else:
+        table.add_row("voz", "[dim]no transcrita[/dim]")
+
+    console.print(Panel(table, title=f"analisis · {Path(source).name}", border_style="cyan"))
+
+    if result.shots and len(result.shots) <= 40:
+        shots_table = Table(box=None, padding=(0, 2))
+        shots_table.add_column("#", justify="right", style="dim")
+        shots_table.add_column("inicio", justify="right")
+        shots_table.add_column("fin", justify="right")
+        shots_table.add_column("dur", justify="right")
+        shots_table.add_column("movimiento")
+        for sh in result.shots:
+            energia = result.motion.mean_between(sh.start, sh.end) if result.motion else 0.0
+            barra = "#" * int(round(energia * 20))
+            shots_table.add_row(
+                str(sh.index),
+                f"{sh.start:.2f}",
+                f"{sh.end:.2f}",
+                f"{sh.duration:.2f}",
+                f"[cyan]{barra}[/cyan] {energia:.2f}",
+            )
+        console.print(shots_table)
+
+    for w in warnings:
+        err_console.print(f"[yellow]aviso:[/yellow] {w}")
+
+
 @app.command("make-fixture")
 def make_fixture_cmd(
     out: Path = typer.Argument(Path("fixture.mp4"), help="Fichero de salida."),

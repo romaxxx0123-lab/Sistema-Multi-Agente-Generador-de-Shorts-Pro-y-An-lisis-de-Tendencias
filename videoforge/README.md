@@ -13,8 +13,8 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 | Fase | Contenido | Estado |
 |---|---|---|
 | F0 | Scaffold, toolchain, cache, CLI | hecho |
-| F1 | Ingesta y analisis (planos, movimiento, audio, transcripcion) | en curso |
-| F2 | EDL, estilos y planner | pendiente |
+| F1 | Ingesta y analisis (planos, movimiento, audio, transcripcion) | hecho |
+| F2 | EDL, estilos y planner | en curso |
 | F3 | Renderer FFmpeg | pendiente |
 | F4 | Motor de saturacion y auto-balanceador | pendiente |
 | F5 | Comprension de contenido y b-roll | pendiente |
@@ -63,9 +63,39 @@ pip install -e ".[dev]"                       # tests
 forge doctor                 # comprueba entorno, filtros, GPU y perfil elegido
 forge probe video.mp4        # metadatos del video
 forge make-fixture t.mp4     # genera un video de pruebas sin descargar nada
+forge analyze video.mp4      # analiza: planos, movimiento, silencios, voz
 forge cache info video.mp4   # que hay cacheado de ese video
 forge cache clear video.mp4  # lo borra
 ```
+
+### `forge analyze`
+
+```bash
+forge analyze guia.mp4                 # analisis completo
+forge analyze guia.mp4 --no-speech     # sin transcripcion (mucho mas rapido)
+forge analyze guia.mp4 --tier max      # Whisper large-v3 si tienes GPU
+forge analyze guia.mp4 --lang es       # fuerza el idioma
+forge analyze guia.mp4 --force motion  # rehace solo esa etapa
+forge analyze guia.mp4 --json          # analisis completo en JSON
+```
+
+Cada etapa (sondeo, proxy, movimiento, planos, audio, transcripcion) se cachea
+por separado. Repetir el comando sobre el mismo fichero es instantaneo, y si el
+analisis se interrumpe a mitad, al reintentar retoma donde iba en vez de
+empezar de cero. Esto es lo que hace llevadero el formato largo.
+
+Que se mide:
+
+| Etapa | Que saca | Para que sirve al montar |
+|---|---|---|
+| planos | cortes de escena | no cortar dentro de un plano ni repetir encuadre |
+| movimiento | curva de flujo optico | no meter zoom donde ya hay mucho movimiento |
+| audio | silencios y sonoridad EBU R128 | quitar tiempo muerto y masterizar el audio |
+| voz | transcripcion con tiempos por palabra | subtitulos karaoke, cortes limpios y capitulos |
+
+Si falta alguna pieza opcional el analisis no se cae: avisa y sigue con lo que
+tiene. Sin `faster-whisper` no hay transcripcion, pero el resto del analisis se
+completa igual.
 
 Empieza siempre por `forge doctor`: detecta la GPU, verifica que tu build de FFmpeg
 trae los filtros necesarios y te dice con que perfil va a trabajar. Si la GPU no es
