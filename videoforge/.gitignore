@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+work/
+out/
+models/
+assets/broll/*
+assets/music/*
+assets/fonts/*
+!assets/**/.gitkeep
+frontend/node_modules/
+frontend/dist/
