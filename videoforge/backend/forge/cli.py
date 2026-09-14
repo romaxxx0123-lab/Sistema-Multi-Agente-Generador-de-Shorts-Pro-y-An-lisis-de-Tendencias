@@ -797,6 +797,10 @@ def serve(
 def demo(
     out: Path = typer.Option(Path("demo"), "--out", "-o", help="Carpeta donde dejar los ficheros."),
     style: str = typer.Option("tutorial", "--style", "-s", help="Estilo de montaje."),
+    minutes: float = typer.Option(
+        None, "--minutes", "-m", min=0.5,
+        help="Duracion de la guia. Por defecto, un minuto.",
+    ),
 ) -> None:
     """Genera una guia de ejemplo y la monta entera, para ver el resultado.
 
@@ -805,10 +809,12 @@ def demo(
     para poder compararlos.
 
     Sirve para comprobar que la instalacion funciona de punta a punta sin tener
-    que subir nada.
+    que subir nada. Con `--minutes 20` genera una guia de formato largo, que es
+    donde salen los problemas que un video de un minuto no ensena: un ritmo
+    agradable durante un minuto, sostenido veinte, cansa.
     """
     from .analysis.pipeline import analyze as run_analysis
-    from .demo import build_demo_video, demo_transcript
+    from .demo import build_demo_video, demo_screen_text, demo_transcript
     from .plan.planner import build_edl
     from .render.renderer import render as do_render
     from .saturation.score import evaluate
@@ -820,13 +826,15 @@ def demo(
 
     with console.status("[cyan]generando la guia de ejemplo...", spinner="dots") as status:
         try:
-            _, timing = build_demo_video(original, settings)
+            _, timing = build_demo_video(original, settings, minutes=minutes)
 
             status.update("[cyan]analizando...")
             analysis, _ = run_analysis(original, settings, force={"all"}, skip_speech=True)
-            # El guion de la demo hace de transcripcion: asi se puede probar el
-            # montaje completo aunque no haya modelo de voz instalado.
+            # El guion de la demo hace de transcripcion y su pantalla hace de
+            # OCR: asi se puede probar el montaje completo, recuadros incluidos,
+            # aunque no haya ni modelo de voz ni Tesseract instalados.
             analysis.transcript = demo_transcript(timing)
+            analysis.screen_text = demo_screen_text(timing)
 
             status.update("[cyan]decidiendo el montaje...")
             edl = build_edl(analysis, style)

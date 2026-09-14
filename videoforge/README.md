@@ -239,7 +239,13 @@ Tres decisiones que no son obvias:
   cambian la duracion. Un dip al negro mantiene la duracion exacta.
 - **Los subtitulos son un fichero `.ass`**, no `drawtext`. Da karaoke real
   palabra a palabra, contorno y sombra de verdad, y un solo filtro para todo el
-  video aunque haya cientos de lineas.
+  video aunque haya cientos de lineas. Los **rotulos de capitulo** van en ese
+  mismo fichero con su propio estilo: asi no pueden descuadrarse respecto a los
+  subtitulos, y el desvanecido lo hace ASS nativo con `\fad`.
+- **El zoom no se queda quieto.** Un punch-in que entra y se clava deja la
+  imagen congelada, y en una grabacion de pantalla el contenido tampoco se
+  mueve: el resultado parece un fotograma pegado. Mientras aguanta sigue
+  acercandose un 4%, que no se ve como un efecto pero si se nota si no esta.
 
 ### El audio
 
@@ -517,6 +523,62 @@ el servidor se marca como error para poder relanzarlo, en vez de quedarse
 esperando algo que ya no corre.
 
 
+## Probado en veinte minutos, que es el caso de uso
+
+Casi todo se prueba sobre un video de un minuto, y eso esconde una clase entera
+de problemas: los que solo aparecen al **acumular**.
+
+```bash
+forge demo --minutes 20      # genera, analiza, monta y renderiza 20 min
+```
+
+Pasar esa guia por el sistema entero saco tres fallos que en un minuto son
+invisibles.
+
+Lo que si escala sin problema:
+
+```
+analisis      210 s para 20 min de video   ·  pico de RAM 0,2 GB
+planificacion   2,5 s
+```
+
+Lo que no escalaba:
+
+**Sesenta zooms.** El estilo permitia 3,5 por minuto: en un minuto son tres y
+parecen pocos; en veinte minutos son sesenta, un zoom cada diecisiete segundos
+durante toda la guia. Y el medidor de saturacion **no se enteraba**, porque no
+tenia ninguna metrica de zooms: solo los veia diluidos en la densidad general.
+Ahora los mide, cada estilo declara su banda, y el ritmo de las guias baja a
+1,4 por minuto.
+
+**Veinte capitulos.** La duracion minima de un capitulo era un numero fijo
+(45 s), asi que cuantos mas minutos, mas capitulos: uno cada 51 segundos. Eso no
+orienta a nadie, y ademas plantaba veinte rotulos en pantalla. Ahora el minimo
+crece con el video, con un tope de ocho capitulos sea cual sea la duracion.
+
+Y de paso, los **titulos**: salian de las primeras palabras de la frase, asi que
+un capitulo se llamaba "Siguiente punto los proyectos del apartado 2 cada". Van
+tal cual a la descripcion de YouTube, o sea que son lo mas visible que produce
+el planner fuera del propio video. Ahora se quitan los arranques encadenados
+("bueno, vamos a ver...") y las palabras de funcion del final, y si al quitarlos
+no queda frase se titula por los terminos propios del capitulo -- el mismo
+criterio que usa el material de apoyo.
+
+**El balanceador queria quitar subtitulos.** Quitado el silencio, la voz ocupa
+el 95% del montaje, asi que los subtitulos tambien; eso se salia de la banda de
+texto en pantalla, y lo unico que mueve esa metrica son los propios subtitulos.
+Los subtitulos ya no se tocan: son contenido, no decoracion. Cuando sobra texto,
+lo que sobra son los rotulos.
+
+Resultado despues de las tres correcciones, sobre la misma guia de 20 minutos:
+
+```
+20,0 min -> 17,1 min (-15%)   257 clips   15,0 cortes/min
+saturacion 51,8/100 · en el punto
+ 432 x caption    24 x punch_in    26 x callout
+  30 x transition  7 x text_card    1 x grade
+```
+
 ## Por que hay un generador de material realista
 
 El fixture de barras de color sirve para probar la mecanica, pero **escondia dos
@@ -585,7 +647,13 @@ frase que cruzaba el limite dejaba su ultima palabra sola en la ventana
 siguiente, donde ganaba por goleada. Ahora las ventanas siguen al habla y se
 prefiere el termino al que se vuelve varias veces, que es lo que es un tema.
 
-**8. La cache devolvia montajes viejos.** Cada etapa del analisis lleva version
+**8. Los capitulos no se dibujaban.** El planner los calculaba, los metia en el
+EDL como rotulos y el medidor de saturacion los contaba como texto en pantalla
+-- pero **no habia nada que los pintara**. El EDL prometia algo que no existia
+en el video. Ahora salen en el mismo fichero `.ass` que los subtitulos: misma
+fuente, mismo contorno, y el desvanecido lo hace ASS nativo con `\fad`.
+
+**9. La cache devolvia montajes viejos.** Cada etapa del analisis lleva version
 para invalidarse sola cuando cambia su codigo, pero la version era un numero que
 habia que subir a mano. Se reescribieron los detectores de silencio y de planos
 y nadie lo subio, asi que un video ya analizado seguia dando el montaje de

@@ -99,6 +99,7 @@ def plan_punch_ins(
                 start=round(inicio, 3),
                 end=round(min(edl.duration, inicio + rules.punch_seconds), 3),
                 rect=Rect.centered(cx, cy, rules.punch_zoom),
+                drift=rules.punch_drift,
                 value_score=round(score, 3),
                 cost_weight=round(coste, 3),
                 rationale=(

@@ -528,3 +528,115 @@ def test_una_transicion_solo_oscurece_su_propio_tramo(
     assert en_la_transicion < 12, "la transicion no oscurece nada"
     assert despues > 20, "el video se quedo oscuro despues de la transicion"
     assert antes > 20, "el video ya estaba oscuro antes de la transicion"
+
+
+def test_el_zoom_sigue_moviendose_mientras_aguanta(
+    sample_video: Path, settings: Settings, tmp_path: Path
+) -> None:
+    """Un zoom que entra y se queda clavado deja la imagen congelada.
+
+    En una grabacion de pantalla el contenido tampoco se mueve, asi que durante
+    los casi dos segundos que dura el zoom no cambia un solo pixel y parece un
+    fotograma pegado.
+
+    Se comparan **dos renders identicos salvo la deriva**, en el mismo instante:
+    asi lo unico que cambia entre ellos es el encuadre. Comparar dos instantes
+    del mismo render no sirve, porque el contenido cambia por su cuenta y tapa
+    el efecto.
+
+    El montaje es de un solo clip a proposito: un zoom que cruza un corte se
+    reinicia en el clip siguiente (cada clip lleva su propio `zoompan`), y eso
+    enturbiaria la medida.
+    """
+    from forge.plan.edl import EDL, Clip, RenderSpec
+
+    info = probe(sample_video, settings)
+
+    def _render_con(deriva: float, nombre: str) -> Path:
+        edl = EDL(
+            source=str(sample_video),
+            source_duration=info.duration,
+            render=RenderSpec(width=640, height=360, fps=30),
+            timeline=[Clip(id="c0", source_start=0.0, source_end=6.0)],
+            effects=[
+                PunchInEffect(
+                    id="p0", start=1.0, end=5.0,
+                    rect=Rect.centered(0.5, 0.5, 1.30),
+                    ease_seconds=0.3, drift=deriva,
+                )
+            ],
+        )
+        salida = tmp_path / nombre
+        render(edl, salida, settings)
+        return salida
+
+    con = _render_con(0.25, "con-deriva.mp4")
+    sin = _render_con(0.0, "sin-deriva.mp4")
+
+    def _diferencia(t: float) -> float:
+        a = _frame_exacto(sin, t, settings)
+        b = _frame_exacto(con, t, settings)
+        return float(np.abs(b.astype(int) - a.astype(int)).mean())
+
+    # Los instantes se eligen sobre tramos con textura: en un tramo de color
+    # plano, ampliar no cambia un solo pixel y la medida daria cero aunque el
+    # zoom este funcionando.
+    medidas = [(t, _diferencia(t)) for t in (1.4, 2.5, 3.5)]
+
+    assert medidas[0][1] < 5.0, f"nada mas entrar ya deberia coincidir: {medidas}"
+    assert medidas[-1][1] > 8.0, f"la deriva no se nota al final: {medidas}"
+    assert [d for _, d in medidas] == sorted(d for _, d in medidas), (
+        f"la deriva tiene que crecer de forma continua: {medidas}"
+    )
+
+
+# -- rotulos de capitulo ---------------------------------------------------
+
+
+def test_el_rotulo_de_capitulo_se_dibuja(
+    sample_video: Path, settings: Settings, tmp_path: Path
+) -> None:
+    """Los capitulos se planificaban y no se dibujaba ni uno.
+
+    El EDL prometia rotulos que no existian en el video, y el medidor de
+    saturacion los contaba como texto en pantalla. Aqui se renderiza el mismo
+    montaje con y sin rotulo y se resta.
+    """
+    from forge.plan.edl import EDL, Clip, RenderSpec, TextCardEffect
+
+    info = probe(sample_video, settings)
+
+    def _render(con_rotulo: bool, nombre: str) -> Path:
+        edl = EDL(
+            source=str(sample_video),
+            source_duration=info.duration,
+            render=RenderSpec(width=640, height=360, fps=30),
+            timeline=[Clip(id="c0", source_start=0.0, source_end=6.0)],
+            effects=(
+                [TextCardEffect(id="k0", start=1.0, end=4.0,
+                                text="Ajustes generales", subtitle="capitulo 1")]
+                if con_rotulo else []
+            ),
+        )
+        salida = tmp_path / nombre
+        render(edl, salida, settings)
+        return salida
+
+    con = _render(True, "con-rotulo.mp4")
+    sin = _render(False, "sin-rotulo.mp4")
+
+    a = _frame_exacto(sin, 2.5, settings)
+    b = _frame_exacto(con, 2.5, settings)
+    diferencia = np.abs(b.astype(int) - a.astype(int)).max(axis=2)
+    assert int((diferencia > 40).sum()) > 500, "no se dibujo el rotulo"
+
+    # Arriba, para no chocar con los subtitulos, que van abajo.
+    filas = np.where(diferencia.max(axis=1) > 40)[0]
+    assert filas.mean() / 360 < 0.35, f"el rotulo salio a {filas.mean() / 360:.0%} de altura"
+
+    # Y se va cuando le toca.
+    fuera = np.abs(
+        _frame_exacto(con, 5.2, settings).astype(int)
+        - _frame_exacto(sin, 5.2, settings).astype(int)
+    ).max()
+    assert fuera <= 40, "el rotulo sigue en pantalla despues de su tramo"

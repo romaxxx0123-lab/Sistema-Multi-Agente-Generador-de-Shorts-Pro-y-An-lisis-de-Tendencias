@@ -32,7 +32,13 @@ from .score import BUSY, UNDER_EDITED, SaturationReport, evaluate
 
 #: Tipos que no se podan: son ambiente, cuestan poco y quitarlos no descarga
 #: nada pero si empobrece el resultado.
-NEVER_PRUNE = (EffectKind.GRADE, EffectKind.MUSIC)
+NEVER_PRUNE = (EffectKind.GRADE, EffectKind.MUSIC, EffectKind.CAPTION)
+#: Los subtitulos no se tocan. Son contenido, no decoracion: sostienen la
+#: retencion y la accesibilidad, y en una guia en la que se ha quitado el
+#: silencio la voz ocupa casi todo, asi que el texto en pantalla ronda el 95%.
+#: Si esa metrica se sale de banda, los subtitulos son lo unico que la mueve, y
+#: el balanceador se ponia a quitar justo lo que hay que conservar. Cuando
+#: sobra texto, lo que sobra son los rotulos, no lo que se esta diciendo.
 
 #: Tope de vueltas, por seguridad.
 MAX_ITERATIONS = 400

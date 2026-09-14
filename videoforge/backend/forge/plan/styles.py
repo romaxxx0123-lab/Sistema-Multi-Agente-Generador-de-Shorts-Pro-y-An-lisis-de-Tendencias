@@ -93,6 +93,10 @@ class EmphasisRules(BaseModel):
     max_punch_per_minute: float = 4.0
     #: no meter zoom si el plano ya se mueve mas que esto (0..1)
     max_motion_for_punch: float = 0.45
+    #: cuanto sigue acercandose el zoom mientras aguanta, como fraccion del
+    #: propio zoom. Cero lo deja clavado, que es lo que hace que una grabacion
+    #: de pantalla parezca una captura fija.
+    punch_drift: float = 0.03
     ken_burns: bool = False
     ken_burns_zoom: float = 1.06
 

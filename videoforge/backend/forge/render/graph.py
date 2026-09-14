@@ -102,7 +102,7 @@ def _linear(t0: float, t1: float) -> str:
 
 
 def _zoom_expressions(
-    zooms: list[tuple[str, float, float, float, float, float, float]],
+    zooms: list[tuple[str, float, float, float, float, float, float, float]],
     fps: float,
 ) -> tuple[str, str, str]:
     """Construye las expresiones z/x/y de `zoompan` sumando los zooms del clip.
@@ -110,15 +110,23 @@ def _zoom_expressions(
     Los zooms nunca se solapan (el planner lo garantiza), asi que sumar sus
     aportaciones es exacto y evita anidar condicionales.
 
-    Cada entrada es (tipo, t0, t1, ease, zoom_max, cx, cy) en tiempo de clip.
+    Cada entrada es (tipo, t0, t1, ease, zoom_max, cx, cy, deriva) en tiempo
+    de clip.
     """
     terminos_z: list[str] = []
     terminos_cx: list[str] = []
     terminos_cy: list[str] = []
 
-    for tipo, t0, t1, ease, zmax, cx, cy in zooms:
+    for tipo, t0, t1, ease, zmax, cx, cy, deriva in zooms:
         p = _linear(t0, t1) if tipo == "ken_burns" else _ramp(t0, t1, ease)
-        terminos_z.append(f"({zmax - 1.0:.4f}*{p})")
+        # Mientras el zoom aguanta sigue acercandose un poco. Sin esto la
+        # imagen se queda clavada durante casi dos segundos, y en una grabacion
+        # de pantalla (donde el contenido tampoco se mueve) el resultado parece
+        # un fotograma congelado, no una toma.
+        alcance = f"{zmax - 1.0:.4f}"
+        if deriva > 0 and tipo != "ken_burns":
+            alcance = f"({zmax - 1.0:.4f}+{(zmax - 1.0) * deriva:.5f}*{_linear(t0, t1)})"
+        terminos_z.append(f"({alcance}*{p})")
         terminos_cx.append(f"({cx - 0.5:.4f}*{p})")
         terminos_cy.append(f"({cy - 0.5:.4f}*{p})")
 
@@ -158,10 +166,14 @@ def _clip_zooms(edl: EDL, clip_index: int, clip_start: float, clip_end: float):
 
         if isinstance(e, PunchInEffect):
             cx, cy = e.rect.center
-            salida.append(("punch_in", t0, t1, e.ease_seconds, e.rect.zoom, cx, cy))
+            salida.append(
+                ("punch_in", t0, t1, e.ease_seconds, e.rect.zoom, cx, cy, e.drift)
+            )
         elif isinstance(e, KenBurnsEffect):
             cx, cy = e.rect_end.center
-            salida.append(("ken_burns", t0, t1, 0.0, e.rect_end.zoom, cx, cy))
+            salida.append(
+                ("ken_burns", t0, t1, 0.0, e.rect_end.zoom, cx, cy, 0.0)
+            )
     return salida
 
 

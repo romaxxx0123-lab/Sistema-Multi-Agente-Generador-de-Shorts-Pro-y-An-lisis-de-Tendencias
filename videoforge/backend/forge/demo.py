@@ -84,6 +84,52 @@ GUIDE_SCRIPT: tuple[Beat, ...] = (
     Beat("nos vemos en el siguiente video", 1.2, "guardar", None, (0.5, 0.5)),
 )
 
+#: Variantes de frase para alargar el guion sin que se repita palabra por
+#: palabra. Un guion repetido literalmente falsea el analisis: el TF-IDF del
+#: b-roll, los capitulos y la deteccion de planos veian exactamente el mismo
+#: patron una y otra vez.
+_VARIANTES: tuple[tuple[str, float, str, int | None, tuple[float, float]], ...] = (
+    ("vamos con la siguiente parte de la configuracion", 0.4, "menu", 2, (0.12, 0.52)),
+    ("mira, esta opcion es la que mas gente se salta", 0.35, "ajustes", 3, (0.66, 0.42)),
+    ("eh, aqui hay que tener cuidado con el orden", 0.4, "ajustes", 3, (0.72, 0.46)),
+    ("si lo pones al reves no te va a funcionar", 2.3, "ajustes", 3, (0.72, 0.46)),
+    ("ahora abrimos el apartado de memoria", 0.4, "avanzado", 4, (0.62, 0.58)),
+    ("este valor depende mucho de tu equipo", 0.35, "avanzado", 4, (0.68, 0.6)),
+    ("yo en mi caso lo tengo bastante bajo", 0.3, "avanzado", 4, (0.72, 0.58)),
+    ("mmm, y con eso ya deberia arrancar bien", 2.5, "avanzado", 4, (0.72, 0.58)),
+    ("vale, siguiente punto, los proyectos", 0.4, "inicio", 1, (0.12, 0.42)),
+    ("cada proyecto guarda su propia configuracion", 0.35, "inicio", 1, (0.4, 0.5)),
+    ("eso es util si trabajas con varios a la vez", 0.3, "inicio", 1, (0.4, 0.55)),
+    ("pero ojo, no se sincroniza solo", 2.4, "inicio", 1, (0.4, 0.55)),
+    ("por aqui esta el boton de guardar", 0.4, "guardar", 5, (0.82, 0.86)),
+    ("acuerdate de darle antes de cerrar", 0.35, "guardar", 5, (0.82, 0.86)),
+    ("que si no pierdes todo lo que has tocado", 2.6, "guardar", 5, (0.82, 0.86)),
+)
+
+
+def long_guide_script(minutes: float) -> tuple[Beat, ...]:
+    """Un guion de la duracion que se pida, con la misma forma que el corto.
+
+    Sirve para probar el caso de uso real (guias de ~20 minutos) en vez de
+    extrapolar desde un minuto. Mantiene la proporcion de pausas cortas y
+    largas, los cambios de pantalla y las muletillas, y va rotando las frases
+    para que el contenido no sea identico cada vuelta.
+    """
+    objetivo = minutes * 60.0
+    guion: list[Beat] = list(GUIDE_SCRIPT)
+    i = 0
+    while build_timing(tuple(guion)).duration < objetivo:
+        texto, pausa, pantalla, resalte, cursor = _VARIANTES[i % len(_VARIANTES)]
+        # Cada vuelta cambia un poco el numero para que no salgan dos frases
+        # exactamente iguales en todo el video.
+        vuelta = i // len(_VARIANTES)
+        if vuelta:
+            texto = f"{texto} del apartado {vuelta + 1}"
+        guion.append(Beat(texto, pausa, pantalla, resalte, cursor))
+        i += 1
+    return tuple(guion)
+
+
 #: Elementos del menu lateral de la aplicacion falsa.
 MENU = ("Inicio", "Proyectos", "Ajustes", "Configuracion avanzada", "Memoria", "Guardar")
 
@@ -480,13 +526,19 @@ def render_screen_recording(
     return out
 
 
-def build_demo_video(out: Path, settings: Settings | None = None) -> tuple[Path, Timing]:
-    """Genera la guia completa con imagen y sonido."""
+def build_demo_video(
+    out: Path, settings: Settings | None = None, *, minutes: float | None = None
+) -> tuple[Path, Timing]:
+    """Genera la guia completa con imagen y sonido.
+
+    Con `minutes` produce una guia de esa duracion, para probar el formato largo
+    de verdad en vez de extrapolar desde un minuto.
+    """
     settings = settings or Settings.load()
     out = Path(out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    timing = build_timing()
+    timing = build_timing(long_guide_script(minutes) if minutes else GUIDE_SCRIPT)
     temporal = out.parent / f".{out.stem}-tmp"
     temporal.mkdir(exist_ok=True)
 

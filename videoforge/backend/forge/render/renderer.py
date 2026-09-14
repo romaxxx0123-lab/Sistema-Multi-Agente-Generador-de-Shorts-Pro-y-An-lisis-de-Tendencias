@@ -293,10 +293,15 @@ def render(
         edl_render.render.height = PREVIEW_HEIGHT
 
     # -- subtitulos ---------------------------------------------------------
+    # Los rotulos de capitulo van en el mismo .ass que los subtitulos: mismo
+    # motor de texto, misma fuente, mismo contorno. Antes se planificaban y no
+    # se dibujaba ninguno, asi que el EDL prometia capitulos en pantalla que no
+    # existian en el video (y el medidor de saturacion los contaba como texto).
     ass_path: str | None = None
     captions = [e for e in edl_render.effects if e.kind is EffectKind.CAPTION]
-    if captions:
-        tema = captions[0].style
+    cards = [e for e in edl_render.effects if e.kind is EffectKind.TEXT_CARD]
+    if captions or cards:
+        tema = captions[0].style if captions else "clean"
         destino = work / f"{out.stem}.ass"
         write_ass(
             captions,
@@ -304,6 +309,7 @@ def render(
             edl_render.render.width,
             edl_render.render.height,
             theme_name=tema,
+            cards=cards,
         )
         ass_path = str(destino.resolve())
 

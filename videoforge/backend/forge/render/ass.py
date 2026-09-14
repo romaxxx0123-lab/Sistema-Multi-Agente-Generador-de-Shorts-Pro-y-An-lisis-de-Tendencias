@@ -113,6 +113,16 @@ THEMES: dict[str, CaptionTheme] = {
 }
 DEFAULT_THEME = "clean"
 
+#: Estilo de los rotulos de capitulo. Van arriba a la izquierda, que es donde
+#: no estorban: los subtitulos viven abajo y el contenido de una guia suele
+#: estar en el centro. Con caja, porque un titulo sobre una interfaz clara sin
+#: fondo no se lee.
+CARD_SIZE_RATIO = 0.042
+CARD_MARGIN_RATIO = 0.055
+#: Milisegundos de entrada y salida del rotulo. ASS lo hace nativo con \fad,
+#: asi que no hace falta tocar el grafo de filtros.
+CARD_FADE_MS = 260
+
 
 def resolve_font() -> str:
     """Elige una familia disponible en el sistema.
@@ -218,8 +228,16 @@ def build_ass(
     theme_name: str = DEFAULT_THEME,
     font: str | None = None,
     karaoke: bool = True,
+    cards: list | None = None,
 ) -> str:
-    """Devuelve el contenido completo de un fichero .ass."""
+    """Devuelve el contenido completo de un fichero .ass.
+
+    Los rotulos de capitulo van en este mismo fichero, con su propio estilo.
+    Podrian dibujarse con `drawtext` en el grafo de filtros, pero entonces
+    tendrian otra fuente, otro contorno y otra forma de desvanecerse que los
+    subtitulos, y ademas habria que resolver a mano el salto de linea. Aqui
+    salen del mismo motor de texto y no pueden descuadrarse entre si.
+    """
     theme = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     familia = font or resolve_font()
 
@@ -237,6 +255,9 @@ def build_ass(
     posicion = captions[0].position if captions else "bottom"
     alineacion = _ALIGNMENT.get(posicion, 2)
 
+    card_size = max(14, int(round(height * CARD_SIZE_RATIO)))
+    card_margen = max(16, int(round(height * CARD_MARGIN_RATIO)))
+
     cabecera = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -248,6 +269,7 @@ YCbCr Matrix: TV.709
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,{familia},{size},{primary},{secondary},{outline},{back},{-1 if theme.bold else 0},0,0,0,100,100,0,0,{border_style},{theme.outline_width},{theme.shadow},{alineacion},{margen_lateral},{margen_lateral},{margen},1
+Style: Card,{familia},{card_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{outline},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(2.0, theme.outline_width * 0.8):.1f},0,7,{card_margen},{card_margen},{card_margen},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -266,6 +288,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f"Dialogue: 0,{_timestamp(c.start)},{_timestamp(c.end)},Default,,0,0,0,,{prefijo}{texto}"
         )
 
+    for i, card in enumerate(cards or []):
+        texto = _escape(getattr(card, "text", "") or "")
+        if not texto:
+            continue
+        subtitulo = _escape(getattr(card, "subtitle", "") or "")
+        if subtitulo:
+            texto = f"{texto}\\N{{\\fs{int(card_size * 0.62)}}}{subtitulo}"
+        lineas.append(
+            f"Dialogue: 1,{_timestamp(card.start)},{_timestamp(card.end)},Card,,0,0,0,,"
+            f"{{\\fad({CARD_FADE_MS},{CARD_FADE_MS})}}{texto}"
+        )
+
+    # Los dialogos tienen que ir ordenados por tiempo de inicio.
+    lineas.sort(key=lambda linea: linea.split(",")[1])
     return cabecera + "\n".join(lineas) + "\n"
 
 

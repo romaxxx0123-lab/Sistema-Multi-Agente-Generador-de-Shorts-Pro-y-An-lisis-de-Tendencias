@@ -147,6 +147,12 @@ class PunchInEffect(BaseEffect):
     rect: Rect = Field(default_factory=Rect)
     #: segundos que tarda en entrar el zoom
     ease_seconds: float = 0.3
+    #: cuanto sigue acercandose mientras aguanta, como fraccion del zoom.
+    #: Un zoom que entra y se queda clavado deja la imagen congelada, que es
+    #: justo lo que se nota en una grabacion de pantalla, donde ademas el
+    #: contenido tampoco se mueve. Un 3% a lo largo de dos segundos no se ve
+    #: como un efecto, se ve como que la toma esta viva.
+    drift: float = 0.03
 
 
 class KenBurnsEffect(BaseEffect):

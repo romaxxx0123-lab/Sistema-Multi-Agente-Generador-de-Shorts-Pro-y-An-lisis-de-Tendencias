@@ -12,8 +12,11 @@ persona respira hondo antes de cambiar de asunto.
 from __future__ import annotations
 
 import re
+from collections import Counter
 
 from ..analysis.types import Transcript
+from ..assets.providers import tokenize
+from .captions import TRAILING_STOPWORDS
 from .edl import EDL, Chapter, TextCardEffect
 from .styles import ChapterRules
 
@@ -23,10 +26,32 @@ TOPIC_GAP = 1.1
 TITLE_CHARS = 52
 #: Palabras que se miran para construirlo. Mas que esto divaga.
 TITLE_WORDS = 9
-#: Palabras que no aportan nada como inicio de titulo.
+#: Arranques que no dicen nada del capitulo. Van de mas largo a mas corto para
+#: que "vamos a ver" gane a "vamos", y se aplican en cadena: "bueno, vamos a ver
+#: el apartado..." tiene dos seguidos.
 _ARRANQUES = re.compile(
-    r"^(?:y|entonces|bueno|vale|asi que|ahora|pues|luego|despues)\s+", re.IGNORECASE
+    r"^(?:"
+    r"por (?:ultimo|cierto)|lo (?:primero|siguiente) es|en este video|"
+    r"siguiente punto|vamos a (?:ver|hablar de|empezar con)|vamos con|"
+    r"ahora (?:vamos a|abrimos|toca)|lo que (?:vamos a )?hacemos es|"
+    r"y|entonces|bueno|vale|asi que|ahora|pues|luego|despues|mira|fijate"
+    r")\b[\s,]*",
+    re.IGNORECASE,
 )
+#: Con menos palabras que esto, lo que queda ya no describe nada y se prefiere
+#: titular por los terminos propios del capitulo.
+MIN_TITLE_WORDS = 3
+#: Cuantos terminos se usan en ese caso.
+TOPIC_TITLE_WORDS = 3
+
+
+def _strip_openers(texto: str) -> str:
+    """Quita los arranques encadenados del principio de la frase."""
+    anterior = None
+    while texto and texto != anterior:
+        anterior = texto
+        texto = _ARRANQUES.sub("", texto, count=1).lstrip(" ,.;:-")
+    return texto
 
 
 def _clean_title(words) -> str:
@@ -37,10 +62,52 @@ def _clean_title(words) -> str:
     if corte and corte.start() > 12:
         texto = texto[: corte.start()]
 
-    texto = _ARRANQUES.sub("", texto).strip(" ,.;:-")
+    texto = _strip_openers(texto).strip(" ,.;:-")
     if len(texto) > TITLE_CHARS:
-        texto = texto[:TITLE_CHARS].rsplit(" ", 1)[0] + "..."
+        texto = texto[:TITLE_CHARS].rsplit(" ", 1)[0]
+
+    # Cortar a las nueve palabras deja titulos que acaban en el aire ("Los
+    # proyectos del apartado 2 cada"). Se quitan las palabras de funcion del
+    # final, igual que en los subtitulos.
+    partes = texto.split()
+    while len(partes) > 2 and partes[-1].strip(".,;:").lower() in TRAILING_STOPWORDS:
+        partes.pop()
+    texto = " ".join(partes)
     return texto[:1].upper() + texto[1:] if texto else "Capitulo"
+
+
+def _topic_title(bloque, resto) -> str:
+    """Titula por los terminos propios del capitulo, no por como empieza.
+
+    Se usa cuando quitar el arranque deja la frase en nada ("bueno, vamos a
+    ver"). Es el mismo criterio que el material de apoyo: la palabra que este
+    capitulo usa y los demas no es de lo que va este capitulo.
+    """
+    mias = Counter(tokenize(" ".join(w.text for w in bloque)))
+    if not mias:
+        return ""
+    otras = Counter(tokenize(" ".join(w.text for b in resto for w in b)))
+    puntuadas = sorted(
+        mias.items(),
+        key=lambda kv: (-(kv[1] / (1 + otras.get(kv[0], 0))), kv[0]),
+    )
+    elegidas = [p for p, _ in puntuadas[:TOPIC_TITLE_WORDS]]
+    if not elegidas:
+        return ""
+    texto = " ".join(elegidas)
+    return texto[:1].upper() + texto[1:]
+
+
+def _titles_for(bloques) -> list[str]:
+    """Titulo de cada capitulo, con reserva por terminos propios."""
+    titulos: list[str] = []
+    for i, bloque in enumerate(bloques):
+        texto = _clean_title(bloque)
+        if len(texto.split()) < MIN_TITLE_WORDS:
+            resto = [b for j, b in enumerate(bloques) if j != i]
+            texto = _topic_title(bloque, resto) or texto
+        titulos.append(texto)
+    return titulos
 
 
 class _Mapped:
@@ -72,6 +139,11 @@ def _map_words(edl: EDL, transcript: Transcript) -> list[_Mapped]:
     return out
 
 
+#: Tope de capitulos, sea cual sea la duracion. Por encima de esto la lista
+#: deja de ayudar a orientarse, que es para lo unico que sirve.
+MAX_CHAPTERS = 8
+
+
 def plan_chapters(edl: EDL, transcript: Transcript, rules: ChapterRules) -> list[Chapter]:
     """Divide el montaje en capitulos."""
     if not rules.enabled or not transcript.words:
@@ -80,11 +152,23 @@ def plan_chapters(edl: EDL, transcript: Transcript, rules: ChapterRules) -> list
     palabras = _map_words(edl, transcript)
     if not palabras:
         return []
+
+    # La duracion minima de un capitulo no puede ser un numero fijo: con 45
+    # segundos, una guia de 17 minutos sale con **veinte** capitulos, uno cada
+    # 51 segundos. Eso no son capitulos, es una lista de frases, y ademas
+    # planta veinte rotulos en pantalla. Un capitulo tiene que ser una parte
+    # reconocible del video, asi que la duracion minima crece con el.
+    minimo = max(rules.min_seconds, edl.duration / MAX_CHAPTERS)
+
     # Un video mas corto que dos capitulos minimos no necesita capitulos.
-    if edl.duration < rules.min_seconds * 2:
+    if edl.duration < minimo * 2:
         return []
 
-    capitulos: list[Chapter] = []
+    # Primero se deciden los cortes; los titulos despues, cuando ya se sabe lo
+    # que dice cada capitulo **y lo que dicen los demas**, que es lo que permite
+    # titular por lo propio de cada uno.
+    inicios: list[float] = []
+    bloques: list[list[_Mapped]] = []
     inicio_tl = 0.0
     bloque: list[_Mapped] = []
 
@@ -93,24 +177,26 @@ def plan_chapters(edl: EDL, transcript: Transcript, rules: ChapterRules) -> list
         # La pausa se mide en el original: ahi es donde la persona respiro.
         hueco = siguiente.source_start - anterior.source_end
         # La duracion se mide en el montaje: es lo que dura en pantalla.
-        largo_suficiente = (anterior.tl_start - inicio_tl) >= rules.min_seconds
-        queda_sitio = (edl.duration - siguiente.tl_start) >= rules.min_seconds
+        largo_suficiente = (anterior.tl_start - inicio_tl) >= minimo
+        queda_sitio = (edl.duration - siguiente.tl_start) >= minimo
 
         if hueco >= TOPIC_GAP and largo_suficiente and queda_sitio:
-            capitulos.append(
-                Chapter(start=round(inicio_tl, 3), title=_clean_title(bloque))
-            )
+            inicios.append(round(inicio_tl, 3))
+            bloques.append(bloque)
             inicio_tl = round(siguiente.tl_start, 3)
             bloque = []
 
     bloque.append(palabras[-1])
-    if bloque:
-        capitulos.append(Chapter(start=round(inicio_tl, 3), title=_clean_title(bloque)))
+    inicios.append(round(inicio_tl, 3))
+    bloques.append(bloque)
 
+    titulos = _titles_for(bloques)
     # El primer capitulo siempre arranca en cero, aunque la voz entre despues.
-    if capitulos:
-        capitulos[0] = Chapter(start=0.0, title=capitulos[0].title)
-    return capitulos
+    inicios[0] = 0.0
+    return [
+        Chapter(start=inicio, title=titulo)
+        for inicio, titulo in zip(inicios, titulos)
+    ]
 
 
 def chapter_cards(chapters: list[Chapter], rules: ChapterRules) -> list[TextCardEffect]:

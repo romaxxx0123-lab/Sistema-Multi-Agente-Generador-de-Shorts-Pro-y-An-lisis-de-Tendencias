@@ -27,11 +27,12 @@
     "punch_in": true,
     "punch_zoom": 1.22,
     "punch_seconds": 1.4,
-    "punch_min_gap": 5.0,
-    "max_punch_per_minute": 6.0,
+    "punch_min_gap": 8.0,
+    "max_punch_per_minute": 4.0,
     "max_motion_for_punch": 0.5,
     "ken_burns": false,
-    "ken_burns_zoom": 1.05
+    "ken_burns_zoom": 1.05,
+    "punch_drift": 0.02
   },
   "broll": {
     "enabled": true,
@@ -111,6 +112,10 @@
     "callouts_per_minute": {
       "lo": 0.0,
       "hi": 1.0
+    },
+    "zooms_per_minute": {
+      "lo": 0.0,
+      "hi": 6.0
     }
   },
   "callouts": {

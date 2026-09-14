@@ -27,11 +27,12 @@
     "punch_in": true,
     "punch_zoom": 1.12,
     "punch_seconds": 2.4,
-    "punch_min_gap": 12.0,
-    "max_punch_per_minute": 2.0,
+    "punch_min_gap": 16.0,
+    "max_punch_per_minute": 1.6,
     "max_motion_for_punch": 0.3,
     "ken_burns": true,
-    "ken_burns_zoom": 1.06
+    "ken_burns_zoom": 1.06,
+    "punch_drift": 0.02
   },
   "broll": {
     "enabled": true,
@@ -86,7 +87,7 @@
     },
     "text_coverage": {
       "lo": 0.3,
-      "hi": 0.9
+      "hi": 0.98
     },
     "max_layers": {
       "lo": 0.0,
@@ -111,6 +112,10 @@
     "callouts_per_minute": {
       "lo": 0.0,
       "hi": 2.5
+    },
+    "zooms_per_minute": {
+      "lo": 0.0,
+      "hi": 2.6
     }
   },
   "callouts": {
