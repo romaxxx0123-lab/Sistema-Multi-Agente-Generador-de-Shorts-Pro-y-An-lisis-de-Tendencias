@@ -254,6 +254,118 @@ def analyze(
         err_console.print(f"[yellow]aviso:[/yellow] {w}")
 
 
+@app.command()
+def styles() -> None:
+    """Lista los estilos de montaje disponibles."""
+    from .plan.styles import describe_styles
+
+    for s in describe_styles():
+        console.print(f"[bold cyan]{s.name}[/bold cyan] — {s.label}")
+        console.print(f"  [dim]{s.description}[/dim]")
+        p = s.pacing
+        console.print(
+            f"  [dim]ritmo {p.cuts_per_minute.lo:.0f}-{p.cuts_per_minute.hi:.0f} cortes/min · "
+            f"subtitulos {'si' if s.captions.enabled else 'no'} · "
+            f"zoom {'si' if s.emphasis.punch_in else 'no'} · "
+            f"capitulos {'si' if s.chapters.enabled else 'no'}[/dim]"
+        )
+        console.print()
+
+
+@app.command()
+def plan(
+    source: Path = typer.Argument(..., help="Video de entrada."),
+    style: str = typer.Option("tutorial", "--style", "-s", help="Estilo de montaje."),
+    intensity: int = typer.Option(50, "--intensity", "-i", min=0, max=100, help="Cuanta edicion quieres (0-100)."),
+    tier: str = typer.Option(None, "--tier", help="light, balanced o max."),
+    no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+    out: Path = typer.Option(None, "--out", "-o", help="Guarda el EDL en un JSON."),
+    json_out: bool = typer.Option(False, "--json", help="Saca el EDL por pantalla en JSON."),
+) -> None:
+    """Analiza el video y decide el montaje, sin renderizar todavia.
+
+    Produce un EDL: la lista de decisiones de edicion. Cada efecto lleva su
+    justificacion, asi que se puede revisar antes de gastar un render.
+    """
+    from .analysis.pipeline import analyze as run_analysis
+    from .config import Tier
+    from .plan.edl import EffectKind
+    from .plan.planner import build_edl
+
+    settings = Settings.load()
+    try:
+        tier_value = Tier(tier.lower()) if tier else None
+    except ValueError as exc:
+        err_console.print(f"[bold red]Error:[/bold red] tier desconocido: {tier}")
+        raise typer.Exit(code=1) from exc
+
+    with console.status("[cyan]trabajando...", spinner="dots") as status:
+        def on_progress(stage: str, message: str) -> None:
+            status.update(f"[cyan]{message}...")
+
+        try:
+            analysis, warnings = run_analysis(
+                source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
+            )
+            status.update("[cyan]decidiendo el montaje...")
+            edl = build_edl(analysis, style, intensity=intensity)
+        except ForgeError as exc:
+            raise _fail(exc) from exc
+
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(edl.model_dump_json(indent=2))
+
+    if json_out:
+        console.print_json(edl.model_dump_json())
+        return
+
+    resumen = Table(show_header=False, box=None, padding=(0, 2))
+    resumen.add_row("estilo", f"{edl.style} · intensidad {edl.intensity}")
+    resumen.add_row("original", f"{edl.source_duration:.1f} s")
+    resumen.add_row(
+        "montaje",
+        f"[bold]{edl.duration:.1f} s[/bold] "
+        f"([green]-{edl.compression:.0%}[/green])" if edl.compression > 0 else f"{edl.duration:.1f} s",
+    )
+    resumen.add_row("clips", str(len(edl.timeline)))
+    if edl.duration:
+        resumen.add_row("ritmo", f"{len(edl.cut_points()) / (edl.duration / 60):.1f} cortes/min")
+    resumen.add_row("efectos", str(len(edl.effects)))
+    if edl.chapters:
+        resumen.add_row("capitulos", str(len(edl.chapters)))
+    console.print(Panel(resumen, title=f"montaje · {Path(source).name}", border_style="cyan"))
+
+    conteo: dict[str, int] = {}
+    for e in edl.effects:
+        conteo[e.kind.value] = conteo.get(e.kind.value, 0) + 1
+    if conteo:
+        tabla = Table(box=None, padding=(0, 2))
+        tabla.add_column("efecto")
+        tabla.add_column("cuantos", justify="right")
+        tabla.add_column("ejemplo de por que", style="dim")
+        for kind, n in sorted(conteo.items(), key=lambda kv: -kv[1]):
+            ejemplo = next((e.rationale for e in edl.effects if e.kind.value == kind), "")
+            tabla.add_row(kind, str(n), ejemplo[:64])
+        console.print(tabla)
+
+    if edl.chapters:
+        console.print("\n[bold]Capitulos[/bold] [dim](listos para la descripcion de YouTube)[/dim]")
+        for c in edl.chapters:
+            console.print(f"  [cyan]{c.timestamp()}[/cyan] {c.title}")
+
+    if edl.notes:
+        console.print()
+        for n in edl.notes:
+            console.print(f"[dim]· {n}[/dim]")
+
+    if out:
+        console.print(f"\nEDL guardado en [bold]{out}[/bold]")
+
+    for w in warnings:
+        err_console.print(f"[yellow]aviso:[/yellow] {w}")
+
+
 @app.command("make-fixture")
 def make_fixture_cmd(
     out: Path = typer.Argument(Path("fixture.mp4"), help="Fichero de salida."),

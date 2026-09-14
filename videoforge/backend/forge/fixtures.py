@@ -134,3 +134,114 @@ def silent_ranges(scenes: tuple[Scene, ...] = DEFAULT_SCENES) -> list[tuple[floa
             ranges.append((round(t, 3), round(t + sc.seconds, 3)))
         t += sc.seconds
     return ranges
+
+
+# ---------------------------------------------------------------------------
+# Analisis sintetico
+# ---------------------------------------------------------------------------
+#
+# Para probar el planner y el motor de saturacion no hace falta un video real:
+# hace falta un *analisis* realista. Este generador fabrica uno con la forma de
+# una guia hablada (rafagas de voz con pausas, planos largos, foco variable),
+# de manera determinista para que los tests no oscilen.
+
+
+def synthetic_guide_analysis(
+    duration: float = 300.0,
+    *,
+    seed: int = 7,
+    shot_seconds: float = 25.0,
+    with_transcript: bool = True,
+    language: str = "es",
+):
+    """Construye un `Analysis` con la forma de una guia hablada."""
+    import random as _random
+
+    from .analysis.types import (
+        Analysis,
+        AudioAnalysis,
+        MotionTrack,
+        Shot,
+        ShotFocus,
+        SilenceRange,
+        Transcript,
+        TranscriptSegment,
+        Word,
+    )
+    from .media import MediaInfo, VideoStream
+
+    rng = _random.Random(seed)
+
+    frases = [
+        "vamos a ver como se configura esto",
+        "abrimos el menu de ajustes",
+        "eh aqui hay que marcar esta casilla",
+        "ahora guardamos los cambios",
+        "osea que ya lo tenemos funcionando",
+        "el siguiente paso es el importante",
+        "fijate bien en este boton de aqui",
+        "y con esto terminamos la seccion",
+    ]
+
+    segmentos: list[TranscriptSegment] = []
+    silencios: list[SilenceRange] = []
+    t = 0.0
+    while t < duration - 12.0:
+        palabras_frase = rng.choice(frases).split()
+        inicio = t
+        words: list[Word] = []
+        for texto in palabras_frase:
+            words.append(Word(start=round(t, 3), end=round(t + 0.32, 3), text=texto))
+            t += 0.40
+        segmentos.append(
+            TranscriptSegment(
+                start=round(inicio, 3),
+                end=round(t, 3),
+                text=" ".join(palabras_frase),
+                words=words,
+            )
+        )
+        pausa = rng.choice([0.5, 0.8, 1.2, 2.0, 3.5])
+        silencios.append(SilenceRange(start=round(t, 3), end=round(t + pausa, 3)))
+        t += pausa
+
+    media = MediaInfo(
+        path="guia-sintetica.mp4",
+        size_bytes=10**8,
+        duration=duration,
+        video=VideoStream(index=0, codec="h264", width=1920, height=1080, fps=30.0),
+    )
+
+    shots = [
+        Shot(index=i, start=i * shot_seconds, end=min(duration, (i + 1) * shot_seconds))
+        for i in range(int(duration // shot_seconds) + 1)
+    ]
+    shots = [s for s in shots if s.duration > 0]
+
+    focus = [
+        ShotFocus(
+            shot_index=s.index,
+            cx=round(rng.uniform(0.3, 0.7), 3),
+            cy=round(rng.uniform(0.3, 0.7), 3),
+            concentration=round(rng.uniform(0.05, 0.8), 3),
+        )
+        for s in shots
+    ]
+
+    muestras = int(duration * 4)
+    motion = MotionTrack(
+        rate=4.0,
+        diff=[0.1] * muestras,
+        flow=[round(rng.uniform(0.0, 0.6), 3) for _ in range(muestras)],
+    )
+
+    return Analysis(
+        media=media,
+        shots=shots,
+        motion=motion,
+        focus=focus,
+        audio=AudioAnalysis(silences=silencios),
+        transcript=(
+            Transcript(language=language, segments=segmentos) if with_transcript else None
+        ),
+    )

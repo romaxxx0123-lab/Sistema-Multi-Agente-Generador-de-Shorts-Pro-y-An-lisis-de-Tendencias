@@ -14,8 +14,8 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 |---|---|---|
 | F0 | Scaffold, toolchain, cache, CLI | hecho |
 | F1 | Ingesta y analisis (planos, movimiento, audio, transcripcion) | hecho |
-| F2 | EDL, estilos y planner | en curso |
-| F3 | Renderer FFmpeg | pendiente |
+| F2 | EDL, estilos y planner | hecho |
+| F3 | Renderer FFmpeg | en curso |
 | F4 | Motor de saturacion y auto-balanceador | pendiente |
 | F5 | Comprension de contenido y b-roll | pendiente |
 | F6 | API y UI web | pendiente |
@@ -64,6 +64,8 @@ forge doctor                 # comprueba entorno, filtros, GPU y perfil elegido
 forge probe video.mp4        # metadatos del video
 forge make-fixture t.mp4     # genera un video de pruebas sin descargar nada
 forge analyze video.mp4      # analiza: planos, movimiento, silencios, voz
+forge styles                 # estilos de montaje disponibles
+forge plan video.mp4         # decide el montaje (sin renderizar)
 forge cache info video.mp4   # que hay cacheado de ese video
 forge cache clear video.mp4  # lo borra
 ```
@@ -128,3 +130,66 @@ cd videoforge/backend
 
 Los tests generan su propio video de prueba con FFmpeg, asi que no dependen de
 ningun fichero externo ni de la red.
+
+
+## Como decide el montaje
+
+`forge plan` produce un **EDL** (Edit Decision List): un JSON con todas las
+decisiones de edicion, que puedes revisar antes de gastar un render.
+
+```bash
+forge plan guia.mp4 --style tutorial --intensity 50 -o montaje.json
+```
+
+El EDL separa dos cosas a proposito:
+
+- **`timeline`** son los cortes: que trozos entran y en que orden. Solo esto
+  determina la duracion.
+- **`effects`** es todo lo que se superpone: subtitulos, zooms, b-roll, rotulos,
+  transiciones, color.
+
+De ahi sale el invariante en el que se apoya el motor de saturacion de F4:
+**quitar o anadir efectos nunca cambia la duracion del video**, asi que el
+auto-balanceador puede podar sin descuadrar nada.
+
+Cada efecto lleva su propia justificacion, y es lo que se muestra al revisarlo:
+
+```
+punch_in   zoom a (58%, 41%): la atencion se concentra ahi y el plano esta quieto
+caption    subtitulo: "abrimos el menu de ajustes"
+text_card  rotulo de capitulo en 1:37
+```
+
+### Que hace el planner, en orden
+
+1. **Seleccion** — recorta silencios y muletillas. En una guia de 20 minutos
+   suele quitar entre un 15% y un 25%. Cruza dos senales independientes para no
+   equivocarse: la deteccion de silencios es acustica y podria marcar como
+   silencio una palabra dicha en voz baja, asi que antes de recortar se restan
+   los intervalos de las palabras transcritas. **Nunca se corta dentro de una
+   palabra.**
+2. **Subtitulos** — agrupa las palabras en lineas partiendo por las pausas del
+   habla, no solo por numero de caracteres, y sin cruzar nunca un corte.
+3. **Enfasis** — zoom hacia el punto de atencion, pero solo si se cumplen tres
+   condiciones a la vez: hay algo concreto que enfocar (la saliencia esta
+   concentrada), el plano no se mueve ya demasiado, y ha pasado el tiempo
+   minimo desde el zoom anterior. Si no, no hay zoom.
+4. **Capitulos** — busca las pausas largas en el **original** (el corte se las
+   come, asi que buscarlas en el montaje no serviria) y mide la duracion minima
+   en el **montaje**, que es lo que vera el espectador.
+5. **Transiciones y color** — segun el estilo.
+
+### Estilos
+
+| Estilo | Para que |
+|---|---|
+| `tutorial` | Guias y explicaciones en formato largo. El principal. |
+| `gaming-hype` | Clips cortos de gameplay, ritmo alto. |
+| `documentary` | La voz manda y el b-roll ilustra. |
+| `cinematic` | Pocos cortes, respiracion larga, casi sin texto. |
+| `vlog` | Ritmo medio. |
+| `clean-corporate` | Formacion interna, sin artificio. |
+
+Los estilos son ficheros JSON en `backend/styles/`. Anadir uno nuevo no requiere
+tocar codigo: define su ritmo, sus subtitulos, sus zooms y **sus bandas de
+saturacion** (lo que en una guia es sobrecarga, en un short es lo normal).

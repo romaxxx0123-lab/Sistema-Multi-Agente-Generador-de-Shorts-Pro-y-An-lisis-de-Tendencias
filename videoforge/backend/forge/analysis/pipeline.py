@@ -21,14 +21,23 @@ from ..media import MediaInfo
 from ..tools import effective_device, probe
 from .audio import analyze_audio
 from .motion import analyze_motion, rate_for_duration
+from .saliency import analyze_saliency
 from .shots import detect_shots
-from .types import Analysis, AudioAnalysis, MotionTrack, Shot, Transcript
+from .types import (
+    Analysis,
+    AudioAnalysis,
+    MotionTrack,
+    Shot,
+    ShotFocus,
+    Transcript,
+)
 
 #: Subir la version de una etapa invalida su cache sin tocar las demas.
 STAGE_VERSIONS = {
     "probe": 1,
     "motion": 1,
     "shots": 1,
+    "focus": 1,
     "audio": 1,
     "transcript": 1,
 }
@@ -39,6 +48,7 @@ STAGE_LABELS = {
     "proxy": "preparando proxy de analisis",
     "motion": "midiendo movimiento",
     "shots": "detectando planos",
+    "focus": "buscando el foco de atencion",
     "audio": "analizando audio",
     "transcript": "transcribiendo voz",
 }
@@ -111,6 +121,15 @@ class AnalysisRun:
         self.cache.write("shots", [s.model_dump(mode="json") for s in shots], v)
         return shots
 
+    def _focus(self, bundle: ProxyBundle, shots: list[Shot], force: bool) -> list[ShotFocus]:
+        v = STAGE_VERSIONS["focus"]
+        if not force and (cached := self.cache.read("focus", v)) is not None:
+            return [ShotFocus.model_validate(f) for f in cached]
+        self.progress("focus", STAGE_LABELS["focus"])
+        focus = analyze_saliency(bundle.video, shots, self.settings)
+        self.cache.write("focus", [f.model_dump(mode="json") for f in focus], v)
+        return focus
+
     def _audio(self, bundle: ProxyBundle, force: bool) -> AudioAnalysis | None:
         if not bundle.has_audio:
             self.warnings.append("El video no tiene audio: sin silencios ni sonoridad.")
@@ -168,6 +187,7 @@ class AnalysisRun:
         bundle = self._proxy(info, forced("proxy"))
         motion = self._motion(bundle, forced("motion"))
         shots = self._shots(bundle, motion, forced("shots"))
+        focus = self._focus(bundle, shots, forced("focus"))
         audio = self._audio(bundle, forced("audio"))
         transcript = (
             None if skip_speech else self._transcript(bundle, forced("transcript"), language)
@@ -177,6 +197,7 @@ class AnalysisRun:
             media=info,
             shots=shots,
             motion=motion,
+            focus=focus,
             audio=audio,
             transcript=transcript,
         )

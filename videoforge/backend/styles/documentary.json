@@ -1,0 +1,51 @@
+{
+  "name": "documentary",
+  "label": "Documental",
+  "description": "La voz manda y el b-roll ilustra. Rotulos identificativos, subtitulos sobrios y bastante material de apoyo sobre la narracion.",
+  "pacing": {
+    "remove_silence": true,
+    "silence_min": 0.8,
+    "silence_keep": 0.25,
+    "speech_pad": 0.18,
+    "remove_fillers": true,
+    "min_clip": 1.4,
+    "cuts_per_minute": {"lo": 4.0, "hi": 15.0}
+  },
+  "captions": {
+    "enabled": true,
+    "max_chars": 42,
+    "max_words": 8,
+    "max_duration": 4.0,
+    "split_gap": 0.5,
+    "style": "clean",
+    "position": "bottom"
+  },
+  "emphasis": {
+    "punch_in": true,
+    "punch_zoom": 1.12,
+    "punch_seconds": 2.4,
+    "punch_min_gap": 12.0,
+    "max_punch_per_minute": 2.0,
+    "max_motion_for_punch": 0.3,
+    "ken_burns": true,
+    "ken_burns_zoom": 1.06
+  },
+  "broll": {"enabled": true, "max_per_minute": 3.0, "min_gap": 8.0, "default_seconds": 4.0, "mode": "full", "max_coverage": 0.45},
+  "chapters": {"enabled": true, "min_seconds": 75.0, "card_seconds": 2.8, "show_cards": true},
+  "transitions": {"enabled": true, "default": "fade", "duration": 0.4, "fraction": 0.3},
+  "grade": {"preset": "warm", "intensity": 0.4},
+  "music": {"enabled": true, "gain_db": -24.0, "duck": true},
+  "sfx": {"enabled": false, "max_per_minute": 0.5, "gain_db": -14.0},
+  "saturation": {
+    "cuts_per_minute": {"lo": 4.0, "hi": 15.0},
+    "effect_density_mean": {"lo": 0.15, "hi": 0.45},
+    "effect_density_peak": {"lo": 0.0, "hi": 0.7},
+    "overlay_coverage": {"lo": 0.15, "hi": 0.5},
+    "text_coverage": {"lo": 0.3, "hi": 0.9},
+    "max_layers": {"lo": 0.0, "hi": 3.0},
+    "sfx_per_minute": {"lo": 0.0, "hi": 1.0},
+    "transitions_per_minute": {"lo": 0.0, "hi": 6.0},
+    "caption_wpm": {"lo": 80.0, "hi": 200.0},
+    "motion_conflicts_per_minute": {"lo": 0.0, "hi": 1.0}
+  }
+}

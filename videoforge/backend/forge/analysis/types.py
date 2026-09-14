@@ -59,6 +59,24 @@ class MotionTrack(BaseModel):
         return sum(window) / len(window) if window else 0.0
 
 
+class ShotFocus(BaseModel):
+    """Donde mira el ojo dentro de un plano.
+
+    `concentration` es la clave: a 0 la atencion esta repartida por todo el
+    fotograma y acercarse seria arbitrario; cerca de 1 hay un punto claro al que
+    ir. El planner usa este valor para decidir si hace punch-in o lo deja estar.
+    """
+
+    shot_index: int
+    cx: float = 0.5
+    cy: float = 0.5
+    concentration: float = 0.0
+
+    @property
+    def has_focus(self) -> bool:
+        return self.concentration >= 0.08
+
+
 class SilenceRange(BaseModel):
     """Un tramo sin voz ni sonido relevante: candidato numero uno a recortarse."""
 
@@ -138,6 +156,7 @@ class Analysis(BaseModel):
     media: MediaInfo
     shots: list[Shot] = Field(default_factory=list)
     motion: MotionTrack | None = None
+    focus: list[ShotFocus] = Field(default_factory=list)
     audio: AudioAnalysis | None = None
     transcript: Transcript | None = None
 
@@ -154,6 +173,13 @@ class Analysis(BaseModel):
 
     def shot_at(self, t: float) -> Shot | None:
         return next((s for s in self.shots if s.contains(t)), None)
+
+    def focus_of(self, shot_index: int) -> ShotFocus | None:
+        return next((f for f in self.focus if f.shot_index == shot_index), None)
+
+    def focus_at(self, t: float) -> ShotFocus | None:
+        shot = self.shot_at(t)
+        return self.focus_of(shot.index) if shot else None
 
     def summary(self) -> str:
         bits = [f"{self.duration:.1f}s", f"{len(self.shots)} planos"]
