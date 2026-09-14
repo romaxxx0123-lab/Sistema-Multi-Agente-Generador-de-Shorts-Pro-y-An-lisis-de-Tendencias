@@ -1,28 +1,53 @@
-"""Analisis de audio: silencios y sonoridad, en una sola pasada de ffmpeg.
-
-No hace falta ninguna libreria de audio para esto: `silencedetect` y `ebur128`
-vienen en cualquier build de ffmpeg y son justo las dos medidas que necesita el
-montaje.
+"""Analisis de audio: silencios y sonoridad.
 
 Los silencios son la funcion de mayor impacto del proyecto en formato largo: en
 una guia de 20 minutos, quitar el tiempo muerto recorta facilmente un 15-25% de
-duracion sin perder una sola palabra.
+duracion sin perder una sola palabra. Por eso detectarlos bien no es un detalle.
+
+**Por que no se usa `silencedetect` de ffmpeg.** Mide el *pico* de la senal, no
+su valor eficaz. El ruido de sala de cualquier grabacion real es ruido casi
+gaussiano, cuyos picos quedan unos 12 dB por encima de su RMS: un fondo que
+suena a -36 dB RMS tiene picos a -24 dB. Con un umbral fijo razonable, por
+ejemplo -32 dB, `silencedetect` **no encuentra un solo silencio** en una
+grabacion normal. Solo funciona con silencio digital perfecto, que no existe
+fuera de un fichero sintetico.
+
+Aqui se miden ventanas de RMS y se elige el umbral **a partir del propio
+audio**: se estiman el suelo de ruido y el nivel de voz, y se corta entre los
+dos. Asi funciona igual con un microfono silencioso que con uno ruidoso.
+
+La sonoridad si se mide con `ebur128` de ffmpeg, que implementa el estandar.
 """
 
 from __future__ import annotations
 
 import re
+import wave
 from pathlib import Path
+
+import numpy as np
 
 from ..config import Settings
 from ..tools import ffmpeg_bin, run
 from .types import AudioAnalysis, Loudness, SilenceRange
 
-#: Umbral de silencio. -32 dB deja pasar la respiracion y el ruido de sala pero
-#: marca las pausas reales entre frases.
+#: Umbral de respaldo, solo para grabaciones donde no se distingue voz de fondo.
 DEFAULT_NOISE_DB = -32.0
 #: Pausas mas cortas que esto son el ritmo natural del habla, no tiempo muerto.
 DEFAULT_MIN_SILENCE = 0.35
+#: Ventana de medida del RMS. 20 ms es el orden de un fonema.
+RMS_WINDOW_SECONDS = 0.02
+#: Percentiles con los que se estiman el suelo de ruido y el nivel de voz.
+FLOOR_PERCENTILE = 10
+SPEECH_PERCENTILE = 90
+#: Separacion minima entre fondo y voz para fiarse de la estimacion.
+MIN_SEPARATION_DB = 10.0
+#: Donde se pone el corte entre los dos niveles. Mas cerca del fondo que de la
+#: voz, para no comerse el final flojo de las palabras.
+THRESHOLD_POSITION = 0.25
+#: Margenes de seguridad respecto a cada nivel.
+MARGIN_ABOVE_FLOOR_DB = 4.0
+MARGIN_BELOW_SPEECH_DB = 6.0
 
 _SILENCE_START = re.compile(r"silence_start:\s*(-?[\d.]+)")
 _SILENCE_END = re.compile(r"silence_end:\s*(-?[\d.]+)")
@@ -71,33 +96,147 @@ def parse_loudness(stderr: str) -> Loudness:
     )
 
 
+def read_window_levels(
+    wav_path: Path, *, window_seconds: float = RMS_WINDOW_SECONDS
+) -> tuple[np.ndarray, float]:
+    """Nivel RMS en dB de cada ventana del audio, y su duracion.
+
+    Lee el WAV por trozos para que un audio de veinte minutos no tenga que caber
+    entero en memoria.
+    """
+    with wave.open(str(wav_path), "rb") as fh:
+        canales = fh.getnchannels()
+        ancho = fh.getsampwidth()
+        tasa = fh.getframerate()
+        total = fh.getnframes()
+
+        if ancho != 2:
+            raise ValueError(f"se esperaba PCM de 16 bits, no de {ancho * 8}")
+
+        por_ventana = max(1, int(window_seconds * tasa))
+        niveles: list[float] = []
+        resto = np.empty(0, dtype=np.float32)
+
+        while True:
+            crudo = fh.readframes(por_ventana * 512)
+            if not crudo:
+                break
+            muestras = np.frombuffer(crudo, dtype=np.int16).astype(np.float32) / 32768.0
+            if canales > 1:
+                muestras = muestras.reshape(-1, canales).mean(axis=1)
+
+            datos = np.concatenate([resto, muestras]) if resto.size else muestras
+            completas = len(datos) // por_ventana
+            if completas:
+                bloque = datos[: completas * por_ventana].reshape(completas, por_ventana)
+                rms = np.sqrt((bloque**2).mean(axis=1))
+                niveles.extend((20.0 * np.log10(rms + 1e-9)).tolist())
+            resto = datos[completas * por_ventana :]
+
+    duracion = total / tasa if tasa else 0.0
+    return np.asarray(niveles, dtype=np.float32), duracion
+
+
+def choose_threshold_db(levels: np.ndarray) -> tuple[float, float, float]:
+    """Elige el umbral de silencio a partir del propio audio.
+
+    Devuelve (umbral, suelo de ruido, nivel de voz), todo en dB.
+    """
+    if levels.size == 0:
+        return DEFAULT_NOISE_DB, DEFAULT_NOISE_DB, 0.0
+
+    suelo = float(np.percentile(levels, FLOOR_PERCENTILE))
+    voz = float(np.percentile(levels, SPEECH_PERCENTILE))
+
+    # Sin separacion clara no hay dos poblaciones que separar: puede ser musica
+    # continua, ruido constante o un audio ya muy comprimido. En ese caso es mas
+    # honesto usar un umbral fijo conservador que inventarse uno.
+    if voz - suelo < MIN_SEPARATION_DB:
+        return DEFAULT_NOISE_DB, suelo, voz
+
+    umbral = suelo + (voz - suelo) * THRESHOLD_POSITION
+    umbral = max(umbral, suelo + MARGIN_ABOVE_FLOOR_DB)
+    umbral = min(umbral, voz - MARGIN_BELOW_SPEECH_DB)
+    return float(umbral), suelo, voz
+
+
+def find_silences(
+    levels: np.ndarray,
+    window_seconds: float,
+    threshold_db: float,
+    min_silence: float,
+    duration: float,
+) -> list[SilenceRange]:
+    """Tramos continuos por debajo del umbral que duran lo suficiente."""
+    if levels.size == 0:
+        return []
+
+    bajo = levels < threshold_db
+    minimo_ventanas = max(1, int(round(min_silence / window_seconds)))
+
+    rangos: list[SilenceRange] = []
+    inicio: int | None = None
+    for i, silencioso in enumerate(bajo):
+        if silencioso and inicio is None:
+            inicio = i
+        elif not silencioso and inicio is not None:
+            if i - inicio >= minimo_ventanas:
+                rangos.append(
+                    SilenceRange(
+                        start=round(inicio * window_seconds, 3),
+                        end=round(min(duration, i * window_seconds), 3),
+                    )
+                )
+            inicio = None
+    if inicio is not None and len(bajo) - inicio >= minimo_ventanas:
+        rangos.append(
+            SilenceRange(start=round(inicio * window_seconds, 3), end=round(duration, 3))
+        )
+
+    return rangos
+
+
+def measure_loudness(audio_path: Path, settings: Settings) -> Loudness:
+    """Sonoridad EBU R128 con ffmpeg, que implementa el estandar."""
+    proc = run(
+        [
+            ffmpeg_bin(settings), "-hide_banner", "-nostdin",
+            "-i", audio_path,
+            "-af", "ebur128=peak=true",
+            "-f", "null", "-",
+        ],
+        timeout=None,
+        check=False,
+    )
+    return parse_loudness(proc.stderr or "")
+
+
 def analyze_audio(
     audio_path: Path,
     duration: float,
     settings: Settings,
     *,
-    noise_db: float = DEFAULT_NOISE_DB,
+    noise_db: float | None = None,
     min_silence: float = DEFAULT_MIN_SILENCE,
 ) -> AudioAnalysis:
-    """Detecta silencios y mide sonoridad en una sola pasada."""
-    proc = run(
-        [
-            ffmpeg_bin(settings),
-            "-hide_banner", "-nostdin",
-            "-i", audio_path,
-            "-af",
-            f"silencedetect=noise={noise_db}dB:d={min_silence},ebur128=peak=true",
-            "-f", "null",
-            "-",
-        ],
-        timeout=None,
-        check=False,
-    )
-    stderr = proc.stderr or ""
+    """Detecta silencios y mide sonoridad.
+
+    Si no se fuerza `noise_db`, el umbral se deduce del propio audio.
+    """
+    niveles, duracion_wav = read_window_levels(audio_path)
+    duracion = duracion_wav or duration
+
+    if noise_db is None:
+        umbral, _suelo, _voz = choose_threshold_db(niveles)
+    else:
+        umbral = noise_db
+
+    silencios = find_silences(niveles, RMS_WINDOW_SECONDS, umbral, min_silence, duracion)
+
     return AudioAnalysis(
-        silences=parse_silences(stderr, duration),
-        loudness=parse_loudness(stderr),
-        silence_threshold_db=noise_db,
+        silences=silencios,
+        loudness=measure_loudness(audio_path, settings),
+        silence_threshold_db=round(umbral, 2),
     )
 
 

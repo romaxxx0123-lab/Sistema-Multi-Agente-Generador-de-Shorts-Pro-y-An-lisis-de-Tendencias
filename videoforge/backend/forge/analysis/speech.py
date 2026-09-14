@@ -18,11 +18,29 @@ from ..config import Device, ModelPlan, Settings
 from ..errors import AnalysisError
 from .types import Transcript, TranscriptSegment, Word
 
-#: Muletillas que el planner puede recortar. Se comparan en minusculas y sin
-#: signos de puntuacion.
+#: Sonidos que **nunca** son una palabra de verdad: se quitan siempre.
+ALWAYS_FILLERS: dict[str, frozenset[str]] = {
+    "es": frozenset({"eh", "em", "mmm", "ehm", "esto..."}),
+    "en": frozenset({"uh", "um", "erm", "uhm"}),
+}
+
+#: Palabras que **a veces** son muletilla y a veces no. "este" es muletilla en
+#: "y este... lo abrimos", pero es un demostrativo perfectamente normal en "en
+#: este video". Quitarlas a ciegas rompe la frase, que es mucho peor que dejar
+#: una muletilla puesta, asi que solo se quitan cuando van seguidas de una
+#: vacilacion: esa pausa es justo la firma acustica de la muletilla.
+CONTEXTUAL_FILLERS: dict[str, frozenset[str]] = {
+    "es": frozenset({"este", "osea", "bueno", "digamos", "vale", "pues", "nada"}),
+    "en": frozenset({"like", "basically", "actually", "literally", "right"}),
+}
+
+#: Pausa despues de la palabra que la delata como vacilacion.
+HESITATION_GAP = 0.25
+
+#: Compatibilidad: la union de las dos listas, para quien solo quiera consultarlas.
 FILLER_WORDS: dict[str, frozenset[str]] = {
-    "es": frozenset({"eh", "em", "mmm", "este", "osea", "bueno", "digamos", "vale"}),
-    "en": frozenset({"uh", "um", "erm", "like", "basically", "actually"}),
+    idioma: ALWAYS_FILLERS[idioma] | CONTEXTUAL_FILLERS[idioma]
+    for idioma in ALWAYS_FILLERS
 }
 
 ProgressFn = Callable[[float], None]
@@ -143,7 +161,32 @@ def _normalize(text: str) -> str:
 
 
 def find_fillers(transcript: Transcript) -> list[Word]:
-    """Localiza muletillas segun el idioma detectado."""
+    """Localiza las muletillas que se pueden quitar sin romper la frase.
+
+    Las inequivocas ("eh", "um") se quitan siempre. Las ambiguas ("este",
+    "bueno") solo si va detras una vacilacion, porque si no son palabras de
+    pleno derecho: quitar el "este" de "en este video" deja "en video".
+    """
     lang = (transcript.language or "es").lower()
-    vocab = FILLER_WORDS.get(lang, FILLER_WORDS["es"])
-    return [w for w in transcript.words if _normalize(w.text) in vocab]
+    if lang not in ALWAYS_FILLERS:
+        lang = "es"
+    siempre = ALWAYS_FILLERS[lang]
+    contextuales = CONTEXTUAL_FILLERS[lang]
+
+    palabras = transcript.words
+    encontradas: list[Word] = []
+
+    for i, w in enumerate(palabras):
+        normalizada = _normalize(w.text)
+        if normalizada in siempre:
+            encontradas.append(w)
+            continue
+        if normalizada not in contextuales:
+            continue
+        # Hay vacilacion si despues viene una pausa, o si es lo ultimo que se
+        # dice antes de callarse.
+        siguiente = palabras[i + 1] if i + 1 < len(palabras) else None
+        if siguiente is None or siguiente.start - w.end >= HESITATION_GAP:
+            encontradas.append(w)
+
+    return encontradas

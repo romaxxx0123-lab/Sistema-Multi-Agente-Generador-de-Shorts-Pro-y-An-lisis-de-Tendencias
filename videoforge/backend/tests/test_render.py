@@ -126,7 +126,11 @@ def test_los_subtitulos_acaban_en_la_imagen(
     cambio = float(np.abs(banda_editada.astype(int) - banda_original.astype(int)).mean())
 
     assert blancos > 150, "no hay texto claro en la banda de subtitulos"
-    assert cambio > 10, "la banda inferior no cambio respecto al original"
+    # El umbral es modesto a proposito: el texto ocupa una fraccion pequena de
+    # la banda y el resto de la imagen no cambia. Antes estaba en 10 y pasaba
+    # solo porque una transicion mal hecha ennegrecia el video entero, lo que
+    # disparaba la diferencia por el motivo equivocado.
+    assert cambio > 3, "la banda inferior no cambio respecto al original"
 
 
 # -- zoom ------------------------------------------------------------------
@@ -431,3 +435,70 @@ def test_los_efectos_de_sonido_se_oyen(
     assert float(con_env[i:i + 40].max()) == pytest.approx(
         float(sin_env[i:i + 40].max()), rel=0.2
     )
+
+
+# -- la imagen tiene que sobrevivir al render ------------------------------
+
+
+def _brillo_medio(path: Path, t: float, settings: Settings) -> float:
+    """Luminosidad media de un fotograma, en 0-255."""
+    proc = subprocess.run(
+        [str(ffmpeg_bin(settings)), "-hide_banner", "-loglevel", "error", "-nostdin",
+         "-i", str(path), "-ss", f"{t:.3f}", "-frames:v", "1",
+         "-vf", "scale=160:90", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+        capture_output=True, timeout=300,
+    )
+    datos = np.frombuffer(proc.stdout[: 160 * 90], dtype=np.uint8)
+    return float(datos.mean()) if datos.size else 0.0
+
+
+def test_la_imagen_sobrevive_al_render(
+    sample_video: Path, settings: Settings, tmp_path: Path
+) -> None:
+    """El render no puede apagar la imagen.
+
+    Este es el test que faltaba: durante un tiempo el renderer producia un MP4
+    con la duracion correcta, los streams correctos, el audio correcto y los
+    subtitulos correctos... **completamente negro**, porque `fade=t=out` deja el
+    video a oscuras desde la transicion hasta el final. Ninguna comprobacion de
+    duracion, formato o sonido lo detecta: hay que mirar la luminosidad.
+    """
+    analysis, _ = analyze(sample_video, settings, skip_speech=True)
+    edl = build_edl(analysis, "tutorial")
+
+    out = tmp_path / "brillo.mp4"
+    render(edl, out, settings)
+
+    for t in (1.0, 3.0, 6.0):
+        origen = edl.timeline_to_source(t)
+        assert origen is not None
+        original = _brillo_medio(sample_video, origen, settings)
+        editado = _brillo_medio(out, t, settings)
+        assert editado > original * 0.5, (
+            f"en {t}s la imagen se apago: {editado:.1f} frente a {original:.1f}"
+        )
+
+
+def test_una_transicion_solo_oscurece_su_propio_tramo(
+    base_sin_zoom, settings: Settings, tmp_path: Path
+) -> None:
+    """Una transicion es un parpadeo, no un apagon."""
+    from forge.plan.edl import TransitionEffect
+
+    base, _ = base_sin_zoom
+    con = base.model_copy(deep=True)
+    centro = min(4.0, base.duration / 2)
+    con.effects.append(
+        TransitionEffect(id="t", start=centro - 0.12, end=centro + 0.12, rationale="prueba")
+    )
+
+    out = tmp_path / "transicion.mp4"
+    render(con, out, settings)
+
+    en_la_transicion = _brillo_medio(out, centro, settings)
+    despues = _brillo_medio(out, centro + 1.0, settings)
+    antes = _brillo_medio(out, max(0.2, centro - 1.0), settings)
+
+    assert en_la_transicion < 12, "la transicion no oscurece nada"
+    assert despues > 20, "el video se quedo oscuro despues de la transicion"
+    assert antes > 20, "el video ya estaba oscuro antes de la transicion"

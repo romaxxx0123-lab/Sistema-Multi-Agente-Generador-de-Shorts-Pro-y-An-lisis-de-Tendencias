@@ -61,6 +61,7 @@ pip install -e ".[dev]"                       # tests
 
 ```bash
 forge doctor                 # comprueba entorno, filtros, GPU y perfil elegido
+forge demo                   # genera una guia de ejemplo y la monta entera
 forge probe video.mp4        # metadatos del video
 forge make-fixture t.mp4     # genera un video de pruebas sin descargar nada
 forge analyze video.mp4      # analiza: planos, movimiento, silencios, voz
@@ -103,9 +104,13 @@ Si falta alguna pieza opcional el analisis no se cae: avisa y sigue con lo que
 tiene. Sin `faster-whisper` no hay transcripcion, pero el resto del analisis se
 completa igual.
 
-Empieza siempre por `forge doctor`: detecta la GPU, verifica que tu build de FFmpeg
-trae los filtros necesarios y te dice con que perfil va a trabajar. Si la GPU no es
+Empieza por `forge doctor`: detecta la GPU, verifica que tu build de FFmpeg trae
+los filtros necesarios y te dice con que perfil va a trabajar. Si la GPU no es
 utilizable lo avisa y sigue en CPU, nunca se cae.
+
+Y despues `forge demo`: fabrica una grabacion de pantalla realista con voz y
+pausas, la monta entera y deja el original y el editado uno al lado del otro.
+Sirve para ver que la instalacion funciona de punta a punta sin subir nada.
 
 ## Configuracion
 
@@ -439,3 +444,70 @@ Cada trabajo persiste en disco: reiniciar el servidor no pierde el analisis, que
 es justo lo que mas cuesta rehacer. Un trabajo que se quedo a medias al apagar
 el servidor se marca como error para poder relanzarlo, en vez de quedarse
 esperando algo que ya no corre.
+
+
+## Por que hay un generador de material realista
+
+El fixture de barras de color sirve para probar la mecanica, pero **escondia dos
+fallos que dejaban el sistema inutil con material de verdad**. Los dos se
+encontraron al construir `forge demo`, que fabrica una grabacion de pantalla con
+voz y pausas reales:
+
+**1. No detectaba ni un silencio.** El fixture tiene silencio digital perfecto,
+que no existe en ninguna grabacion. `silencedetect` de ffmpeg mide **picos**, y
+el ruido de sala es casi gaussiano: un fondo a -36 dB RMS tiene picos a -24 dB.
+Con el umbral clasico de -32 dB no encontraba nada, y sin silencios no recorta
+tiempo muerto, que es la funcion principal.
+
+Ahora los silencios se detectan midiendo RMS por ventanas, con el umbral
+deducido **del propio audio**: se estiman el suelo de ruido y el nivel de voz y
+se corta entre los dos. Funciona igual con un microfono silencioso que con uno
+ruidoso.
+
+**2. Veia un unico plano en toda una grabacion de pantalla.** Pasar de una
+interfaz oscura a otra igual de oscura cambia entre **uno y tres niveles de gris
+sobre 255**. PySceneDetect no lo ve ni bajando su umbral a 3.
+
+Ahora se combinan dos detectores: el de PySceneDetect, bueno con material de
+camara, y uno propio que busca picos **relativos a su vecindad**. Ese cambio de
+1% no destaca en absoluto, pero destaca clarisimamente sobre una vecindad que
+esta a cero.
+
+**3. Y un tercero, encontrado al mirar el resultado.** El video salia con la
+duracion correcta, los streams correctos, el audio correcto, los subtitulos
+correctos... y **completamente negro**. `fade=t=out` de ffmpeg no oscurece solo
+su tramo: deja el video a oscuras desde la transicion hasta el final, y el
+`fade=t=in` que va detras ya recibe negro. Ninguna comprobacion de duracion,
+formato o sonido lo detecta.
+
+Las transiciones son ahora un bajon de luminosidad acotado a su propio pulso, y
+hay un test que mide el brillo del resultado, que es lo unico que lo delata.
+
+**4. Se comia palabras de verdad.** "este" es muletilla en "y este... lo
+abrimos", pero es un demostrativo normal en "en este video". Quitarlo a ciegas
+convertia esa frase en "en video". Ahora las palabras ambiguas solo se quitan si
+va detras una vacilacion, que es la firma acustica de la muletilla; las
+inequivocas ("eh", "um") se quitan siempre.
+
+## Como queda un montaje
+
+Sobre la guia de ejemplo, con el estilo `tutorial`:
+
+```
+original      59.5s
+editado       50.2s   (-16% de tiempo muerto)
+ritmo          8.4 cortes/min
+saturacion      46/100 · en el punto
+
+ 19 × caption      subtitulo: "hola en este video vamos a configurar"
+  2 × punch_in     zoom a (21%, 36%): la atencion se concentra ahi
+  1 × transition   transicion fade en el corte de 0.5s
+  1 × grade        color 'neutral' al 25%
+```
+
+Dos zooms en cincuenta segundos, subtitulos legibles y un ajuste de color
+discreto. Es un montaje **sobrio**, que es lo que debe ser: el medidor de
+saturacion existe justo para que el sistema no se emocione.
+
+Si no quieres elegir estilo, `--style auto` lo deduce del material: una guia
+hablada y quieta pide `tutorial`, un gameplay sin voz pide `gaming-hype`.

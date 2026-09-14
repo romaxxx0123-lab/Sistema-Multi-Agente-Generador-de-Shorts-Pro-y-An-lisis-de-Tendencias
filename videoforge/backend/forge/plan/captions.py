@@ -1,11 +1,19 @@
 """Agrupa las palabras transcritas en lineas de subtitulo.
 
-Dos reglas que separan un subtitulo usable de un volcado de texto:
+Tres reglas separan un subtitulo usable de un volcado de texto:
 
-- **Nunca cruzar un corte.** Una linea que sigue en pantalla despues de un corte
-  delata el montaje y se lee mal.
 - **Partir por las pausas del habla**, no solo por numero de caracteres. Cortar
   donde la persona respira hace que el subtitulo siga el ritmo de lo que dice.
+
+- **Distinguir los cortes duros de los blandos.** Un corte entre dos frases o
+  entre dos planos si obliga a cerrar la linea. Pero el corte que crea el propio
+  montaje al quitar un silencio o una muletilla **dentro de una misma frase** no:
+  ahi la voz sigue diciendo lo mismo, y cerrar la linea parte la frase en
+  pedazos sueltos. Quitar "este" de "hola en este video" no debe producir
+  "hola en" seguido de "video vamos a...", que es exactamente lo que pasaba.
+
+- **No terminar una linea con una palabra de funcion.** Cortar despues de "de",
+  "el" o "que" se lee mal; esas palabras se empujan a la linea siguiente.
 
 Los tiempos de salida ya estan en la linea de tiempo montada, no en el original.
 """
@@ -22,6 +30,19 @@ CAPTION_VALUE = 0.85
 CAPTION_COST = 0.30
 #: Margen para mapear el final de una palabra sin caerse al clip siguiente.
 _EPS = 1e-3
+
+#: Palabras con las que no se debe cerrar una linea: van pegadas a la siguiente.
+#: Son articulos, preposiciones y conjunciones, en espanol e ingles.
+TRAILING_STOPWORDS = frozenset(
+    {
+        "el", "la", "los", "las", "un", "una", "unos", "unas", "lo", "al", "del",
+        "de", "en", "con", "por", "para", "sin", "sobre", "entre", "hacia",
+        "y", "o", "u", "e", "que", "se", "su", "sus", "mi", "tu", "a",
+        "the", "a", "an", "of", "in", "on", "to", "for", "and", "or", "with",
+    }
+)
+#: Una linea no deberia quedarse con menos palabras que esto si se puede evitar.
+MIN_WORDS_PER_LINE = 2
 
 
 def _map_word(edl: EDL, word: Word) -> Word | None:
@@ -42,6 +63,40 @@ def _map_word(edl: EDL, word: Word) -> Word | None:
 
 def _crosses_cut(cuts: list[float], a: float, b: float) -> bool:
     return any(a < c < b for c in cuts)
+
+
+def hard_cuts(edl: EDL, transcript: Transcript) -> list[float]:
+    """Cortes que obligan a cerrar la linea de subtitulo.
+
+    Un corte es **blando** si las palabras que tiene justo antes y justo despues
+    pertenecen a la misma frase del transcript: lo creo el propio montaje al
+    quitar un silencio o una muletilla, la voz no se ha interrumpido, y mantener
+    la linea entera se lee mucho mejor que trocearla.
+
+    Cualquier otro corte es **duro**: cambio de frase o cambio de plano.
+    """
+    # A cada palabra se le anota a que frase pertenece, en tiempo de montaje.
+    anotadas: list[tuple[float, float, int]] = []
+    for indice, segmento in enumerate(transcript.segments):
+        for w in segmento.words:
+            inicio = edl.source_to_timeline(w.start)
+            if inicio is None:
+                continue
+            fin = edl.source_to_timeline(max(w.start, w.end - _EPS))
+            anotadas.append((inicio, fin if fin is not None else inicio, indice))
+    anotadas.sort()
+
+    duros: list[float] = []
+    for corte in edl.cut_points():
+        antes = [a for a in anotadas if a[1] <= corte + _EPS]
+        despues = [a for a in anotadas if a[0] >= corte - _EPS]
+        if not antes or not despues:
+            duros.append(corte)
+            continue
+        # Misma frase a los dos lados => corte blando.
+        if antes[-1][2] != despues[0][2]:
+            duros.append(corte)
+    return duros
 
 
 def group_words(
@@ -77,7 +132,19 @@ def group_words(
         actual.append(w)
 
     cerrar()
-    return lineas
+    return _rebalance_trailing(lineas)
+
+
+def _rebalance_trailing(lines: list[list[Word]]) -> list[list[Word]]:
+    """Empuja a la linea siguiente las palabras de funcion que quedan al final."""
+    for i in range(len(lines) - 1):
+        actual = lines[i]
+        while (
+            len(actual) > MIN_WORDS_PER_LINE
+            and actual[-1].text.strip(".,;:!?").lower() in TRAILING_STOPWORDS
+        ):
+            lines[i + 1].insert(0, actual.pop())
+    return lines
 
 
 def plan_captions(
@@ -92,7 +159,9 @@ def plan_captions(
         return []
 
     mapeadas.sort(key=lambda w: w.start)
-    cortes = edl.cut_points()
+    # Solo los cortes duros cierran linea; los que creo el propio montaje dentro
+    # de una frase se cruzan sin problema.
+    cortes = hard_cuts(edl, transcript)
 
     efectos: list[CaptionEffect] = []
     for i, linea in enumerate(group_words(mapeadas, rules, cortes)):

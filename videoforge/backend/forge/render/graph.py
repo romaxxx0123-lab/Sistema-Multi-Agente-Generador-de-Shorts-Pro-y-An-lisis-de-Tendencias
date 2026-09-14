@@ -13,9 +13,12 @@ Detalles que no son obvios:
 
 - Los zooms usan `zoompan` y no `crop`. `crop` solo recorta en pixeles enteros,
   asi que un zoom lento tiembla; `zoompan` interpola con precision subpixel.
-- Las transiciones se hacen con `fade` **despues** de concatenar, no con
-  `xfade`. `xfade` solapa los clips y por tanto acorta el video, lo que
-  romperia el invariante de que los efectos no cambian la duracion.
+- Las transiciones son un **bajon de brillo localizado**, no `xfade` ni `fade`.
+  `xfade` solapa los clips y acorta el video, lo que romperia el invariante de
+  que los efectos no cambian la duracion. Y `fade=t=out` es peor todavia: deja
+  el video negro **desde la transicion hasta el final**, no solo mientras dura.
+  Encadenar un `fade=t=in` detras no lo arregla, porque ya recibe negro. Se usa
+  `eq` con la luminosidad como expresion del tiempo, que si apaga solo su tramo.
 - Las expresiones van entre comillas simples: las procesa el parser de ffmpeg,
   no el shell, y asi no hay que escapar cada coma.
 """
@@ -199,14 +202,45 @@ def _overlay_position(effect: BrollEffect, w: int, h: int) -> tuple[str, str]:
     return f"{int(w * rect.x)}", f"{int(h * rect.y)}"
 
 
-def _grade_filter(preset: str, intensity: float) -> str:
-    """Ajuste de color, interpolado desde el neutro segun la intensidad."""
+def _grade_values(preset: str, intensity: float) -> tuple[float, float, float]:
+    """Contraste, saturacion y gamma interpolados desde el neutro."""
     valores = GRADE_PRESETS.get(preset, GRADE_PRESETS["neutral"])
     k = max(0.0, min(1.0, intensity))
-    contrast = 1.0 + (valores["contrast"] - 1.0) * k
-    saturation = 1.0 + (valores["saturation"] - 1.0) * k
-    gamma = 1.0 + (valores["gamma"] - 1.0) * k
-    return f"eq=contrast={contrast:.4f}:saturation={saturation:.4f}:gamma={gamma:.4f}"
+    return (
+        1.0 + (valores["contrast"] - 1.0) * k,
+        1.0 + (valores["saturation"] - 1.0) * k,
+        1.0 + (valores["gamma"] - 1.0) * k,
+    )
+
+
+def _dip_expression(dips: list[tuple[float, float, float]]) -> str:
+    """Expresion de luminosidad con un bajon triangular por transicion.
+
+    Cada entrada es (centro, semiancho, signo): -1 apaga a negro, +1 quema a
+    blanco. Los pulsos no se solapan (las transiciones van en cortes distintos),
+    asi que sumarlos es exacto.
+    """
+    terminos = [
+        f"({signo:.1f}*max(0,1-abs(t-{centro:.4f})/{max(semi, 0.02):.4f}))"
+        for centro, semi, signo in dips
+    ]
+    return "+".join(terminos) if terminos else "0"
+
+
+def _color_filter(
+    preset: str, intensity: float, dips: list[tuple[float, float, float]]
+) -> str:
+    """Color y transiciones en un solo `eq`.
+
+    Con transiciones hace falta `eval=frame` para que la luminosidad se
+    reevalue en cada fotograma; sin ellas se deja en modo estatico, que es
+    mas rapido.
+    """
+    contrast, saturation, gamma = _grade_values(preset, intensity)
+    base = f"eq=contrast={contrast:.4f}:saturation={saturation:.4f}:gamma={gamma:.4f}"
+    if not dips:
+        return base
+    return f"{base}:brightness={_q(_dip_expression(dips))}:eval=frame"
 
 
 def build_graph(
@@ -311,21 +345,23 @@ def build_graph(
     v_label = v_actual
 
     grade = edl.effects_of(EffectKind.GRADE)
-    if grade and not audio_only:
-        g = grade[0]
-        post.append(_grade_filter(g.preset, g.intensity))
-        aplicado.append(f"color {g.preset}")
-
     transiciones = [] if audio_only else edl.effects_of(EffectKind.TRANSITION)
-    for t in sorted(transiciones, key=lambda e: e.start):
-        mitad = max(0.04, t.duration / 2)
-        color = "white" if t.transition == "flash" else "black"
-        # Un "dip" al color: salida y entrada centradas en el corte. Mantiene la
-        # duracion exacta, al contrario que xfade.
-        post.append(f"fade=t=out:st={t.start:.4f}:d={mitad:.4f}:color={color}")
-        post.append(f"fade=t=in:st={t.start + mitad:.4f}:d={mitad:.4f}:color={color}")
-    if transiciones:
-        aplicado.append(f"{len(transiciones)} transiciones")
+
+    dips = [
+        # +1 quema a blanco, -1 apaga a negro.
+        ((t.start + t.end) / 2, max(0.04, t.duration / 2),
+         1.0 if t.transition == "flash" else -1.0)
+        for t in sorted(transiciones, key=lambda e: e.start)
+    ]
+
+    if not audio_only and (grade or dips):
+        preset = grade[0].preset if grade else "neutral"
+        intensidad = grade[0].intensity if grade else 0.0
+        post.append(_color_filter(preset, intensidad, dips))
+        if grade:
+            aplicado.append(f"color {preset}")
+        if dips:
+            aplicado.append(f"{len(dips)} transiciones")
 
     # El color y las transiciones se aplican a la base ANTES de superponer el
     # b-roll: un material que esta tapando un corte no debe oscurecerse con el

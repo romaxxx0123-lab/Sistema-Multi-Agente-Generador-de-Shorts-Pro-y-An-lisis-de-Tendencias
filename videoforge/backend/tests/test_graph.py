@@ -15,7 +15,7 @@ from forge.plan.edl import (
     RenderSpec,
     TransitionEffect,
 )
-from forge.render.graph import GRADE_PRESETS, _grade_filter, build_graph
+from forge.render.graph import GRADE_PRESETS, _color_filter, _dip_expression, build_graph
 
 
 def _edl(clips=None, effects=None, w=1920, h=1080, fps=30.0) -> EDL:
@@ -91,49 +91,61 @@ def test_solo_audio_ignora_los_subtitulos() -> None:
     assert "ass=" not in g.filter_complex
 
 
-# -- color -----------------------------------------------------------------
+# -- color y transiciones --------------------------------------------------
 
 
 def test_la_intensidad_cero_deja_el_color_intacto() -> None:
-    filtro = _grade_filter("punchy", 0.0)
+    filtro = _color_filter("punchy", 0.0, [])
     assert "contrast=1.0000" in filtro
     assert "saturation=1.0000" in filtro
 
 
 def test_la_intensidad_uno_aplica_el_preset_entero() -> None:
-    filtro = _grade_filter("punchy", 1.0)
+    filtro = _color_filter("punchy", 1.0, [])
     assert f"contrast={GRADE_PRESETS['punchy']['contrast']:.4f}" in filtro
 
 
 def test_la_intensidad_interpola() -> None:
-    medio = _grade_filter("punchy", 0.5)
+    medio = _color_filter("punchy", 0.5, [])
     valor = float(medio.split("contrast=")[1].split(":")[0])
     assert 1.0 < valor < GRADE_PRESETS["punchy"]["contrast"]
 
 
 def test_un_preset_desconocido_cae_al_neutro() -> None:
-    assert _grade_filter("inventado", 1.0) == _grade_filter("neutral", 1.0)
+    assert _color_filter("inventado", 1.0, []) == _color_filter("neutral", 1.0, [])
 
 
-# -- transiciones ----------------------------------------------------------
+def test_sin_transiciones_el_color_se_evalua_una_vez() -> None:
+    """Reevaluar por fotograma solo hace falta si algo cambia con el tiempo."""
+    filtro = _color_filter("neutral", 0.5, [])
+    assert "eval=frame" not in filtro
+    assert "brightness" not in filtro
 
 
-def test_las_transiciones_son_fades_y_no_xfade() -> None:
-    """xfade solapa clips y acortaria el video, rompiendo el invariante."""
-    g = build_graph(
-        _edl(effects=[TransitionEffect(id="t", start=9.8, end=10.2)]), has_audio=True
-    )
-    assert "fade=t=out" in g.filter_complex
-    assert "fade=t=in" in g.filter_complex
-    assert "xfade" not in g.filter_complex
+def test_con_transiciones_la_luminosidad_depende_del_tiempo() -> None:
+    filtro = _color_filter("neutral", 0.5, [(10.0, 0.11, -1.0)])
+    assert "eval=frame" in filtro
+    assert "brightness=" in filtro
 
 
-def test_flash_hace_dip_a_blanco() -> None:
-    g = build_graph(
-        _edl(effects=[TransitionEffect(id="t", start=9.8, end=10.2, transition="flash")]),
-        has_audio=True,
-    )
-    assert "color=white" in g.filter_complex
+def test_el_bajon_es_un_pulso_centrado_en_la_transicion() -> None:
+    expr = _dip_expression([(10.0, 0.11, -1.0)])
+    assert "abs(t-10.0000)" in expr
+    assert expr.startswith("(-1.0*")
+
+
+def test_un_flash_sube_la_luminosidad_en_vez_de_bajarla() -> None:
+    assert _dip_expression([(5.0, 0.1, 1.0)]).startswith("(1.0*")
+
+
+def test_varias_transiciones_se_suman() -> None:
+    expr = _dip_expression([(2.0, 0.1, -1.0), (8.0, 0.1, -1.0)])
+    assert expr.count("max(0,1-abs") == 2
+    assert "+" in expr
+
+
+def test_sin_transiciones_la_expresion_es_neutra() -> None:
+    assert _dip_expression([]) == "0"
 
 
 # -- zooms -----------------------------------------------------------------

@@ -430,8 +430,9 @@ def render(
                     source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
                 )
                 status.update("[cyan]decidiendo el montaje...")
+                elegido = _resolve_style(style, analysis)
                 edl = build_edl(
-                    analysis, style, intensity=intensity,
+                    analysis, elegido, intensity=intensity,
                     providers=_broll_providers(analysis, enabled=broll, offline=offline),
                     assets=bundle,
                 )
@@ -659,6 +660,25 @@ def saturation(
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets"
 
 
+def _resolve_style(style: str, analysis) -> str:
+    """Resuelve 'auto' mirando que clase de material es.
+
+    Evita que haya que saberse los estilos de memoria: una guia hablada y
+    quieta pide `tutorial`, un gameplay sin voz pide `gaming-hype`.
+    """
+    if style != "auto":
+        return style
+
+    from .understand.profile import build_profile
+
+    perfil = build_profile(analysis)
+    console.print(
+        f"[dim]Estilo elegido automaticamente: [bold]{perfil.suggested_style}[/bold] "
+        f"(material {perfil.domain.value})[/dim]"
+    )
+    return perfil.suggested_style
+
+
 def _broll_providers(analysis, *, enabled: bool, offline: bool):
     """Proveedores de material de apoyo, si se pidieron."""
     if not enabled:
@@ -763,6 +783,73 @@ def serve(
     console.print(f"API en [bold]http://{host}:{port}[/bold]  ·  documentacion en /docs")
     console.print("[dim]La interfaz web se arranca aparte desde videoforge/frontend[/dim]")
     uvicorn.run("forge.api.app:app", host=host, port=port, reload=reload)
+
+
+@app.command()
+def demo(
+    out: Path = typer.Option(Path("demo"), "--out", "-o", help="Carpeta donde dejar los ficheros."),
+    style: str = typer.Option("tutorial", "--style", "-s", help="Estilo de montaje."),
+) -> None:
+    """Genera una guia de ejemplo y la monta entera, para ver el resultado.
+
+    Fabrica una grabacion de pantalla realista con voz y pausas, la analiza, la
+    monta y la renderiza. Deja el original y el editado uno al lado del otro
+    para poder compararlos.
+
+    Sirve para comprobar que la instalacion funciona de punta a punta sin tener
+    que subir nada.
+    """
+    from .analysis.pipeline import analyze as run_analysis
+    from .demo import build_demo_video, demo_transcript
+    from .plan.planner import build_edl
+    from .render.renderer import render as do_render
+    from .saturation.score import evaluate
+
+    settings = Settings.load()
+    out.mkdir(parents=True, exist_ok=True)
+    original = out / "guia-original.mp4"
+    editado = out / "guia-editada.mp4"
+
+    with console.status("[cyan]generando la guia de ejemplo...", spinner="dots") as status:
+        try:
+            _, timing = build_demo_video(original, settings)
+
+            status.update("[cyan]analizando...")
+            analysis, _ = run_analysis(original, settings, force={"all"}, skip_speech=True)
+            # El guion de la demo hace de transcripcion: asi se puede probar el
+            # montaje completo aunque no haya modelo de voz instalado.
+            analysis.transcript = demo_transcript(timing)
+
+            status.update("[cyan]decidiendo el montaje...")
+            edl = build_edl(analysis, style)
+            reporte = evaluate(edl, analysis)
+
+            status.update("[cyan]renderizando...")
+            resultado = do_render(
+                edl, editado, settings,
+                fonts_dir=ASSETS_DIR / "fonts",
+            )
+        except ForgeError as exc:
+            raise _fail(exc) from exc
+
+    tabla = Table(show_header=False, box=None, padding=(0, 2))
+    tabla.add_row("original", f"{original}  [dim]{edl.source_duration:.1f}s[/dim]")
+    tabla.add_row("editado", f"[bold]{editado}[/bold]  [dim]{edl.duration:.1f}s[/dim]")
+    tabla.add_row("recorte", f"[green]-{edl.compression:.0%}[/green] de tiempo muerto")
+    tabla.add_row("ritmo", f"{len(edl.cut_points()) / (edl.duration / 60):.1f} cortes/min")
+    tabla.add_row("saturacion", f"{reporte.score:.0f}/100 · {reporte.verdict}")
+    tabla.add_row("encoder", resultado.encoder)
+    console.print(Panel(tabla, title="demo", border_style="green"))
+
+    conteo: dict[str, int] = {}
+    for e in edl.effects:
+        conteo[e.kind.value] = conteo.get(e.kind.value, 0) + 1
+    console.print("[bold]Lo que hizo[/bold]")
+    for kind, n in sorted(conteo.items(), key=lambda kv: -kv[1]):
+        ejemplo = next((e.rationale for e in edl.effects if e.kind.value == kind), "")
+        console.print(f"  {n:3d} × {kind:12s} [dim]{ejemplo[:60]}[/dim]")
+
+    console.print(f"\n[dim]Abre los dos ficheros y comparalos.[/dim]")
 
 
 @app.command("make-fixture")
