@@ -16,8 +16,8 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 | F1 | Ingesta y analisis (planos, movimiento, audio, transcripcion) | hecho |
 | F2 | EDL, estilos y planner | hecho |
 | F3 | Renderer FFmpeg | hecho |
-| F4 | Motor de saturacion y auto-balanceador | en curso |
-| F5 | Comprension de contenido y b-roll | pendiente |
+| F4 | Motor de saturacion y auto-balanceador | hecho |
+| F5 | Comprension de contenido y b-roll | en curso |
 | F6 | API y UI web | pendiente |
 
 ## Requisitos
@@ -67,6 +67,7 @@ forge analyze video.mp4      # analiza: planos, movimiento, silencios, voz
 forge styles                 # estilos de montaje disponibles
 forge plan video.mp4         # decide el montaje (sin renderizar)
 forge render video.mp4       # monta y saca el MP4 de verdad
+forge saturation video.mp4   # mide si esta sobresaturado
 forge cache info video.mp4   # que hay cacheado de ese video
 forge cache clear video.mp4  # lo borra
 ```
@@ -241,3 +242,72 @@ Antes de cada render se valida el grafo **con un segundo de video** contra
 
 Si hay GPU NVIDIA con NVENC se usa automaticamente; si no, libx264. `--no-gpu`
 lo fuerza por CPU.
+
+
+## El medidor de saturacion
+
+Esta es la parte que evita el problema de casi todo editor automatico: pasarse.
+
+```bash
+forge saturation guia.mp4                      # solo medir
+forge saturation guia.mp4 --balance -o ok.json # medir y corregir
+forge render guia.mp4 --balance                # corregir y renderizar
+```
+
+```
+saturacion    54/100  en el punto
+escala        0 |sub-editado| 28 |en el punto| 68 |cargado| 85 |sobresaturado| 100
+
+Densidad a lo largo del montaje
+  ..:-=+**=-::..:-==+*#%#*+=-:..:--==+*=-::...
+```
+
+**La escala no es absoluta.** La misma carga es "en el punto" en `gaming-hype` y
+"sobresaturado" en `tutorial`. Cada estilo trae sus bandas y el diagnostico se
+hace contra las suyas.
+
+### Como se mide
+
+La senal `D(t)` estima la carga visual segundo a segundo. Tres ideas la sostienen:
+
+1. **No todos los efectos pesan igual.** Un subtitulo acompana; un b-roll a
+   pantalla completa sustituye lo que estabas viendo.
+2. **Los cortes tambien cargan**, aunque no lleven nada encima. Un corte es un
+   evento cognitivo. Sin contarlos, un montaje a 40 cortes por minuto sin
+   efectos daria "sub-editado", que es justo lo contrario de la verdad.
+3. **La fatiga se arrastra.** Un golpe deja resaca, asi que la senal se
+   convoluciona con un nucleo que sube rapido y baja despacio.
+
+Sobre eso se calculan diez metricas: cortes por minuto, densidad media y de
+pico, cobertura de overlay y de texto, capas simultaneas, SFX y transiciones por
+minuto, velocidad de lectura de los subtitulos, y **conflictos de movimiento**
+(zooms sobre planos que ya se mueven, que marean y que ninguna otra metrica ve).
+
+Hay una distincion que importa: las metricas cuya banda empieza en cero son
+**techos**, no objetivos. Cero conflictos de movimiento es lo ideal, no una
+carencia, asi que solo pueden empujar hacia la saturacion, nunca hacia la
+carencia, y si no son problema ni siquiera puntuan.
+
+### El auto-balanceador
+
+Con `--balance` no solo mide: corrige. Es un bucle de control determinista que
+busca la ventana mas caliente de la curva y quita de ahi el efecto con peor
+relacion valor/coste, hasta entrar en banda. Si el montaje se queda corto,
+asciende candidatos que el planner ya habia validado pero no habia llegado a
+poner.
+
+**Nunca toca los cortes, solo los efectos**, asi que la duracion del montaje no
+cambia por mucho que pode. Los efectos que fijes (`locked`) son intocables.
+
+No hay lista de prioridades escrita a mano: el orden sale solo de la eficiencia
+(valor / coste). Los subtitulos, con valor alto y coste bajo, sobreviven a casi
+todo; las transiciones decorativas y los efectos de sonido caen primero. Y cada
+retirada se explica:
+
+```
+- quitado sfx en 64.0s: era lo que menos aportaba (0.20 de valor por 0.80 de
+  carga) en el tramo mas cargado (63.5-66.5s)
+```
+
+El deslizador `--intensity` reescala las bandas: a 0 pide un montaje sobrio (y
+el balanceador poda mas), a 100 admite mucha mas carga.

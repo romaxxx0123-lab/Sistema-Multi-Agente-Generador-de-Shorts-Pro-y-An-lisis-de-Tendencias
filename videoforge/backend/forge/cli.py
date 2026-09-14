@@ -377,6 +377,7 @@ def render(
     tier: str = typer.Option(None, "--tier", help="light, balanced o max."),
     no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
     no_gpu: bool = typer.Option(False, "--no-gpu", help="Fuerza encoder por CPU."),
+    balance: bool = typer.Option(False, "--balance", help="Reajusta los efectos si el montaje se sale de banda."),
     save_edl: Path = typer.Option(None, "--save-edl", help="Guarda tambien el EDL usado."),
 ) -> None:
     """Monta el video y lo renderiza a un MP4 real.
@@ -391,6 +392,10 @@ def render(
     from .render.renderer import render as do_render
 
     settings = Settings.load()
+    # Solo hay analisis si partimos del video; con --from-edl no lo tenemos, y
+    # el balanceador sabe funcionar sin el (pierde la deteccion de zooms sobre
+    # planos que ya se mueven, pero el resto de metricas salen del propio EDL).
+    analysis = None
 
     if from_edl:
         try:
@@ -424,6 +429,15 @@ def render(
     else:
         err_console.print("[bold red]Error:[/bold red] indica un video o usa --from-edl.")
         raise typer.Exit(code=1)
+
+    if balance:
+        from .saturation.balance import rebalance
+
+        informe = rebalance(edl, analysis, intensity=intensity)
+        if informe.changed:
+            console.print(f"[bold]Auto-balanceo:[/bold] {informe.summary()}")
+        else:
+            console.print(f"[dim]Auto-balanceo: {informe.summary()}[/dim]")
 
     if save_edl:
         save_edl.parent.mkdir(parents=True, exist_ok=True)
@@ -477,6 +491,154 @@ def render(
     if edl.chapters:
         console.print("\n[bold]Capitulos[/bold] [dim](copia esto en la descripcion)[/dim]")
         console.print(edl.chapter_markers())
+
+
+#: Rampa de bloques para el mapa de calor en terminal.
+_HEAT_BLOCKS = " .:-=+*#%@"
+
+
+def _heatmap_line(valores: list[float]) -> str:
+    """Dibuja la curva de densidad como una linea de bloques coloreados."""
+    salida = []
+    for v in valores:
+        idx = min(len(_HEAT_BLOCKS) - 1, int(v * len(_HEAT_BLOCKS)))
+        bloque = _HEAT_BLOCKS[idx]
+        color = "green" if v < 0.45 else ("yellow" if v < 0.72 else "red")
+        salida.append(f"[{color}]{bloque}[/{color}]")
+    return "".join(salida)
+
+
+def _print_saturation(report, console_out) -> None:
+    """Imprime el diagnostico de saturacion."""
+    color = {
+        "sub-editado": "blue",
+        "en el punto": "green",
+        "cargado": "yellow",
+        "sobresaturado": "red",
+    }.get(report.verdict, "white")
+
+    aguja = Table(show_header=False, box=None, padding=(0, 2))
+    aguja.add_row("saturacion", f"[bold {color}]{report.score:.0f}/100[/bold {color}]  {report.verdict}")
+    aguja.add_row("estilo", f"{report.style} · intensidad {report.intensity}")
+    aguja.add_row(
+        "escala",
+        "[dim]0 |[/dim][blue]sub-editado[/blue][dim]| 28 |[/dim][green]en el punto[/green]"
+        "[dim]| 68 |[/dim][yellow]cargado[/yellow][dim]| 85 |[/dim][red]sobresaturado[/red][dim]| 100[/dim]",
+    )
+    console_out.print(Panel(aguja, title="saturacion", border_style=color))
+
+    if report.heatmap:
+        console_out.print("[bold]Densidad a lo largo del montaje[/bold]")
+        console_out.print("  " + _heatmap_line(report.heatmap))
+        console_out.print(
+            f"  [dim]0:00{' ' * max(0, len(report.heatmap) - 10)}"
+            f"{report.metrics.duration / 60:.0f}:{int(report.metrics.duration % 60):02d}[/dim]"
+        )
+
+    tabla = Table(box=None, padding=(0, 2))
+    tabla.add_column("metrica")
+    tabla.add_column("valor", justify="right")
+    tabla.add_column("banda del estilo", justify="center")
+    tabla.add_column("")
+    for r in sorted(report.readings, key=lambda x: (x.status == "dentro", -x.weight)):
+        marca = {"bajo": "[blue]bajo[/blue]", "alto": "[red]alto[/red]"}.get(r.status, "[green]ok[/green]")
+        if not r.counts:
+            marca += " [dim](no puntua)[/dim]"
+        tabla.add_row(
+            r.name,
+            f"{r.value:.2f}",
+            f"{r.band.lo:.2f} - {r.band.hi:.2f}",
+            f"{marca}  [dim]{r.advice}[/dim]",
+        )
+    console_out.print(tabla)
+
+    if report.hot_windows:
+        console_out.print(
+            f"\n[yellow]Zonas mas cargadas:[/yellow] "
+            + ", ".join(f"{a:.0f}-{b:.0f}s" for a, b in report.hot_windows[:6])
+        )
+
+
+@app.command()
+def saturation(
+    source: Path = typer.Argument(None, help="Video de entrada. Omitelo si usas --from-edl."),
+    style: str = typer.Option("tutorial", "--style", "-s", help="Estilo de montaje."),
+    intensity: int = typer.Option(50, "--intensity", "-i", min=0, max=100, help="Cuanta edicion quieres (0-100)."),
+    from_edl: Path = typer.Option(None, "--from-edl", help="Analiza un EDL ya guardado."),
+    balance: bool = typer.Option(False, "--balance", help="Reajusta el montaje hasta entrar en banda."),
+    out: Path = typer.Option(None, "--out", "-o", help="Guarda el EDL (reajustado si usas --balance)."),
+    no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+) -> None:
+    """Mide si el montaje esta sobresaturado para el estilo elegido.
+
+    La escala no es absoluta: la misma carga puede ser "en el punto" en un short
+    de gameplay y "sobresaturado" en una guia. Con --balance, ademas de medir,
+    ajusta los efectos hasta entrar en banda sin cambiar la duracion.
+    """
+    from .analysis.pipeline import analyze as run_analysis
+    from .plan.edl import EDL
+    from .plan.planner import build_edl
+    from .saturation.balance import rebalance
+    from .saturation.score import evaluate
+
+    settings = Settings.load()
+    analysis = None
+
+    if from_edl:
+        try:
+            edl = EDL.model_validate_json(from_edl.read_text())
+        except (OSError, ValueError) as exc:
+            err_console.print(f"[bold red]Error:[/bold red] no pude leer el EDL: {exc}")
+            raise typer.Exit(code=1) from exc
+    elif source:
+        with console.status("[cyan]analizando...", spinner="dots") as status:
+            def on_progress(stage: str, message: str) -> None:
+                status.update(f"[cyan]{message}...")
+
+            try:
+                analysis, warnings = run_analysis(
+                    source, settings, skip_speech=no_speech, progress=on_progress
+                )
+                edl = build_edl(analysis, style, intensity=intensity)
+            except ForgeError as exc:
+                raise _fail(exc) from exc
+        for w in warnings:
+            err_console.print(f"[yellow]aviso:[/yellow] {w}")
+    else:
+        err_console.print("[bold red]Error:[/bold red] indica un video o usa --from-edl.")
+        raise typer.Exit(code=1)
+
+    try:
+        if balance:
+            duracion_antes = edl.duration
+            informe = rebalance(edl, analysis, intensity=intensity)
+            console.print(f"[bold]{informe.summary()}[/bold]")
+            if informe.removed:
+                console.print("\n[dim]Lo que quito:[/dim]")
+                for c in informe.removed[:8]:
+                    console.print(f"  [red]-[/red] {c.describe()}")
+                if len(informe.removed) > 8:
+                    console.print(f"  [dim]... y {len(informe.removed) - 8} mas[/dim]")
+            if informe.added:
+                console.print("\n[dim]Lo que anadio:[/dim]")
+                for c in informe.added[:8]:
+                    console.print(f"  [green]+[/green] {c.describe()}")
+            console.print(
+                f"\n[dim]Duracion del montaje: {duracion_antes:.1f}s "
+                f"-> {edl.duration:.1f}s (los efectos no la cambian)[/dim]\n"
+            )
+            reporte = informe.after
+        else:
+            reporte = evaluate(edl, analysis, intensity=intensity)
+    except ForgeError as exc:
+        raise _fail(exc) from exc
+
+    _print_saturation(reporte, console)
+
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(edl.model_dump_json(indent=2))
+        console.print(f"\nEDL guardado en [bold]{out}[/bold]")
 
 
 @app.command("make-fixture")

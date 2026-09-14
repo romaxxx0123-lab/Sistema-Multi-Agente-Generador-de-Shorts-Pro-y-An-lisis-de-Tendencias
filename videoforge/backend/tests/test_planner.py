@@ -123,20 +123,24 @@ def test_no_hace_zoom_si_no_hay_nada_que_enfocar() -> None:
     """Saliencia repartida = acercarse seria arbitrario."""
     a = _analysis_para_zoom(concentracion=0.02, movimiento=0.0)
     edl = _edl([Clip(id="c", source_start=0, source_end=120)])
-    assert plan_punch_ins(edl, a, EmphasisRules()) == []
+    elegidos, reservas = plan_punch_ins(edl, a, EmphasisRules())
+    assert elegidos == []
+    assert reservas == []
 
 
 def test_no_hace_zoom_sobre_un_plano_que_ya_se_mueve() -> None:
     """Acercarse sobre camara en movimiento marea."""
     a = _analysis_para_zoom(concentracion=0.9, movimiento=0.95)
     edl = _edl([Clip(id="c", source_start=0, source_end=120)])
-    assert plan_punch_ins(edl, a, EmphasisRules()) == []
+    elegidos, reservas = plan_punch_ins(edl, a, EmphasisRules())
+    assert elegidos == []
+    assert reservas == []
 
 
 def test_hace_zoom_cuando_hay_foco_y_quietud() -> None:
     a = _analysis_para_zoom(concentracion=0.9, movimiento=0.05)
     edl = _edl([Clip(id="c", source_start=0, source_end=120)])
-    zooms = plan_punch_ins(edl, a, EmphasisRules())
+    zooms, _ = plan_punch_ins(edl, a, EmphasisRules())
     assert zooms
     assert all(z.rect.zoom > 1.0 for z in zooms)
 
@@ -145,7 +149,7 @@ def test_respeta_la_separacion_minima_entre_zooms() -> None:
     a = _analysis_para_zoom(concentracion=0.9, movimiento=0.05)
     edl = _edl([Clip(id="c", source_start=0, source_end=120)])
     reglas = EmphasisRules(punch_min_gap=20.0, max_punch_per_minute=60)
-    zooms = plan_punch_ins(edl, a, reglas)
+    zooms, _ = plan_punch_ins(edl, a, reglas)
     for anterior, siguiente in zip(zooms, zooms[1:]):
         assert siguiente.start - anterior.start >= 20.0 - 1e-6
 
@@ -154,7 +158,8 @@ def test_respeta_el_maximo_por_minuto() -> None:
     a = _analysis_para_zoom(concentracion=0.9, movimiento=0.05)
     edl = _edl([Clip(id="c", source_start=0, source_end=120)])
     reglas = EmphasisRules(max_punch_per_minute=1.0, punch_min_gap=1.0)
-    assert len(plan_punch_ins(edl, a, reglas)) <= 2
+    elegidos, _ = plan_punch_ins(edl, a, reglas)
+    assert len(elegidos) <= 2
 
 
 def test_un_zoom_no_se_queda_a_medias_en_un_corte() -> None:
@@ -162,13 +167,28 @@ def test_un_zoom_no_se_queda_a_medias_en_un_corte() -> None:
     edl = _edl([Clip(id=f"c{i}", source_start=i * 10, source_end=i * 10 + 10) for i in range(12)])
     reglas = EmphasisRules(punch_min_gap=1.0, max_punch_per_minute=60, punch_seconds=2.0)
     cortes = edl.cut_points()
-    for z in plan_punch_ins(edl, a, reglas):
+    elegidos, reservas = plan_punch_ins(edl, a, reglas)
+    # Ni los elegidos ni las reservas pueden quedarse a medias en un corte.
+    for z in elegidos + reservas:
         assert not any(z.start < c < z.end for c in cortes)
+
+
+def test_las_reservas_respetan_las_mismas_reglas_que_los_elegidos() -> None:
+    """Una reserva es un zoom valido que no entro por tope de ritmo, no un descarte."""
+    a = _analysis_para_zoom(concentracion=0.9, movimiento=0.05)
+    edl = _edl([Clip(id="c", source_start=0, source_end=120)])
+    reglas = EmphasisRules(max_punch_per_minute=1.0, punch_min_gap=5.0)
+
+    elegidos, reservas = plan_punch_ins(edl, a, reglas)
+    assert reservas, "deberia haber quedado alguna reserva"
+    todos = sorted(elegidos + reservas, key=lambda z: z.start)
+    for anterior, siguiente in zip(todos, todos[1:]):
+        assert siguiente.start - anterior.start >= reglas.punch_min_gap - 1e-6
 
 
 def test_estilo_sin_zoom_no_genera_ninguno() -> None:
     a = _analysis_para_zoom(concentracion=0.9, movimiento=0.05)
-    assert plan_punch_ins(_edl(), a, EmphasisRules(punch_in=False)) == []
+    assert plan_punch_ins(_edl(), a, EmphasisRules(punch_in=False)) == ([], [])
 
 
 # -- capitulos -------------------------------------------------------------

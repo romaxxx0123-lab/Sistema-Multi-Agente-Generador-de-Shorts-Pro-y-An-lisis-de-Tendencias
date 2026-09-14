@@ -151,8 +151,10 @@ def build_edl(
     else:
         edl.notes.append("Sin transcripcion: no hay subtitulos ni capitulos.")
 
-    efectos += plan_punch_ins(edl, analysis, style.emphasis)
+    zooms, zooms_reserva = plan_punch_ins(edl, analysis, style.emphasis)
+    efectos += zooms
     efectos += plan_ken_burns(edl, analysis, style.emphasis)
+    edl.candidates = list(zooms_reserva)
 
     edl.effects = efectos
     # Las transiciones y el color dependen de la linea de tiempo ya cerrada.

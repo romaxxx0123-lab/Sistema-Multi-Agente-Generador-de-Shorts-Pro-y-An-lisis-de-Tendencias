@@ -279,6 +279,10 @@ class EDL(BaseModel):
     render: RenderSpec
     timeline: list[Clip] = Field(default_factory=list)
     effects: list[Effect] = Field(default_factory=list)
+    #: efectos que el planner considero validos pero no llego a poner, por tope
+    #: de ritmo. El auto-balanceador puede ascenderlos si el montaje se queda
+    #: corto, en vez de tener que inventarse efectos de la nada.
+    candidates: list[Effect] = Field(default_factory=list)
     chapters: list[Chapter] = Field(default_factory=list)
     #: notas del planner para el usuario (que quito y por que)
     notes: list[str] = Field(default_factory=list)
@@ -343,6 +347,22 @@ class EDL(BaseModel):
         antes = len(self.effects)
         self.effects = [e for e in self.effects if e.id != effect_id]
         return len(self.effects) < antes
+
+    def promote_candidate(self, effect_id: str) -> bool:
+        """Pasa un candidato a efecto activo."""
+        for i, c in enumerate(self.candidates):
+            if c.id == effect_id:
+                self.effects.append(self.candidates.pop(i))
+                return True
+        return False
+
+    def demote_effect(self, effect_id: str) -> bool:
+        """Retira un efecto pero lo deja disponible por si hay que recuperarlo."""
+        for i, e in enumerate(self.effects):
+            if e.id == effect_id:
+                self.candidates.append(self.effects.pop(i))
+                return True
+        return False
 
     def sorted_effects(self) -> list[BaseEffect]:
         return sorted(self.effects, key=lambda e: (e.start, e.kind.value))

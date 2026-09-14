@@ -29,14 +29,20 @@ def _candidate_score(concentration: float, motion: float) -> float:
     return concentration * (1.0 - min(1.0, motion))
 
 
-def plan_punch_ins(edl: EDL, analysis: Analysis, rules: EmphasisRules) -> list[PunchInEffect]:
-    """Coloca los zooms de enfasis."""
-    if not rules.punch_in or edl.duration <= 0:
-        return []
+def plan_punch_ins(
+    edl: EDL, analysis: Analysis, rules: EmphasisRules
+) -> tuple[list[PunchInEffect], list[PunchInEffect]]:
+    """Coloca los zooms de enfasis.
 
-    maximo = int(rules.max_punch_per_minute * edl.duration / 60.0)
-    if maximo < 1:
-        return []
+    Devuelve (elegidos, candidatos). Los candidatos son zooms que cumplen todas
+    las condiciones pero no entraron por el tope de ritmo del estilo. Guardarlos
+    permite al auto-balanceador subir la carga con decisiones que el planner ya
+    valido, en vez de improvisar.
+    """
+    if not rules.punch_in or edl.duration <= 0:
+        return [], []
+
+    maximo = max(0, int(rules.max_punch_per_minute * edl.duration / 60.0))
 
     # 1. Proponer candidatos a lo largo del montaje y puntuarlos.
     candidatos: list[tuple[float, float, float, float]] = []  # (score, t, cx, cy)
@@ -63,35 +69,47 @@ def plan_punch_ins(edl: EDL, analysis: Analysis, rules: EmphasisRules) -> list[P
     # 2. Elegir los mejores respetando la separacion minima.
     cortes = edl.cut_points()
     elegidos: list[tuple[float, float, float, float]] = []
+    reservas: list[tuple[float, float, float, float]] = []
+
     for score, inicio, cx, cy in sorted(candidatos, key=lambda c: -c[0]):
-        if len(elegidos) >= maximo:
-            break
-        if any(abs(inicio - otro[1]) < rules.punch_min_gap for otro in elegidos):
-            continue
         fin = min(edl.duration, inicio + rules.punch_seconds)
         # Un zoom que se queda a medias al llegar un corte se ve como un fallo.
         if any(inicio < c < fin for c in cortes):
             continue
-        elegidos.append((score, inicio, cx, cy))
+        ya_puestos = elegidos + reservas
+        if any(abs(inicio - otro[1]) < rules.punch_min_gap for otro in ya_puestos):
+            continue
+
+        if len(elegidos) < maximo:
+            elegidos.append((score, inicio, cx, cy))
+        elif len(reservas) < maximo + 4:
+            # Solo guardamos unas cuantas reservas: mas no aportan y engordan
+            # el EDL sin motivo.
+            reservas.append((score, inicio, cx, cy))
 
     elegidos.sort(key=lambda c: c[1])
+    reservas.sort(key=lambda c: c[1])
 
     coste = min(1.0, (rules.punch_zoom - 1.0) * 2.5)
-    return [
-        PunchInEffect(
-            id=f"punch{i:03d}",
-            start=round(inicio, 3),
-            end=round(min(edl.duration, inicio + rules.punch_seconds), 3),
-            rect=Rect.centered(cx, cy, rules.punch_zoom),
-            value_score=round(score, 3),
-            cost_weight=round(coste, 3),
-            rationale=(
-                f"zoom a ({cx:.0%}, {cy:.0%}): la atencion se concentra ahi "
-                f"y el plano esta quieto"
-            ),
-        )
-        for i, (score, inicio, cx, cy) in enumerate(elegidos)
-    ]
+
+    def construir(lote, prefijo):
+        return [
+            PunchInEffect(
+                id=f"{prefijo}{i:03d}",
+                start=round(inicio, 3),
+                end=round(min(edl.duration, inicio + rules.punch_seconds), 3),
+                rect=Rect.centered(cx, cy, rules.punch_zoom),
+                value_score=round(score, 3),
+                cost_weight=round(coste, 3),
+                rationale=(
+                    f"zoom a ({cx:.0%}, {cy:.0%}): la atencion se concentra ahi "
+                    f"y el plano esta quieto"
+                ),
+            )
+            for i, (score, inicio, cx, cy) in enumerate(lote)
+        ]
+
+    return construir(elegidos, "punch"), construir(reservas, "punchalt")
 
 
 def plan_ken_burns(edl: EDL, analysis: Analysis, rules: EmphasisRules) -> list[KenBurnsEffect]:
