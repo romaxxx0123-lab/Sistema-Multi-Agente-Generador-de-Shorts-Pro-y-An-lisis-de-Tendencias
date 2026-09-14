@@ -23,8 +23,10 @@ Detalles que no son obvios:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from ..plan.edl import EDL, EffectKind, KenBurnsEffect, PunchInEffect
+from ..assets.types import Asset, AssetBundle, AssetKind
+from ..plan.edl import EDL, BrollEffect, EffectKind, KenBurnsEffect, PunchInEffect, SfxEffect
 
 #: Presets de color. Valores conservadores: el objetivo es que se note que
 #: alguien ha tocado el color, no que el video parezca de otro planeta.
@@ -44,8 +46,10 @@ class BuiltGraph:
     filter_complex: str
     video_label: str
     audio_label: str | None
-    #: ficheros extra que hay que anadir como entrada (-i), en orden
-    extra_inputs: list[str] = field(default_factory=list)
+    #: bloques de argumentos de entrada extra para ffmpeg, en orden. Cada uno
+    #: es la lista completa (opciones + "-i" + ruta), porque una imagen fija
+    #: necesita `-loop 1 -t <dur>` ANTES de su -i.
+    input_args: list[list[str]] = field(default_factory=list)
     #: descripcion legible de lo que se aplico, para el log
     applied: list[str] = field(default_factory=list)
 
@@ -137,6 +141,64 @@ def _clip_zooms(edl: EDL, clip_index: int, clip_start: float, clip_end: float):
     return salida
 
 
+def _broll_branch(
+    effect: BrollEffect,
+    asset: Asset,
+    input_index: int,
+    label: str,
+    w: int,
+    h: int,
+    fps: float,
+) -> tuple[str, list[str]]:
+    """Rama de filtros de un b-roll y, si hace falta, su entrada extra.
+
+    El desplazamiento temporal se hace con `setpts`: asi el material empieza en
+    su primer fotograma justo cuando toca, en vez de aparecer ya empezado.
+    """
+    entrada: list[str] = []
+
+    if asset.is_self:
+        # Recorte del propio video: no hay fichero nuevo que abrir.
+        origen = f"[0:v]trim=start={asset.source_start:.4f}:end={asset.source_end:.4f},setpts=PTS-STARTPTS"
+    else:
+        ruta = str(asset.path)
+        if asset.kind is AssetKind.IMAGE:
+            # Una imagen fija hay que convertirla en video de la duracion justa.
+            entrada = ["-loop", "1", "-t", f"{effect.duration:.4f}", "-i", ruta]
+        else:
+            entrada = ["-stream_loop", "-1", "-t", f"{effect.duration:.4f}", "-i", ruta]
+        origen = f"[{input_index}:v]setpts=PTS-STARTPTS"
+
+    if effect.mode == "full":
+        # Rellena el fotograma sin deformar: amplia y recorta lo que sobra.
+        encaje = (
+            f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=bicubic,"
+            f"crop={w}:{h}"
+        )
+    else:
+        rect = effect.rect.clamped()
+        ancho = max(2, int(w * rect.w) // 2 * 2)
+        alto = max(2, int(h * rect.h) // 2 * 2)
+        encaje = (
+            f"scale={ancho}:{alto}:force_original_aspect_ratio=increase:flags=bicubic,"
+            f"crop={ancho}:{alto}"
+        )
+
+    cadena = (
+        f"{origen},{encaje},format=yuva420p,setsar=1,fps={fps:.6f},"
+        f"setpts=PTS+{effect.start:.4f}/TB{label}"
+    )
+    return cadena, entrada
+
+
+def _overlay_position(effect: BrollEffect, w: int, h: int) -> tuple[str, str]:
+    """Donde se coloca el overlay dentro del fotograma."""
+    if effect.mode == "full":
+        return "0", "0"
+    rect = effect.rect.clamped()
+    return f"{int(w * rect.x)}", f"{int(h * rect.y)}"
+
+
 def _grade_filter(preset: str, intensity: float) -> str:
     """Ajuste de color, interpolado desde el neutro segun la intensidad."""
     valores = GRADE_PRESETS.get(preset, GRADE_PRESETS["neutral"])
@@ -156,6 +218,8 @@ def build_graph(
     target_lufs: float | None = None,
     loudnorm_measured: dict | None = None,
     audio_only: bool = False,
+    assets: AssetBundle | None = None,
+    sfx_paths: dict[str, str] | None = None,
 ) -> BuiltGraph:
     """Compila el EDL en un grafo de filtros.
 
@@ -167,6 +231,9 @@ def build_graph(
     w, h, fps = edl.render.width, edl.render.height, edl.render.fps
     partes: list[str] = []
     aplicado: list[str] = []
+    # Se declara aqui porque lo llenan tanto los b-roll (video) como los
+    # efectos de sonido (audio), y los indices de entrada son compartidos.
+    input_args: list[list[str]] = []
 
     # -- 1. cada clip por separado -----------------------------------------
     inicio_tl = 0.0
@@ -260,6 +327,52 @@ def build_graph(
     if transiciones:
         aplicado.append(f"{len(transiciones)} transiciones")
 
+    # El color y las transiciones se aplican a la base ANTES de superponer el
+    # b-roll: un material que esta tapando un corte no debe oscurecerse con el
+    # fade de ese corte, porque el fade existe para disimular algo que el
+    # b-roll ya esta ocultando.
+    if post and not audio_only:
+        partes.append(f"{v_actual}" + ",".join(post) + "[vbase]")
+        v_label = "[vbase]"
+        post = []
+
+    if not audio_only and assets is not None:
+        brolls = sorted(
+            (e for e in edl.effects if isinstance(e, BrollEffect)), key=lambda e: e.start
+        )
+        siguiente_entrada = 1
+        colocados = 0
+
+        for i, efecto in enumerate(brolls):
+            asset = assets.get(efecto.asset_id)
+            if asset is None:
+                continue
+            if not asset.is_self and (asset.path is None or not Path(asset.path).is_file()):
+                # El material no esta en disco: se omite en vez de tumbar el
+                # render entero por una descarga que fallo.
+                continue
+
+            etiqueta = f"[bl{i}]"
+            indice = 0 if asset.is_self else siguiente_entrada
+            cadena, entrada = _broll_branch(efecto, asset, indice, etiqueta, w, h, fps)
+            if entrada:
+                input_args.append(entrada)
+                siguiente_entrada += 1
+            partes.append(cadena)
+
+            x, y = _overlay_position(efecto, w, h)
+            salida = f"[vov{i}]"
+            partes.append(
+                f"{v_label}{etiqueta}overlay=x={x}:y={y}:eof_action=pass"
+                f":enable={_q(f'between(t,{efecto.start:.4f},{efecto.end:.4f})')}{salida}"
+            )
+            v_label = salida
+            colocados += 1
+
+        if colocados:
+            aplicado.append(f"{colocados} b-roll")
+
+    # Los subtitulos van los ultimos: siempre encima de todo, tambien del b-roll.
     if ass_path and not audio_only:
         # El filtro `ass` necesita escapar ':' y '\' de la ruta.
         ruta = ass_path.replace("\\", "/").replace(":", r"\:")
@@ -270,12 +383,42 @@ def build_graph(
         aplicado.append("subtitulos")
 
     if post and not audio_only:
-        partes.append(f"{v_actual}" + ",".join(post) + "[vout]")
+        partes.append(f"{v_label}" + ",".join(post) + "[vout]")
         v_label = "[vout]"
 
     # -- 4. audio -----------------------------------------------------------
     a_label: str | None = None
     if a_actual:
+        efectos_sonido = [e for e in edl.effects if isinstance(e, SfxEffect)]
+        disponibles = [
+            (e, (sfx_paths or {}).get(e.asset_id))
+            for e in sorted(efectos_sonido, key=lambda x: x.start)
+        ]
+        disponibles = [(e, p) for e, p in disponibles if p]
+
+        if disponibles:
+            etiquetas_sfx: list[str] = []
+            base = len(input_args) + 1
+            for j, (efecto, ruta) in enumerate(disponibles):
+                input_args.append(["-i", str(ruta)])
+                etiqueta = f"[sfx{j}]"
+                # adelay coloca el efecto en su instante; volume aplica su ganancia.
+                partes.append(
+                    f"[{base + j}:a]adelay={int(efecto.start * 1000)}:all=1,"
+                    f"volume={efecto.gain_db:.1f}dB{etiqueta}"
+                )
+                etiquetas_sfx.append(etiqueta)
+
+            mezcla = "".join([a_actual] + etiquetas_sfx)
+            # `dropout_transition=0` y `normalize=0` evitan que amix baje la voz
+            # cada vez que entra un efecto.
+            partes.append(
+                f"{mezcla}amix=inputs={len(etiquetas_sfx) + 1}:duration=first"
+                f":dropout_transition=0:normalize=0[amixed]"
+            )
+            a_actual = "[amixed]"
+            aplicado.append(f"{len(disponibles)} efectos de sonido")
+
         audio_post: list[str] = []
         if loudnorm_measured:
             # Segunda pasada: con las medidas reales la normalizacion es lineal
@@ -303,5 +446,6 @@ def build_graph(
         filter_complex=";".join(partes),
         video_label=v_label,
         audio_label=a_label,
+        input_args=input_args,
         applied=aplicado,
     )

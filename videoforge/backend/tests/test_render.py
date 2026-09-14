@@ -299,3 +299,135 @@ def test_el_resultado_se_describe_solo(render_basico) -> None:
     resumen = render_basico.summary()
     assert "libx264" in resumen or "nvenc" in resumen
     assert "render" in resumen
+
+
+# -- material de apoyo compuesto en el render ------------------------------
+
+
+def test_el_b_roll_acaba_en_la_imagen(
+    base_sin_zoom, settings: Settings, tmp_path: Path
+) -> None:
+    """Un overlay tiene que tapar la imagen mientras dura, y solo mientras dura."""
+    from forge.assets.types import Asset, AssetBundle, AssetKind
+    from forge.plan.edl import BrollEffect
+
+    base, sin_path = base_sin_zoom
+
+    bundle = AssetBundle()
+    bundle.add(
+        Asset(id="self-x", kind=AssetKind.SELF, provider="self",
+              source_start=10.6, source_end=12.4)
+    )
+    con = base.model_copy(deep=True)
+    con.effects.append(
+        BrollEffect(id="brx", start=1.0, end=3.0, asset_id="self-x",
+                    mode="full", rationale="prueba")
+    )
+
+    con_path = tmp_path / "broll.mp4"
+    resultado = render(con, con_path, settings, assets=bundle)
+    assert any("b-roll" in a for a in resultado.applied)
+
+    dentro_sin = _frame_exacto(sin_path, 2.0, settings).astype(np.float32)
+    dentro_con = _frame_exacto(con_path, 2.0, settings).astype(np.float32)
+    assert float(np.abs(dentro_con - dentro_sin).mean()) > 15, "el b-roll no tapa nada"
+
+    fuera_sin = _frame_exacto(sin_path, 0.3, settings).astype(np.float32)
+    fuera_con = _frame_exacto(con_path, 0.3, settings).astype(np.float32)
+    assert float(np.abs(fuera_con - fuera_sin).mean()) < 5, "afecta fuera de su tramo"
+
+
+def test_el_b_roll_no_cambia_la_duracion(
+    base_sin_zoom, settings: Settings, tmp_path: Path
+) -> None:
+    from forge.assets.types import Asset, AssetBundle, AssetKind
+    from forge.plan.edl import BrollEffect
+
+    base, sin_path = base_sin_zoom
+    bundle = AssetBundle()
+    bundle.add(Asset(id="s", kind=AssetKind.SELF, provider="self",
+                     source_start=10.6, source_end=12.4))
+    con = base.model_copy(deep=True)
+    con.effects.append(
+        BrollEffect(id="b", start=1.0, end=3.0, asset_id="s", rationale="x")
+    )
+
+    out = tmp_path / "dur.mp4"
+    render(con, out, settings, assets=bundle)
+    assert probe(out, settings).duration == pytest.approx(
+        probe(sin_path, settings).duration, abs=0.05
+    )
+
+
+def test_un_asset_que_falta_no_tumba_el_render(
+    base_sin_zoom, settings: Settings, tmp_path: Path
+) -> None:
+    """Una descarga fallida no puede costar el render entero."""
+    from forge.assets.types import Asset, AssetBundle, AssetKind
+    from forge.plan.edl import BrollEffect
+
+    base, _ = base_sin_zoom
+    bundle = AssetBundle()
+    bundle.add(
+        Asset(id="roto", kind=AssetKind.VIDEO, provider="pexels",
+              path=tmp_path / "no-existe.mp4")
+    )
+    con = base.model_copy(deep=True)
+    con.effects.append(
+        BrollEffect(id="b", start=1.0, end=3.0, asset_id="roto", rationale="x")
+    )
+
+    resultado = render(con, tmp_path / "falta.mp4", settings, assets=bundle)
+    assert resultado.path.is_file()
+    assert not any("b-roll" in a for a in resultado.applied)
+
+
+def test_los_efectos_de_sonido_se_oyen(
+    base_sin_zoom, settings: Settings, tmp_path: Path
+) -> None:
+    """Se sintetizan al vuelo y tienen que llegar a la mezcla final."""
+    import wave
+
+    from forge.plan.edl import SfxEffect
+    from forge.tools import run as run_cmd
+
+    base, sin_path = base_sin_zoom
+    con = base.model_copy(deep=True)
+    instantes = [5.0, 6.0, 7.0]
+    for i, t in enumerate(instantes):
+        con.effects.append(
+            SfxEffect(id=f"s{i}", start=t, end=t + 0.4, asset_id="impact",
+                      gain_db=-3.0, rationale="prueba")
+        )
+
+    con_path = tmp_path / "sfx.mp4"
+    resultado = render(con, con_path, settings)
+    assert any("efectos de sonido" in a for a in resultado.applied)
+
+    def envolvente(video: Path) -> tuple[np.ndarray, int]:
+        wav = tmp_path / f"{video.stem}.wav"
+        run_cmd([ffmpeg_bin(settings), "-hide_banner", "-loglevel", "error", "-y",
+                 "-nostdin", "-i", video, "-ac", "1", "-ar", "48000",
+                 "-c:a", "pcm_s16le", wav], timeout=300)
+        with wave.open(str(wav)) as fh:
+            datos = np.frombuffer(fh.readframes(fh.getnframes()), dtype=np.int16)
+        muestras = datos.astype(np.float32) / 32768.0
+        paso = 48000 // 200
+        recorte = muestras[: len(muestras) // paso * paso].reshape(-1, paso)
+        return np.abs(recorte).max(axis=1), 200
+
+    sin_env, tasa = envolvente(sin_path)
+    con_env, _ = envolvente(con_path)
+
+    for t in instantes:
+        i = int(t * tasa)
+        ventana = slice(i, i + int(0.4 * tasa))
+        assert float(con_env[ventana].max()) > float(sin_env[ventana].max()) * 1.5, (
+            f"no se oye el golpe en {t}s"
+        )
+
+    # Y donde no hay efecto, el audio no se toca.
+    i = int(2.0 * tasa)
+    assert float(con_env[i:i + 40].max()) == pytest.approx(
+        float(sin_env[i:i + 40].max()), rel=0.2
+    )

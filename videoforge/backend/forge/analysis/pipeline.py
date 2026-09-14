@@ -21,6 +21,7 @@ from ..media import MediaInfo
 from ..tools import effective_device, probe
 from .audio import analyze_audio
 from .motion import analyze_motion, rate_for_duration
+from .ocr import ScreenText, read_screen_text, tesseract_available
 from .saliency import analyze_saliency
 from .shots import detect_shots
 from .types import (
@@ -40,6 +41,7 @@ STAGE_VERSIONS = {
     "focus": 1,
     "audio": 1,
     "transcript": 1,
+    "screen_text": 1,
 }
 
 #: Etapa -> nombre legible, para los mensajes de progreso.
@@ -51,6 +53,7 @@ STAGE_LABELS = {
     "focus": "buscando el foco de atencion",
     "audio": "analizando audio",
     "transcript": "transcribiendo voz",
+    "screen_text": "leyendo el texto en pantalla",
 }
 
 ProgressFn = Callable[[str, str], None]
@@ -76,6 +79,8 @@ class AnalysisRun:
         self.source = Path(source).expanduser().resolve()
         self.progress = progress or _noop
         self.device = effective_device(self.settings)
+        #: texto en pantalla leido, si se pidio
+        self.screen_text: list[ScreenText] = []
         self.plan = resolve_model_plan(tier or self.settings.tier, self.device)
         self.cache = JobCache(self.settings, self.source)
         #: avisos no fatales (p. ej. sin transcripcion por falta de dependencia)
@@ -143,6 +148,34 @@ class AnalysisRun:
         self.cache.write("audio", result.model_dump(mode="json"), v)
         return result
 
+    def _screen_text(self, bundle: ProxyBundle, force: bool) -> list[ScreenText]:
+        """Lee el texto en pantalla en fotogramas muestreados.
+
+        Es opcional: sin Tesseract el resto del analisis no cambia, solo se
+        pierde la senal mas literal para identificar el video.
+        """
+        if not tesseract_available():
+            self.warnings.append(
+                "Sin lectura de texto en pantalla: Tesseract no esta instalado "
+                "(CachyOS/Arch: sudo pacman -S tesseract tesseract-data-spa)."
+            )
+            return []
+
+        v = STAGE_VERSIONS["screen_text"]
+        if not force and (cached := self.cache.read("screen_text", v)) is not None:
+            return [ScreenText(**x) for x in cached]
+
+        self.progress("screen_text", STAGE_LABELS["screen_text"])
+        # Un muestreo espaciado basta: interesa el texto que se repite (menus,
+        # titulos), no el que pasa un instante.
+        paso = max(3.0, bundle.duration / 40)
+        instantes = [t for t in _frange(paso / 2, bundle.duration, paso)]
+        lecturas = read_screen_text(bundle.video, self.settings, instantes)
+        self.cache.write(
+            "screen_text", [x.__dict__ for x in lecturas], v
+        )
+        return lecturas
+
     def _transcript(self, bundle: ProxyBundle, force: bool, language: str | None) -> Transcript | None:
         if not bundle.has_audio:
             return None
@@ -174,6 +207,7 @@ class AnalysisRun:
         *,
         force: set[str] | None = None,
         skip_speech: bool = False,
+        skip_ocr: bool = True,
         language: str | None = None,
     ) -> Analysis:
         """Ejecuta el analisis completo, reutilizando lo que ya este cacheado."""
@@ -192,6 +226,11 @@ class AnalysisRun:
         transcript = (
             None if skip_speech else self._transcript(bundle, forced("transcript"), language)
         )
+        # El OCR se salta por defecto: cuesta tiempo y solo hace falta al
+        # identificar el contenido, no al montar.
+        self.screen_text = (
+            [] if skip_ocr else self._screen_text(bundle, forced("screen_text"))
+        )
 
         return Analysis(
             media=info,
@@ -203,6 +242,14 @@ class AnalysisRun:
         )
 
 
+def _frange(start: float, stop: float, step: float) -> list[float]:
+    """`range` para flotantes, sin arrastrar error acumulado."""
+    if step <= 0:
+        return []
+    n = int((stop - start) / step)
+    return [round(start + i * step, 3) for i in range(max(0, n))]
+
+
 def analyze(
     source: Path | str,
     settings: Settings | None = None,
@@ -210,10 +257,36 @@ def analyze(
     tier: Tier | None = None,
     force: set[str] | None = None,
     skip_speech: bool = False,
+    skip_ocr: bool = True,
     language: str | None = None,
     progress: ProgressFn | None = None,
 ) -> tuple[Analysis, list[str]]:
     """Analiza un video. Devuelve el analisis y la lista de avisos."""
     run = AnalysisRun(source, settings, tier=tier, progress=progress)
-    result = run.run(force=force, skip_speech=skip_speech, language=language)
+    result = run.run(
+        force=force, skip_speech=skip_speech, skip_ocr=skip_ocr, language=language
+    )
     return result, run.warnings
+
+
+def analyze_run(
+    source: Path | str,
+    settings: Settings | None = None,
+    *,
+    tier: Tier | None = None,
+    force: set[str] | None = None,
+    skip_speech: bool = False,
+    skip_ocr: bool = True,
+    language: str | None = None,
+    progress: ProgressFn | None = None,
+) -> tuple[Analysis, "AnalysisRun"]:
+    """Como `analyze`, pero devuelve la pasada entera.
+
+    Hace falta para llegar a las senales que no viven en `Analysis`, como el
+    texto en pantalla, que solo usa la identificacion de contenido.
+    """
+    run = AnalysisRun(source, settings, tier=tier, progress=progress)
+    result = run.run(
+        force=force, skip_speech=skip_speech, skip_ocr=skip_ocr, language=language
+    )
+    return result, run

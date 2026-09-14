@@ -17,8 +17,8 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 | F2 | EDL, estilos y planner | hecho |
 | F3 | Renderer FFmpeg | hecho |
 | F4 | Motor de saturacion y auto-balanceador | hecho |
-| F5 | Comprension de contenido y b-roll | en curso |
-| F6 | API y UI web | pendiente |
+| F5 | Comprension de contenido y b-roll | hecho |
+| F6 | API y UI web | en curso |
 
 ## Requisitos
 
@@ -68,6 +68,7 @@ forge styles                 # estilos de montaje disponibles
 forge plan video.mp4         # decide el montaje (sin renderizar)
 forge render video.mp4       # monta y saca el MP4 de verdad
 forge saturation video.mp4   # mide si esta sobresaturado
+forge identify video.mp4     # dice de que va el video
 forge cache info video.mp4   # que hay cacheado de ese video
 forge cache clear video.mp4  # lo borra
 ```
@@ -311,3 +312,73 @@ retirada se explica:
 
 El deslizador `--intensity` reescala las bandas: a 0 pide un montaje sobrio (y
 el balanceador poda mas), a 100 admite mucha mas carga.
+
+
+## Material de apoyo (b-roll)
+
+```bash
+forge render guia.mp4 --broll            # inserta material donde toca
+forge render guia.mp4 --broll --offline  # solo material local, sin internet
+```
+
+El problema no es conseguir b-roll, es saber **cuando merece la pena**. Meterlo
+cada X segundos es exactamente lo que delata a un editor automatico.
+
+VideoForge lo coloca donde se esta **nombrando algo concreto**. Para detectarlo
+puntua las palabras con TF-IDF sobre el propio transcript: una palabra que
+aparece mucho en este tramo pero poco en el resto del video es justo lo que ese
+tramo esta tratando. No hace falta ningun modelo de lenguaje, no depende del
+idioma, y la decision se explica sola:
+
+```
+material de apoyo en 60s porque ahi hablas de 'chrome' · de tu biblioteca,
+coincide en: chrome
+```
+
+### De donde sale el material
+
+| Proveedor | Necesita | Notas |
+|---|---|---|
+| `self` | nada | Del propio video, eligiendo los planos con mas interes visual. Siempre disponible. |
+| `local` | tu carpeta `assets/broll/` | Etiquetas del nombre del fichero o de un `tags.json`. |
+| `pexels` | `PEXELS_API_KEY` (gratuita) | Opcional. |
+| `pixabay` | `PIXABAY_API_KEY` (gratuita) | Opcional. |
+
+Nunca se repite el mismo recurso, y si un banco esta caido o no hay red, el
+montaje sigue con lo que tenga. Los creditos de licencia se emiten aparte.
+
+Un detalle que importa: a diferencia de un zoom, un b-roll a pantalla completa
+**no** esquiva los cortes, los tapa. En una guia muy recortada los cortes caen
+cada pocos segundos, asi que exigirle que no los cruce dejaria el montaje sin un
+solo material de apoyo.
+
+### Efectos de sonido
+
+Se **sintetizan** con numpy (barrido, golpe, subida y clic) en vez de
+distribuir ficheros. No es una limitacion: es la unica forma de traer efectos
+sin arrastrar un problema de licencias, y permite afinarlos sin buscar otro
+fichero.
+
+## Identificar el contenido
+
+```bash
+forge identify guia.mp4
+```
+
+Ninguna senal decide sola:
+
+| Senal | Aporta | Requiere |
+|---|---|---|
+| Texto en pantalla | El nombre literal del juego o programa | Tesseract |
+| Vision (CLIP) | Reconocimiento de escena | Modelo ONNX |
+| Voz | El tema del que se habla | faster-whisper |
+| Ritmo | Guia vs. gameplay, sin ningun modelo | nada |
+
+El ritmo esta **siempre** disponible, asi que el perfil nunca sale vacio: en el
+peor caso dice "esto es material hablado y quieto", que ya sirve para elegir
+estilo. Cada conclusion lleva su fuente y su confianza, y el sistema dice
+explicitamente que senales le faltaron.
+
+El diseno de CLIP evita el problema habitual: las etiquetas traen su embedding
+**ya calculado**, asi que solo hace falta el codificador de imagen. Sin
+tokenizador, sin PyTorch, un paso de ONNX Runtime por fotograma.

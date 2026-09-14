@@ -21,6 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..assets.sfx import GENERATORS, ensure_sfx
+from ..assets.types import AssetBundle
 from ..config import Settings
 from ..errors import RenderError
 from ..plan.edl import EDL, EffectKind
@@ -110,11 +112,23 @@ def _run_with_progress(
     return stderr
 
 
+def _inputs(source: Path, graph) -> list[str]:
+    """Argumentos de entrada: el video original primero, luego los extras.
+
+    El orden importa: los indices que el grafo escribio ([1:v], [2:a]...) se
+    corresponden con esta lista, asi que hay que respetarla tal cual.
+    """
+    cmd = ["-i", str(source)]
+    for bloque in graph.input_args:
+        cmd.extend(bloque)
+    return cmd
+
+
 def _dry_run(ffmpeg: Path, source: Path, graph, settings: Settings) -> None:
     """Comprueba el grafo con un segundo de video antes del render completo."""
     cmd = [
         str(ffmpeg), "-hide_banner", "-nostdin", "-y",
-        "-i", str(source),
+        *_inputs(source, graph),
         "-filter_complex", graph.filter_complex,
         "-map", graph.video_label,
     ]
@@ -131,16 +145,27 @@ def _dry_run(ffmpeg: Path, source: Path, graph, settings: Settings) -> None:
 
 
 def _measure_loudness(
-    ffmpeg: Path, source: Path, edl: EDL, settings: Settings, target_lufs: float
+    ffmpeg: Path,
+    source: Path,
+    edl: EDL,
+    settings: Settings,
+    target_lufs: float,
+    sfx_paths: dict[str, str] | None = None,
 ) -> dict | None:
-    """Primera pasada: mide la sonoridad del audio ya montado."""
-    graph = build_graph(edl, has_audio=True, target_lufs=None, audio_only=True)
+    """Primera pasada: mide la sonoridad del audio ya montado.
+
+    Incluye los efectos de sonido: tambien suenan, y medir sin ellos dejaria el
+    master por encima del objetivo.
+    """
+    graph = build_graph(
+        edl, has_audio=True, target_lufs=None, audio_only=True, sfx_paths=sfx_paths
+    )
     if not graph.audio_label:
         return None
 
     cmd = [
         str(ffmpeg), "-hide_banner", "-nostdin",
-        "-i", str(source),
+        *_inputs(source, graph),
         "-filter_complex",
         graph.filter_complex
         + f";{graph.audio_label}loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11:print_format=json[ameasure]",
@@ -177,6 +202,7 @@ def render(
     two_pass_audio: bool = True,
     fonts_dir: Path | None = None,
     work_dir: Path | None = None,
+    assets: AssetBundle | None = None,
     progress: ProgressFn | None = None,
 ) -> RenderResult:
     """Renderiza el EDL a un fichero de video."""
@@ -227,6 +253,15 @@ def render(
     fonts = str(fonts_dir.resolve()) if fonts_dir and fonts_dir.is_dir() else None
     target_lufs = edl_render.render.target_lufs
 
+    # -- efectos de sonido --------------------------------------------------
+    # Se sintetizan al vuelo la primera vez y quedan cacheados. No se
+    # distribuyen ficheros de audio: asi no hay problema de licencias nunca.
+    sfx_paths: dict[str, str] = {}
+    for efecto in edl_render.effects:
+        nombre = getattr(efecto, "asset_id", "")
+        if efecto.kind is EffectKind.SFX and nombre in GENERATORS and nombre not in sfx_paths:
+            sfx_paths[nombre] = str(ensure_sfx(settings.cache_dir, nombre))
+
     from ..tools import probe
 
     has_audio = probe(source, settings).has_audio
@@ -237,6 +272,7 @@ def render(
     graph_seco = build_graph(
         edl_render, has_audio=has_audio, ass_path=ass_path, fonts_dir=fonts,
         target_lufs=target_lufs if not two_pass_audio else None,
+        assets=assets, sfx_paths=sfx_paths,
     )
     _dry_run(ffmpeg, source, graph_seco, settings)
 
@@ -245,7 +281,9 @@ def render(
     if has_audio and two_pass_audio and not preview:
         if progress:
             progress(0.0, "midiendo la sonoridad del montaje")
-        medidas = _measure_loudness(ffmpeg, source, edl_render, settings, target_lufs)
+        medidas = _measure_loudness(
+            ffmpeg, source, edl_render, settings, target_lufs, sfx_paths
+        )
 
     # -- render final -------------------------------------------------------
     graph = build_graph(
@@ -255,13 +293,15 @@ def render(
         fonts_dir=fonts,
         target_lufs=target_lufs,
         loudnorm_measured=medidas,
+        assets=assets,
+        sfx_paths=sfx_paths,
     )
     codec_args, nombre_encoder = _video_codec_args(caps, edl_render, preview=preview, use_gpu=use_gpu)
 
     cmd = [
         str(ffmpeg), "-hide_banner", "-nostdin", "-y",
         "-progress", "pipe:1", "-nostats", "-loglevel", "error",
-        "-i", str(source),
+        *_inputs(source, graph),
         "-filter_complex", graph.filter_complex,
         "-map", graph.video_label,
     ]

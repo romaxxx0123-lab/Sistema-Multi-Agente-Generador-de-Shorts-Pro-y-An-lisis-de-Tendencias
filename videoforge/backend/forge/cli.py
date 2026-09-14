@@ -281,6 +281,8 @@ def plan(
     no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
     out: Path = typer.Option(None, "--out", "-o", help="Guarda el EDL en un JSON."),
     json_out: bool = typer.Option(False, "--json", help="Saca el EDL por pantalla en JSON."),
+    broll: bool = typer.Option(False, "--broll", help="Inserta material de apoyo."),
+    offline: bool = typer.Option(False, "--offline", help="Solo material local, sin bancos de internet."),
 ) -> None:
     """Analiza el video y decide el montaje, sin renderizar todavia.
 
@@ -308,7 +310,10 @@ def plan(
                 source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
             )
             status.update("[cyan]decidiendo el montaje...")
-            edl = build_edl(analysis, style, intensity=intensity)
+            edl = build_edl(
+                analysis, style, intensity=intensity,
+                providers=_broll_providers(analysis, enabled=broll, offline=offline),
+            )
         except ForgeError as exc:
             raise _fail(exc) from exc
 
@@ -378,6 +383,8 @@ def render(
     no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
     no_gpu: bool = typer.Option(False, "--no-gpu", help="Fuerza encoder por CPU."),
     balance: bool = typer.Option(False, "--balance", help="Reajusta los efectos si el montaje se sale de banda."),
+    broll: bool = typer.Option(False, "--broll", help="Inserta material de apoyo."),
+    offline: bool = typer.Option(False, "--offline", help="Solo material local, sin bancos de internet."),
     save_edl: Path = typer.Option(None, "--save-edl", help="Guarda tambien el EDL usado."),
 ) -> None:
     """Monta el video y lo renderiza a un MP4 real.
@@ -389,9 +396,11 @@ def render(
     from .config import Tier
     from .plan.edl import EDL
     from .plan.planner import build_edl
+    from .assets.types import AssetBundle
     from .render.renderer import render as do_render
 
     settings = Settings.load()
+    bundle = AssetBundle()
     # Solo hay analisis si partimos del video; con --from-edl no lo tenemos, y
     # el balanceador sabe funcionar sin el (pierde la deteccion de zooms sobre
     # planos que ya se mueven, pero el resto de metricas salen del propio EDL).
@@ -421,7 +430,11 @@ def render(
                     source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
                 )
                 status.update("[cyan]decidiendo el montaje...")
-                edl = build_edl(analysis, style, intensity=intensity)
+                edl = build_edl(
+                    analysis, style, intensity=intensity,
+                    providers=_broll_providers(analysis, enabled=broll, offline=offline),
+                    assets=bundle,
+                )
             except ForgeError as exc:
                 raise _fail(exc) from exc
         for w in warnings:
@@ -469,7 +482,8 @@ def render(
                 edl, destino, settings,
                 preview=preview,
                 use_gpu=not no_gpu,
-                fonts_dir=Path(__file__).resolve().parent.parent.parent / "assets" / "fonts",
+                fonts_dir=ASSETS_DIR / "fonts",
+                assets=bundle,
                 progress=on_render,
             )
         except ForgeError as exc:
@@ -639,6 +653,92 @@ def saturation(
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(edl.model_dump_json(indent=2))
         console.print(f"\nEDL guardado en [bold]{out}[/bold]")
+
+
+#: Carpeta de material del proyecto.
+ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets"
+
+
+def _broll_providers(analysis, *, enabled: bool, offline: bool):
+    """Proveedores de material de apoyo, si se pidieron."""
+    if not enabled:
+        return None
+    from .assets.providers import build_providers
+
+    return build_providers(
+        analysis, local_dir=ASSETS_DIR / "broll", allow_network=not offline
+    )
+
+
+@app.command()
+def identify(
+    source: Path = typer.Argument(..., help="Video de entrada."),
+    no_ocr: bool = typer.Option(False, "--no-ocr", help="No leer el texto en pantalla."),
+    no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+) -> None:
+    """Dice de que va el video: tipo de material, tema y de donde lo deduce.
+
+    Ninguna senal decide sola. El texto en pantalla es la mas literal, la voz
+    aporta el tema, y el ritmo (cuanta voz y cuanto movimiento) separa una guia
+    de un gameplay sin necesitar ningun modelo.
+    """
+    from .analysis.pipeline import analyze_run
+    from .analysis.vision import build_tagger, tag_video
+    from .understand.profile import build_profile
+
+    settings = Settings.load()
+
+    with console.status("[cyan]analizando...", spinner="dots") as status:
+        def on_progress(stage: str, message: str) -> None:
+            status.update(f"[cyan]{message}...")
+
+        try:
+            analysis, run = analyze_run(
+                source, settings, skip_speech=no_speech, skip_ocr=no_ocr, progress=on_progress
+            )
+            status.update("[cyan]identificando el contenido...")
+            tagger = build_tagger(settings, run.device)
+            etiquetas = []
+            if tagger.available:
+                instantes = [
+                    s.start + s.duration / 2 for s in analysis.shots[:40]
+                ]
+                etiquetas = tag_video(
+                    run.cache.artifact(f"proxy_{run.plan.analysis_height}p.mp4"),
+                    settings, instantes, tagger,
+                )
+            perfil = build_profile(
+                analysis, screen_text=run.screen_text, vision_tags=etiquetas
+            )
+        except ForgeError as exc:
+            raise _fail(exc) from exc
+
+    tabla = Table(show_header=False, box=None, padding=(0, 2))
+    tabla.add_row("tipo de material", f"[bold]{perfil.domain.value}[/bold]")
+    if perfil.topic:
+        tabla.add_row("tema", f"[bold cyan]{perfil.topic}[/bold cyan]")
+    tabla.add_row("confianza", f"{perfil.confidence:.0%}")
+    tabla.add_row("voz", f"{perfil.speech_ratio:.0%} del video")
+    tabla.add_row("movimiento", f"{perfil.motion_level:.0%}")
+    tabla.add_row("estilo sugerido", f"[bold]{perfil.suggested_style}[/bold]")
+    console.print(Panel(tabla, title=f"identificacion · {Path(source).name}", border_style="cyan"))
+
+    if perfil.entities:
+        console.print("[bold]En que se basa[/bold]")
+        for e in perfil.top_entities(8):
+            color = {"pantalla": "green", "vision": "magenta", "voz": "blue"}.get(e.source, "white")
+            console.print(f"  [{color}]{e.source:9s}[/{color}] {e.label}  [dim]{e.confidence:.0%}[/dim]")
+
+    if perfil.keywords:
+        console.print(f"\n[dim]Palabras clave: {', '.join(perfil.keywords[:10])}[/dim]")
+
+    if perfil.missing:
+        console.print("\n[yellow]Senales no disponibles:[/yellow]")
+        for m in perfil.missing:
+            console.print(f"  [dim]· {m}[/dim]")
+
+    for w in run.warnings:
+        err_console.print(f"[yellow]aviso:[/yellow] {w}")
 
 
 @app.command("make-fixture")

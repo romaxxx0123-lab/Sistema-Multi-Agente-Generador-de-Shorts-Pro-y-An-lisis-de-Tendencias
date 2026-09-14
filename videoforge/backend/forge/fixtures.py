@@ -168,7 +168,7 @@ def synthetic_guide_analysis(
         TranscriptSegment,
         Word,
     )
-    from .media import MediaInfo, VideoStream
+    from .media import AudioStream, MediaInfo, VideoStream
 
     rng = _random.Random(seed)
 
@@ -210,6 +210,9 @@ def synthetic_guide_analysis(
         size_bytes=10**8,
         duration=duration,
         video=VideoStream(index=0, codec="h264", width=1920, height=1080, fps=30.0),
+        # Declara pista de audio porque el material tiene voz; sin esto el
+        # perfil de contenido clasificaria una guia hablada como "silenciosa".
+        audio=AudioStream(index=1, codec="aac", sample_rate=48000, channels=2),
     )
 
     shots = [

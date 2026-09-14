@@ -14,7 +14,10 @@ miedo.
 from __future__ import annotations
 
 from ..analysis.types import Analysis
+from ..assets.providers import BrollProvider
+from ..assets.types import AssetBundle
 from ..errors import PlanError
+from .broll import plan_broll
 from .captions import plan_captions
 from .chapters import chapter_cards, plan_chapters
 from .edl import EDL, Clip, GradeEffect, RenderSpec, TransitionEffect
@@ -121,8 +124,14 @@ def build_edl(
     *,
     intensity: int = 50,
     style_dir=None,
+    providers: list[BrollProvider] | None = None,
+    assets: AssetBundle | None = None,
 ) -> EDL:
-    """Construye el montaje completo."""
+    """Construye el montaje completo.
+
+    Si se le pasan proveedores, tambien coloca material de apoyo y deja los
+    assets resueltos en `assets`, que el renderer necesita para componerlos.
+    """
     style = load_style(style_name, style_dir)
 
     clips, notas = _build_timeline(analysis, style)
@@ -154,7 +163,21 @@ def build_edl(
     zooms, zooms_reserva = plan_punch_ins(edl, analysis, style.emphasis)
     efectos += zooms
     efectos += plan_ken_burns(edl, analysis, style.emphasis)
-    edl.candidates = list(zooms_reserva)
+    reservas = list(zooms_reserva)
+
+    if providers:
+        bundle = assets if assets is not None else AssetBundle()
+        brolls, brolls_reserva = plan_broll(
+            edl, analysis.transcript, providers, style.broll, bundle
+        )
+        efectos += brolls
+        reservas += brolls_reserva
+        if brolls:
+            edl.notes.append(
+                f"Material de apoyo en {len(brolls)} momentos donde nombras algo concreto."
+            )
+
+    edl.candidates = reservas
 
     edl.effects = efectos
     # Las transiciones y el color dependen de la linea de tiempo ya cerrada.
