@@ -32,11 +32,36 @@ MIN_LENGTH = 3
 
 
 @dataclass
+class WordBox:
+    """Una palabra leida y **donde** estaba, en fracciones del fotograma.
+
+    La posicion es la mitad util del OCR en una guia: saber que en pantalla
+    pone "Ajustes" esta bien, pero saber que pone "Ajustes" *ahi* es lo que
+    permite senalarlo cuando se nombra.
+    """
+
+    text: str
+    x: float
+    y: float
+    w: float
+    h: float
+
+    @property
+    def cx(self) -> float:
+        return self.x + self.w / 2
+
+    @property
+    def cy(self) -> float:
+        return self.y + self.h / 2
+
+
+@dataclass
 class ScreenText:
     """Texto leido en un instante concreto."""
 
     at: float
     words: list[str] = field(default_factory=list)
+    boxes: list[WordBox] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -47,8 +72,12 @@ def tesseract_available() -> bool:
     return shutil.which("tesseract") is not None
 
 
-def _run_tesseract(image_path: Path, lang: str) -> list[tuple[str, float]]:
-    """Devuelve (palabra, confianza) de una imagen."""
+def _run_tesseract(image_path: Path, lang: str) -> list[tuple[str, float, tuple[int, int, int, int]]]:
+    """Devuelve (palabra, confianza, caja) de una imagen.
+
+    La caja viene en pixeles de la imagen que se le paso, en columnas 6-9 del
+    TSV: left, top, width, height.
+    """
     proc = subprocess.run(
         ["tesseract", str(image_path), "stdout", "-l", lang, "--psm", "11", "tsv"],
         capture_output=True,
@@ -58,7 +87,7 @@ def _run_tesseract(image_path: Path, lang: str) -> list[tuple[str, float]]:
     if proc.returncode != 0:
         return []
 
-    salida: list[tuple[str, float]] = []
+    salida: list[tuple[str, float, tuple[int, int, int, int]]] = []
     for linea in (proc.stdout or "").splitlines()[1:]:
         columnas = linea.split("\t")
         if len(columnas) < 12:
@@ -66,10 +95,11 @@ def _run_tesseract(image_path: Path, lang: str) -> list[tuple[str, float]]:
         texto = columnas[11].strip()
         try:
             confianza = float(columnas[10])
+            caja = tuple(int(columnas[i]) for i in (6, 7, 8, 9))
         except ValueError:
             continue
         if texto and confianza >= 0:
-            salida.append((texto, confianza))
+            salida.append((texto, confianza, caja))
     return salida
 
 
@@ -102,13 +132,29 @@ def read_screen_text(
         except (subprocess.TimeoutExpired, OSError):
             continue
 
-        palabras = [
-            texto
-            for texto, confianza in lecturas
-            if confianza >= min_confidence and len(texto) >= MIN_LENGTH and any(c.isalpha() for c in texto)
+        cajas = [
+            WordBox(
+                text=texto,
+                x=round(left / OCR_WIDTH, 4),
+                y=round(top / OCR_HEIGHT, 4),
+                w=round(ancho / OCR_WIDTH, 4),
+                h=round(alto / OCR_HEIGHT, 4),
+            )
+            for texto, confianza, (left, top, ancho, alto) in lecturas
+            if confianza >= min_confidence
+            and len(texto) >= MIN_LENGTH
+            and any(c.isalpha() for c in texto)
+            and ancho > 0
+            and alto > 0
         ]
-        if palabras:
-            resultados.append(ScreenText(at=round(ts, 3), words=palabras))
+        if cajas:
+            resultados.append(
+                ScreenText(
+                    at=round(ts, 3),
+                    words=[c.text for c in cajas],
+                    boxes=cajas,
+                )
+            )
 
     return resultados
 

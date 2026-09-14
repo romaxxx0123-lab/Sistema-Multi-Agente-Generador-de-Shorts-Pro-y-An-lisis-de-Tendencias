@@ -9,7 +9,10 @@
     "speech_pad": 0.1,
     "remove_fillers": true,
     "min_clip": 0.5,
-    "cuts_per_minute": {"lo": 18.0, "hi": 48.0}
+    "cuts_per_minute": {
+      "lo": 18.0,
+      "hi": 48.0
+    }
   },
   "captions": {
     "enabled": true,
@@ -38,21 +41,84 @@
     "mode": "full",
     "max_coverage": 0.4
   },
-  "chapters": {"enabled": false, "min_seconds": 60.0, "card_seconds": 1.4, "show_cards": false},
-  "transitions": {"enabled": true, "default": "slide", "duration": 0.18, "fraction": 0.35},
-  "grade": {"preset": "punchy", "intensity": 0.7},
-  "music": {"enabled": true, "gain_db": -16.0, "duck": true},
-  "sfx": {"enabled": true, "max_per_minute": 10.0, "gain_db": -7.0},
+  "chapters": {
+    "enabled": false,
+    "min_seconds": 60.0,
+    "card_seconds": 1.4,
+    "show_cards": false
+  },
+  "transitions": {
+    "enabled": true,
+    "default": "slide",
+    "duration": 0.18,
+    "fraction": 0.35
+  },
+  "grade": {
+    "preset": "punchy",
+    "intensity": 0.7
+  },
+  "music": {
+    "enabled": true,
+    "gain_db": -16.0,
+    "duck": true
+  },
+  "sfx": {
+    "enabled": true,
+    "max_per_minute": 10.0,
+    "gain_db": -7.0
+  },
   "saturation": {
-    "cuts_per_minute": {"lo": 18.0, "hi": 48.0},
-    "effect_density_mean": {"lo": 0.35, "hi": 0.78},
-    "effect_density_peak": {"lo": 0.0, "hi": 0.95},
-    "overlay_coverage": {"lo": 0.05, "hi": 0.45},
-    "text_coverage": {"lo": 0.5, "hi": 0.95},
-    "max_layers": {"lo": 0.0, "hi": 5.0},
-    "sfx_per_minute": {"lo": 1.0, "hi": 12.0},
-    "transitions_per_minute": {"lo": 0.0, "hi": 18.0},
-    "caption_wpm": {"lo": 100.0, "hi": 260.0},
-    "motion_conflicts_per_minute": {"lo": 0.0, "hi": 4.0}
+    "cuts_per_minute": {
+      "lo": 18.0,
+      "hi": 48.0
+    },
+    "effect_density_mean": {
+      "lo": 0.35,
+      "hi": 0.78
+    },
+    "effect_density_peak": {
+      "lo": 0.0,
+      "hi": 0.95
+    },
+    "overlay_coverage": {
+      "lo": 0.05,
+      "hi": 0.45
+    },
+    "text_coverage": {
+      "lo": 0.5,
+      "hi": 0.95
+    },
+    "max_layers": {
+      "lo": 0.0,
+      "hi": 5.0
+    },
+    "sfx_per_minute": {
+      "lo": 1.0,
+      "hi": 12.0
+    },
+    "transitions_per_minute": {
+      "lo": 0.0,
+      "hi": 18.0
+    },
+    "caption_wpm": {
+      "lo": 100.0,
+      "hi": 260.0
+    },
+    "motion_conflicts_per_minute": {
+      "lo": 0.0,
+      "hi": 4.0
+    },
+    "callouts_per_minute": {
+      "lo": 0.0,
+      "hi": 1.0
+    }
+  },
+  "callouts": {
+    "enabled": false,
+    "max_per_minute": 0.8,
+    "min_gap": 12.0,
+    "seconds": 1.8,
+    "thickness": 0.004,
+    "color": "FFD200"
   }
 }

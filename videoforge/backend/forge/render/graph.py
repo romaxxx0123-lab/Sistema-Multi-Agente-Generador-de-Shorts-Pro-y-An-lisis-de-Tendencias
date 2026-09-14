@@ -29,7 +29,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..assets.types import Asset, AssetBundle, AssetKind
-from ..plan.edl import EDL, BrollEffect, EffectKind, KenBurnsEffect, PunchInEffect, SfxEffect
+from ..plan.edl import (
+    EDL,
+    BrollEffect,
+    CalloutEffect,
+    EffectKind,
+    KenBurnsEffect,
+    PunchInEffect,
+    SfxEffect,
+)
 
 #: Presets de color. Valores conservadores: el objetivo es que se note que
 #: alguien ha tocado el color, no que el video parezca de otro planeta.
@@ -219,6 +227,76 @@ def _broll_branch(
         f"setpts=PTS+{effect.start:.4f}/TB{label}"
     )
     return cadena, entrada
+
+
+#: Cuanto tarda el recuadro en aparecer y en irse. Un recuadro que se enciende
+#: de golpe se lee como un fallo de reproduccion; un cuarto de segundo basta
+#: para que se lea como una decision.
+CALLOUT_FADE = 0.24
+#: En cuantos pasos se hace ese fundido. Ver `_callout_filters`: `drawbox` no
+#: reevalua sus parametros por fotograma, asi que el fundido son varios
+#: `drawbox` con distinta opacidad y ventanas de tiempo seguidas.
+CALLOUT_FADE_STEPS = 3
+#: Opacidad del recuadro ya establecido.
+CALLOUT_ALPHA = 0.95
+#: Grosor minimo en pixeles: por debajo el trazo desaparece al recomprimir.
+CALLOUT_MIN_THICKNESS = 2
+
+
+def _callout_filters(
+    effects: list[CalloutEffect], w: int, h: int, rules
+) -> list[str]:
+    """Recuadros que aparecen y desaparecen sobre lo que se esta nombrando.
+
+    `drawbox` evalua sus parametros **una sola vez**, al montar el grafo: en sus
+    expresiones no existe el tiempo, y meter `t` no da un recuadro estatico sino
+    que aborta el render entero. Lo unico que si se evalua por fotograma es
+    `enable`.
+
+    Asi que el fundido se hace con varios `drawbox` encadenados, cada uno con su
+    opacidad y su tramo de tiempo, que no se solapan. Tres pasos de 80 ms bastan
+    para que no parezca que la imagen ha parpadeado.
+    """
+    if not effects:
+        return []
+
+    grueso = max(CALLOUT_MIN_THICKNESS, int(round(h * rules.thickness)))
+    color = (rules.color or "FFD200").lstrip("#")
+    filtros: list[str] = []
+
+    for efecto in effects:
+        rect = efecto.rect.clamped()
+        x = int(rect.x * w)
+        y = int(rect.y * h)
+        ancho = max(grueso * 3, int(rect.w * w))
+        alto = max(grueso * 3, int(rect.h * h))
+
+        def caja(desde: float, hasta: float, alpha: float) -> str:
+            return (
+                f"drawbox=x={x}:y={y}:w={ancho}:h={alto}"
+                f":color=0x{color}@{alpha:.2f}:t={grueso}"
+                f":enable={_q(f'between(t,{desde:.4f},{hasta:.4f})')}"
+            )
+
+        duracion = efecto.end - efecto.start
+        # Con un recuadro muy corto no hay sitio para el fundido: se deja seco.
+        fundido = min(CALLOUT_FADE, duracion / 3.0)
+        paso = fundido / CALLOUT_FADE_STEPS
+
+        tramos: list[tuple[float, float, float]] = []
+        for k in range(CALLOUT_FADE_STEPS):
+            alpha = CALLOUT_ALPHA * (k + 1) / CALLOUT_FADE_STEPS
+            tramos.append((efecto.start + k * paso, efecto.start + (k + 1) * paso, alpha))
+        tramos.append((efecto.start + fundido, efecto.end - fundido, CALLOUT_ALPHA))
+        for k in range(CALLOUT_FADE_STEPS):
+            alpha = CALLOUT_ALPHA * (CALLOUT_FADE_STEPS - k - 1 + 1) / CALLOUT_FADE_STEPS
+            inicio = efecto.end - fundido + k * paso
+            tramos.append((inicio, inicio + paso, alpha - CALLOUT_ALPHA / CALLOUT_FADE_STEPS))
+
+        for desde, hasta, alpha in tramos:
+            if hasta - desde > 1e-3 and alpha > 0.01:
+                filtros.append(caja(desde, hasta, alpha))
+    return filtros
 
 
 def _overlay_position(effect: BrollEffect, w: int, h: int) -> tuple[str, str]:
@@ -411,6 +489,7 @@ def build_graph(
     sfx_paths: dict[str, str] | None = None,
     voice_rules=None,
     master_gain_db: float | None = None,
+    callout_rules=None,
 ) -> BuiltGraph:
     """Compila el EDL en un grafo de filtros.
 
@@ -566,6 +645,17 @@ def build_graph(
 
         if colocados:
             aplicado.append(f"{colocados} b-roll")
+
+    # Recuadros: encima del b-roll pero debajo de los subtitulos.
+    if not audio_only and callout_rules is not None:
+        marcas = sorted(
+            (e for e in edl.effects if isinstance(e, CalloutEffect)),
+            key=lambda e: e.start,
+        )
+        filtros_marca = _callout_filters(marcas, w, h, callout_rules)
+        if filtros_marca:
+            post += filtros_marca
+            aplicado.append(f"{len(filtros_marca)} recuadros")
 
     # Los subtitulos van los ultimos: siempre encima de todo, tambien del b-roll.
     if ass_path and not audio_only:

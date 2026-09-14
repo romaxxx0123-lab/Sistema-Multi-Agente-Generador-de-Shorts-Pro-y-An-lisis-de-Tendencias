@@ -20,7 +20,7 @@ from ..analysis.types import Transcript, Word
 from ..assets.providers import BrollProvider, search_all, tokenize
 from ..assets.types import Asset, AssetBundle, AssetQuery
 from .edl import EDL, BrollEffect
-from .styles import BrollRules
+from .styles import BrollRules, budget
 
 #: Duracion maxima de la ventana en la que se busca de que se esta hablando.
 WINDOW_SECONDS = 6.0
@@ -185,7 +185,7 @@ def plan_broll(
     if not momentos:
         return [], []
 
-    maximo = max(0, int(rules.max_per_minute * edl.duration / 60.0))
+    maximo = budget(rules.max_per_minute, edl.duration, rules.default_seconds * 2)
     tope_cobertura = rules.max_coverage * edl.duration
 
     elegidos: list[BrollEffect] = []

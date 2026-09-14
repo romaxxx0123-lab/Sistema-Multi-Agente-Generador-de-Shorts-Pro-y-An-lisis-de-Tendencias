@@ -33,6 +33,7 @@ WEIGHTS: dict[str, float] = {
     "text_coverage": 0.8,
     "caption_wpm": 0.8,
     "sfx_per_minute": 0.6,
+    "callouts_per_minute": 0.7,
     "transitions_per_minute": 0.6,
 }
 
@@ -50,6 +51,7 @@ ADVICE: dict[str, tuple[str, str]] = {
     "text_coverage": ("falta texto en pantalla", "hay texto en pantalla casi todo el rato"),
     "max_layers": ("nunca se superponen elementos", "se amontonan demasiados elementos a la vez"),
     "sfx_per_minute": ("no hay efectos de sonido", "demasiados efectos de sonido"),
+    "callouts_per_minute": ("", "hay demasiados recuadros senalando cosas"),
     "transitions_per_minute": ("los cortes van todos secos", "demasiadas transiciones: distraen del contenido"),
     "caption_wpm": ("los subtitulos se quedan mucho rato en pantalla", "los subtitulos pasan demasiado rapido para leerlos"),
     "motion_conflicts_per_minute": ("", "hay zooms sobre planos que ya se mueven: marea"),

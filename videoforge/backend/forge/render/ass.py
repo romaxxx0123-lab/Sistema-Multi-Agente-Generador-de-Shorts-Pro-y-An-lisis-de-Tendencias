@@ -62,7 +62,10 @@ class CaptionTheme:
     outline_width: float
     shadow: float
     bold: bool
-    #: margen inferior/superior como fraccion de la altura
+    #: margen inferior/superior como fraccion de la altura. No baja del 9%:
+    #: por debajo de eso el subtitulo se mete donde el reproductor pinta la
+    #: barra de progreso y los controles, y en YouTube queda tapado justo
+    #: mientras alguien busca un momento del video.
     margin_ratio: float
     #: caja semitransparente detras del texto en vez de solo contorno
     boxed: bool = False
@@ -77,7 +80,7 @@ THEMES: dict[str, CaptionTheme] = {
         outline_width=3.0,
         shadow=1.5,
         bold=True,
-        margin_ratio=0.075,
+        margin_ratio=0.10,
     ),
     "impact": CaptionTheme(
         size_ratio=0.085,
@@ -95,7 +98,7 @@ THEMES: dict[str, CaptionTheme] = {
         outline_width=4.0,
         shadow=2.0,
         bold=True,
-        margin_ratio=0.09,
+        margin_ratio=0.11,
     ),
     "minimal": CaptionTheme(
         size_ratio=0.045,
@@ -104,7 +107,7 @@ THEMES: dict[str, CaptionTheme] = {
         outline_width=1.5,
         shadow=0.8,
         bold=False,
-        margin_ratio=0.06,
+        margin_ratio=0.09,
         boxed=True,
     ),
 }

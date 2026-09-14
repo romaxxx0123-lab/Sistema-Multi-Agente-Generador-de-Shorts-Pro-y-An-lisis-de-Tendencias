@@ -9,7 +9,10 @@
     "speech_pad": 0.14,
     "remove_fillers": true,
     "min_clip": 0.8,
-    "cuts_per_minute": {"lo": 3.0, "hi": 24.0}
+    "cuts_per_minute": {
+      "lo": 3.0,
+      "hi": 24.0
+    }
   },
   "captions": {
     "enabled": true,
@@ -44,20 +47,78 @@
     "card_seconds": 2.4,
     "show_cards": true
   },
-  "transitions": {"enabled": true, "default": "fade", "duration": 0.22, "fraction": 0.12},
-  "grade": {"preset": "neutral", "intensity": 0.25},
-  "music": {"enabled": false, "gain_db": -24.0, "duck": true},
-  "sfx": {"enabled": false, "max_per_minute": 1.0, "gain_db": -12.0},
+  "transitions": {
+    "enabled": true,
+    "default": "fade",
+    "duration": 0.22,
+    "fraction": 0.12
+  },
+  "grade": {
+    "preset": "neutral",
+    "intensity": 0.25
+  },
+  "music": {
+    "enabled": false,
+    "gain_db": -24.0,
+    "duck": true
+  },
+  "sfx": {
+    "enabled": false,
+    "max_per_minute": 1.0,
+    "gain_db": -12.0
+  },
   "saturation": {
-    "cuts_per_minute": {"lo": 3.0, "hi": 24.0},
-    "effect_density_mean": {"lo": 0.12, "hi": 0.42},
-    "effect_density_peak": {"lo": 0.0, "hi": 0.72},
-    "overlay_coverage": {"lo": 0.0, "hi": 0.2},
-    "text_coverage": {"lo": 0.35, "hi": 0.92},
-    "max_layers": {"lo": 0.0, "hi": 3.0},
-    "sfx_per_minute": {"lo": 0.0, "hi": 2.0},
-    "transitions_per_minute": {"lo": 0.0, "hi": 5.0},
-    "caption_wpm": {"lo": 90.0, "hi": 210.0},
-    "motion_conflicts_per_minute": {"lo": 0.0, "hi": 1.0}
+    "cuts_per_minute": {
+      "lo": 3.0,
+      "hi": 24.0
+    },
+    "effect_density_mean": {
+      "lo": 0.12,
+      "hi": 0.42
+    },
+    "effect_density_peak": {
+      "lo": 0.0,
+      "hi": 0.72
+    },
+    "overlay_coverage": {
+      "lo": 0.0,
+      "hi": 0.2
+    },
+    "text_coverage": {
+      "lo": 0.35,
+      "hi": 0.92
+    },
+    "max_layers": {
+      "lo": 0.0,
+      "hi": 3.0
+    },
+    "sfx_per_minute": {
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "transitions_per_minute": {
+      "lo": 0.0,
+      "hi": 5.0
+    },
+    "caption_wpm": {
+      "lo": 90.0,
+      "hi": 210.0
+    },
+    "motion_conflicts_per_minute": {
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "callouts_per_minute": {
+      "lo": 0.0,
+      "hi": 2.5
+    }
+  },
+  "callouts": {
+    "enabled": true,
+    "max_per_minute": 1.5,
+    "min_gap": 12.0,
+    "seconds": 1.8,
+    "thickness": 0.004,
+    "color": "FFD200"
   }
 }

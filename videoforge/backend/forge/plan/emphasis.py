@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from ..analysis.types import Analysis
 from .edl import EDL, KenBurnsEffect, PunchInEffect, Rect
-from .styles import EmphasisRules
+from .styles import EmphasisRules, budget
 
 #: Cada cuanto se evalua un posible zoom, en segundos de montaje.
 CANDIDATE_STEP = 0.5
@@ -42,7 +42,7 @@ def plan_punch_ins(
     if not rules.punch_in or edl.duration <= 0:
         return [], []
 
-    maximo = max(0, int(rules.max_punch_per_minute * edl.duration / 60.0))
+    maximo = budget(rules.max_punch_per_minute, edl.duration, rules.punch_seconds * 2)
 
     # 1. Proponer candidatos a lo largo del montaje y puntuarlos.
     candidatos: list[tuple[float, float, float, float]] = []  # (score, t, cx, cy)

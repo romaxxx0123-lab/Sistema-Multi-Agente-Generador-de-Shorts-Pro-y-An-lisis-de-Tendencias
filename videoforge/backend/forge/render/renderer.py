@@ -313,10 +313,13 @@ def render(
     # El tratamiento de voz lo define el estilo. Si el estilo ya no existe (un
     # EDL guardado hace tiempo), se sigue sin el en vez de fallar.
     voice_rules = None
+    callout_rules = None
     try:
         from ..plan.styles import load_style
 
-        voice_rules = load_style(edl_render.style).voice
+        estilo = load_style(edl_render.style)
+        voice_rules = estilo.voice
+        callout_rules = estilo.callouts
     except ForgeError:
         pass
 
@@ -340,6 +343,7 @@ def render(
         edl_render, has_audio=has_audio, ass_path=ass_path, fonts_dir=fonts,
         target_lufs=target_lufs if not two_pass_audio else None,
         assets=assets, sfx_paths=sfx_paths, voice_rules=voice_rules,
+        callout_rules=callout_rules,
     )
     _dry_run(ffmpeg, source, graph_seco, settings)
 
@@ -394,6 +398,7 @@ def render(
         sfx_paths=sfx_paths,
         voice_rules=voice_rules,
         master_gain_db=master_gain,
+        callout_rules=callout_rules,
     )
     codec_args, nombre_encoder = _video_codec_args(caps, edl_render, preview=preview, use_gpu=use_gpu)
 

@@ -32,7 +32,29 @@ def test_analisis_completo_del_fixture(sample_video: Path, settings: Settings) -
     assert resultado.audio is not None
     assert len(resultado.audio.silences) == len(silent_ranges())
     assert resultado.transcript is None  # lo saltamos explicitamente
-    assert avisos == []
+    # El OCR se intenta siempre; si Tesseract no esta, avisa y sigue. Cualquier
+    # otro aviso si seria un problema.
+    assert [a for a in avisos if "Tesseract" not in a] == []
+
+
+def test_sin_tesseract_el_analisis_sigue_entero(
+    sample_video: Path, settings: Settings
+) -> None:
+    """El OCR no es obligatorio: sin el se avisa, pero no falta nada mas."""
+    from forge.analysis.ocr import tesseract_available
+
+    resultado, avisos = analyze(sample_video, settings, skip_speech=True, force={"all"})
+    if tesseract_available():
+        pytest.skip("con Tesseract instalado este caso no se puede provocar")
+
+    assert any("Tesseract" in a for a in avisos)
+    assert resultado.screen_text == []
+    assert resultado.shots and resultado.audio is not None
+
+
+def test_con_skip_ocr_ni_siquiera_avisa(sample_video: Path, settings: Settings) -> None:
+    _, avisos = analyze(sample_video, settings, skip_speech=True, skip_ocr=True)
+    assert [a for a in avisos if "Tesseract" in a] == []
 
 
 def test_los_planos_cubren_todo_el_video(sample_video: Path, settings: Settings) -> None:

@@ -44,6 +44,7 @@ class Metrics:
     transitions_per_minute: float
     caption_wpm: float
     motion_conflicts_per_minute: float
+    callouts_per_minute: float = 0.0
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -54,6 +55,7 @@ class Metrics:
             "text_coverage": self.text_coverage,
             "max_layers": self.max_layers,
             "sfx_per_minute": self.sfx_per_minute,
+            "callouts_per_minute": self.callouts_per_minute,
             "transitions_per_minute": self.transitions_per_minute,
             "caption_wpm": self.caption_wpm,
             "motion_conflicts_per_minute": self.motion_conflicts_per_minute,
@@ -140,6 +142,9 @@ def compute_metrics(edl: EDL, analysis: Analysis | None = None) -> Metrics:
         text_coverage=_coverage(edl, TEXT_KINDS),
         max_layers=_max_layers(edl),
         sfx_per_minute=_per_minute(len(edl.effects_of(EffectKind.SFX)), edl.duration),
+        callouts_per_minute=_per_minute(
+            len(edl.effects_of(EffectKind.CALLOUT)), edl.duration
+        ),
         transitions_per_minute=_per_minute(
             len(edl.effects_of(EffectKind.TRANSITION)), edl.duration
         ),

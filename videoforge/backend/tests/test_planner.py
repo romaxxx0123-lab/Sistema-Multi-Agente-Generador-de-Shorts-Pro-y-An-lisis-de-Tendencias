@@ -42,7 +42,15 @@ def test_parte_por_numero_de_palabras() -> None:
     reglas = CaptionRules(max_words=3, max_chars=999, max_duration=999, split_gap=999)
     ws = _words([(i * 0.5, i * 0.5 + 0.4, f"p{i}") for i in range(7)])
     lineas = group_words(ws, reglas, [])
-    assert [len(l) for l in lineas] == [3, 3, 1]
+
+    # Siete palabras de tres en tres darian 3+3+1, y esa ultima linea suelta
+    # parpadea medio segundo en pantalla. Se reparte para que no quede huerfana.
+    assert [len(l) for l in lineas] == [3, 2, 2]
+    assert all(len(l) <= reglas.max_words for l in lineas)
+    assert sum(len(l) for l in lineas) == len(ws), "no se puede perder ninguna palabra"
+    assert [w.text for l in lineas for w in l] == [w.text for w in ws], (
+        "el orden de las palabras tiene que ser el mismo"
+    )
 
 
 def test_parte_por_numero_de_caracteres() -> None:

@@ -307,3 +307,46 @@ def test_los_zooms_son_contados(analisis) -> None:
     zooms = edl.effects_of(EffectKind.PUNCH_IN)
     por_minuto = len(zooms) / (edl.duration / 60)
     assert por_minuto <= 4.0, f"{por_minuto:.1f} zooms por minuto es demasiado"
+
+
+# -- senalar lo que se nombra ----------------------------------------------
+
+
+def test_senala_el_boton_justo_cuando_lo_nombra(analisis) -> None:
+    """De punta a punta con la pantalla del propio generador.
+
+    Aqui el "OCR" es la verdad conocida del generador (sabemos que texto se
+    dibujo y donde), asi que lo que se prueba es la cadena entera desde el
+    transcript hasta el efecto, sin depender de tener Tesseract instalado.
+    """
+    from forge.demo import demo_screen_text
+
+    resultado, timing = analisis
+    resultado.screen_text = demo_screen_text(timing)
+    try:
+        edl = build_edl(resultado, "tutorial")
+        marcas = edl.effects_of(EffectKind.CALLOUT)
+        assert marcas, "no senalo nada, con el menu entero en pantalla"
+
+        for marca in marcas:
+            origen = edl.timeline_to_source(marca.start)
+            assert origen is not None
+            # La palabra mas cercana, no la primera que caiga cerca: el
+            # recuadro empieza justo en ella y la anterior esta a milisegundos.
+            dicha = min(
+                resultado.transcript.words, key=lambda w: abs(w.start - origen)
+            ).text
+            assert dicha.lower() in marca.label.lower(), (
+                f'senalo "{marca.label}" mientras se decia "{dicha}"'
+            )
+            # Y cae sobre el menu lateral, que es donde esta ese texto.
+            assert marca.rect.x < 0.3, f"el recuadro salio en x={marca.rect.x:.2f}"
+    finally:
+        resultado.screen_text = []
+
+
+def test_sin_texto_en_pantalla_no_se_senala_nada(analisis) -> None:
+    resultado, _ = analisis
+    assert resultado.screen_text == []
+    edl = build_edl(resultado, "tutorial")
+    assert edl.effects_of(EffectKind.CALLOUT) == []

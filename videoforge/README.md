@@ -99,6 +99,8 @@ Que se mide:
 | movimiento | curva de flujo optico | no meter zoom donde ya hay mucho movimiento |
 | audio | silencios y sonoridad EBU R128 | quitar tiempo muerto y masterizar el audio |
 | voz | transcripcion con tiempos por palabra | subtitulos karaoke, cortes limpios y capitulos |
+| saliencia | donde se concentra la atencion en cada plano | encuadrar el zoom y no tapar con el subtitulo |
+| texto en pantalla | que pone y **donde** | senalar con un recuadro lo que estas nombrando |
 
 Si falta alguna pieza opcional el analisis no se cae: avisa y sigue con lo que
 tiene. Sin `faster-whisper` no hay transcripcion, pero el resto del analisis se
@@ -183,10 +185,13 @@ text_card  rotulo de capitulo en 1:37
    condiciones a la vez: hay algo concreto que enfocar (la saliencia esta
    concentrada), el plano no se mueve ya demasiado, y ha pasado el tiempo
    minimo desde el zoom anterior. Si no, no hay zoom.
-4. **Capitulos** — busca las pausas largas en el **original** (el corte se las
+4. **Recuadros** — senala en pantalla el boton o el menu que estas nombrando,
+   cruzando el transcript con el texto que el OCR leyo y **donde** lo leyo. Solo
+   donde las dos senales coinciden; ver "Senalar lo que se nombra".
+5. **Capitulos** — busca las pausas largas en el **original** (el corte se las
    come, asi que buscarlas en el montaje no serviria) y mide la duracion minima
    en el **montaje**, que es lo que vera el espectador.
-5. **Transiciones y color** — segun el estilo.
+6. **Transiciones y color** — segun el estilo.
 
 ### Estilos
 
@@ -398,6 +403,39 @@ distribuir ficheros. No es una limitacion: es la unica forma de traer efectos
 sin arrastrar un problema de licencias, y permite afinarlos sin buscar otro
 fichero.
 
+## Senalar lo que se nombra
+
+Es lo que hace un editor humano en una guia: cuando dices *"pulsa en
+Configuracion avanzada"*, aparece un recuadro alrededor de ese boton.
+
+No hay que adivinar nada, porque las dos mitades del dato ya existen: el
+**transcript** dice que palabra se esta diciendo y cuando, y el **OCR** dice que
+texto hay en pantalla y **donde**. Solo se marca donde las dos coinciden.
+
+Eso lo hace conservador por construccion, que es lo que interesa aqui: un
+recuadro sobre algo que no es lo que estas diciendo es peor que no poner
+ninguno. En concreto **no** se senala cuando:
+
+- la palabra que dices no esta escrita en pantalla,
+- esta escrita **mas de una vez** (senalar la equivocada es lo peor que puede
+  pasar, asi que no se senala ninguna),
+- es una palabra demasiado comun ("esta", "para", "aqui"): coincidiria con
+  cualquier interfaz,
+- la lectura de pantalla mas cercana esta a mas de cuatro segundos: lo que habia
+  entonces ya no esta.
+
+Si el boton tiene dos palabras ("Configuracion avanzada") se agrupan en un solo
+recuadro, no en dos medio recuadros.
+
+Depende de Tesseract, que es libre pero externo. Sin el, el resto del montaje
+funciona igual y simplemente no salen recuadros. Con `--no-ocr` se apagan.
+
+Un detalle del render que costo entender: `drawbox` evalua sus parametros **una
+sola vez**, al montar el grafo. En sus expresiones no existe el tiempo, y meter
+`t` no da un recuadro estatico, **aborta el render entero**. Lo unico que si se
+evalua por fotograma es `enable`, asi que el recuadro entra y sale encadenando
+varios `drawbox` con distinta opacidad y tramos de tiempo seguidos.
+
 ## Identificar el contenido
 
 ```bash
@@ -528,7 +566,12 @@ en 3-5 kHz, que es la banda de la inteligibilidad. Solo se ve midiendo el
 espectro; escuchando por encima parece "mas suave". Esta reconstruido con un
 cruce Linkwitz-Riley, y el test comprueba que **sin sibilancia no toca nada**.
 
-**6. Si hablabas de Chrome, no salia Chrome.** El proveedor de material del
+**6. No salia ni un material de apoyo, y nadie lo noto.** El tope por minuto se
+truncaba con `int()`: a 1,2 por minuto, un montaje de 47 segundos da 0,94, que
+`int()` convierte en "ninguno". Lo mismo para los zooms y los recuadros. Ahora
+se redondea, y si el montaje da para al menos uno, se permite uno.
+
+**7. Si hablabas de Chrome, no salia Chrome.** El proveedor de material del
 propio video puntuaba sus recortes con la concentracion de la saliencia, un
 numero de 0 a 1 que no tiene **nada** que ver con la consulta, y competia de tu
 a tu con una coincidencia real de palabras. Un plano vistoso le ganaba siempre a
@@ -542,6 +585,13 @@ frase que cruzaba el limite dejaba su ultima palabra sola en la ventana
 siguiente, donde ganaba por goleada. Ahora las ventanas siguen al habla y se
 prefiere el termino al que se vuelve varias veces, que es lo que es un tema.
 
+**8. La cache devolvia montajes viejos.** Cada etapa del analisis lleva version
+para invalidarse sola cuando cambia su codigo, pero la version era un numero que
+habia que subir a mano. Se reescribieron los detectores de silencio y de planos
+y nadie lo subio, asi que un video ya analizado seguia dando el montaje de
+antes: 6 clips donde tocaban 10, sin ningun aviso. Ahora la version **se calcula
+sola** hasheando el fuente de esa etapa.
+
 ## Como queda un montaje
 
 Sobre la guia de ejemplo, con el estilo `tutorial`:
@@ -550,11 +600,12 @@ Sobre la guia de ejemplo, con el estilo `tutorial`:
 original      59.5s
 editado       47.4s   (-20% de tiempo muerto)
 ritmo         11.4 cortes/min
-saturacion      48/100 · en el punto
+saturacion      50/100 · en el punto
 audio        -16.2 LUFS en el fichero, pico real -2.1 dBTP
 
  21 × caption      subtitulo: "hola en este video vamos a configurar"
   2 × punch_in     zoom a (21%, 36%): la atencion se concentra ahi
+  1 × callout      recuadro sobre "Ajustes": ahi lo estas nombrando
   1 × transition   transicion fade en el corte de 4.9s
   1 × grade        color 'neutral' al 25%
 ```

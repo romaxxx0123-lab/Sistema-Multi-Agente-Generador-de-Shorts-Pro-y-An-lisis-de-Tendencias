@@ -107,6 +107,37 @@ class BrollRules(BaseModel):
     max_coverage: float = 0.25
 
 
+def budget(per_minute: float, duration: float, min_duration: float = 0.0) -> int:
+    """Cuantos efectos de un tipo caben en un montaje de esa duracion.
+
+    Truncar el producto deja en cero cualquier video corto: a 1,2 efectos por
+    minuto, un montaje de 47 segundos da 0,94, que `int()` convierte en "ninguno".
+    Por eso no salia **ni un** material de apoyo en la guia de ejemplo, y no
+    habia forma de notarlo salvo contando. Se redondea, y si el montaje da para
+    al menos uno, se permite uno.
+    """
+    if duration < max(min_duration, 1e-6):
+        return 0
+    return max(1, round(per_minute * duration / 60.0))
+
+
+class CalloutRules(BaseModel):
+    """Recuadros sobre lo que se nombra en pantalla.
+
+    Solo se activan donde el OCR y el transcript coinciden, asi que sin
+    Tesseract instalado el estilo sigue funcionando y simplemente no salen.
+    """
+
+    enabled: bool = True
+    max_per_minute: float = 1.5
+    min_gap: float = 12.0
+    seconds: float = 1.8
+    #: grosor del trazo como fraccion de la altura del fotograma
+    thickness: float = 0.004
+    #: color del recuadro en hexadecimal RGB
+    color: str = "FFD200"
+
+
 class ChapterRules(BaseModel):
     enabled: bool = True
     #: no crear capitulos mas cortos que esto
@@ -178,6 +209,7 @@ class StylePreset(BaseModel):
     captions: CaptionRules = Field(default_factory=CaptionRules)
     emphasis: EmphasisRules = Field(default_factory=EmphasisRules)
     broll: BrollRules = Field(default_factory=BrollRules)
+    callouts: CalloutRules = Field(default_factory=CalloutRules)
     chapters: ChapterRules = Field(default_factory=ChapterRules)
     transitions: TransitionRules = Field(default_factory=TransitionRules)
     grade: GradeRules = Field(default_factory=GradeRules)

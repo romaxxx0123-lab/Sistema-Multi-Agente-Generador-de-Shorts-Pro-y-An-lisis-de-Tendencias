@@ -527,3 +527,52 @@ def demo_transcript(timing: Timing):
                 TranscriptSegment(start=inicio, end=fin, text=beat.text, words=palabras)
             )
     return Transcript(language="es", segments=segmentos, model="guion-de-la-demo")
+
+
+#: Cada cuanto se "leeria" la pantalla, igual que hace el OCR de verdad.
+OCR_SAMPLE_SECONDS = 3.0
+#: Alto aproximado de una linea de texto del menu, en pixeles.
+_MENU_LINE_HEIGHT = 18
+#: Ancho aproximado por caracter con la fuente y escala que usa `_draw_frame`.
+_MENU_CHAR_WIDTH = 9.2
+
+
+def demo_screen_text(timing: Timing):
+    """Lo que un OCR leeria en el menu lateral, con su posicion.
+
+    Es la verdad conocida del generador, no una lectura: aqui sabemos
+    exactamente que texto se dibujo y donde. Sirve para ejercitar de punta a
+    punta lo que depende del OCR (los recuadros que senalan lo que se nombra)
+    sin necesidad de tener Tesseract instalado, y para que al comparar con una
+    lectura real se vea cuanto pierde el OCR y no cuanto pierde el montaje.
+
+    Las cajas salen de las mismas constantes con las que `_draw_frame` pinta el
+    menu, asi que si se mueve el menu, se mueven con el.
+    """
+    from .analysis.ocr import ScreenText, WordBox
+
+    lecturas = []
+    t = OCR_SAMPLE_SECONDS / 2
+    while t < timing.duration:
+        cajas: list[WordBox] = []
+        for i, etiqueta in enumerate(MENU):
+            linea = etiqueta[:22]
+            base_y = 110 + i * 46
+            x = 30.0
+            for palabra in linea.split():
+                ancho = len(palabra) * _MENU_CHAR_WIDTH
+                cajas.append(
+                    WordBox(
+                        text=palabra,
+                        x=round(x / WIDTH, 4),
+                        y=round((base_y - _MENU_LINE_HEIGHT + 4) / HEIGHT, 4),
+                        w=round(ancho / WIDTH, 4),
+                        h=round(_MENU_LINE_HEIGHT / HEIGHT, 4),
+                    )
+                )
+                x += ancho + _MENU_CHAR_WIDTH
+        lecturas.append(
+            ScreenText(at=round(t, 3), words=[c.text for c in cajas], boxes=cajas)
+        )
+        t += OCR_SAMPLE_SECONDS
+    return lecturas

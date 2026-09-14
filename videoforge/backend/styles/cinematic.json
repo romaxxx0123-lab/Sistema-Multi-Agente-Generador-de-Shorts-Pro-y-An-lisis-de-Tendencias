@@ -9,7 +9,10 @@
     "speech_pad": 0.25,
     "remove_fillers": false,
     "min_clip": 2.0,
-    "cuts_per_minute": {"lo": 3.0, "hi": 11.0}
+    "cuts_per_minute": {
+      "lo": 3.0,
+      "hi": 11.0
+    }
   },
   "captions": {
     "enabled": false,
@@ -30,22 +33,92 @@
     "ken_burns": true,
     "ken_burns_zoom": 1.07
   },
-  "broll": {"enabled": true, "max_per_minute": 0.8, "min_gap": 25.0, "default_seconds": 4.0, "mode": "full", "max_coverage": 0.25},
-  "chapters": {"enabled": false, "min_seconds": 90.0, "card_seconds": 3.0, "show_cards": false},
-  "transitions": {"enabled": true, "default": "fade", "duration": 0.6, "fraction": 0.5},
-  "grade": {"preset": "teal-orange", "intensity": 0.55},
-  "music": {"enabled": true, "gain_db": -22.0, "duck": true},
-  "sfx": {"enabled": false, "max_per_minute": 0.5, "gain_db": -14.0},
+  "broll": {
+    "enabled": true,
+    "max_per_minute": 0.8,
+    "min_gap": 25.0,
+    "default_seconds": 4.0,
+    "mode": "full",
+    "max_coverage": 0.25
+  },
+  "chapters": {
+    "enabled": false,
+    "min_seconds": 90.0,
+    "card_seconds": 3.0,
+    "show_cards": false
+  },
+  "transitions": {
+    "enabled": true,
+    "default": "fade",
+    "duration": 0.6,
+    "fraction": 0.5
+  },
+  "grade": {
+    "preset": "teal-orange",
+    "intensity": 0.55
+  },
+  "music": {
+    "enabled": true,
+    "gain_db": -22.0,
+    "duck": true
+  },
+  "sfx": {
+    "enabled": false,
+    "max_per_minute": 0.5,
+    "gain_db": -14.0
+  },
   "saturation": {
-    "cuts_per_minute": {"lo": 3.0, "hi": 11.0},
-    "effect_density_mean": {"lo": 0.05, "hi": 0.28},
-    "effect_density_peak": {"lo": 0.0, "hi": 0.5},
-    "overlay_coverage": {"lo": 0.0, "hi": 0.25},
-    "text_coverage": {"lo": 0.0, "hi": 0.25},
-    "max_layers": {"lo": 0.0, "hi": 2.0},
-    "sfx_per_minute": {"lo": 0.0, "hi": 1.0},
-    "transitions_per_minute": {"lo": 0.0, "hi": 6.0},
-    "caption_wpm": {"lo": 70.0, "hi": 180.0},
-    "motion_conflicts_per_minute": {"lo": 0.0, "hi": 0.5}
+    "cuts_per_minute": {
+      "lo": 3.0,
+      "hi": 11.0
+    },
+    "effect_density_mean": {
+      "lo": 0.05,
+      "hi": 0.28
+    },
+    "effect_density_peak": {
+      "lo": 0.0,
+      "hi": 0.5
+    },
+    "overlay_coverage": {
+      "lo": 0.0,
+      "hi": 0.25
+    },
+    "text_coverage": {
+      "lo": 0.0,
+      "hi": 0.25
+    },
+    "max_layers": {
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "sfx_per_minute": {
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "transitions_per_minute": {
+      "lo": 0.0,
+      "hi": 6.0
+    },
+    "caption_wpm": {
+      "lo": 70.0,
+      "hi": 180.0
+    },
+    "motion_conflicts_per_minute": {
+      "lo": 0.0,
+      "hi": 0.5
+    },
+    "callouts_per_minute": {
+      "lo": 0.0,
+      "hi": 1.0
+    }
+  },
+  "callouts": {
+    "enabled": false,
+    "max_per_minute": 0.8,
+    "min_gap": 12.0,
+    "seconds": 1.8,
+    "thickness": 0.004,
+    "color": "FFD200"
   }
 }

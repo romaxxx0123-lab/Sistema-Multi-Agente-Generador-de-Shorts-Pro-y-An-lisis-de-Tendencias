@@ -82,3 +82,43 @@ def test_el_mismo_video_comparte_carpeta(settings: Settings, sample_video: Path)
     a = JobCache(settings, sample_video)
     b = JobCache(settings, sample_video)
     assert a.root == b.root
+
+
+# -- la version de cada etapa sale del codigo -------------------------------
+
+
+def test_cada_etapa_tiene_su_propia_version() -> None:
+    """Si dos etapas compartiesen version, tocar una invalidaria la otra."""
+    from forge.analysis.pipeline import STAGE_VERSIONS
+
+    assert len(set(STAGE_VERSIONS.values())) == len(STAGE_VERSIONS)
+
+
+def test_tocar_el_codigo_de_una_etapa_invalida_solo_esa(tmp_path) -> None:
+    """Es el fallo que costo un montaje entero: cache vieja con codigo nuevo.
+
+    Se simula el cambio de codigo recalculando la version con un modulo
+    distinto, que es exactamente lo que pasa cuando cambia el fuente.
+    """
+    from forge.analysis.pipeline import _STAGE_CODE, _code_version
+
+    antes = _code_version("forge.analysis.types", *_STAGE_CODE["audio"])
+    igual = _code_version("forge.analysis.types", *_STAGE_CODE["audio"])
+    distinto = _code_version("forge.analysis.types", *_STAGE_CODE["shots"])
+
+    assert antes == igual, "la misma entrada tiene que dar la misma version"
+    assert antes != distinto
+
+
+def test_una_etapa_guardada_con_otra_version_no_se_reutiliza(
+    tmp_path, settings
+) -> None:
+    from forge.cache import JobCache
+
+    fuente = tmp_path / "v.mp4"
+    fuente.write_bytes(b"x" * 2048)
+    cache = JobCache(settings, fuente)
+
+    cache.write("audio", {"silences": []}, version="aaaaaaaaaaaa")
+    assert cache.read("audio", version="aaaaaaaaaaaa") is not None
+    assert cache.read("audio", version="bbbbbbbbbbbb") is None

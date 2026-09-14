@@ -279,6 +279,7 @@ def plan(
     intensity: int = typer.Option(50, "--intensity", "-i", min=0, max=100, help="Cuanta edicion quieres (0-100)."),
     tier: str = typer.Option(None, "--tier", help="light, balanced o max."),
     no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+    no_ocr: bool = typer.Option(False, "--no-ocr", help="No leer el texto en pantalla (quita los recuadros)."),
     out: Path = typer.Option(None, "--out", "-o", help="Guarda el EDL en un JSON."),
     json_out: bool = typer.Option(False, "--json", help="Saca el EDL por pantalla en JSON."),
     broll: bool = typer.Option(False, "--broll", help="Inserta material de apoyo."),
@@ -307,7 +308,8 @@ def plan(
 
         try:
             analysis, warnings = run_analysis(
-                source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
+                source, settings, tier=tier_value, skip_speech=no_speech,
+                skip_ocr=no_ocr, progress=on_progress,
             )
             status.update("[cyan]decidiendo el montaje...")
             edl = build_edl(
@@ -381,6 +383,7 @@ def render(
     preview: bool = typer.Option(False, "--preview", help="Render rapido a baja resolucion para iterar."),
     tier: str = typer.Option(None, "--tier", help="light, balanced o max."),
     no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+    no_ocr: bool = typer.Option(False, "--no-ocr", help="No leer el texto en pantalla (quita los recuadros)."),
     no_gpu: bool = typer.Option(False, "--no-gpu", help="Fuerza encoder por CPU."),
     balance: bool = typer.Option(False, "--balance", help="Reajusta los efectos si el montaje se sale de banda."),
     broll: bool = typer.Option(False, "--broll", help="Inserta material de apoyo."),
@@ -427,7 +430,8 @@ def render(
 
             try:
                 analysis, warnings = run_analysis(
-                    source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
+                    source, settings, tier=tier_value, skip_speech=no_speech,
+                    skip_ocr=no_ocr, progress=on_progress,
                 )
                 status.update("[cyan]decidiendo el montaje...")
                 elegido = _resolve_style(style, analysis)

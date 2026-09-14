@@ -9,6 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from ..media import MediaInfo
+from .ocr import ScreenText
 
 
 class Shot(BaseModel):
@@ -159,6 +160,9 @@ class Analysis(BaseModel):
     focus: list[ShotFocus] = Field(default_factory=list)
     audio: AudioAnalysis | None = None
     transcript: Transcript | None = None
+    #: Texto leido en pantalla, con su posicion. Vacio si no hay OCR: nada de
+    #: lo que depende de el es obligatorio.
+    screen_text: list[ScreenText] = Field(default_factory=list)
 
     @property
     def duration(self) -> float:

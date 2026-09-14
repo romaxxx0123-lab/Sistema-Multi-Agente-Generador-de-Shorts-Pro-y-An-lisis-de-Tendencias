@@ -28,6 +28,7 @@ const NOMBRES: Record<string, string> = {
   text_coverage: "texto en pantalla",
   max_layers: "capas simultaneas",
   sfx_per_minute: "efectos de sonido/min",
+  callouts_per_minute: "recuadros/min",
   transitions_per_minute: "transiciones/min",
   caption_wpm: "velocidad de lectura",
   motion_conflicts_per_minute: "zooms sobre movimiento",

@@ -4,13 +4,19 @@ Cachear por etapa y no de golpe es lo que hace viable el formato largo. Si el
 analisis de una guia de 20 minutos se corta en la transcripcion, al reintentar
 no vuelve a detectar planos ni a medir el audio: retoma donde estaba.
 
-Cada etapa lleva su propia version. Si cambia el codigo que genera una, solo se
-invalida esa, no el analisis entero.
+La version de cada etapa **se calcula sola**, a partir del codigo que la produce:
+si cambia `audio.py`, la cache de la etapa de audio queda invalidada y las demas
+siguen sirviendo. Antes era un numero que habia que acordarse de subir a mano, y
+paso lo que tenia que pasar: se reescribieron los detectores de silencio y de
+planos y nadie lo subio, asi que un video ya analizado seguia dando el montaje
+viejo. En la guia de prueba, 6 clips donde tocaban 10, sin ningun aviso.
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
 
 from ..cache import JobCache
@@ -21,7 +27,7 @@ from ..media import MediaInfo
 from ..tools import effective_device, probe
 from .audio import analyze_audio
 from .motion import analyze_motion, rate_for_duration
-from .ocr import ScreenText, read_screen_text, tesseract_available
+from .ocr import ScreenText, WordBox, read_screen_text, tesseract_available
 from .saliency import analyze_saliency
 from .shots import detect_shots
 from .types import (
@@ -33,15 +39,41 @@ from .types import (
     Transcript,
 )
 
-#: Subir la version de una etapa invalida su cache sin tocar las demas.
+def _code_version(*modules: str) -> str:
+    """Huella del codigo que produce una etapa.
+
+    Se hashea el fuente de los modulos implicados. Cualquier cambio en ellos
+    (un umbral, un detector nuevo, un formato de salida distinto) invalida esa
+    etapa y solo esa, sin depender de que nadie se acuerde de nada.
+    """
+    h = hashlib.sha256()
+    for nombre in sorted(modules):
+        try:
+            fichero = getattr(import_module(nombre), "__file__", None)
+            h.update(Path(fichero).read_bytes() if fichero else nombre.encode())
+        except (OSError, ImportError):
+            # Empaquetado sin fuentes: se cae a algo estable en vez de romper.
+            h.update(nombre.encode())
+    return h.hexdigest()[:12]
+
+
+#: Modulos de los que depende cada etapa. `types` esta en todas porque define
+#: como se serializa lo que se guarda.
+_STAGE_CODE = {
+    "probe": ("forge.tools", "forge.media"),
+    "motion": ("forge.analysis.motion",),
+    # Los planos se deducen tambien de la curva de movimiento.
+    "shots": ("forge.analysis.shots", "forge.analysis.motion"),
+    "focus": ("forge.analysis.saliency",),
+    "audio": ("forge.analysis.audio",),
+    "transcript": ("forge.analysis.speech",),
+    "screen_text": ("forge.analysis.ocr",),
+}
+
+#: Version efectiva de cada etapa, calculada una vez al importar.
 STAGE_VERSIONS = {
-    "probe": 1,
-    "motion": 1,
-    "shots": 1,
-    "focus": 1,
-    "audio": 1,
-    "transcript": 1,
-    "screen_text": 1,
+    etapa: _code_version("forge.analysis.types", *modulos)
+    for etapa, modulos in _STAGE_CODE.items()
 }
 
 #: Etapa -> nombre legible, para los mensajes de progreso.
@@ -163,7 +195,14 @@ class AnalysisRun:
 
         v = STAGE_VERSIONS["screen_text"]
         if not force and (cached := self.cache.read("screen_text", v)) is not None:
-            return [ScreenText(**x) for x in cached]
+            return [
+                ScreenText(
+                    at=x["at"],
+                    words=x.get("words", []),
+                    boxes=[WordBox(**c) for c in x.get("boxes", [])],
+                )
+                for x in cached
+            ]
 
         self.progress("screen_text", STAGE_LABELS["screen_text"])
         # Un muestreo espaciado basta: interesa el texto que se repite (menus,
@@ -207,7 +246,7 @@ class AnalysisRun:
         *,
         force: set[str] | None = None,
         skip_speech: bool = False,
-        skip_ocr: bool = True,
+        skip_ocr: bool = False,
         language: str | None = None,
     ) -> Analysis:
         """Ejecuta el analisis completo, reutilizando lo que ya este cacheado."""
@@ -239,6 +278,7 @@ class AnalysisRun:
             focus=focus,
             audio=audio,
             transcript=transcript,
+            screen_text=self.screen_text,
         )
 
 
@@ -257,7 +297,7 @@ def analyze(
     tier: Tier | None = None,
     force: set[str] | None = None,
     skip_speech: bool = False,
-    skip_ocr: bool = True,
+    skip_ocr: bool = False,
     language: str | None = None,
     progress: ProgressFn | None = None,
 ) -> tuple[Analysis, list[str]]:
@@ -276,7 +316,7 @@ def analyze_run(
     tier: Tier | None = None,
     force: set[str] | None = None,
     skip_speech: bool = False,
-    skip_ocr: bool = True,
+    skip_ocr: bool = False,
     language: str | None = None,
     progress: ProgressFn | None = None,
 ) -> tuple[Analysis, "AnalysisRun"]:

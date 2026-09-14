@@ -10,7 +10,9 @@ Dos detalles que importan en formato largo:
   analisis, asi que por defecto muestreamos principio/medio/final junto al
   tamano. Es suficiente para detectar "es otro fichero" sin leerlo entero.
 - **Version por etapa**: si cambia el codigo que genera una etapa, su cache
-  queda invalidada sola en vez de devolver datos viejos con formato nuevo.
+  queda invalidada sola en vez de devolver datos viejos con formato nuevo. La
+  version la calcula `analysis.pipeline` hasheando el fuente de esa etapa, asi
+  que no depende de acordarse de subir un numero.
 """
 
 from __future__ import annotations
@@ -79,7 +81,7 @@ class JobCache:
 
     # -- etapas ------------------------------------------------------------
 
-    def read(self, stage: str, version: int = 1) -> dict[str, Any] | None:
+    def read(self, stage: str, version: object = 1) -> dict[str, Any] | None:
         """Devuelve los datos de la etapa, o None si no hay o estan obsoletos."""
         f = self.stage_file(stage)
         if not f.is_file():
@@ -94,7 +96,7 @@ class JobCache:
             return None
         return payload.get("data")
 
-    def write(self, stage: str, data: Any, version: int = 1) -> None:
+    def write(self, stage: str, data: Any, version: object = 1) -> None:
         """Guarda una etapa de forma atomica, para no dejar JSON a medias."""
         f = self.stage_file(stage)
         tmp = f.with_suffix(".json.tmp")
@@ -108,7 +110,7 @@ class JobCache:
         )
         tmp.replace(f)
 
-    def has(self, stage: str, version: int = 1) -> bool:
+    def has(self, stage: str, version: object = 1) -> bool:
         return self.read(stage, version) is not None
 
     def invalidate(self, stage: str) -> None:

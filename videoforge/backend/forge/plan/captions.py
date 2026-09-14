@@ -43,7 +43,12 @@ TRAILING_STOPWORDS = frozenset(
         "el", "la", "los", "las", "un", "una", "unos", "unas", "lo", "al", "del",
         "de", "en", "con", "por", "para", "sin", "sobre", "entre", "hacia",
         "y", "o", "u", "e", "que", "se", "su", "sus", "mi", "tu", "a",
-        "the", "a", "an", "of", "in", "on", "to", "for", "and", "or", "with",
+        # Pronombres atonos y la negacion: van pegados al verbo que viene
+        # detras. Cortar en "...configurado nos" / "vemos en el siguiente" se
+        # lee fatal, y pasaba.
+        "no", "nos", "os", "me", "te", "le", "les", "muy", "tan",
+        "the", "a", "an", "of", "in", "on", "at", "by", "to", "for", "from",
+        "and", "or", "with", "not", "my", "your", "our", "its",
     }
 )
 #: Una linea no deberia quedarse con menos palabras que esto si se puede evitar.
@@ -144,7 +149,7 @@ def group_words(
         actual.append(w)
 
     cerrar()
-    return _rebalance_trailing(lineas)
+    return _fix_orphans(_rebalance_trailing(lineas), rules, cuts)
 
 
 def _rebalance_trailing(lines: list[list[Word]]) -> list[list[Word]]:
@@ -156,6 +161,60 @@ def _rebalance_trailing(lines: list[list[Word]]) -> list[list[Word]]:
             and actual[-1].text.strip(".,;:!?").lower() in TRAILING_STOPWORDS
         ):
             lines[i + 1].insert(0, actual.pop())
+    return lines
+
+
+def _fits(palabras: list[Word], rules: CaptionRules) -> bool:
+    """Si esa lista de palabras cabe en una linea de subtitulo."""
+    if len(palabras) > rules.max_words:
+        return False
+    if len(" ".join(w.text for w in palabras)) > rules.max_chars:
+        return False
+    return palabras[-1].end - palabras[0].start <= rules.max_duration
+
+
+def _fix_orphans(
+    lines: list[list[Word]], rules: CaptionRules, cuts: list[float]
+) -> list[list[Word]]:
+    """Recoge las lineas que se quedan con una sola palabra.
+
+    Cuando una frase llega al maximo de palabras justo antes de acabar, la
+    ultima cae sola en su propia linea y parpadea medio segundo en pantalla:
+    "...sin esto no" / "funciona". Se ve enseguida en el video y es de las cosas
+    que mas delatan que el montaje lo hizo un programa.
+
+    Se arregla en dos intentos: juntar la huerfana con la anterior si cabe, y si
+    no, robarle una palabra a la anterior para que la huerfana tenga compania.
+    Ninguno de los dos cruza un corte ni una pausa: mover una palabra al otro
+    lado la enseñaria cuando ya no se esta diciendo.
+    """
+    i = 1
+    while i < len(lines):
+        actual = lines[i]
+        previa = lines[i - 1]
+        if len(actual) >= MIN_WORDS_PER_LINE:
+            i += 1
+            continue
+
+        separadas = (
+            _crosses_cut(cuts, previa[-1].end, actual[0].start)
+            or actual[0].start - previa[-1].end > rules.split_gap
+        )
+        if separadas:
+            i += 1
+            continue
+
+        if _fits(previa + actual, rules):
+            previa.extend(actual)
+            lines.pop(i)
+            continue
+
+        # Robar de la anterior, mientras le sobren palabras y el resultado quepa.
+        while len(actual) < MIN_WORDS_PER_LINE and len(previa) > MIN_WORDS_PER_LINE:
+            if not _fits([previa[-1], *actual], rules):
+                break
+            actual.insert(0, previa.pop())
+        i += 1
     return lines
 
 

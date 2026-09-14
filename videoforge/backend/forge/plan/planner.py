@@ -18,6 +18,7 @@ from ..assets.providers import BrollProvider
 from ..assets.types import AssetBundle
 from ..errors import PlanError
 from .broll import plan_broll
+from .callouts import plan_callouts
 from .captions import plan_captions
 from .chapters import chapter_cards, plan_chapters
 from .edl import EDL, Clip, GradeEffect, RenderSpec, TransitionEffect
@@ -164,6 +165,18 @@ def build_edl(
     efectos += zooms
     efectos += plan_ken_burns(edl, analysis, style.emphasis)
     reservas = list(zooms_reserva)
+
+    # Recuadros sobre lo que se nombra. Necesita OCR con posiciones; sin
+    # Tesseract la lista viene vacia y aqui no pasa nada.
+    marcas, marcas_reserva = plan_callouts(
+        edl, analysis.transcript, analysis.screen_text, style.callouts
+    )
+    efectos += marcas
+    reservas += marcas_reserva
+    if marcas:
+        edl.notes.append(
+            f"Senalados {len(marcas)} elementos de la pantalla justo cuando los nombras."
+        )
 
     if providers:
         bundle = assets if assets is not None else AssetBundle()
