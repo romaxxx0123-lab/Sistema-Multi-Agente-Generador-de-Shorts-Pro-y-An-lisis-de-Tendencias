@@ -15,8 +15,8 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 | F0 | Scaffold, toolchain, cache, CLI | hecho |
 | F1 | Ingesta y analisis (planos, movimiento, audio, transcripcion) | hecho |
 | F2 | EDL, estilos y planner | hecho |
-| F3 | Renderer FFmpeg | en curso |
-| F4 | Motor de saturacion y auto-balanceador | pendiente |
+| F3 | Renderer FFmpeg | hecho |
+| F4 | Motor de saturacion y auto-balanceador | en curso |
 | F5 | Comprension de contenido y b-roll | pendiente |
 | F6 | API y UI web | pendiente |
 
@@ -66,6 +66,7 @@ forge make-fixture t.mp4     # genera un video de pruebas sin descargar nada
 forge analyze video.mp4      # analiza: planos, movimiento, silencios, voz
 forge styles                 # estilos de montaje disponibles
 forge plan video.mp4         # decide el montaje (sin renderizar)
+forge render video.mp4       # monta y saca el MP4 de verdad
 forge cache info video.mp4   # que hay cacheado de ese video
 forge cache clear video.mp4  # lo borra
 ```
@@ -193,3 +194,50 @@ text_card  rotulo de capitulo en 1:37
 Los estilos son ficheros JSON en `backend/styles/`. Anadir uno nuevo no requiere
 tocar codigo: define su ritmo, sus subtitulos, sus zooms y **sus bandas de
 saturacion** (lo que en una guia es sobrecarga, en un short es lo normal).
+
+
+## El render
+
+```bash
+forge render guia.mp4 --style tutorial -o guia-editada.mp4
+forge render guia.mp4 --preview          # rapido y a baja resolucion, para revisar
+forge render --from-edl montaje.json     # renderiza un EDL ya revisado
+```
+
+Lo que sale es un MP4 listo para subir: cortes reales, zooms, subtitulos
+quemados, color y audio masterizado.
+
+### Como se construye
+
+El EDL se compila a un unico `filter_complex` de ffmpeg, siguiendo la misma
+separacion que el EDL: primero cada clip por separado (recorte, velocidad,
+escalado y zooms), despues la concatenacion, y encima de la linea de tiempo
+completa el color, las transiciones y los subtitulos.
+
+Tres decisiones que no son obvias:
+
+- **Los zooms usan `zoompan`, no `crop`.** `crop` solo recorta en pixeles
+  enteros, asi que un zoom lento tiembla. Ojo con sus coordenadas: `x` e `y` van
+  en el espacio de la imagen *de entrada*, no de la ya ampliada. Confundirlos
+  descentra el encuadre sin que ninguna cifra lo delate, por eso hay un test que
+  compara el fotograma renderizado contra el recorte esperado.
+- **Las transiciones son `fade`, no `xfade`.** `xfade` solapa los clips y por
+  tanto acorta el video, lo que romperia el invariante de que los efectos no
+  cambian la duracion. Un dip al negro mantiene la duracion exacta.
+- **Los subtitulos son un fichero `.ass`**, no `drawtext`. Da karaoke real
+  palabra a palabra, contorno y sombra de verdad, y un solo filtro para todo el
+  video aunque haya cientos de lineas.
+
+### Calidad
+
+El audio se masteriza **en dos pasadas**: primero se mide la sonoridad del
+montaje ya cortado y despues se normaliza con esas medidas. `loudnorm` en una
+sola pasada es dinamico y bombea; con las medidas reales la correccion es lineal.
+El objetivo es −14 LUFS con pico real por debajo de −1.5 dBFS, que es el
+estandar de las plataformas.
+
+Antes de cada render se valida el grafo **con un segundo de video** contra
+`null`. Un error de filtros salta en un segundo en vez de a los diez minutos.
+
+Si hay GPU NVIDIA con NVENC se usa automaticamente; si no, libx264. `--no-gpu`
+lo fuerza por CPU.

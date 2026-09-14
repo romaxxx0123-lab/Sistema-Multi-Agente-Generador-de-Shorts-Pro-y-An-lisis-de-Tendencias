@@ -366,6 +366,119 @@ def plan(
         err_console.print(f"[yellow]aviso:[/yellow] {w}")
 
 
+@app.command()
+def render(
+    source: Path = typer.Argument(None, help="Video de entrada. Omitelo si usas --from-edl."),
+    out: Path = typer.Option(None, "--out", "-o", help="Fichero de salida. Por defecto <nombre>-editado.mp4."),
+    style: str = typer.Option("tutorial", "--style", "-s", help="Estilo de montaje."),
+    intensity: int = typer.Option(50, "--intensity", "-i", min=0, max=100, help="Cuanta edicion quieres (0-100)."),
+    from_edl: Path = typer.Option(None, "--from-edl", help="Renderiza un EDL ya guardado en vez de planificar."),
+    preview: bool = typer.Option(False, "--preview", help="Render rapido a baja resolucion para iterar."),
+    tier: str = typer.Option(None, "--tier", help="light, balanced o max."),
+    no_speech: bool = typer.Option(False, "--no-speech", help="Salta la transcripcion."),
+    no_gpu: bool = typer.Option(False, "--no-gpu", help="Fuerza encoder por CPU."),
+    save_edl: Path = typer.Option(None, "--save-edl", help="Guarda tambien el EDL usado."),
+) -> None:
+    """Monta el video y lo renderiza a un MP4 real.
+
+    Analiza, decide el montaje y encodea. Con --preview saca una version rapida
+    a baja resolucion para revisar el montaje antes del render definitivo.
+    """
+    from .analysis.pipeline import analyze as run_analysis
+    from .config import Tier
+    from .plan.edl import EDL
+    from .plan.planner import build_edl
+    from .render.renderer import render as do_render
+
+    settings = Settings.load()
+
+    if from_edl:
+        try:
+            edl = EDL.model_validate_json(from_edl.read_text())
+        except (OSError, ValueError) as exc:
+            err_console.print(f"[bold red]Error:[/bold red] no pude leer el EDL: {exc}")
+            raise typer.Exit(code=1) from exc
+        origen = Path(edl.source)
+    elif source:
+        origen = source
+        try:
+            tier_value = Tier(tier.lower()) if tier else None
+        except ValueError as exc:
+            err_console.print(f"[bold red]Error:[/bold red] tier desconocido: {tier}")
+            raise typer.Exit(code=1) from exc
+
+        with console.status("[cyan]analizando...", spinner="dots") as status:
+            def on_progress(stage: str, message: str) -> None:
+                status.update(f"[cyan]{message}...")
+
+            try:
+                analysis, warnings = run_analysis(
+                    source, settings, tier=tier_value, skip_speech=no_speech, progress=on_progress
+                )
+                status.update("[cyan]decidiendo el montaje...")
+                edl = build_edl(analysis, style, intensity=intensity)
+            except ForgeError as exc:
+                raise _fail(exc) from exc
+        for w in warnings:
+            err_console.print(f"[yellow]aviso:[/yellow] {w}")
+    else:
+        err_console.print("[bold red]Error:[/bold red] indica un video o usa --from-edl.")
+        raise typer.Exit(code=1)
+
+    if save_edl:
+        save_edl.parent.mkdir(parents=True, exist_ok=True)
+        save_edl.write_text(edl.model_dump_json(indent=2))
+
+    destino = out or origen.with_name(f"{origen.stem}-editado{'-preview' if preview else ''}.mp4")
+
+    console.print(
+        f"[dim]{edl.source_duration:.1f}s -> {edl.duration:.1f}s · "
+        f"{len(edl.timeline)} clips · {len(edl.effects)} efectos[/dim]"
+    )
+
+    from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
+
+    with Progress(
+        TextColumn("[cyan]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.percentage:>3.0f}%"),
+        TimeRemainingColumn(),
+        console=console,
+    ) as barra:
+        tarea = barra.add_task("preparando", total=100)
+
+        def on_render(fraction: float, label: str) -> None:
+            barra.update(tarea, completed=fraction * 100, description=label)
+
+        try:
+            resultado = do_render(
+                edl, destino, settings,
+                preview=preview,
+                use_gpu=not no_gpu,
+                fonts_dir=Path(__file__).resolve().parent.parent.parent / "assets" / "fonts",
+                progress=on_render,
+            )
+        except ForgeError as exc:
+            raise _fail(exc) from exc
+        barra.update(tarea, completed=100, description="listo")
+
+    tabla = Table(show_header=False, box=None, padding=(0, 2))
+    tabla.add_row("salida", f"[bold]{resultado.path}[/bold]")
+    tabla.add_row("duracion", f"{resultado.duration:.1f} s")
+    tabla.add_row("render", f"{resultado.seconds_taken:.1f} s ({resultado.duration / max(resultado.seconds_taken, 1e-6):.1f}x tiempo real)")
+    tabla.add_row("encoder", resultado.encoder)
+    tabla.add_row("aplicado", ", ".join(resultado.applied))
+    if resultado.measured_lufs is not None:
+        tabla.add_row("audio", f"{resultado.measured_lufs:.1f} LUFS medidos -> {edl.render.target_lufs:.0f} LUFS")
+    if resultado.preview:
+        tabla.add_row("", "[yellow]es una previsualizacion, no el render final[/yellow]")
+    console.print(Panel(tabla, title="render", border_style="green"))
+
+    if edl.chapters:
+        console.print("\n[bold]Capitulos[/bold] [dim](copia esto en la descripcion)[/dim]")
+        console.print(edl.chapter_markers())
+
+
 @app.command("make-fixture")
 def make_fixture_cmd(
     out: Path = typer.Argument(Path("fixture.mp4"), help="Fichero de salida."),
