@@ -24,11 +24,11 @@ from pathlib import Path
 from ..assets.sfx import GENERATORS, ensure_sfx
 from ..assets.types import AssetBundle
 from ..config import Settings
-from ..errors import RenderError
+from ..errors import ForgeError, RenderError
 from ..plan.edl import EDL, EffectKind
 from ..tools import Capabilities, capabilities, ffmpeg_bin
 from .ass import write_ass
-from .graph import build_graph
+from .graph import LIMITER_MARGIN_DB, TRUE_PEAK_CEILING_DB, build_graph
 
 ProgressFn = Callable[[float, str], None]
 
@@ -151,14 +151,19 @@ def _measure_loudness(
     settings: Settings,
     target_lufs: float,
     sfx_paths: dict[str, str] | None = None,
+    voice_rules=None,
+    master_gain_db: float | None = None,
 ) -> dict | None:
-    """Primera pasada: mide la sonoridad del audio ya montado.
+    """Mide la sonoridad del audio ya montado.
 
-    Incluye los efectos de sonido: tambien suenan, y medir sin ellos dejaria el
-    master por encima del objetivo.
+    Incluye los efectos de sonido y el tratamiento de voz: los dos cambian el
+    nivel, y medir sin ellos dejaria el master fuera del objetivo. Con
+    `master_gain_db` mide el resultado **despues** del master, que es lo que
+    de verdad va a oir el espectador.
     """
     graph = build_graph(
-        edl, has_audio=True, target_lufs=None, audio_only=True, sfx_paths=sfx_paths
+        edl, has_audio=True, target_lufs=None, audio_only=True, sfx_paths=sfx_paths,
+        voice_rules=voice_rules, master_gain_db=master_gain_db,
     )
     if not graph.audio_label:
         return None
@@ -190,6 +195,58 @@ def _measure_loudness(
     ):
         return None
     return datos
+
+
+#: Cuanta sonoridad se le deja perder al limitador. Por encima de esto ya no
+#: esta recortando picos sueltos, esta apretando la voz entera.
+MASTER_MAX_LOSS_DB = 1.0
+#: Cuantas pasadas de prueba se permiten para encontrar la ganancia. Cada una
+#: es solo de audio, asi que son baratas al lado del render.
+MASTER_PROBES = 3
+
+
+def _plan_master(
+    medir, base_i: float, base_tp: float, target_lufs: float
+) -> tuple[float, float | None]:
+    """Busca la ganancia del master midiendo, no estimando.
+
+    Subir hasta el objetivo de sonoridad casi siempre deja el pico por encima
+    del techo, y el limitador tiene que recortar la diferencia. Cuanto cuesta
+    ese recorte **depende del material**: en una voz con picos sueltos no
+    cuesta nada, y en una ya densa cada dB de recorte se lleva casi un dB de
+    sonoridad, con lo que subir mas solo distorsiona.
+
+    Medido sobre la guia de prueba: hasta +1,5 dB el limitador se come 0,02 dB;
+    a +4,5 dB ya se come 2,0. Por eso no vale una regla fija, y por eso se
+    prueba: se busca la ganancia mas alta cuya perdida no pase de
+    `MASTER_MAX_LOSS_DB`. Si el material no da para llegar al objetivo, el
+    master se queda por debajo, que es lo correcto.
+
+    Devuelve (ganancia, sonoridad medida con esa ganancia o None).
+    """
+    ideal = target_lufs - base_i
+    techo = TRUE_PEAK_CEILING_DB - LIMITER_MARGIN_DB
+    # Si cabe entera bajo el techo no hay nada que decidir.
+    if ideal <= 0.0 or base_tp + ideal <= techo:
+        return ideal, None
+
+    bajo = max(0.0, techo - base_tp)   # justo donde el limitador empieza a tocar
+    alto = ideal
+    if bajo >= alto:
+        return alto, None
+
+    mejor, mejor_i = bajo, None
+    for _ in range(MASTER_PROBES):
+        medio = (bajo + alto) / 2.0
+        medida = medir(medio)
+        if medida is None:
+            break
+        conseguido = float(medida["input_i"])
+        if (base_i + medio) - conseguido <= MASTER_MAX_LOSS_DB:
+            mejor, mejor_i, bajo = medio, conseguido, medio
+        else:
+            alto = medio
+    return mejor, mejor_i
 
 
 def render(
@@ -253,6 +310,16 @@ def render(
     fonts = str(fonts_dir.resolve()) if fonts_dir and fonts_dir.is_dir() else None
     target_lufs = edl_render.render.target_lufs
 
+    # El tratamiento de voz lo define el estilo. Si el estilo ya no existe (un
+    # EDL guardado hace tiempo), se sigue sin el en vez de fallar.
+    voice_rules = None
+    try:
+        from ..plan.styles import load_style
+
+        voice_rules = load_style(edl_render.style).voice
+    except ForgeError:
+        pass
+
     # -- efectos de sonido --------------------------------------------------
     # Se sintetizan al vuelo la primera vez y quedan cacheados. No se
     # distribuyen ficheros de audio: asi no hay problema de licencias nunca.
@@ -272,18 +339,48 @@ def render(
     graph_seco = build_graph(
         edl_render, has_audio=has_audio, ass_path=ass_path, fonts_dir=fonts,
         target_lufs=target_lufs if not two_pass_audio else None,
-        assets=assets, sfx_paths=sfx_paths,
+        assets=assets, sfx_paths=sfx_paths, voice_rules=voice_rules,
     )
     _dry_run(ffmpeg, source, graph_seco, settings)
 
-    # -- medida de sonoridad ------------------------------------------------
+    # -- master de audio ----------------------------------------------------
+    # Dos pasadas de medicion, las dos solo de audio y por tanto baratas:
+    #   1. cuanto suena el montaje ya tratado -> de donde se parte
+    #   2. unas pocas pruebas con ganancia     -> hasta donde se puede subir
+    #
+    # La ultima prueba es ademas la que se informa: el limitador se come parte
+    # de la ganancia, asi que sin medirla el informe diria un numero que no es
+    # el del fichero.
     medidas = None
+    master_gain = None
+    sonoridad_final = None
     if has_audio and two_pass_audio and not preview:
         if progress:
             progress(0.0, "midiendo la sonoridad del montaje")
         medidas = _measure_loudness(
-            ffmpeg, source, edl_render, settings, target_lufs, sfx_paths
+            ffmpeg, source, edl_render, settings, target_lufs, sfx_paths, voice_rules
         )
+        if medidas:
+            if progress:
+                progress(0.0, "ajustando el master")
+
+            def _con_ganancia(g: float):
+                return _measure_loudness(
+                    ffmpeg, source, edl_render, settings, target_lufs, sfx_paths,
+                    voice_rules, master_gain_db=g,
+                )
+
+            master_gain, sonoridad_final = _plan_master(
+                _con_ganancia, float(medidas["input_i"]),
+                float(medidas["input_tp"]), target_lufs,
+            )
+            if sonoridad_final is None:
+                comprobacion = _con_ganancia(master_gain)
+                if comprobacion:
+                    sonoridad_final = float(comprobacion["input_i"])
+                else:
+                    # Si no se puede comprobar no se arriesga un master a ciegas.
+                    master_gain = None
 
     # -- render final -------------------------------------------------------
     graph = build_graph(
@@ -295,6 +392,8 @@ def render(
         loudnorm_measured=medidas,
         assets=assets,
         sfx_paths=sfx_paths,
+        voice_rules=voice_rules,
+        master_gain_db=master_gain,
     )
     codec_args, nombre_encoder = _video_codec_args(caps, edl_render, preview=preview, use_gpu=use_gpu)
 
@@ -310,7 +409,16 @@ def render(
     else:
         cmd += ["-an"]
     cmd += codec_args
-    cmd += ["-pix_fmt", "yuv420p", "-movflags", "+faststart"]
+    # Sin estas etiquetas, muchos reproductores adivinan el espacio de color y
+    # el video se ve lavado o demasiado contrastado segun donde se abra. Son
+    # gratis y evitan un problema que parece un fallo de la edicion.
+    cmd += [
+        "-pix_fmt", "yuv420p",
+        "-colorspace", "bt709",
+        "-color_primaries", "bt709",
+        "-color_trc", "bt709",
+        "-movflags", "+faststart",
+    ]
     if settings.threads:
         cmd += ["-threads", str(settings.threads)]
     cmd += [str(out)]
@@ -326,6 +434,9 @@ def render(
         seconds_taken=time.time() - inicio,
         encoder=nombre_encoder,
         applied=graph.applied,
-        measured_lufs=float(medidas["input_i"]) if medidas else None,
+        measured_lufs=(
+            sonoridad_final if sonoridad_final is not None
+            else (float(medidas["input_i"]) if medidas else None)
+        ),
         preview=preview,
     )

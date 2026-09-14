@@ -93,9 +93,16 @@ def test_el_pico_real_no_satura(render_basico, settings: Settings) -> None:
     assert peak <= -1.0, f"pico real en {peak} dBFS"
 
 
-def test_la_medicion_en_dos_pasadas_se_usa(render_basico) -> None:
+def test_el_master_se_mide_de_verdad(render_basico) -> None:
+    """La sonoridad que se informa es la del fichero, no la de la primera pasada.
+
+    Antes se informaba la medida *antes* de masterizar, que es justo el numero
+    que no vale: el limitador se come parte de la ganancia.
+    """
     assert render_basico.measured_lufs is not None
-    assert "audio a -14 LUFS" in render_basico.applied
+    master = [a for a in render_basico.applied if a.startswith("master ")]
+    assert master, render_basico.applied
+    assert "-1.5 dBTP" in master[0]
 
 
 # -- subtitulos quemados ---------------------------------------------------
@@ -104,6 +111,16 @@ def test_la_medicion_en_dos_pasadas_se_usa(render_basico) -> None:
 def test_los_subtitulos_acaban_en_la_imagen(
     sample_video: Path, settings: Settings, tmp_path: Path
 ) -> None:
+    """Se renderiza el mismo montaje con y sin subtitulos y se restan.
+
+    Comparar contra el video original no sirve: el fixture tiene una barra
+    clara justo donde va el texto, asi que contar pixeles blancos daba el mismo
+    numero con subtitulos y sin ellos, y el test pasaba sin comprobar nada.
+    Restando dos renders identicos salvo los subtitulos, lo que queda **es** el
+    texto.
+    """
+    from forge.plan.edl import EffectKind
+
     analysis, _ = analyze(sample_video, settings, skip_speech=True)
     palabras = [Word(start=0.4 + i * 0.45, end=0.7 + i * 0.45, text=t)
                 for i, t in enumerate(["abrimos", "el", "menu"])]
@@ -112,25 +129,34 @@ def test_los_subtitulos_acaban_en_la_imagen(
         segments=[TranscriptSegment(start=0.4, end=2.0, text="abrimos el menu", words=palabras)],
     )
     edl = build_edl(analysis, "tutorial")
-    assert edl.effects_of(__import__("forge.plan.edl", fromlist=["EffectKind"]).EffectKind.CAPTION)
+    subtitulos = edl.effects_of(EffectKind.CAPTION)
+    assert subtitulos, "el estilo tutorial deberia poner subtitulos"
 
-    out = tmp_path / "subs.mp4"
-    render(edl, out, settings)
+    con = tmp_path / "con-subs.mp4"
+    render(edl, con, settings)
 
-    original = extract_frames_at(sample_video, settings, [0.8], width=640, height=360)[0]
-    editado = extract_frames_at(out, settings, [0.8], width=640, height=360)[0]
+    edl.effects = [e for e in edl.effects if e.kind is not EffectKind.CAPTION]
+    sin = tmp_path / "sin-subs.mp4"
+    render(edl, sin, settings)
 
-    banda_original = original[300:355, :, :]
-    banda_editada = editado[300:355, :, :]
-    blancos = int((banda_editada.min(axis=2) > 200).sum())
-    cambio = float(np.abs(banda_editada.astype(int) - banda_original.astype(int)).mean())
+    # Un instante que cae dentro del primer subtitulo, en tiempo de montaje.
+    t = (subtitulos[0].start + subtitulos[0].end) / 2.0
+    a = extract_frames_at(sin, settings, [t], width=640, height=360)[0]
+    b = extract_frames_at(con, settings, [t], width=640, height=360)[0]
 
-    assert blancos > 150, "no hay texto claro en la banda de subtitulos"
-    # El umbral es modesto a proposito: el texto ocupa una fraccion pequena de
-    # la banda y el resto de la imagen no cambia. Antes estaba en 10 y pasaba
-    # solo porque una transicion mal hecha ennegrecia el video entero, lo que
-    # disparaba la diferencia por el motivo equivocado.
-    assert cambio > 3, "la banda inferior no cambio respecto al original"
+    diferencia = np.abs(b.astype(int) - a.astype(int)).max(axis=2)
+    tocados = int((diferencia > 40).sum())
+    assert tocados > 300, f"solo cambiaron {tocados} pixeles: no hay texto quemado"
+
+    # Y esta donde el plan dijo que estaria. En este fixture el foco cae abajo,
+    # asi que el subtitulo se sube: eso es la colocacion consciente de la
+    # saliencia, y se comprueba aqui de punta a punta.
+    filas = np.where(diferencia.max(axis=1) > 40)[0]
+    centro = float(filas.mean()) / 360.0
+    if subtitulos[0].position == "top":
+        assert centro < 0.35, f"se pidio arriba y el texto salio a {centro:.0%} de altura"
+    else:
+        assert centro > 0.65, f"se pidio abajo y el texto salio a {centro:.0%} de altura"
 
 
 # -- zoom ------------------------------------------------------------------

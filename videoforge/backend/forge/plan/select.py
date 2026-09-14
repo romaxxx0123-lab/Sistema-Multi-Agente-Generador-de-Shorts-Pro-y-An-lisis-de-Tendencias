@@ -115,18 +115,39 @@ def _silence_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
     if not analysis.audio or not rules.remove_silence:
         return []
 
-    # Cada lado conserva al menos el margen de voz, para no comerse el ataque
-    # de la primera palabra ni la cola de la ultima.
-    margen = max(rules.silence_keep / 2.0, rules.speech_pad)
+    # Los dos margenes son distintos a proposito. Tras la ultima palabra la voz
+    # se apaga sola y se puede recortar antes; en cambio el ataque de la
+    # siguiente empieza antes de lo que marca el detector, asi que ahi hay que
+    # dejar mas aire o se pierde la primera consonante.
+    margen_cola = max(rules.silence_keep / 2.0, rules.tail_pad)
+    margen_entrada = max(rules.silence_keep / 2.0, rules.speech_pad)
 
     out: list[Removal] = []
-    for s in analysis.audio.silences:
+    for i, s in enumerate(analysis.audio.silences):
         if s.duration <= rules.silence_min:
             continue
-        start = s.start + margen
-        end = s.end - margen
+
+        es_cabecera = s.start <= 0.05
+        es_cola = s.end >= analysis.duration - 0.05
+
+        if es_cabecera:
+            # Al principio no hay voz anterior que proteger, asi que se recorta
+            # DESDE CERO y se deja solo un respiro antes de la primera palabra.
+            # Recortar el centro en vez del principio dejaba un clip minusculo
+            # al arrancar, que la fusion de fragmentos cortos volvia a estirar:
+            # el video seguia empezando con el mismo silencio.
+            start = 0.0
+            end = max(0.0, s.end - rules.head_keep)
+        elif es_cola:
+            # Al final, simetrico: se deja una cola corta y se tira el resto.
+            start = s.start + margen_cola
+            end = analysis.duration
+        else:
+            start = s.start + margen_cola
+            end = s.end - margen_entrada
+
         if end > start:
-            out.append(Removal(start=start, end=end, reason="silencio"))
+            out.append(Removal(start=round(start, 3), end=round(end, 3), reason="silencio"))
     return out
 
 

@@ -169,17 +169,110 @@ FORMANTES = ((620.0, 1.0), (1180.0, 0.55), (2600.0, 0.22))
 #: real nunca hay silencio digital, y el detector tiene que distinguirlo igual.
 ROOM_TONE = 0.0018
 
+# Lo de abajo es lo que separa un audio sintetico de uno creible, y sin ello los
+# problemas de calidad no se pueden ni medir: un tono limpio no tiene retumbe
+# que filtrar, no tiene sibilancia que domar y no cambia de nivel.
+
+#: Retumbe de sala: aire acondicionado, trafico, la mesa. Vive por debajo de los
+#: 80 Hz, no aporta nada a la voz y es lo primero que quita cualquier editor.
+#: El nivel esta puesto para quedar unos 25 dB por debajo de la voz, que es lo
+#: tipico de una grabacion casera decente. Subirlo mas no es "mas realista":
+#: es una grabacion mala, y entonces ya no se distingue el silencio del habla.
+RUMBLE_LEVEL = 0.006
+#: Corte del filtrado del retumbe. Es ruido de banda baja, no tonos: tres
+#: sinusoides de frecuencia entera se realinean una vez por segundo y producen
+#: un pico periodico que no existe en ninguna sala real.
+RUMBLE_CUTOFF_HZ = 90.0
+#: Zumbido de red electrica, que se cuela por cables mal apantallados.
+HUM_HZ = 50.0
+HUM_LEVEL = 0.002
+#: Cuanto varia el nivel entre frases, en dB. Una persona se acerca y se aleja
+#: del microfono sin darse cuenta.
+LEVEL_DRIFT_DB = 5.0
+#: Sibilancia: el golpe de aire de las eses, centrado en 6-8 kHz. Es lo que
+#: molesta en unos auriculares y lo que quita un de-esser.
+SIBILANCE_LEVEL = 0.05
+#: Respiracion antes de arrancar a hablar.
+BREATH_LEVEL = 0.02
+BREATH_SECONDS = 0.22
+
+
+def _rumble(n: int, sample_rate: int, rng) -> np.ndarray:
+    """Retumbe de sala y zumbido de red: todo por debajo de la voz.
+
+    Es ruido pasado por un paso-bajo, no una suma de tonos: el aire
+    acondicionado y el trafico son ruido de banda ancha con la energia abajo.
+    """
+    # Media movil larga = paso-bajo de primer orden. Con esta ventana el corte
+    # cae cerca de RUMBLE_CUTOFF_HZ.
+    ventana = max(3, int(sample_rate / RUMBLE_CUTOFF_HZ))
+    ruido = rng.standard_normal(n + ventana).astype(np.float32)
+    grave = np.convolve(ruido, np.ones(ventana, np.float32) / ventana, "same")[:n]
+
+    # Se normaliza porque promediar reduce mucho la amplitud del ruido.
+    pico = float(np.abs(grave).max()) or 1.0
+    senal = (grave / pico * RUMBLE_LEVEL).astype(np.float32)
+
+    t = np.arange(n, dtype=np.float32) / sample_rate
+    senal += HUM_LEVEL * np.sin(2 * np.pi * HUM_HZ * t)
+    return senal.astype(np.float32)
+
+
+#: Ancho de la media movil que define el paso-alto de la sibilancia. Con 5
+#: muestras a 48 kHz el corte queda cerca de los 5 kHz.
+_SIBILANCE_TAPS = 5
+
+
+def _sibilance(n: int, sample_rate: int, rng) -> np.ndarray:
+    """Ruido agudo de una "s", solo por encima de ~5 kHz.
+
+    Se obtiene restandole al ruido blanco su propia media movil, que es un
+    paso-alto de primer orden. Modular el ruido con una sinusoide no vale:
+    reparte energia por todo el espectro y lo que sale es siseo de banda ancha,
+    no sibilancia.
+    """
+    ruido = rng.standard_normal(n + _SIBILANCE_TAPS).astype(np.float32)
+    suave = np.convolve(ruido, np.ones(_SIBILANCE_TAPS, np.float32) / _SIBILANCE_TAPS, "same")
+    return (ruido - suave)[:n].astype(np.float32)
+
 
 def synth_speech(timing: Timing, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Sintetiza audio con la forma del habla: rafagas y pausas.
+    """Sintetiza audio con la forma **y los defectos** del habla grabada.
 
-    No pretende sonar a persona. Pretende tener la misma *estructura temporal*
-    que una voz real, que es lo que miden la deteccion de silencios y el
-    montaje: donde hay energia, donde no, y cuanto duran las pausas.
+    No pretende sonar a persona. Pretende tener la misma estructura temporal que
+    una voz real (donde hay energia, donde no, cuanto duran las pausas) **y sus
+    problemas tipicos**: retumbe de sala, zumbido de red, sibilancia en las eses,
+    respiraciones y un nivel que sube y baja entre frases.
+
+    Esa segunda parte no es decorativa. Sin ella no se puede comprobar que el
+    filtrado de graves, el de-esser o la compresion sirvan de algo: sobre un
+    tono limpio no hay nada que arreglar.
     """
     n = int(timing.duration * sample_rate)
     rng = np.random.default_rng(11)
     senal = rng.standard_normal(n).astype(np.float32) * ROOM_TONE
+    senal += _rumble(n, sample_rate, rng)
+
+    # Nivel por frase: la persona se acerca y se aleja del microfono.
+    ganancia_frase: dict[int, float] = {}
+    for indice, (inicio, fin, _beat) in enumerate(timing.phrases):
+        db = rng.uniform(-LEVEL_DRIFT_DB, LEVEL_DRIFT_DB)
+        ganancia_frase[indice] = float(10.0 ** (db / 20.0))
+
+        # Respiracion justo antes de arrancar.
+        a = max(0, int((inicio - BREATH_SECONDS) * sample_rate))
+        b = int(inicio * sample_rate)
+        if b > a:
+            largo = b - a
+            aire = rng.standard_normal(largo).astype(np.float32)
+            forma = np.sin(np.linspace(0, np.pi, largo, dtype=np.float32))
+            senal[a:b] += aire * forma * BREATH_LEVEL
+
+    def _gain_at(t: float) -> float:
+        for indice, (inicio, fin, _b) in enumerate(timing.phrases):
+            if inicio <= t <= fin:
+                return ganancia_frase[indice]
+        return 1.0
 
     for i, palabra in enumerate(timing.words):
         a = int(palabra.start * sample_rate)
@@ -210,7 +303,15 @@ def synth_speech(timing: Timing, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
         caida = np.clip(((palabra.end - palabra.start) - t) / 0.03, 0, 1)
         envolvente = (0.35 + 0.65 * ciclo) * ataque * caida
 
-        senal[a:b] += (onda * envolvente * 0.09).astype(np.float32)
+        ganancia = _gain_at(palabra.start)
+        senal[a:b] += (onda * envolvente * 0.09 * ganancia).astype(np.float32)
+
+        # Sibilancia en las palabras con "s" o "c/z": justo donde molesta.
+        if any(c in palabra.text.lower() for c in "sczx"):
+            sib = _sibilance(largo, sample_rate, rng)
+            # Se concentra al final de la palabra, como una "s" de cierre.
+            perfil = np.clip((t / (palabra.end - palabra.start) - 0.55) / 0.45, 0, 1)
+            senal[a:b] += (sib * perfil * SIBILANCE_LEVEL * ganancia).astype(np.float32)
 
     pico = float(np.max(np.abs(senal)))
     if pico > 0:

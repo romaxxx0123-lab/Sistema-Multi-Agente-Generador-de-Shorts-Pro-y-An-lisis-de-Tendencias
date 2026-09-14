@@ -236,13 +236,46 @@ Tres decisiones que no son obvias:
   palabra a palabra, contorno y sombra de verdad, y un solo filtro para todo el
   video aunque haya cientos de lineas.
 
-### Calidad
+### El audio
 
-El audio se masteriza **en dos pasadas**: primero se mide la sonoridad del
-montaje ya cortado y despues se normaliza con esas medidas. `loudnorm` en una
-sola pasada es dinamico y bombea; con las medidas reales la correccion es lineal.
-El objetivo es −14 LUFS con pico real por debajo de −1.5 dBFS, que es el
-estandar de las plataformas.
+La voz se trata antes de nada: paso alto a 80 Hz (retumbe de mesa y pisadas),
+reduccion de ruido opcional, de-esser y una compresion **suave**.
+
+El de-esser esta construido a mano con `acrossover`, un cruce Linkwitz-Riley que
+al volver a sumar las dos bandas da un resultado plano. Se comprime solo la
+banda por encima de 5,5 kHz. **No se usa el filtro `deesser` de ffmpeg**: medido
+sobre voz, con intensidad 0,35 se lleva por delante 4,7 dB de sonoridad, 8,7 dB
+de pico y 3,8 dB de la banda de 3-5 kHz, que es donde vive la inteligibilidad.
+Ademas tiene un escalon: a 0,2 no hace nada y a 0,35 destroza. El cruce, con una
+voz sin siseo, deja la misma sonoridad, el mismo pico y la misma energia en
+graves **hasta la centesima de dB**.
+
+La compresion se deja floja a proposito. Medido: apretarla no reduce el factor
+de cresta (los picos de la voz son transitorios que ningun ataque de 15 ms
+alcanza) pero si aplasta el rango dinamico, de 5,1 a 2,0 LU. Los picos son cosa
+del limitador, no del compresor.
+
+**El master se mide, no se estima.** El objetivo es -14 LUFS con pico real por
+debajo de -1.5 dBFS, que es el estandar de las plataformas. Subir hasta ahi casi
+siempre deja el pico por encima del techo, y el limitador tiene que recortar la
+diferencia; cuanto cuesta ese recorte depende del material. En una voz con picos
+sueltos no cuesta nada; en una ya densa cada dB de recorte se lleva casi un dB de
+sonoridad, con lo que subir mas **solo distorsiona**. Medido sobre la guia de
+ejemplo: hasta +1,5 dB el limitador se come 0,02 dB, y a +4,5 dB ya se come 2,0.
+
+Por eso no hay una regla fija. Se mide el montaje, se prueban un par de
+ganancias (pasadas solo de audio, baratas) y se coge la mas alta que no pierda
+mas de 1 dB por el camino. Si el material no da para llegar a -14 LUFS, el
+master se queda por debajo y **se dice**, en vez de aplastar la voz para cuadrar
+un numero. El nivel que se informa es el del fichero, medido despues de
+masterizar, no el de la primera pasada.
+
+El limitador trabaja sobremuestreado a 192 kHz y con el techo 0,7 dB por debajo
+del objetivo: `alimiter` mira el pico de **muestra**, y entre dos muestras la
+senal reconstruida se sale por encima de lo que el ve (medido: 1,7 dB sin
+sobremuestrear, 0,7 dB a 4x).
+
+### Calidad del render
 
 Antes de cada render se valida el grafo **con un segundo de video** contra
 `null`. Un error de filtros salta en un segundo en vez de a los diez minutos.
@@ -489,25 +522,51 @@ convertia esa frase en "en video". Ahora las palabras ambiguas solo se quitan si
 va detras una vacilacion, que es la firma acustica de la muletilla; las
 inequivocas ("eh", "um") se quitan siempre.
 
+**5. El "de-esser" no era un de-esser.** La cadena de voz decia `deesser` y lo
+que hacia era destrozar la voz: -4,7 dB de sonoridad, -8,7 dB de pico y -3,8 dB
+en 3-5 kHz, que es la banda de la inteligibilidad. Solo se ve midiendo el
+espectro; escuchando por encima parece "mas suave". Esta reconstruido con un
+cruce Linkwitz-Riley, y el test comprueba que **sin sibilancia no toca nada**.
+
+**6. Si hablabas de Chrome, no salia Chrome.** El proveedor de material del
+propio video puntuaba sus recortes con la concentracion de la saliencia, un
+numero de 0 a 1 que no tiene **nada** que ver con la consulta, y competia de tu
+a tu con una coincidencia real de palabras. Un plano vistoso le ganaba siempre a
+un material que si hablaba del tema. Ahora el material propio vive en una banda
+por debajo de cualquier coincidencia: es relleno, no ilustracion.
+
+Y la consulta tampoco era buena: TF-IDF a secas premia a la palabra que aparece
+**una unica vez** en todo el video, asi que de "la base de datos guarda toda la
+informacion" sacaba "informacion". Ademas las ventanas iban por reloj, y una
+frase que cruzaba el limite dejaba su ultima palabra sola en la ventana
+siguiente, donde ganaba por goleada. Ahora las ventanas siguen al habla y se
+prefiere el termino al que se vuelve varias veces, que es lo que es un tema.
+
 ## Como queda un montaje
 
 Sobre la guia de ejemplo, con el estilo `tutorial`:
 
 ```
 original      59.5s
-editado       50.2s   (-16% de tiempo muerto)
-ritmo          8.4 cortes/min
-saturacion      46/100 · en el punto
+editado       47.4s   (-20% de tiempo muerto)
+ritmo         11.4 cortes/min
+saturacion      48/100 · en el punto
+audio        -16.2 LUFS en el fichero, pico real -2.1 dBTP
 
- 19 × caption      subtitulo: "hola en este video vamos a configurar"
+ 21 × caption      subtitulo: "hola en este video vamos a configurar"
   2 × punch_in     zoom a (21%, 36%): la atencion se concentra ahi
-  1 × transition   transicion fade en el corte de 0.5s
+  1 × transition   transicion fade en el corte de 4.9s
   1 × grade        color 'neutral' al 25%
 ```
 
 Dos zooms en cincuenta segundos, subtitulos legibles y un ajuste de color
 discreto. Es un montaje **sobrio**, que es lo que debe ser: el medidor de
 saturacion existe justo para que el sistema no se emocione.
+
+El audio se queda en -16,2 LUFS y no en -14 porque esta grabacion concreta no da
+para mas sin apretarla: ahi es donde el limitador empieza a comerse mas de 1 dB
+de sonoridad por cada dB que se sube. Es la decision correcta, y por eso el
+informe dice el nivel real del fichero en vez del objetivo.
 
 Si no quieres elegir estilo, `--style auto` lo deduce del material: una guia
 hablada y quieta pide `tutorial`, un gameplay sin voz pide `gaming-hype`.

@@ -63,6 +63,11 @@ class BrollProvider(Protocol):
 # ---------------------------------------------------------------------------
 
 
+#: Tope de relevancia del material sacado del propio video. Cualquier
+#: coincidencia real de palabras queda por encima.
+SELF_MAX_RELEVANCE = 0.35
+
+
 class SelfProvider:
     """Material sacado del propio video de origen.
 
@@ -111,7 +116,15 @@ class SelfProvider:
                         f"donde la imagen tiene mas interes visual"
                     ),
                     license="propio",
-                    relevance=round(foco.concentration, 3),
+                    # Un recorte del propio video no ilustra de lo que se esta
+                    # hablando: es un recurso de relleno, por bonito que sea el
+                    # plano. Por eso su relevancia vive en una banda por debajo
+                    # de cualquier coincidencia real de palabras. Antes se
+                    # usaba la concentracion de la saliencia tal cual, en la
+                    # misma escala que los demas, y un plano vistoso le ganaba
+                    # a un material que si hablaba del tema: se decia "Chrome"
+                    # y salia un trozo del mismo video.
+                    relevance=round(foco.concentration * SELF_MAX_RELEVANCE, 3),
                 )
             )
 
@@ -182,7 +195,12 @@ class LocalProvider:
             if buscadas and not comunes:
                 continue
 
-            relevancia = len(comunes) / len(buscadas) if buscadas else 0.4
+            # Cualquier coincidencia de palabras vale mas que un relleno: el
+            # suelo de 0.4 deja el material propio (tope SELF_MAX_RELEVANCE)
+            # siempre por debajo.
+            relevancia = (
+                0.4 + 0.6 * len(comunes) / len(buscadas) if buscadas else 0.4
+            )
             resultados.append(
                 Asset(
                     id=f"local-{path.stem}",

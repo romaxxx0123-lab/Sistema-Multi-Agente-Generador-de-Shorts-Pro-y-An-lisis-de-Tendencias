@@ -95,13 +95,23 @@ def test_un_umbral_fijo_de_pico_no_habria_servido(analisis, settings: Settings) 
     assert find_silences(niveles, 0.02, umbral_adaptado, 0.5, duracion)
 
 
-def test_sin_separacion_clara_no_se_inventa_un_umbral() -> None:
-    """Con ruido constante no hay dos poblaciones: mejor un umbral conservador."""
+def test_sin_separacion_clara_el_umbral_sigue_siendo_relativo() -> None:
+    """Sin dos poblaciones claras se es conservador, pero nunca absoluto.
+
+    Un umbral fijo (-32 dB, el clasico) es lo que rompia el montaje en cuanto
+    la grabacion estaba unos pocos dB mas alta o mas baja de lo esperado: o no
+    encontraba un solo silencio, o se tragaba la voz entera. Aqui se pega al
+    suelo medido del propio audio.
+    """
     import numpy as np
 
     plano = np.full(500, -25.0, dtype=np.float32)
-    umbral, _suelo, _voz = choose_threshold_db(plano)
-    assert umbral == -32.0
+    umbral, suelo, _voz = choose_threshold_db(plano)
+    assert suelo < umbral < suelo + 5.0
+
+    # Y el mismo material 20 dB mas bajo da el mismo umbral, 20 dB mas bajo.
+    bajo, _s, _v = choose_threshold_db(plano - 20.0)
+    assert abs(bajo - (umbral - 20.0)) < 1e-4
 
 
 # -- planos en una grabacion de pantalla -----------------------------------

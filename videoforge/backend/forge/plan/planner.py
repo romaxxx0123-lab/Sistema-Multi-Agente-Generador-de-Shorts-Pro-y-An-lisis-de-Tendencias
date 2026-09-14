@@ -153,7 +153,7 @@ def build_edl(
 
     efectos: list = []
     if analysis.transcript:
-        efectos += plan_captions(edl, analysis.transcript, style.captions)
+        efectos += plan_captions(edl, analysis.transcript, style.captions, analysis)
         capitulos = plan_chapters(edl, analysis.transcript, style.chapters)
         edl.chapters = capitulos
         efectos += chapter_cards(capitulos, style.chapters)

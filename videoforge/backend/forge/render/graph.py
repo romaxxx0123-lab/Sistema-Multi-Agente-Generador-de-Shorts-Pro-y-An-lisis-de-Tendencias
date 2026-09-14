@@ -62,22 +62,35 @@ def _q(expr: str) -> str:
     return f"'{expr}'"
 
 
+def _smoothstep(lineal: str) -> str:
+    """Suaviza una rampa lineal con la curva 3x^2-2x^3.
+
+    Un zoom que arranca y frena de golpe se ve mecanico: la velocidad salta de
+    cero a su maximo en un fotograma. Con esta curva entra y sale con
+    aceleracion continua, que es como mueve la camara una persona.
+    """
+    return f"({lineal}*{lineal}*(3-2*{lineal}))"
+
+
 def _ramp(t0: float, t1: float, ease: float) -> str:
-    """Rampa trapezoidal 0->1->0 entre t0 y t1, en tiempo de clip.
+    """Rampa trapezoidal suavizada 0->1->0 entre t0 y t1, en tiempo de clip.
 
     Entra en `ease` segundos, se mantiene y sale en otros tantos. Multiplicar
     las dos rampas da la meseta sin necesidad de condicionales.
     """
     ease = max(0.05, min(ease, (t1 - t0) / 2 if t1 > t0 else ease))
-    sube = f"min(1,max(0,(T-{t0:.4f})/{ease:.4f}))"
-    baja = f"min(1,max(0,({t1:.4f}-T)/{ease:.4f}))"
+    sube = _smoothstep(f"min(1,max(0,(T-{t0:.4f})/{ease:.4f}))")
+    baja = _smoothstep(f"min(1,max(0,({t1:.4f}-T)/{ease:.4f}))")
     return f"({sube}*{baja})"
 
 
 def _linear(t0: float, t1: float) -> str:
-    """Rampa lineal 0->1 a lo largo de todo el intervalo (para ken burns)."""
+    """Rampa 0->1 a lo largo del intervalo, para la deriva lenta.
+
+    Tambien suavizada: una deriva que arranca de golpe delata el efecto.
+    """
     span = max(1e-3, t1 - t0)
-    return f"min(1,max(0,(T-{t0:.4f})/{span:.4f}))"
+    return _smoothstep(f"min(1,max(0,(T-{t0:.4f})/{span:.4f}))")
 
 
 def _zoom_expressions(
@@ -144,6 +157,20 @@ def _clip_zooms(edl: EDL, clip_index: int, clip_start: float, clip_end: float):
     return salida
 
 
+def _audio_handles(duration: float) -> list[str]:
+    """Desvanecidos minimos en los extremos de un clip de audio.
+
+    Un empalme cae casi siempre a mitad de onda, y ese escalon se oye como un
+    chasquido. Doce milisegundos de rampa lo eliminan sin que se perciban, y no
+    cambian la duracion, que es lo que si haria un `acrossfade`.
+    """
+    d = min(AUDIO_HANDLE_SECONDS, max(0.001, duration / 4))
+    return [
+        f"afade=t=in:st=0:d={d:.4f}",
+        f"afade=t=out:st={max(0.0, duration - d):.4f}:d={d:.4f}",
+    ]
+
+
 def _broll_branch(
     effect: BrollEffect,
     asset: Asset,
@@ -202,6 +229,134 @@ def _overlay_position(effect: BrollEffect, w: int, h: int) -> tuple[str, str]:
     return f"{int(w * rect.x)}", f"{int(h * rect.y)}"
 
 
+#: Techo de pico real del master, en dBFS. -1.5 es el margen que piden las
+#: plataformas para que la recodificacion a AAC no sature.
+TRUE_PEAK_CEILING_DB = -1.5
+#: El limitador mira el pico de **muestra**, no el pico real: entre dos
+#: muestras la senal reconstruida se sale por encima de lo que el ve. Medido
+#: sobre voz, ese sobrepico es de 1,7 dB sin sobremuestrear y de 0,7 dB
+#: sobremuestreando a 4x, asi que se le baja el techo esa cantidad.
+LIMITER_MARGIN_DB = 0.7
+#: Frecuencia a la que se sobremuestrea alrededor del limitador.
+LIMITER_OVERSAMPLE_HZ = 192000
+#: Frecuencia por encima de la cual vive la sibilancia de la voz.
+DEESS_HZ = 5500
+#: Ratio del compresor de banda alta del de-esser.
+DEESS_RATIO = 4.0
+
+#: Duracion de los desvanecidos que se ponen en los bordes de cada clip de
+#: audio. Doce milisegundos no se oyen como un fundido, pero bastan para que un
+#: empalme a mitad de onda no chasquee.
+AUDIO_HANDLE_SECONDS = 0.012
+
+
+def master_chain(gain_db: float) -> list[str]:
+    """Ganancia + limitador de pico real. Es lo ultimo que toca el audio."""
+    limite = 10.0 ** ((TRUE_PEAK_CEILING_DB - LIMITER_MARGIN_DB) / 20.0)
+    return [
+        f"volume={gain_db:.2f}dB",
+        f"aresample={LIMITER_OVERSAMPLE_HZ}",
+        f"alimiter=limit={limite:.4f}:level=false:attack=5:release=50",
+        "aresample=48000",
+    ]
+
+
+def deesser_subgraph(intensity: float):
+    """De-esser de verdad: se comprime **solo** la banda de la sibilancia.
+
+    El filtro `deesser` de ffmpeg no sirve para esto. Medido sobre voz con su
+    intensidad a 0,35 se lleva por delante 4,7 dB de sonoridad, 8,7 dB de pico
+    y 3,8 dB de la banda de 3-5 kHz, que es justo donde vive la inteligibilidad
+    de la voz. Y tiene un escalon: a 0,2 no hace nada y a 0,35 destroza.
+
+    Aqui la senal se parte con `acrossover`, que es un cruce Linkwitz-Riley: al
+    volver a sumar las dos bandas el resultado es plano. Medido con una voz sin
+    siseo, pasar por el cruce deja la misma sonoridad, el mismo pico y la misma
+    energia en graves **hasta la centesima de dB**. Solo se toca la banda alta,
+    y solo cuando se pasa del umbral.
+
+    (Restar la banda comprimida de la senal original, que parece mas elegante,
+    no funciona: el filtro paso alto desfasa, y restar algo desfasado no lo
+    quita, interfiere. Medido, bajaba 1,9 dB de sibilancia donde el cruce baja
+    9,0.)
+    """
+    umbral = 10.0 ** ((-18.0 - 24.0 * max(0.0, min(1.0, intensity))) / 20.0)
+
+    def construir(entrada: str, salida: str, pref: str) -> list[str]:
+        return [
+            f"{entrada}acrossover=split={DEESS_HZ}:order=4th[{pref}lo][{pref}hi]",
+            f"[{pref}hi]acompressor=threshold={umbral:.5f}:ratio={DEESS_RATIO:.1f}"
+            f":attack=1:release=60:makeup=1[{pref}hic]",
+            f"[{pref}lo][{pref}hic]amix=inputs=2:normalize=0{salida}",
+        ]
+
+    return construir
+
+
+def voice_chain(rules) -> list:
+    """Tratamiento de voz, en el orden en que debe ir.
+
+    Se quita antes de anadir: retumbe y ruido primero, sibilancia despues, y la
+    compresion al final, cuando ya solo queda voz que igualar.
+
+    Devuelve una lista de **etapas**: o una cadena de filtros normal, o un
+    subgrafo (una funcion que se le pide construir con sus propias ramas), que
+    es lo que necesita el de-esser.
+
+    La compresion se deja suave a proposito. Medido: apretarla no reduce el
+    factor de cresta (los picos de la voz son transitorios que ningun ataque de
+    15 ms alcanza) pero si se lleva el rango dinamico por delante, de 5,1 a 2,0
+    LU. Los picos son cosa del limitador del master, no del compresor.
+    """
+    if not rules.enabled:
+        return []
+
+    etapas: list = []
+    inicio: list[str] = []
+    if rules.highpass_hz > 0:
+        # Dos polos: pendiente suficiente sin colorear la voz.
+        inicio.append(f"highpass=f={rules.highpass_hz:.0f}:poles=2")
+    if rules.denoise_db > 0:
+        inicio.append(f"afftdn=nr={rules.denoise_db:.1f}:nf=-40:tn=1")
+    if inicio:
+        etapas.append(",".join(inicio))
+    if rules.deess > 0:
+        etapas.append(deesser_subgraph(rules.deess))
+    if rules.compress:
+        etapas.append(
+            f"acompressor=threshold={rules.compress_threshold:.4f}"
+            f":ratio={rules.compress_ratio:.1f}:attack=15:release=250:makeup=1.6"
+        )
+    return etapas
+
+
+def _emit_audio_chain(
+    partes: list[str], entrada: str, etapas: list, salida: str
+) -> None:
+    """Escribe las etapas de audio en el grafo, con sus etiquetas intermedias.
+
+    Las etapas planas se juntan en una sola cadena separada por comas; cada
+    subgrafo corta la cadena y se escribe como sentencias propias.
+    """
+    plano: list[str] = []
+    actual = entrada
+    n = 0
+    for etapa in etapas:
+        if isinstance(etapa, str):
+            plano.append(etapa)
+            continue
+        if plano:
+            n += 1
+            siguiente = f"[ap{n}]"
+            partes.append(actual + ",".join(plano) + siguiente)
+            actual, plano = siguiente, []
+        n += 1
+        siguiente = f"[ap{n}]"
+        partes.extend(etapa(actual, siguiente, f"dz{n}"))
+        actual = siguiente
+    partes.append(actual + (",".join(plano) if plano else "anull") + salida)
+
+
 def _grade_values(preset: str, intensity: float) -> tuple[float, float, float]:
     """Contraste, saturacion y gamma interpolados desde el neutro."""
     valores = GRADE_PRESETS.get(preset, GRADE_PRESETS["neutral"])
@@ -254,6 +409,8 @@ def build_graph(
     audio_only: bool = False,
     assets: AssetBundle | None = None,
     sfx_paths: dict[str, str] | None = None,
+    voice_rules=None,
+    master_gain_db: float | None = None,
 ) -> BuiltGraph:
     """Compila el EDL en un grafo de filtros.
 
@@ -285,6 +442,7 @@ def build_graph(
                 ]
                 if abs(clip.speed - 1.0) > 1e-6:
                     audio.append(f"rubberband=tempo={clip.speed:.6f}")
+                audio += _audio_handles(clip.duration)
                 partes.append(",".join(audio) + f"[a{i}]")
                 etiquetas_a.append(f"[a{i}]")
             inicio_tl = fin_tl
@@ -317,6 +475,7 @@ def build_graph(
                 # rubberband mantiene el tono al cambiar la velocidad; atempo
                 # es el plan B si el build de ffmpeg no lo trae.
                 audio.append(f"rubberband=tempo={clip.speed:.6f}")
+            audio += _audio_handles(clip.duration)
             partes.append(",".join(audio) + f"[a{i}]")
             etiquetas_a.append(f"[a{i}]")
 
@@ -455,13 +614,27 @@ def build_graph(
             a_actual = "[amixed]"
             aplicado.append(f"{len(disponibles)} efectos de sonido")
 
-        audio_post: list[str] = []
-        if loudnorm_measured:
+        audio_post: list = []
+        if voice_rules is not None:
+            etapas = voice_chain(voice_rules)
+            if etapas:
+                audio_post += etapas
+                aplicado.append("voz tratada")
+
+        if master_gain_db is not None:
+            # Master medido: se sube exactamente lo que dice la medida R128 y
+            # el limitador se encarga del techo de pico. No se pasa por
+            # `loudnorm` porque en modo lineal, si la ganancia no le cabe bajo
+            # el techo, se cambia solo a modo dinamico y vuelve a comprimir
+            # justo lo que acabamos de dejar respirar.
+            audio_post += master_chain(master_gain_db)
+            aplicado.append(f"master {master_gain_db:+.1f} dB, pico <= {TRUE_PEAK_CEILING_DB} dBTP")
+        elif loudnorm_measured:
             # Segunda pasada: con las medidas reales la normalizacion es lineal
             # y no bombea, que es lo que pasa en una sola pasada.
             audio_post.append(
                 "loudnorm="
-                f"I={target_lufs:.1f}:TP=-1.5:LRA=11"
+                f"I={target_lufs:.1f}:TP={TRUE_PEAK_CEILING_DB}:LRA=11"
                 f":measured_I={loudnorm_measured['input_i']}"
                 f":measured_TP={loudnorm_measured['input_tp']}"
                 f":measured_LRA={loudnorm_measured['input_lra']}"
@@ -469,13 +642,18 @@ def build_graph(
                 f":offset={loudnorm_measured['target_offset']}"
                 ":linear=true:print_format=summary"
             )
+            audio_post.append("aresample=48000")
             aplicado.append(f"audio a {target_lufs:.0f} LUFS")
         elif target_lufs is not None:
-            audio_post.append(f"loudnorm=I={target_lufs:.1f}:TP=-1.5:LRA=11")
+            audio_post.append(
+                f"loudnorm=I={target_lufs:.1f}:TP={TRUE_PEAK_CEILING_DB}:LRA=11"
+            )
+            audio_post.append("aresample=48000")
             aplicado.append(f"audio a {target_lufs:.0f} LUFS (una pasada)")
+        else:
+            audio_post.append("aresample=48000")
 
-        audio_post.append("aresample=48000")
-        partes.append(f"{a_actual}" + ",".join(audio_post) + "[aout]")
+        _emit_audio_chain(partes, a_actual, audio_post, "[aout]")
         a_label = "[aout]"
 
     return BuiltGraph(

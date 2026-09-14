@@ -53,8 +53,16 @@ class PacingRules(BaseModel):
     silence_min: float = 0.6
     #: cuanto se deja del silencio recortado, para que no suene atropellado
     silence_keep: float = 0.12
-    #: margen alrededor de la voz, para no comerse el ataque de la palabra
+    #: margen ANTES de que vuelva la voz. Es el mas critico: el ataque de una
+    #: palabra es suave y empieza antes de lo que marca el detector, asi que
+    #: cortar justo ahi se come la primera consonante.
     speech_pad: float = 0.12
+    #: margen DESPUES de que acabe la voz. Puede ser menor: la cola de una
+    #: palabra se apaga sola y recortarla no se nota.
+    tail_pad: float = 0.07
+    #: cuanto silencio se deja al principio del video. Nadie quiere ver dos
+    #: segundos de nada antes de que empiece a hablar.
+    head_keep: float = 0.25
     remove_fillers: bool = False
     #: un clip mas corto que esto no se sostiene
     min_clip: float = 0.9
@@ -127,6 +135,33 @@ class MusicRules(BaseModel):
     duck: bool = True
 
 
+class VoiceRules(BaseModel):
+    """Tratamiento de la voz antes de masterizar.
+
+    Es lo que mas cambia la sensacion de calidad en una guia, y lo que nadie
+    nota cuando esta bien hecho. El orden importa: primero se quita lo que
+    sobra (retumbe, ruido), despues se doma lo que pica (sibilancia) y solo al
+    final se comprime, para no estar comprimiendo basura.
+    """
+
+    enabled: bool = True
+    #: Corte de graves. Por debajo de 80 Hz una voz no tiene nada, pero si lo
+    #: tienen el aire acondicionado, el trafico y los golpes en la mesa.
+    highpass_hz: float = 80.0
+    #: Reduccion de ruido en dB. Conservador a proposito: pasarse deja la voz
+    #: con un timbre metalico peor que el ruido que quita. 0 lo desactiva.
+    denoise_db: float = 0.0
+    #: Cuanto se doman las eses, 0..1. 0 lo desactiva.
+    deess: float = 0.35
+    #: Compresion para igualar el nivel entre frases. El objetivo es que no
+    #: haya que tocar el volumen al cambiar de frase, no aplastar la voz: por
+    #: debajo de unos 4 dB de variacion el resultado suena sin vida.
+    compress: bool = True
+    compress_ratio: float = 2.2
+    #: Umbral de compresion en escala lineal (0.1 equivale a unos -20 dBFS).
+    compress_threshold: float = 0.12
+
+
 class SfxRules(BaseModel):
     enabled: bool = False
     max_per_minute: float = 3.0
@@ -148,6 +183,7 @@ class StylePreset(BaseModel):
     grade: GradeRules = Field(default_factory=GradeRules)
     music: MusicRules = Field(default_factory=MusicRules)
     sfx: SfxRules = Field(default_factory=SfxRules)
+    voice: VoiceRules = Field(default_factory=VoiceRules)
     #: metrica -> banda objetivo; las consume el motor de saturacion
     saturation: dict[str, Band] = Field(default_factory=dict)
 

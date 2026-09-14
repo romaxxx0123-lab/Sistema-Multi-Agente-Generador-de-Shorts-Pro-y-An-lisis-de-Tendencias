@@ -38,6 +38,11 @@ FONT_CANDIDATES = (
 #: Alineacion ASS (teclado numerico): 2 abajo, 5 centro, 8 arriba.
 _ALIGNMENT = {"bottom": 2, "center": 5, "top": 8}
 
+#: A partir de esta longitud la linea se parte en dos. Un subtitulo de una sola
+#: linea muy larga obliga a barrer la pantalla con la vista; en dos lineas
+#: equilibradas se lee de un golpe.
+WRAP_CHARS = 30
+
 
 def _ass_color(r: int, g: int, b: int, alpha: int = 0) -> str:
     """Color en el formato de ASS: alfa + BGR, con 0 = totalmente opaco."""
@@ -154,14 +159,42 @@ def _escape(text: str) -> str:
     )
 
 
+def split_balanced(words: list[str], max_chars: int = WRAP_CHARS) -> int:
+    """Indice por el que partir una linea larga en dos mitades parejas.
+
+    Devuelve 0 si no hace falta partir. Se busca el punto que deja las dos
+    lineas mas iguales, no simplemente el que llena la primera: dos lineas de
+    18 y 4 caracteres se leen peor que dos de 11.
+    """
+    texto = " ".join(words)
+    if len(texto) <= max_chars or len(words) < 2:
+        return 0
+
+    mejor_indice = 0
+    mejor_diferencia = None
+    for i in range(1, len(words)):
+        izquierda = len(" ".join(words[:i]))
+        derecha = len(" ".join(words[i:]))
+        diferencia = abs(izquierda - derecha)
+        if mejor_diferencia is None or diferencia < mejor_diferencia:
+            mejor_diferencia = diferencia
+            mejor_indice = i
+    return mejor_indice
+
+
 def _karaoke_text(caption: CaptionEffect) -> str:
     """Texto con una etiqueta `\\k` por palabra, en centesimas de segundo."""
     if not caption.words:
         return _escape(caption.text)
 
+    corte = split_balanced([w.text for w in caption.words])
+
     partes: list[str] = []
     cursor = caption.start
-    for w in caption.words:
+    for indice, w in enumerate(caption.words):
+        if corte and indice == corte:
+            # Salto de linea duro de ASS.
+            partes.append("\\N")
         # El hueco antes de la palabra tambien consume tiempo de karaoke; si no
         # se contase, el resalte se adelantaria mas y mas a lo largo de la linea.
         hueco = max(0.0, w.start - cursor)
@@ -222,8 +255,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         texto = _karaoke_text(c) if karaoke else _escape(c.text)
         if not texto:
             continue
+        # Cada linea lleva su propia alineacion: el planner puede mandar un
+        # subtitulo arriba cuando lo importante del plano esta abajo.
+        alineacion_linea = _ALIGNMENT.get(c.position, alineacion)
+        prefijo = f"{{\\an{alineacion_linea}}}" if alineacion_linea != alineacion else ""
         lineas.append(
-            f"Dialogue: 0,{_timestamp(c.start)},{_timestamp(c.end)},Default,,0,0,0,,{texto}"
+            f"Dialogue: 0,{_timestamp(c.start)},{_timestamp(c.end)},Default,,0,0,0,,{prefijo}{texto}"
         )
 
     return cabecera + "\n".join(lineas) + "\n"

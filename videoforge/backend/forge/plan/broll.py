@@ -22,8 +22,16 @@ from ..assets.types import Asset, AssetBundle, AssetQuery
 from .edl import EDL, BrollEffect
 from .styles import BrollRules
 
-#: Duracion de la ventana en la que se busca de que se esta hablando.
+#: Duracion maxima de la ventana en la que se busca de que se esta hablando.
 WINDOW_SECONDS = 6.0
+#: Una pausa mas larga que esto cierra la ventana: ya se esta hablando de otra
+#: cosa.
+WINDOW_GAP = 1.5
+#: Con menos palabras que esto la ventana no dice nada. Una de una sola palabra
+#: da siempre TF-IDF maximo para esa palabra, que es como se colaban consultas
+#: absurdas: una frase partida por la rejilla dejaba "informacion" sola en su
+#: ventana y ganaba a "base de datos".
+MIN_WORDS_IN_WINDOW = 3
 #: Puntuacion minima para considerar que se esta nombrando algo concreto.
 MIN_TOPIC_SCORE = 0.35
 #: Cuantas palabras forman la consulta.
@@ -42,17 +50,41 @@ class TopicMoment:
 
 
 def _windows(transcript_words: list[Word], duration: float) -> list[tuple[float, float, list[str]]]:
-    """Parte el montaje en ventanas con las palabras que caen en cada una."""
-    if duration <= 0:
+    """Agrupa las palabras en ventanas siguiendo el habla, no un reloj.
+
+    Con una rejilla fija de 6 segundos pasaban dos cosas malas: en un video
+    largo la mayoria de ventanas salian vacias y estropeaban el IDF, y una
+    frase que cruzaba el limite de la rejilla se partia, dejando su ultima
+    palabra sola en la ventana siguiente. Una ventana de una sola palabra le da
+    a esa palabra la puntuacion maxima, asi que las consultas acababan siendo
+    justo los restos de las frases.
+
+    Aqui cada ventana empieza donde empieza a hablar y se cierra al llegar al
+    maximo de duracion o al encontrar una pausa.
+    """
+    if duration <= 0 or not transcript_words:
         return []
 
     salida: list[tuple[float, float, list[str]]] = []
-    t = 0.0
-    while t < duration:
-        fin = min(duration, t + WINDOW_SECONDS)
-        palabras = [w.text for w in transcript_words if t <= w.start < fin]
-        salida.append((t, fin, tokenize(" ".join(palabras))))
-        t = fin
+    actual: list[Word] = []
+
+    def cerrar() -> None:
+        if len(actual) >= MIN_WORDS_IN_WINDOW:
+            salida.append((
+                actual[0].start,
+                min(duration, actual[-1].end),
+                tokenize(" ".join(w.text for w in actual)),
+            ))
+        actual.clear()
+
+    for w in transcript_words:
+        if actual and (
+            w.start - actual[-1].end > WINDOW_GAP
+            or w.end - actual[0].start > WINDOW_SECONDS
+        ):
+            cerrar()
+        actual.append(w)
+    cerrar()
     return salida
 
 
@@ -75,8 +107,10 @@ def find_topic_moments(
 
     # Documento = ventana. Una palabra en pocas ventanas es distintiva.
     apariciones: Counter[str] = Counter()
+    veces: Counter[str] = Counter()
     for _, _, palabras in ventanas:
         apariciones.update(set(palabras))
+        veces.update(palabras)
     total = len(ventanas)
 
     momentos: list[TopicMoment] = []
@@ -92,11 +126,22 @@ def find_topic_moments(
         if not puntuaciones:
             continue
 
-        mejores = sorted(puntuaciones.items(), key=lambda kv: -kv[1])[:QUERY_WORDS]
-        # Se normaliza por el maximo teorico para que el umbral sea comparable
-        # entre videos de distinta longitud.
-        maximo_teorico = math.log(total) if total > 1 else 1.0
-        score = mejores[0][1] / maximo_teorico if maximo_teorico else 0.0
+        # Para *elegir* las palabras se prefiere lo que el video trata, no lo
+        # que solo se nombro de pasada. TF-IDF a secas premia a la palabra que
+        # aparece una unica vez en todo el video, y eso no es un tema: de "la
+        # base de datos guarda toda la informacion" sacaba "informacion" en vez
+        # de "base de datos". Un termino al que se vuelve varias veces si es un
+        # tema, y es lo que merece material de apoyo.
+        mejores = sorted(
+            puntuaciones.items(),
+            key=lambda kv: (-kv[1] * (1.0 + math.log(veces[kv[0]])), kv[0]),
+        )[:QUERY_WORDS]
+
+        # Se normaliza contra el maximo que esa ventana podria dar (una palabra
+        # suya que no salga en ninguna otra), para que el umbral signifique lo
+        # mismo en una ventana de cuatro palabras que en una de diez.
+        maximo = math.log(total) / len(palabras) if total > 1 else 1.0
+        score = (max(puntuaciones[p] for p, _ in mejores) / maximo) if maximo else 0.0
 
         if score < min_score:
             continue
@@ -111,7 +156,9 @@ def find_topic_moments(
             )
         )
 
-    momentos.sort(key=lambda m: -m.score)
+    # A igualdad de puntuacion manda el tema al que mas se vuelve: si solo cabe
+    # un b-roll, mejor ilustrar lo que vertebra el video que un detalle suelto.
+    momentos.sort(key=lambda m: (-m.score, -max(veces[p] for p in m.query.split())))
     return momentos
 
 

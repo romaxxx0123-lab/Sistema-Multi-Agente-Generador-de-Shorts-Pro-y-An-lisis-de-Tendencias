@@ -498,7 +498,11 @@ def render(
     tabla.add_row("encoder", resultado.encoder)
     tabla.add_row("aplicado", ", ".join(resultado.applied))
     if resultado.measured_lufs is not None:
-        tabla.add_row("audio", f"{resultado.measured_lufs:.1f} LUFS medidos -> {edl.render.target_lufs:.0f} LUFS")
+        objetivo = edl.render.target_lufs
+        linea = f"{resultado.measured_lufs:.1f} LUFS en el fichero (objetivo {objetivo:.0f})"
+        if resultado.measured_lufs < objetivo - 1.0:
+            linea += " · el material es muy dinamico y apretarlo mas lo aplastaria"
+        tabla.add_row("audio", linea)
     if resultado.preview:
         tabla.add_row("", "[yellow]es una previsualizacion, no el render final[/yellow]")
     console.print(Panel(tabla, title="render", border_style="green"))

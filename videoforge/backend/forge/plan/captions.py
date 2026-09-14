@@ -15,6 +15,11 @@ Tres reglas separan un subtitulo usable de un volcado de texto:
 - **No terminar una linea con una palabra de funcion.** Cortar despues de "de",
   "el" o "que" se lee mal; esas palabras se empujan a la linea siguiente.
 
+- **No tapar lo que hay que mirar.** Si en ese plano la atencion esta abajo (un
+  boton, una barra de tareas, un rotulo), el subtitulo se sube arriba. Poner
+  siempre el texto en el mismo sitio es lo que hace que a veces cubra justo lo
+  que se esta explicando.
+
 Los tiempos de salida ya estan en la linea de tiempo montada, no en el original.
 """
 
@@ -43,6 +48,13 @@ TRAILING_STOPWORDS = frozenset(
 )
 #: Una linea no deberia quedarse con menos palabras que esto si se puede evitar.
 MIN_WORDS_PER_LINE = 2
+
+#: A partir de esta altura (0 arriba, 1 abajo) se considera que el foco del
+#: plano esta en la zona donde iria el subtitulo.
+FOCUS_LOW_THRESHOLD = 0.62
+#: Y solo se mueve el subtitulo si el foco esta de verdad concentrado ahi: con
+#: la atencion repartida, mover el texto es un cambio gratuito que despista.
+FOCUS_MIN_CONCENTRATION = 0.3
 
 
 def _map_word(edl: EDL, word: Word) -> Word | None:
@@ -147,10 +159,29 @@ def _rebalance_trailing(lines: list[list[Word]]) -> list[list[Word]]:
     return lines
 
 
+def _position_for(edl: EDL, analysis, timeline_time: float, default: str) -> str:
+    """Donde poner el subtitulo para no tapar lo importante de ese plano."""
+    if analysis is None or default != "bottom":
+        return default
+
+    origen = edl.timeline_to_source(timeline_time)
+    if origen is None:
+        return default
+
+    foco = analysis.focus_at(origen)
+    if foco is None or foco.concentration < FOCUS_MIN_CONCENTRATION:
+        return default
+    return "top" if foco.cy >= FOCUS_LOW_THRESHOLD else default
+
+
 def plan_captions(
-    edl: EDL, transcript: Transcript, rules: CaptionRules
+    edl: EDL, transcript: Transcript, rules: CaptionRules, analysis=None
 ) -> list[CaptionEffect]:
-    """Genera los subtitulos del montaje."""
+    """Genera los subtitulos del montaje.
+
+    Con `analysis` puede ademas subir el subtitulo cuando el foco del plano cae
+    donde iria el texto.
+    """
     if not rules.enabled or not transcript.words:
         return []
 
@@ -173,7 +204,7 @@ def plan_captions(
                 end=linea[-1].end,
                 words=linea,
                 style=rules.style,
-                position=rules.position,
+                position=_position_for(edl, analysis, linea[0].start, rules.position),
                 value_score=CAPTION_VALUE,
                 cost_weight=CAPTION_COST,
                 rationale=f'subtitulo: "{texto[:60]}"',

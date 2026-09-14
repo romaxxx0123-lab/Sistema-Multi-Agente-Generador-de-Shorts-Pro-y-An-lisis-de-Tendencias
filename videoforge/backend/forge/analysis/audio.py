@@ -31,7 +31,8 @@ from ..config import Settings
 from ..tools import ffmpeg_bin, run
 from .types import AudioAnalysis, Loudness, SilenceRange
 
-#: Umbral de respaldo, solo para grabaciones donde no se distingue voz de fondo.
+#: Umbral de respaldo en dB. Ya no se usa para decidir, solo se expone por
+#: compatibilidad: el umbral real siempre sale del fondo de la propia grabacion.
 DEFAULT_NOISE_DB = -32.0
 #: Pausas mas cortas que esto son el ritmo natural del habla, no tiempo muerto.
 DEFAULT_MIN_SILENCE = 0.35
@@ -40,8 +41,19 @@ RMS_WINDOW_SECONDS = 0.02
 #: Percentiles con los que se estiman el suelo de ruido y el nivel de voz.
 FLOOR_PERCENTILE = 10
 SPEECH_PERCENTILE = 90
-#: Separacion minima entre fondo y voz para fiarse de la estimacion.
+#: Separacion minima entre fondo y voz para fiarse de la estimacion completa.
 MIN_SEPARATION_DB = 10.0
+#: Hueco maximo que se salta al unir dos silencios. Un chasquido de boca, la
+#: silla o una tecla dura unas centesimas y parte la pausa en dos trozos que,
+#: por separado, ya no llegan al minimo y no se recortan. Puentearlos recupera
+#: la pausa entera; el limite es corto para no unir nunca dos pausas con una
+#: palabra de verdad en medio.
+MAX_BRIDGE_GAP = 0.18
+
+#: Margen sobre el fondo cuando la separacion es pobre (grabacion ruidosa,
+#: musica de fondo, habla continua). Pequeno a proposito: mejor detectar de
+#: menos que cortar donde alguien esta hablando bajito.
+NARROW_MARGIN_DB = 3.0
 #: Donde se pone el corte entre los dos niveles. Mas cerca del fondo que de la
 #: voz, para no comerse el final flojo de las palabras.
 THRESHOLD_POSITION = 0.25
@@ -148,11 +160,16 @@ def choose_threshold_db(levels: np.ndarray) -> tuple[float, float, float]:
     suelo = float(np.percentile(levels, FLOOR_PERCENTILE))
     voz = float(np.percentile(levels, SPEECH_PERCENTILE))
 
-    # Sin separacion clara no hay dos poblaciones que separar: puede ser musica
-    # continua, ruido constante o un audio ya muy comprimido. En ese caso es mas
-    # honesto usar un umbral fijo conservador que inventarse uno.
+    # Sin separacion clara (grabacion ruidosa, musica de fondo, habla continua)
+    # se usa un margen pequeno sobre el fondo.
+    #
+    # Lo que NO se puede hacer es caer a un valor absoluto: los dB de un fichero
+    # dependen de como se grabo, asi que un -32 fijo puede estar por debajo del
+    # fondo y no marcar ni un silencio, o por encima de la voz y comersela. Con
+    # un umbral relativo se detecta de menos en el peor caso, que es el error
+    # barato: quedarse sin recortar es mucho mejor que cortar sobre una palabra.
     if voz - suelo < MIN_SEPARATION_DB:
-        return DEFAULT_NOISE_DB, suelo, voz
+        return suelo + NARROW_MARGIN_DB, suelo, voz
 
     umbral = suelo + (voz - suelo) * THRESHOLD_POSITION
     umbral = max(umbral, suelo + MARGIN_ABOVE_FLOOR_DB)
@@ -166,34 +183,52 @@ def find_silences(
     threshold_db: float,
     min_silence: float,
     duration: float,
+    *,
+    bridge_gap: float = MAX_BRIDGE_GAP,
 ) -> list[SilenceRange]:
-    """Tramos continuos por debajo del umbral que duran lo suficiente."""
+    """Tramos por debajo del umbral que duran lo suficiente.
+
+    Primero se marcan los tramos crudos, despues se puentean los huecos muy
+    cortos y solo al final se aplica la duracion minima. El orden importa: si se
+    filtrase por duracion antes de puentear, una pausa partida por un chasquido
+    se perderia entera, porque ninguno de sus dos trozos llega al minimo.
+    """
     if levels.size == 0:
         return []
 
     bajo = levels < threshold_db
-    minimo_ventanas = max(1, int(round(min_silence / window_seconds)))
 
-    rangos: list[SilenceRange] = []
+    # 1. Tramos crudos.
+    crudos: list[tuple[int, int]] = []
     inicio: int | None = None
     for i, silencioso in enumerate(bajo):
         if silencioso and inicio is None:
             inicio = i
         elif not silencioso and inicio is not None:
-            if i - inicio >= minimo_ventanas:
-                rangos.append(
-                    SilenceRange(
-                        start=round(inicio * window_seconds, 3),
-                        end=round(min(duration, i * window_seconds), 3),
-                    )
-                )
+            crudos.append((inicio, i))
             inicio = None
-    if inicio is not None and len(bajo) - inicio >= minimo_ventanas:
-        rangos.append(
-            SilenceRange(start=round(inicio * window_seconds, 3), end=round(duration, 3))
-        )
+    if inicio is not None:
+        crudos.append((inicio, len(bajo)))
 
-    return rangos
+    # 2. Puentear los huecos cortos.
+    ventanas_puente = max(0, int(round(bridge_gap / window_seconds)))
+    unidos: list[list[int]] = []
+    for a, b in crudos:
+        if unidos and a - unidos[-1][1] <= ventanas_puente:
+            unidos[-1][1] = b
+        else:
+            unidos.append([a, b])
+
+    # 3. Y ahora si, exigir la duracion minima.
+    minimo_ventanas = max(1, int(round(min_silence / window_seconds)))
+    return [
+        SilenceRange(
+            start=round(a * window_seconds, 3),
+            end=round(min(duration, b * window_seconds), 3),
+        )
+        for a, b in unidos
+        if b - a >= minimo_ventanas
+    ]
 
 
 def measure_loudness(audio_path: Path, settings: Settings) -> Loudness:
