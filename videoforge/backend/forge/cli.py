@@ -741,6 +741,30 @@ def identify(
         err_console.print(f"[yellow]aviso:[/yellow] {w}")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Interfaz donde escuchar."),
+    port: int = typer.Option(8000, "--port", help="Puerto."),
+    reload: bool = typer.Option(False, "--reload", help="Recarga al cambiar el codigo."),
+) -> None:
+    """Levanta la API web.
+
+    La interfaz vive aparte, en `videoforge/frontend`: se arranca con
+    `npm run dev` y habla con esta API a traves de su proxy.
+    """
+    try:
+        import uvicorn
+    except ImportError as exc:
+        err_console.print(
+            '[bold red]Error:[/bold red] falta uvicorn. Instalalo con: pip install -e ".[api]"'
+        )
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"API en [bold]http://{host}:{port}[/bold]  ·  documentacion en /docs")
+    console.print("[dim]La interfaz web se arranca aparte desde videoforge/frontend[/dim]")
+    uvicorn.run("forge.api.app:app", host=host, port=port, reload=reload)
+
+
 @app.command("make-fixture")
 def make_fixture_cmd(
     out: Path = typer.Argument(Path("fixture.mp4"), help="Fichero de salida."),

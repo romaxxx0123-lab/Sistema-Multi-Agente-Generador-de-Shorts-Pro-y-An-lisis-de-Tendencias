@@ -11,3 +11,4 @@ assets/fonts/*
 !assets/**/.gitkeep
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo

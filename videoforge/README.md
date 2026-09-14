@@ -18,7 +18,7 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 | F3 | Renderer FFmpeg | hecho |
 | F4 | Motor de saturacion y auto-balanceador | hecho |
 | F5 | Comprension de contenido y b-roll | hecho |
-| F6 | API y UI web | en curso |
+| F6 | API y UI web | hecho |
 
 ## Requisitos
 
@@ -69,6 +69,7 @@ forge plan video.mp4         # decide el montaje (sin renderizar)
 forge render video.mp4       # monta y saca el MP4 de verdad
 forge saturation video.mp4   # mide si esta sobresaturado
 forge identify video.mp4     # dice de que va el video
+forge serve                  # levanta la API web
 forge cache info video.mp4   # que hay cacheado de ese video
 forge cache clear video.mp4  # lo borra
 ```
@@ -382,3 +383,59 @@ explicitamente que senales le faltaron.
 El diseno de CLIP evita el problema habitual: las etiquetas traen su embedding
 **ya calculado**, asi que solo hace falta el codificador de imagen. Sin
 tokenizador, sin PyTorch, un paso de ONNX Runtime por fotograma.
+
+
+## La interfaz web
+
+```bash
+# terminal 1
+cd videoforge/backend && .venv/bin/forge serve
+
+# terminal 2
+cd videoforge/frontend && npm install && npm run dev
+```
+
+Y se abre `http://localhost:5173`. El flujo es el mismo que el de la linea de
+comandos, pero visual: subir, analizar, elegir estilo, revisar el montaje, medir
+la saturacion y renderizar.
+
+Lo que aporta frente a la CLI:
+
+- La **linea de tiempo por pistas**, donde cada bloque se puede pulsar para ver
+  por que esta ahi ("zoom a (58%, 41%): la atencion se concentra ahi").
+- El **medidor de saturacion** con su aguja, el mapa de calor del montaje y el
+  deslizador de intensidad, con el boton de reajuste al lado.
+- **Previsualizacion antes del render final**, para no gastar un encode completo
+  en revisar el montaje.
+
+### La API
+
+`forge serve` levanta una API documentada en `/docs`. Endpoints principales:
+
+| Metodo | Ruta | Que hace |
+|---|---|---|
+| `POST` | `/api/jobs` | Sube un video |
+| `POST` | `/api/jobs/{id}/analyze` | Analiza (en segundo plano) |
+| `GET` | `/api/jobs/{id}/profile` | Que es el video y en que se basa |
+| `POST` | `/api/jobs/{id}/plan` | Decide el montaje |
+| `GET`/`PUT` | `/api/jobs/{id}/edl` | Lee o guarda el montaje editado |
+| `GET` | `/api/jobs/{id}/saturation` | Medida de saturacion |
+| `POST` | `/api/jobs/{id}/balance` | Reajusta sin cambiar la duracion |
+| `POST` | `/api/jobs/{id}/render` | Renderiza |
+| `GET` | `/api/jobs/{id}/result` | Descarga el MP4 |
+| `GET` | `/api/jobs/{id}/events` | Progreso por SSE |
+
+Dos decisiones que importan:
+
+- **El trabajo pesado corre en un hilo aparte.** El analisis y el render llaman
+  a ffmpeg y pueden tardar minutos; hacerlo en el bucle de eventos dejaria la
+  API muda mientras tanto.
+- **El stream de progreso se cierra en cuanto el trabajo queda ocioso**, y el
+  cliente abre uno nuevo al lanzar la siguiente etapa. Es mas simple que
+  mantenerlo abierto entre fases y evita dejar conexiones colgadas en los
+  estados intermedios, que no son finales pero si de reposo.
+
+Cada trabajo persiste en disco: reiniciar el servidor no pierde el analisis, que
+es justo lo que mas cuesta rehacer. Un trabajo que se quedo a medias al apagar
+el servidor se marca como error para poder relanzarlo, en vez de quedarse
+esperando algo que ya no corre.

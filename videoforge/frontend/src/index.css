@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b0d10;
+  --color-panel: #14171c;
+  --color-line: #232830;
+  --color-muted: #8b95a5;
+  --color-accent: #4ea3ff;
+}
+
+body {
+  background: var(--color-ink);
+  color: #e8ecf2;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* La barra de intensidad se usa mucho: merece verse bien en los dos motores. */
+input[type="range"] {
+  accent-color: var(--color-accent);
+}
