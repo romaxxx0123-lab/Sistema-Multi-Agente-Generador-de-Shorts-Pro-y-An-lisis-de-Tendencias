@@ -249,3 +249,89 @@ def test_en_una_digresion_se_agradece_mas_que_en_un_paso() -> None:
     digresion, _ = _role_weight(digresiones, 50.0, pacing)
     paso, _ = _role_weight(pasos, 50.0, pacing)
     assert digresion > paso
+
+
+# -- y que lo que entra encaje en el hueco y en el montaje ----------------
+
+from forge.plan.broll import (  # noqa: E402
+    MIN_USEFUL_SECONDS,
+    _pauses,
+    _snap,
+    fit_asset,
+)
+from forge.assets.types import Asset, AssetKind  # noqa: E402
+
+
+def _clip(segundos: float, ancho: int = 1920, alto: int = 1080) -> Asset:
+    return Asset(
+        id="x", kind=AssetKind.VIDEO, provider="pixabay",
+        width=ancho, height=alto, duration=segundos,
+    )
+
+
+def test_no_se_ensena_mas_de_lo_que_el_material_tiene() -> None:
+    """Un clip de dos segundos en un hueco de cuatro se repetia a la vista."""
+    modo, duracion = fit_asset(_clip(2.0), 4.0, "full", 1920, 1080)
+    assert duracion == 2.0 and modo == "full"
+
+
+def test_un_material_demasiado_corto_no_vale() -> None:
+    assert fit_asset(_clip(0.6), 3.0, "full", 1920, 1080) is None
+
+
+def test_un_clip_vertical_no_se_pone_a_pantalla_completa() -> None:
+    """Recortarlo a 16:9 deja una rendija; en ventanita se ve entero."""
+    modo, _ = fit_asset(_clip(5.0, ancho=1080, alto=1920), 3.0, "full", 1920, 1080)
+    assert modo == "pip"
+
+
+def test_un_material_de_poca_resolucion_tampoco() -> None:
+    """Ampliar 480p a 1080 se ve, y se ve mal."""
+    modo, _ = fit_asset(_clip(5.0, ancho=854, alto=480), 3.0, "full", 1920, 1080)
+    assert modo == "pip"
+    assert fit_asset(_clip(5.0, ancho=320, alto=180), 3.0, "full", 1920, 1080) is None
+
+
+def test_lo_que_encaja_se_queda_como_estaba() -> None:
+    modo, duracion = fit_asset(_clip(8.0), 2.6, "full", 1920, 1080)
+    assert modo == "full" and duracion == 2.6
+
+
+def test_sin_datos_del_material_no_se_inventa_nada() -> None:
+    """Un recorte del propio video no trae dimensiones: se deja pasar."""
+    suelto = Asset(id="s", kind=AssetKind.SELF, provider="self")
+    assert fit_asset(suelto, 2.6, "full", 1920, 1080) == ("full", 2.6)
+
+
+def test_se_entra_por_la_pausa_mas_cercana() -> None:
+    """Aparecer a mitad de palabra es lo que delata una insercion automatica."""
+    from forge.analysis.types import Transcript, TranscriptSegment, Word
+
+    palabras = [
+        Word(start=0.0, end=0.4, text="hola"),
+        Word(start=0.5, end=0.9, text="esto"),
+        Word(start=2.0, end=2.4, text="sigue"),   # pausa de 1,1 s antes
+    ]
+    tr = Transcript(language="es", segments=[
+        TranscriptSegment(start=0.0, end=2.4, text="hola esto sigue", words=palabras)
+    ])
+    pausas = _pauses(tr)
+    assert 0.9 in pausas
+
+    assert _snap(pausas, 1.3) == 0.9, "se va a la pausa"
+    assert _snap(pausas, 30.0) == 30.0, "sin pausa cerca, se queda donde estaba"
+
+
+def test_la_ventanita_tiene_la_forma_del_material() -> None:
+    """Una ventanita cuadrada para un clip vertical vuelve a recortarlo."""
+    from forge.plan.broll import pip_rect
+
+    vertical = pip_rect(_clip(5.0, ancho=1080, alto=1920), 1920, 1080)
+    apaisado = pip_rect(_clip(5.0, ancho=1280, alto=720), 1920, 1080)
+
+    assert vertical.w < apaisado.w
+    # Proporcion respetada: el recuadro del vertical es mas alto que ancho.
+    assert (vertical.w * 1920) / (vertical.h * 1080) < 1.0
+    assert abs((apaisado.w * 1920) / (apaisado.h * 1080) - 16 / 9) < 0.05
+    # Y las dos quedan arriba, lejos de los subtitulos.
+    assert vertical.y < 0.2 and apaisado.y < 0.2

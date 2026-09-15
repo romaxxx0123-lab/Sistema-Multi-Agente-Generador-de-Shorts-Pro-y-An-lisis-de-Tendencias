@@ -448,6 +448,40 @@ resultado se comprueba contra sus propias etiquetas y, si no lleva lo que
 nombras, se descarta. Un hueco no se nota; una imagen equivocada la ve todo el
 mundo.
 
+### Que encaje en el hueco y en el montaje
+
+Saber **cuando** y **que** no basta: tambien hay que meterlo bien. Se decidia
+donde poner material mirando solo lo que se decia, y luego se colocaba lo que
+viniera, con una duracion fija y a pantalla completa, fuera lo que fuese. De
+ahi salian cuatro cosas feas, todas por lo mismo: no se miraba **lo que se ha
+conseguido**.
+
+| lo que llega | lo que pasaba | lo que pasa ahora |
+|---|---|---|
+| un clip de 2 s en un hueco de 4 | se repetia a la vista (`-stream_loop`) | dura lo que tiene: 2 s |
+| un clip vertical | recortado a 16:9 hasta dejar una rendija | va en ventanita, **con su forma** |
+| un clip de 480p a pantalla completa | ampliado al triple, y se nota | va en ventanita; por debajo de un tercio de la altura, no va |
+| menos de 1,2 s de material | un parpadeo | no se pone |
+
+Y dos cosas sobre **como** entra:
+
+- **por una pausa del habla.** Aparecer a mitad de palabra es lo que delata una
+  insercion automatica. El sistema ya sabe donde estan las pausas -- las usa
+  para cortar -- y ahora tambien para entrar y salir.
+- **con un fundido corto** (0,22 s) en vez de un salto seco. Un material que
+  aparece de golpe a pantalla completa se lee como un fallo de reproduccion.
+  Hay un test que lo renderiza y mide cuanto tapa recien entrado y en medio.
+
+La ventanita se coloca **arriba a la derecha**, que es donde no estan los
+subtitulos, y toma la proporcion del material: 243x432 px para un vertical,
+768x432 para un apaisado. Una ventanita cuadrada para un clip vertical volveria
+a recortarlo, que es justo lo que se queria evitar.
+
+Y una regla de prioridad, cuando el material y un recuadro caen en el mismo
+sitio: **gana el recuadro**. Los dos se colocan por la misma senal -- estas
+nombrando algo -- asi que chocan a menudo; senalar el boton que nombras es
+ensenar, y el material de apoyo solo ilustra y puede esperar dos segundos.
+
 ### De donde sale el material
 
 | Proveedor | Necesita | Notas |

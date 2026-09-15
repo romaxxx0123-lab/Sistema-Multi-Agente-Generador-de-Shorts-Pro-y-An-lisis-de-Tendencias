@@ -58,13 +58,28 @@ def _punch(start=11.0, end=13.0) -> PunchInEffect:
 # -- debajo de un b-roll no se ve nada ------------------------------------
 
 
-def test_un_recuadro_debajo_de_un_broll_sobra() -> None:
+def test_entre_un_recuadro_y_un_broll_gana_el_recuadro() -> None:
+    """Senalar el boton que nombras es ensenar; el material solo ilustra.
+
+    Los dos se colocan por la misma senal -- estas nombrando algo -- asi que
+    chocan a menudo. El material de apoyo puede esperar dos segundos; lo que no
+    puede es taparte justo lo que estas explicando.
+    """
     edl = _edl()
     edl.effects = [_broll(), _callout()]
 
     notas = resolve(edl)
-    assert [e.kind for e in edl.effects] == [EffectKind.BROLL]
-    assert notas and "b-roll" in notas[0]
+    assert [e.kind for e in edl.effects] == [EffectKind.CALLOUT]
+    assert notas and "recuadro" in notas[0]
+
+
+def test_y_el_zoom_que_habia_debajo_de_ese_broll_se_salva() -> None:
+    """Si el b-roll se va, lo que tapaba deja de estar tapado."""
+    edl = _edl()
+    edl.effects = [_broll(), _callout(), _punch()]
+
+    resolve(edl)
+    assert sorted(e.id for e in edl.effects) == ["ca0", "pu0"]
 
 
 def test_y_un_zoom_tambien() -> None:
@@ -158,17 +173,32 @@ def test_sin_conflicto_no_se_quita_nada() -> None:
 def test_un_efecto_bloqueado_no_se_quita() -> None:
     """Si alguien lo fijo a mano, manda esa decision."""
     edl = _edl()
-    marca = _callout()
-    marca.locked = True
-    edl.effects = [_broll(), marca]
+    zoom = _punch()
+    zoom.locked = True
+    edl.effects = [_broll(), zoom]
 
     resolve(edl)
     assert len(edl.effects) == 2
 
 
+def test_y_si_el_bloqueado_es_el_broll_el_recuadro_cede() -> None:
+    """Debajo no se veria de todas formas, asi que se quita en vez de dejarlo."""
+    edl = _edl()
+    material = _broll()
+    material.locked = True
+    edl.effects = [material, _callout()]
+
+    resolve(edl)
+    assert [e.id for e in edl.effects] == ["br0"]
+
+
 def test_la_nota_dice_cuantos_y_por_que() -> None:
     edl = _edl()
-    edl.effects = [_broll(), _callout(), _punch()]
+    edl.effects = [
+        _broll(), _punch(),
+        KenBurnsEffect(id="kb0", start=11.0, end=13.0,
+                       rect_start=Rect(), rect_end=Rect.centered(0.5, 0.5, 1.06)),
+    ]
 
     notas = resolve(edl)
     assert "2" in notas[0] and "no se verian" in notas[0]

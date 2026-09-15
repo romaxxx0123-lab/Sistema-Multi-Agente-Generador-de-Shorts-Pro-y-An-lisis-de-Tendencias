@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from ..analysis.types import Transcript, Word
 from ..assets.providers import BrollProvider, search_all, tokenize
 from ..assets.types import Asset, AssetBundle, AssetQuery
-from .edl import EDL, BrollEffect
+from .edl import EDL, BrollEffect, Rect
 from .styles import BrollRules, budget
 
 #: Duracion maxima de la ventana en la que se busca de que se esta hablando.
@@ -175,6 +175,114 @@ def _respects_spacing(candidato: float, puestos: list[float], min_gap: float) ->
     return all(abs(candidato - otro) >= min_gap for otro in puestos)
 
 
+# ---------------------------------------------------------------------------
+# Que el material quepa en el hueco, y el hueco en lo que se dice
+# ---------------------------------------------------------------------------
+
+#: Lo minimo que puede durar un material para que se lea como una decision y
+#: no como un parpadeo.
+MIN_USEFUL_SECONDS = 1.2
+#: Cuanto se busca una pausa del habla para entrar o salir. Entrar a mitad de
+#: palabra es lo que hace que una insercion automatica se note.
+PAUSE_SNAP = 1.1
+#: Que hueco entre dos palabras cuenta como pausa.
+MIN_PAUSE = 0.16
+#: Altura minima del material respecto al montaje para ponerlo a pantalla
+#: completa. Un clip de 480p ampliado a 1080 se ve, y se ve mal.
+MIN_FULL_HEIGHT = 0.75
+#: Y por debajo de esto no vale ni en ventanita.
+MIN_ANY_HEIGHT = 0.35
+#: Diferencia de forma que ya no se puede recortar sin perder casi todo: un
+#: clip vertical dentro de un montaje apaisado.
+MAX_ASPECT_MISMATCH = 0.34
+#: Alto de la ventanita cuando el material no da para pantalla completa, y
+#: donde se apoya: arriba a la derecha, que es donde no estan los subtitulos.
+PIP_HEIGHT = 0.40
+PIP_TOP = 0.07
+PIP_RIGHT = 0.95
+#: Ancho maximo, para que una ventanita no acabe siendo media pantalla.
+PIP_MAX_WIDTH = 0.46
+
+
+def pip_rect(asset: Asset, render_w: int, render_h: int) -> Rect:
+    """La ventanita, con **la forma del material** y no con una fija.
+
+    Una ventanita cuadrada para un clip vertical vuelve a recortarlo, que es
+    justo lo que se queria evitar al no ponerlo a pantalla completa. Se fija el
+    alto y el ancho sale de su proporcion.
+    """
+    forma = asset.aspect or (render_w / max(render_h, 1))
+    ancho = PIP_HEIGHT * render_h * forma / max(render_w, 1)
+    ancho = min(PIP_MAX_WIDTH, max(0.12, ancho))
+    return Rect(
+        x=round(max(0.02, PIP_RIGHT - ancho), 4),
+        y=PIP_TOP,
+        w=round(ancho, 4),
+        h=PIP_HEIGHT,
+    )
+
+
+def _pauses(transcript: Transcript) -> list[float]:
+    """Instantes del original en los que la voz se para un momento."""
+    palabras = transcript.words
+    salida = [
+        round(anterior.end, 3)
+        for anterior, siguiente in zip(palabras, palabras[1:])
+        if siguiente.start - anterior.end >= MIN_PAUSE
+    ]
+    if palabras:
+        salida.append(round(palabras[-1].end, 3))
+    return salida
+
+
+def _snap(instantes: list[float], t: float, ventana: float = PAUSE_SNAP) -> float:
+    """Mueve un instante a la pausa mas cercana, si hay alguna cerca."""
+    cerca = [p for p in instantes if abs(p - t) <= ventana]
+    return min(cerca, key=lambda p: abs(p - t)) if cerca else t
+
+
+def fit_asset(
+    asset: Asset, seconds: float, mode: str, render_w: int, render_h: int
+) -> tuple[str, float] | None:
+    """Como entra **ese** material en el hueco, o `None` si no entra.
+
+    Es la parte que faltaba: se decidia donde poner material mirando solo lo
+    que se decia, y luego se metia lo que viniera con una duracion fija y a
+    pantalla completa, fuera lo que fuese. Un clip de dos segundos en un hueco
+    de cuatro se repetia a la vista; uno vertical se recortaba hasta dejar una
+    rendija; uno de 480p se ampliaba al triple.
+
+    Aqui se mira lo que **se ha conseguido** y se decide en consecuencia:
+    cuanto dura de verdad, y si da para tapar la pantalla o solo para una
+    ventanita.
+    """
+    # 1. Nunca mas de lo que el material tiene: repetirse se ve.
+    if asset.duration > 0:
+        seconds = min(seconds, asset.duration)
+    if seconds < MIN_USEFUL_SECONDS:
+        return None
+
+    # 2. La forma y el tamano deciden si puede tapar el fotograma.
+    if asset.height <= 0 or render_h <= 0:
+        return mode, seconds
+
+    alto_relativo = asset.height / render_h
+    if alto_relativo < MIN_ANY_HEIGHT:
+        return None
+
+    forma_montaje = render_w / max(render_h, 1)
+    desajuste = (
+        abs(asset.aspect - forma_montaje) / forma_montaje if asset.aspect else 0.0
+    )
+    if mode == "full" and (
+        alto_relativo < MIN_FULL_HEIGHT or desajuste > MAX_ASPECT_MISMATCH
+    ):
+        # No da para pantalla completa, pero en una ventanita se ve bien: ahi
+        # ni se nota la ampliacion ni hay que recortarlo hasta deformarlo.
+        return "pip", seconds
+    return mode, seconds
+
+
 #: Papeles en los que tapar la pantalla es justo lo que no hay que hacer. En un
 #: aviso ("ojo, si no haces esto no funciona") lo que se ve es lo que hay que
 #: mirar, y taparlo con una imagen de archivo es el peor momento posible.
@@ -239,12 +347,22 @@ def plan_broll(
     #: ver dos veces el mismo recurso canta mas que no poner ninguno
     usados: set[str] = set()
 
+    # Las pausas del habla, ya en tiempo de montaje: es donde se puede entrar y
+    # salir sin partir una palabra.
+    pausas = [
+        t for t in (edl.source_to_timeline(p) for p in _pauses(transcript))
+        if t is not None
+    ]
+
     for i, momento in enumerate(momentos):
         duracion = min(rules.default_seconds, momento.end - momento.start)
         if duracion < 1.0:
             continue
 
-        inicio = momento.start
+        # Se entra en la pausa mas cercana: un material que aparece a mitad de
+        # palabra se lee como un fallo, y el hueco entre dos frases es
+        # exactamente donde un editor lo mete.
+        inicio = _snap(pausas, momento.start)
         fin = inicio + duracion
         if fin > edl.duration:
             continue
@@ -260,14 +378,6 @@ def plan_broll(
         if peso_papel <= 0.0:
             continue
         if not _respects_spacing(inicio, instantes, rules.min_gap):
-            continue
-
-        # A diferencia de un zoom, un b-roll a pantalla completa NO tiene que
-        # evitar los cortes: los tapa. En una guia muy recortada los cortes
-        # caen cada pocos segundos, asi que exigir que no los cruce dejaria el
-        # montaje sin un solo material de apoyo. En modo PiP si se nota, y ahi
-        # si conviene esquivarlos.
-        if rules.mode != "full" and any(inicio < c < fin for c in cortes):
             continue
 
         consulta = AssetQuery(
@@ -288,7 +398,39 @@ def plan_broll(
         if not frescos:
             continue
 
-        asset: Asset = frescos[0]
+        # Y de lo que se ha conseguido, el primero que **quepa**: la relevancia
+        # ordena, pero un material que no da para el hueco no vale por muy
+        # relevante que sea.
+        encaje = None
+        for candidato in frescos:
+            encaje = fit_asset(
+                candidato, duracion, rules.mode, edl.render.width, edl.render.height
+            )
+            if encaje is not None:
+                asset = candidato
+                break
+        if encaje is None:
+            continue
+        modo, duracion_real = encaje
+
+        # La salida tambien busca pausa, y nunca se alarga mas de lo pedido.
+        fin = _snap(pausas, inicio + duracion_real, PAUSE_SNAP / 2)
+        fin = min(max(fin, inicio + MIN_USEFUL_SECONDS), inicio + duracion_real + 0.4)
+        if fin > edl.duration:
+            fin = inicio + duracion_real
+        if fin - inicio < MIN_USEFUL_SECONDS:
+            continue
+
+        # A diferencia de un zoom, un b-roll a pantalla completa NO tiene que
+        # evitar los cortes: los tapa. En una guia muy recortada los cortes
+        # caen cada pocos segundos, asi que exigir que no los cruce dejaria el
+        # montaje sin un solo material de apoyo. En ventanita si se nota, y ahi
+        # si conviene esquivarlos. Se mira el modo **real**, que lo decide el
+        # material y no el estilo: un clip vertical acaba en ventanita aunque
+        # el estilo pidiera pantalla completa.
+        if modo != "full" and any(inicio < c < fin for c in cortes):
+            continue
+
         usados.add(asset.id)
         bundle.add(asset)
 
@@ -297,7 +439,11 @@ def plan_broll(
             start=round(inicio, 3),
             end=round(fin, 3),
             asset_id=asset.id,
-            mode=rules.mode,
+            mode=modo,
+            rect=(
+                pip_rect(asset, edl.render.width, edl.render.height)
+                if modo != "full" else Rect()
+            ),
             query=momento.query,
             # Lo que aporta depende de lo concreto que sea lo que se nombra y de
             # lo bien que encaje el material encontrado.
@@ -305,18 +451,23 @@ def plan_broll(
                 min(1.0, (0.45 + momento.score * 0.35 + asset.relevance * 0.2) * peso_papel),
                 3,
             ),
-            cost_weight=0.65 if rules.mode == "full" else 0.45,
+            cost_weight=0.65 if modo == "full" else 0.45,
             rationale=(
                 f"material de apoyo en {inicio:.0f}s porque ahi hablas de "
-                f"'{momento.query}'{f' ({papel})' if papel else ''} · {asset.reason}"
+                f"'{momento.query}'{f' ({papel})' if papel else ''}"
+                f"{'' if modo == 'full' else ' (en ventanita: no da para mas)'}"
+                f" · {asset.reason}"
             ),
         )
 
-        cabe = cobertura + duracion <= tope_cobertura
+        # La cobertura se cuenta con lo que de verdad va a durar, no con lo
+        # que se pidio: el material manda sobre el plan.
+        real = fin - inicio
+        cabe = cobertura + real <= tope_cobertura
         if len(elegidos) < maximo and cabe:
             elegidos.append(efecto)
             instantes.append(inicio)
-            cobertura += duracion
+            cobertura += real
         elif len(reservas) < maximo + 3:
             reservas.append(efecto)
             instantes.append(inicio)

@@ -235,12 +235,29 @@ def _broll_branch(
             f"crop={ancho}:{alto}"
         )
 
+    # Entra y sale con un fundido corto. Un material que aparece de golpe a
+    # pantalla completa se lee como un fallo de reproduccion; dos decimas
+    # bastan para que se lea como una decision. Va sobre el alfa, que es lo que
+    # mezcla el `overlay`, y **antes** del desplazamiento temporal: los tiempos
+    # del fundido son los de la propia rama, que empieza en cero.
+    fundido = min(BROLL_FADE, max(0.0, effect.duration / 4))
+    fades = ""
+    if fundido > 0.02:
+        fades = (
+            f",fade=t=in:st=0:d={fundido:.3f}:alpha=1"
+            f",fade=t=out:st={max(0.0, effect.duration - fundido):.3f}"
+            f":d={fundido:.3f}:alpha=1"
+        )
+
     cadena = (
-        f"{origen},{encaje},format=yuva420p,setsar=1,fps={fps:.6f},"
+        f"{origen},{encaje},format=yuva420p,setsar=1,fps={fps:.6f}{fades},"
         f"setpts=PTS+{effect.start:.4f}/TB{label}"
     )
     return cadena, entrada
 
+
+#: Cuanto tarda un material de apoyo en entrar y en salir.
+BROLL_FADE = 0.22
 
 #: Cuanto tarda el recuadro en aparecer y en irse. Un recuadro que se enciende
 #: de golpe se lee como un fallo de reproduccion; un cuarto de segundo basta

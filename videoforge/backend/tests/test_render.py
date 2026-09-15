@@ -367,6 +367,42 @@ def test_el_b_roll_acaba_en_la_imagen(
     assert float(np.abs(fuera_con - fuera_sin).mean()) < 5, "afecta fuera de su tramo"
 
 
+def test_el_b_roll_entra_y_sale_con_un_fundido(
+    base_sin_zoom, settings: Settings, tmp_path: Path
+) -> None:
+    """Aparecer de golpe a pantalla completa se lee como un fallo.
+
+    Se mide cuanto tapa el material en tres instantes: recien entrado, en medio
+    y recien salido. En los bordes tiene que tapar **menos** que en el centro,
+    que es lo que significa que hay fundido.
+    """
+    from forge.assets.types import Asset, AssetBundle, AssetKind
+    from forge.plan.edl import BrollEffect
+
+    base, sin_path = base_sin_zoom
+    bundle = AssetBundle()
+    bundle.add(
+        Asset(id="self-y", kind=AssetKind.SELF, provider="self",
+              source_start=10.6, source_end=12.4)
+    )
+    con = base.model_copy(deep=True)
+    con.effects.append(
+        BrollEffect(id="bry", start=1.0, end=4.0, asset_id="self-y",
+                    mode="full", rationale="prueba")
+    )
+    con_path = tmp_path / "broll-fade.mp4"
+    render(con, con_path, settings, assets=bundle)
+
+    def tapa(t: float) -> float:
+        a = _frame_exacto(sin_path, t, settings).astype(np.float32)
+        b = _frame_exacto(con_path, t, settings).astype(np.float32)
+        return float(np.abs(b - a).mean())
+
+    entrando, medio = tapa(1.05), tapa(2.5)
+    assert entrando < medio * 0.8, f"entra de golpe: {entrando:.1f} vs {medio:.1f}"
+    assert medio > 10, "el material no tapa nada en medio"
+
+
 def test_el_b_roll_no_cambia_la_duracion(
     base_sin_zoom, settings: Settings, tmp_path: Path
 ) -> None:

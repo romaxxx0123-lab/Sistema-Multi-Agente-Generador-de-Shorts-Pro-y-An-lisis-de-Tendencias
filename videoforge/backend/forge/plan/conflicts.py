@@ -26,8 +26,10 @@ from __future__ import annotations
 from .edl import EDL, BaseEffect, BrollEffect, EffectKind
 
 #: Efectos que trabajan sobre el video base y por tanto desaparecen debajo de
-#: un b-roll a pantalla completa.
-UNDER_BROLL = (EffectKind.CALLOUT, EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
+#: un b-roll a pantalla completa. **El recuadro no esta aqui**: cuando chocan,
+#: el que sobra es el b-roll. Senalar el boton que estas nombrando es ensenar;
+#: un material de apoyo solo ilustra, y puede esperar dos segundos.
+UNDER_BROLL = (EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
 #: Los que son movimiento de camara: dos a la vez es uno de mas.
 MOVIMIENTO = (EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
 #: Lo que puede acompanar un sonido. Sin uno de estos delante, el sonido suena
@@ -69,7 +71,22 @@ def find_conflicts(edl: EDL) -> list[tuple[BaseEffect, str]]:
             ya.add(efecto.id)
             sobran.append((efecto, motivo))
 
-    brolls = _full_brolls(edl)
+    # Primero, el b-roll que tapa un recuadro: ahi el que sobra es el b-roll,
+    # asi que hay que resolverlo **antes** de mirar que queda debajo de que.
+    marcas = [e for e in edl.effects if e.kind is EffectKind.CALLOUT]
+    for efecto in _full_brolls(edl):
+        choca = next((m for m in marcas if _solapan(m, efecto)), None)
+        if choca is None:
+            continue
+        if efecto.locked:
+            # Si alguien fijo el b-roll a mano, manda esa decision y el que se
+            # va es el recuadro: debajo no se veria de todas formas.
+            marcar(choca, f"queda debajo del b-roll de {efecto.start:.0f}s")
+        else:
+            marcar(efecto, "taparia un recuadro, que es lo que estas ensenando")
+
+    # Los que quedan tapan de verdad, y lo que este debajo no se ve.
+    brolls = [b for b in _full_brolls(edl) if b.id not in ya]
     for efecto in edl.effects:
         if efecto.kind in UNDER_BROLL:
             tapa = next((b for b in brolls if _solapan(b, efecto)), None)
@@ -95,7 +112,7 @@ def find_conflicts(edl: EDL) -> list[tuple[BaseEffect, str]]:
 
     # Un rotulo de capitulo abre una parte del video: lo que sobra es el b-roll.
     cartas = [e for e in edl.effects if e.kind is EffectKind.TEXT_CARD]
-    for efecto in brolls:
+    for efecto in _full_brolls(edl):
         choca = next((c for c in cartas if _solapan(c, efecto)), None)
         if choca is not None:
             marcar(efecto, "coincide con el rotulo de un capitulo")
@@ -137,13 +154,17 @@ def conflicts_with(edl: EDL, candidato: BaseEffect) -> str:
         ]
         if otros:
             return "ahi ya hay un movimiento de camara"
+    if candidato.kind is EffectKind.CALLOUT:
+        tapa = next((b for b in _full_brolls(edl) if _solapan(b, candidato)), None)
+        if tapa is not None:
+            return f"queda debajo del b-roll de {tapa.start:.0f}s"
     if isinstance(candidato, BrollEffect) and candidato.mode == "full":
-        cartas = [
-            e for e in edl.effects
-            if e.kind is EffectKind.TEXT_CARD and _solapan(e, candidato)
-        ]
-        if cartas:
-            return "coincide con el rotulo de un capitulo"
+        for kind, motivo in (
+            (EffectKind.TEXT_CARD, "coincide con el rotulo de un capitulo"),
+            (EffectKind.CALLOUT, "taparia un recuadro"),
+        ):
+            if any(e.kind is kind and _solapan(e, candidato) for e in edl.effects):
+                return motivo
     return ""
 
 
