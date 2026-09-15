@@ -31,6 +31,7 @@ import re
 import unicodedata
 from pathlib import Path
 
+from .on_screen import locate
 from .text import has_present_anchor, is_habitual, is_negated
 from dataclasses import dataclass
 from enum import Enum
@@ -63,6 +64,9 @@ class SpeechCue:
     strength: float = 0.5
     #: zona de la pantalla, si llegaste a decir cual
     region: tuple[float, float] | None = None
+    #: el texto de pantalla que estabas nombrando, cuando se pudo leer. Es lo
+    #: que convierte "senala hacia arriba" en "senala el boton Guardar".
+    target: str = ""
 
     @property
     def mid(self) -> float:
@@ -75,7 +79,9 @@ class SpeechCue:
             return f'{self.kind.value}: avisas con "{self.phrase}"'
         if self.kind is CueKind.SKIP:
             return f'{self.kind.value}: dices "{self.phrase}"'
-        if self.region:
+        if self.target:
+            donde = f' sobre "{self.target}"'
+        elif self.region:
             donde = f" hacia ({self.region[0]:.0%}, {self.region[1]:.0%})"
         if self.phrase:
             return f'{self.kind.value}{donde}: dices "{self.phrase}"'
@@ -95,6 +101,25 @@ _DEIXIS = (
     r"(lo|la)\s+(ves|veis)\b",
 )
 
+#: Formulas que **nombran** lo que se senala en vez de decir donde esta: "donde
+#: pone Ajustes", "dale a Guardar". Van aparte porque son las que se pueden
+#: resolver contra el texto de la pantalla, y entonces no se apunta a un tercio
+#: de la imagen sino al boton exacto.
+_NOMBRA = (
+    r"\b(donde|que)\s+(pone|pones|dice|dices)\b",
+    r"\b(el|la|los|las)\s+(boton|botones|menu|campo|casilla|icono|opcion"
+    r"|opciones|pestana|apartado|desplegable|cuadro)\s+(de|que)\b",
+    r"\b(dale|dadle|dele|le damos|le doy|le das)\s+(a|al)\b",
+    r"\b(pincha|pinchad|pincho|pinchamos|pulsa|pulsad|pulso|pulsamos|clica"
+    r"|clicad|haz clic|haced clic|hacemos clic)\s+(en|sobre|el|la)\b",
+    r"\b(busca|buscad|buscamos|busco)\s+(el|la|los|las)\b",
+)
+
+#: Y nombrar a secas, sin formula de senalar delante: "esto se llama Ajustes".
+#: Solo cuenta si lo nombrado **se lee en pantalla**; sin esa confirmacion es
+#: una frase cualquiera y no dirige la mirada a ningun sitio.
+_SOLO_NOMBRE = r"\b(se llama|pone|dice|llamado|titulado)\b"
+
 #: Nombrar la zona a secas, sin formula de senalar delante.
 _SOLO_ZONA = r"\b(arriba|abajo|izquierda|derecha|esquina)\b"
 
@@ -110,6 +135,14 @@ REGION_WINDOW = 10
 
 #: Ventana que se le da al momento de senalar, en segundos.
 POINT_SECONDS = 1.6
+
+#: Cuanto pueden separarse la zona que dices y el sitio donde el OCR leyo lo que
+#: nombras antes de considerar que se contradicen. Las zonas son gruesas (un
+#: tercio de pantalla), asi que el margen es amplio: esto salta cuando dices
+#: "arriba a la izquierda" y la palabra se leyo abajo a la derecha, no cuando
+#: apuntas un poco desviado. Ahi gana lo que dijiste: una lectura de OCR
+#: equivocada colocaria el zoom en el sitio contrario de la pantalla.
+MAX_DISAGREEMENT = 0.35
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +413,10 @@ def _normalize(texto: str) -> str:
     return re.sub(r"[^a-z0-9\s]", " ", limpio)
 
 
+def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+
 def _find_region(palabras: list[str], desde: int) -> tuple[float, float] | None:
     """La zona de pantalla que se nombra cerca de esa posicion, si la hay."""
     ventana = palabras[max(0, desde - 2) : desde + REGION_WINDOW]
@@ -392,8 +429,15 @@ def _find_region(palabras: list[str], desde: int) -> tuple[float, float] | None:
     return (x if x is not None else 0.5, y if y is not None else 0.5)
 
 
-def find_pointing(transcript: "Transcript | None") -> list[SpeechCue]:
-    """Momentos en los que senalas algo de la pantalla."""
+def find_pointing(
+    transcript: "Transcript | None", screen_text=None
+) -> list[SpeechCue]:
+    """Momentos en los que senalas algo de la pantalla.
+
+    Con `screen_text` (las lecturas de OCR) se resuelve ademas **que** se
+    senala: si lo que nombras esta escrito en pantalla, la senal apunta a ese
+    sitio exacto en vez de al tercio de la imagen que dijiste.
+    """
     if transcript is None:
         return []
 
@@ -408,9 +452,9 @@ def find_pointing(transcript: "Transcript | None") -> list[SpeechCue]:
         # ninguna formula: "lo tienes arriba a la derecha" dirige la mirada
         # igual que "mira arriba a la derecha". Cuenta menos, porque tambien se
         # dice de pasada, pero no contarlo era perder la senal entera.
-        marcas = list(_DEIXIS)
-        if not any(re.search(pat, texto) for pat in _DEIXIS):
-            marcas = [_SOLO_ZONA]
+        marcas = list(_DEIXIS) + list(_NOMBRA)
+        if not any(re.search(pat, texto) for pat in marcas):
+            marcas = [_SOLO_ZONA, _SOLO_NOMBRE]
 
         for patron in marcas:
             for encaje in re.finditer(patron, texto):
@@ -423,17 +467,47 @@ def find_pointing(transcript: "Transcript | None") -> list[SpeechCue]:
                 solo_zona = patron is _SOLO_ZONA
                 if solo_zona and region is None:
                     continue
+
+                # Lo que se nombra, si esta escrito en pantalla. Manda sobre la
+                # zona dicha: "el boton de guardar, arriba" apunta al boton, no
+                # al tercio de arriba.
+                fin_formula = texto[: encaje.end()].count(" ")
+                encontrado = locate(frase.words, fin_formula, screen_text)
+                nombre = ""
+                if encontrado is not None:
+                    leido, donde = encontrado
+                    if region is not None and _distance(region, donde) > MAX_DISAGREEMENT:
+                        # Dices una zona y la palabra se leyo en la contraria.
+                        # Uno de los dos se equivoca y no se puede saber cual,
+                        # asi que se queda lo que dijiste, que es lo que se
+                        # tenia antes de mirar la pantalla.
+                        pass
+                    else:
+                        nombre, region = leido, donde
+
+                if patron is _SOLO_NOMBRE and not nombre:
+                    continue
+
+                if nombre:
+                    # Nombrarlo sin senalarlo dirige menos que senalarlo, pero
+                    # se sabe exactamente de que se habla.
+                    fuerza = 0.7 if patron is _SOLO_NOMBRE else 0.98
+                elif solo_zona:
+                    fuerza = 0.45
+                else:
+                    # Senalar y ademas decir donde es una senal mucho mas fuerte
+                    # que senalar a secas.
+                    fuerza = 0.9 if region else 0.55
+
                 salida.append(
                     SpeechCue(
                         kind=CueKind.POINT,
                         start=round(palabra.start, 3),
                         end=round(palabra.start + POINT_SECONDS, 3),
                         phrase=encaje.group(0),
-                        # Senalar y ademas decir donde es una senal mucho mas
-                        # fuerte que senalar a secas; nombrar la zona sin
-                        # senalar, la mas floja de las tres.
-                        strength=0.45 if solo_zona else (0.9 if region else 0.55),
+                        strength=fuerza,
                         region=region,
+                        target=nombre,
                     )
                 )
     return _dedupe(salida)
@@ -554,14 +628,16 @@ def find_all(
     transcript: "Transcript | None",
     audio: "AudioAnalysis | None" = None,
     user_dir=None,
+    screen_text=None,
 ) -> list[SpeechCue]:
     """Todas las senales de lo que se dice, ordenadas en el tiempo.
 
-    Con `user_dir` se leen ademas tus propias formulas de `frases.json`.
+    Con `user_dir` se leen ademas tus propias formulas de `frases.json`, y con
+    `screen_text` lo que senalas se ata al texto que hay en pantalla.
     """
     mias = load_user_phrases(user_dir)
     todas = (
-        find_pointing(transcript)
+        find_pointing(transcript, screen_text)
         + find_emphasis(transcript, audio)
         + find_retakes(transcript)
         + find_waits(transcript, mias)

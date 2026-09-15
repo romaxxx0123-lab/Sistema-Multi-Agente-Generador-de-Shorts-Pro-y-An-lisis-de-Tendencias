@@ -488,18 +488,19 @@ Es la pregunta correcta, y la primera vez que se midio la respuesta era **que
 si**: de cincuenta cosas que diria de verdad una persona grabando una guia,
 reconocia **21**. Un 42%. Buscaba frases literales.
 
-Buscando **raices de palabra** en vez de frases sube a **49 de 50**:
+Buscando **raices de palabra** en vez de frases, y atando lo que se nombra a
+lo que pone en pantalla, sube a **50 de 50**:
 
 ```
                 antes   ahora
 esperas          17%     100%
 saltos           12%     100%
 avisos           40%      90%
-senalar          88%      88%
+senalar          88%     100%
 pasos            57%     100%
 cierres          60%     100%
 -------------------------------
-TOTAL            42%      98%
+TOTAL            42%     100%
 ```
 
 "Tarda", "tardar", "tardando", "tardara" son la misma cosa, y ahi se iba la
@@ -577,11 +578,6 @@ que se va a romper.
 Esto no **entiende** lo que dices, reconoce **como** lo dices, y eso pone un
 techo que no sube a base de anadir patrones. Lo que falla hoy:
 
-- **Senalar algo por su nombre y no por su sitio.** *"Justo donde pone
-  ajustes"* es la unica frase que sigue sin reconocer de las cincuenta: para
-  apuntar ahi hay que leer la pantalla y buscar la palabra "ajustes", no
-  interpretar la frase. El OCR ya lee el texto de pantalla; falta atarlo a lo
-  que se dice, y es lo siguiente que toca.
 - **Decirlo de una forma que no se parece a ninguna.** Cada parafrasis nueva que
   se reconoce es un patron mas escrito a mano. *"Le doy y me voy a por un cafe"*
   se reconoce hoy porque irse a por un cafe esta en la lista; *"me voy a fumar"*
@@ -611,6 +607,32 @@ la zona:
 
 Y ahi va el zoom. Si dices "a la derecha" pero no la altura, la altura se queda
 en el centro: no se inventa la mitad que no dijiste.
+
+Pero la forma normal de senalar algo en una guia no es por su sitio, es **por su
+nombre**: *"justo donde pone Ajustes"*, *"dale al boton de Guardar"*, *"pincha
+en Exportar"*. Eso no lo resuelve ninguna tabla de zonas, y si lo resuelve el
+OCR, que ya lee lo que pone en pantalla y **donde**:
+
+```
+"pulsa este boton de la izquierda"        -> (22%, 50%)   la zona que dices
+"justo donde pone Ajustes"                -> (84%, 91%)   el boton exacto
+```
+
+La diferencia en el video montado es un zoom al tercio correcto de la pantalla
+frente a un zoom al elemento. Tres cosas que hace por el lado seguro:
+
+- si lo que nombras **no** esta escrito en pantalla, se queda como antes: la
+  senal existe, pero sin sitio. No se inventa uno;
+- si esta escrito en **dos** sitios, tampoco se elige: apuntar al equivocado es
+  peor que no apuntar;
+- y si lo que dices y lo que se lee **se contradicen** -- dices "arriba a la
+  izquierda" y la palabra se leyo abajo a la derecha -- gana lo que dices. Uno
+  de los dos se equivoca y no hay forma de saber cual, pero el OCR se equivoca
+  mas que tu, y mandar el zoom al lado contrario de la pantalla es el peor
+  resultado posible.
+
+Sin Tesseract instalado no cambia nada de lo de antes: se sigue senalando por
+zona.
 
 **Enfatizas**, por dos vias a la vez. Las palabras ("esto es clave", "sobre
 todo") y el **nivel de voz**, que ya se medía para encontrar los silencios y se
@@ -691,6 +713,15 @@ ninguno. En concreto **no** se senala cuando:
 
 Si el boton tiene dos palabras ("Configuracion avanzada") se agrupan en un solo
 recuadro, no en dos medio recuadros.
+
+**Nombrar no es senalar**, y la diferencia importa cuando no caben todos. Que
+digas una palabra que esta escrita en pantalla solo prueba que ese objeto
+existe; decir *"dale al boton de Guardar"* pide que lo miren. Los dos valen un
+recuadro, pero el estilo deja sitio para unos pocos por minuto, y antes se los
+quedaban los primeros del video por el simple hecho de ir antes. Ahora se
+reparten por valor, asi que sobreviven los que senalas. En el ejemplo de los
+tests, en treinta segundos cabe uno: antes salia el que nombras de pasada,
+ahora sale el que senalas.
 
 Depende de Tesseract, que es libre pero externo. Sin el, el resto del montaje
 funciona igual y simplemente no salen recuadros. Con `--no-ocr` se apagan.

@@ -243,7 +243,7 @@ def build_edl(
     # Recuadros sobre lo que se nombra. Necesita OCR con posiciones; sin
     # Tesseract la lista viene vacia y aqui no pasa nada.
     marcas, marcas_reserva = plan_callouts(
-        edl, analysis.transcript, analysis.screen_text, style.callouts
+        edl, analysis.transcript, analysis.screen_text, style.callouts, analysis.cues
     )
     efectos += marcas
     reservas += marcas_reserva
