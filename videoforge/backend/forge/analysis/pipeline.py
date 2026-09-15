@@ -287,7 +287,7 @@ class AnalysisRun:
             # Lo que pides al montaje sin saberlo: donde senalas, que enfatizas
             # y donde te corriges. Sale del transcript y de la curva de nivel
             # que ya se calculo, asi que no cuesta ninguna pasada mas.
-            cues=find_all(transcript, audio),
+            cues=find_all(transcript, audio, self.settings.cache_dir.parent),
         )
 
 

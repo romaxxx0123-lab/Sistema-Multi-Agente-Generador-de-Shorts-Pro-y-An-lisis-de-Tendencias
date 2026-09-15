@@ -26,8 +26,10 @@ antes.
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
+from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -165,29 +167,44 @@ RETAKE_MAX_SECONDS = 3.5
 #: Avisos de que ahora viene una espera. Lo que sigue no es tiempo muerto que
 #: haya que tirar: es un proceso que hay que **ver pasar**, solo que deprisa.
 _ESPERAS = (
-    (r"(esto|eso) (va a |suele )?(tardar|tarda)\b", 0.9),
-    (r"mientras (carga|se instala|se copia|termina|acaba)\b", 0.9),
-    (r"(esperamos|hay que esperar|toca esperar)\b", 0.9),
-    (r"(esto|eso) (va|tarda) (un poco |bastante )?(lento|rato)\b", 0.85),
-    (r"(se tarda|tarda un rato|tarda lo suyo)\b", 0.9),
-    (r"(en lo que|mientras) (carga|instala|descarga)\b", 0.8),
+    # Cualquier forma de "tardar". La raiz cubre tarda, tardar, tardando,
+    # tardara... que es donde se iba la mitad de la cobertura con frases fijas.
+    (r"\btard\w*\b", 0.85),
+    # "esperar", pero NO "espero que os haya gustado", que es una despedida.
+    (r"\besper(a|ad|amos|an|ar|ando)\b", 0.85),
+    (r"(se )?(pone|ponen|ponemos) a (instalar|cargar|descargar|copiar|procesar)", 0.9),
+    (r"mientras\s+(esto|eso|se|carga|instala|descarga|termina|acaba|va)\b", 0.85),
+    (r"(dejamos|dejad|deja|dejo) que\s+\w*(carg|termin|acab|instal|copi)\w*", 0.9),
+    (r"se esta\s+\w*(copiand|instaland|descargand|cargand|procesand)\w*", 0.9),
+    (r"(va|vamos|esto va) para largo\b", 0.85),
+    (r"(es|va|son) (bastante |muy |un poco )?lent[oa]s?\b", 0.8),
+    (r"\bpaciencia\b", 0.8),
+    (r"se queda\s+(pensando|colgad|trabajand)\w*", 0.85),
     (r"(this|it) (takes|will take) a (while|bit)\b", 0.85),
+    (r"\bwait(ing)? for\b", 0.8),
 )
 
 #: Y avisos de que lo que viene sobra directamente.
 _SALTOS = (
-    (r"(esto|eso) (os |te )?(lo )?(salto|me lo salto)\b", 0.95),
-    (r"(no hace falta|no hace falta que) (que )?(veais|veas|lo veas|lo veais)\b", 0.9),
-    (r"(os|te) (ahorro|lo ahorro)\b", 0.9),
-    (r"(me salto|nos saltamos) (esto|esta parte)\b", 0.95),
-    (r"(esto|esta parte) (no|tampoco) (aporta|interesa|hace falta)\b", 0.85),
+    # Cualquier forma de "saltar(se)", con o sin pronombre por medio.
+    (r"\b(me|os|te|nos)\s+(lo|la|las|los)?\s*(voy a|vamos a|va a)?\s*salt\w*", 0.95),
+    (r"\bsalt(o|amos|are|aremos)\b.*\b(esto|esta parte|este trozo)\b", 0.9),
+    (r"\b(esto|esta parte|este trozo)\b.*\bsalt\w*", 0.9),
+    (r"\b(esto|esta parte|este trozo|aqui)\b.*\b(lo |la )?cort(o|amos|e)\b", 0.85),
+    (r"\b(os|te|nos)\s+(lo|la|las|los)?\s*resum\w*", 0.85),
+    (r"\bno\s+(os|te)?\s*(voy a|vamos a)?\s*(hacer )?ver\b", 0.8),
+    (r"\bno\s+(lo|la)?\s*(teneis|tienes|hace falta)\s+que\s+ver\b", 0.85),
+    (r"\bno\s+hace falta\s+que\s+(lo |la )?(veais|veas)\b", 0.9),
+    (r"\bpaso (rapido|por encima)\b", 0.85),
+    (r"\bno aporta\b", 0.8),
+    (r"\b(os|te) (lo |la )?ahorro\b", 0.9),
 )
-
 
 def _find_announcements(
     transcript: "Transcript | None",
     patrones: tuple[tuple[str, float], ...],
     kind: CueKind,
+    user_phrases: dict[CueKind, list[str]] | None = None,
 ) -> list[SpeechCue]:
     """Frases en las que narras lo que hay que hacer con lo que viene ahora.
 
@@ -197,9 +214,20 @@ def _find_announcements(
     if transcript is None:
         return []
 
+    mias = (user_phrases or {}).get(kind, [])
+
     salida: list[SpeechCue] = []
     for frase in transcript.segments:
         texto = _normalize(frase.text)
+
+        propia = _user_matches(texto, mias)
+        if propia:
+            salida.append(SpeechCue(
+                kind=kind, start=round(frase.end, 3), end=round(frase.end, 3),
+                phrase=propia, strength=USER_WEIGHT,
+            ))
+            continue
+
         for patron, peso in patrones:
             encaje = re.search(patron, texto)
             if not encaje:
@@ -217,14 +245,73 @@ def _find_announcements(
     return salida
 
 
-def find_waits(transcript: "Transcript | None") -> list[SpeechCue]:
+def find_waits(
+    transcript: "Transcript | None", user_phrases=None
+) -> list[SpeechCue]:
     """Momentos en los que avisas de que toca esperar."""
-    return _find_announcements(transcript, _ESPERAS, CueKind.WAIT)
+    return _find_announcements(transcript, _ESPERAS, CueKind.WAIT, user_phrases)
 
 
-def find_skips(transcript: "Transcript | None") -> list[SpeechCue]:
+def find_skips(
+    transcript: "Transcript | None", user_phrases=None
+) -> list[SpeechCue]:
     """Momentos en los que dices que lo que viene sobra."""
-    return _find_announcements(transcript, _SALTOS, CueKind.SKIP)
+    return _find_announcements(transcript, _SALTOS, CueKind.SKIP, user_phrases)
+
+
+# ---------------------------------------------------------------------------
+# Tu forma de hablar
+# ---------------------------------------------------------------------------
+
+#: Fichero donde puedes anadir tus propias formulas. Las incorporadas cubren el
+#: 98% de lo que se midio que dice la gente, pero cada uno habla como habla, y
+#: con esto se anade en un minuto en vez de tocar codigo.
+#:
+#:     {"espera": ["se queda pillado"], "aviso": ["esto es peliagudo"]}
+#:
+#: Lo que se escribe ahi se busca tal cual (sin acentos y en minusculas), asi
+#: que no hace falta saber nada de expresiones regulares.
+USER_PHRASES_FILE = "frases.json"
+
+#: Peso de una formula tuya. Alto: si te has molestado en anadirla, es porque la
+#: dices de verdad.
+USER_WEIGHT = 0.9
+
+_CLAVES_USUARIO = {
+    "espera": CueKind.WAIT,
+    "salto": CueKind.SKIP,
+    "senala": CueKind.POINT,
+    "enfasis": CueKind.EMPHASIS,
+    "correccion": CueKind.RETAKE,
+}
+
+
+def load_user_phrases(directory) -> dict[CueKind, list[str]]:
+    """Lee tus formulas del fichero, si existe. Nunca falla por su culpa."""
+    if directory is None:
+        return {}
+    fichero = Path(directory) / USER_PHRASES_FILE
+    try:
+        datos = json.loads(fichero.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+    if not isinstance(datos, dict):
+        return {}
+
+    salida: dict[CueKind, list[str]] = {}
+    for clave, frases in datos.items():
+        kind = _CLAVES_USUARIO.get(str(clave).strip().lower())
+        if kind is None or not isinstance(frases, list):
+            continue
+        limpias = [_normalize(str(f)).strip() for f in frases]
+        salida[kind] = [f for f in limpias if f]
+    return salida
+
+
+def _user_matches(texto: str, frases: list[str]) -> str | None:
+    """La primera formula tuya que aparezca en la frase."""
+    limpio = _normalize(texto)
+    return next((f for f in frases if f and f in limpio), None)
 
 
 def _normalize(texto: str) -> str:
@@ -406,15 +493,21 @@ def _dedupe(cues: list[SpeechCue]) -> list[SpeechCue]:
 
 
 def find_all(
-    transcript: "Transcript | None", audio: "AudioAnalysis | None" = None
+    transcript: "Transcript | None",
+    audio: "AudioAnalysis | None" = None,
+    user_dir=None,
 ) -> list[SpeechCue]:
-    """Todas las senales de lo que se dice, ordenadas en el tiempo."""
+    """Todas las senales de lo que se dice, ordenadas en el tiempo.
+
+    Con `user_dir` se leen ademas tus propias formulas de `frases.json`.
+    """
+    mias = load_user_phrases(user_dir)
     todas = (
         find_pointing(transcript)
         + find_emphasis(transcript, audio)
         + find_retakes(transcript)
-        + find_waits(transcript)
-        + find_skips(transcript)
+        + find_waits(transcript, mias)
+        + find_skips(transcript, mias)
     )
     todas.sort(key=lambda c: c.start)
     return todas

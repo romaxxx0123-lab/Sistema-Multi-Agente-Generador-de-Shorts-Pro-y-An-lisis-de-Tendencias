@@ -482,6 +482,61 @@ antes (hay un test que lo fija). Y las marcas tienen que **abrir** la frase: un
 "ahora" en la palabra veinte ya no enlaza nada, igual que el "este" de "en este
 video" no es una muletilla.
 
+## "¿Tengo que decir exactamente esa frase?"
+
+Es la pregunta correcta, y la primera vez que se midio la respuesta era **que
+si**: de cincuenta cosas que diria de verdad una persona grabando una guia,
+reconocia **21**. Un 42%. Buscaba frases literales.
+
+Buscando **raices de palabra** en vez de frases sube a **49 de 50**:
+
+```
+                antes   ahora
+esperas          17%     100%
+saltos           12%     100%
+avisos           40%      90%
+senalar          88%      88%
+pasos            57%     100%
+cierres          60%     100%
+-------------------------------
+TOTAL            42%      98%
+```
+
+"Tarda", "tardar", "tardando", "tardara" son la misma cosa, y ahi se iba la
+mitad de la cobertura. Lo mismo con "cuidado/cuidadito", "salto/saltar/me lo voy
+a saltar", "primer/primera/primero".
+
+Las dos cifras estan fijadas en `tests/test_cobertura_habla.py`, **y la segunda
+importa mas que la primera**: doce frases que no deben disparar nada ("corto por
+lo sano y empiezo de cero", "tengo que instalar una actualizacion algun dia").
+Sin ese segundo numero, el primero se sube a base de romper el sistema.
+
+### Y si aun asi hablas distinto
+
+Un fichero `frases.json` al lado de la configuracion:
+
+```json
+{
+  "espera": ["se queda pillado", "esto se atasca"],
+  "aviso":  ["esto es peliagudo"],
+  "salto":  ["esto no os lo pongo"]
+}
+```
+
+Se busca tal cual, sin acentos ni mayusculas, asi que no hace falta saber nada
+de expresiones regulares. Se suman a las de serie, no las sustituyen, y un
+fichero roto no tumba nada: es un fichero que edita una persona a mano, o sea
+que se va a romper.
+
+### Lo que sigue sin saber hacer
+
+Esto no **entiende** lo que dices, reconoce **como** lo dices. Si dices que
+toca esperar con una formula que no se parece a ninguna ("le doy al boton y me
+voy a por un cafe"), no lo pilla, y no hay truco de expresiones regulares que lo
+arregle. Para eso hace falta comparar por significado, con un modelo pequeno de
+embeddings local -- que cabe en el proyecto (ya se usa ONNX Runtime) pero es
+otra cosa, y hasta que este, esto es lo que hay.
+
 ## Lo que le pides al montaje sin saberlo
 
 La estructura dice **de que va cada parte**. Esto es lo otro: los momentos
