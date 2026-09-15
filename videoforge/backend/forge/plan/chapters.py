@@ -19,6 +19,7 @@ from ..assets.providers import tokenize
 from .captions import TRAILING_STOPWORDS
 from .edl import EDL, Chapter, TextCardEffect
 from ..understand.segments import SegmentRole
+from ..understand.topics import find_boundaries, label
 from .styles import ChapterRules
 
 #: Pausa que sugiere cambio de tema.
@@ -81,22 +82,14 @@ def _topic_title(bloque, resto) -> str:
     """Titula por los terminos propios del capitulo, no por como empieza.
 
     Se usa cuando quitar el arranque deja la frase en nada ("bueno, vamos a
-    ver"). Es el mismo criterio que el material de apoyo: la palabra que este
+    ver"). El criterio es el mismo que separa los temas: la palabra que este
     capitulo usa y los demas no es de lo que va este capitulo.
     """
-    mias = Counter(tokenize(" ".join(w.text for w in bloque)))
-    if not mias:
-        return ""
-    otras = Counter(tokenize(" ".join(w.text for b in resto for w in b)))
-    puntuadas = sorted(
-        mias.items(),
-        key=lambda kv: (-(kv[1] / (1 + otras.get(kv[0], 0))), kv[0]),
+    return label(
+        [" ".join(w.text for w in bloque)],
+        [" ".join(w.text for b in resto for w in b)],
+        TOPIC_TITLE_WORDS,
     )
-    elegidas = [p for p, _ in puntuadas[:TOPIC_TITLE_WORDS]]
-    if not elegidas:
-        return ""
-    texto = " ".join(elegidas)
-    return texto[:1].upper() + texto[1:]
 
 
 def _titles_for(bloques) -> list[str]:
@@ -205,6 +198,24 @@ def plan_chapters(
     # titular por lo propio de cada uno.
     marcados = set(_chapter_cuts_from_narrative(edl, narrative or [], minimo))
 
+    # Y donde cambia el **vocabulario**, que es lo que de verdad dice que se ha
+    # pasado a otro asunto. Va en tiempo del original, como la narrativa.
+    temas = 0
+    for frontera in find_boundaries(transcript, min_seconds=minimo):
+        t = edl.source_to_timeline(frontera.time)
+        if t is not None and minimo <= t <= edl.duration - minimo:
+            marcados.add(round(t, 3))
+            temas += 1
+
+    # Con senal de contenido, las pausas dejan de abrir capitulos. Se midio por
+    # que: en una guia sintetica de tres temas sin ninguna formula de enlace,
+    # las pausas largas no encontraron **ninguno** de los tres cambios y se
+    # inventaron seis; y en un video de un solo tema se inventaron quince. Una
+    # pausa dice que has respirado, no que hayas cambiado de asunto. Cuando no
+    # hay ninguna senal de contenido (sin transcripcion util, video muy corto)
+    # se siguen usando, porque es mejor eso que nada.
+    solo_contenido = bool(marcados)
+
     inicios: list[float] = []
     bloques: list[list[_Mapped]] = []
     inicio_tl = 0.0
@@ -222,7 +233,7 @@ def plan_chapters(
         # falta que ademas haya una pausa larga: decir "ahora vamos a" es una
         # senal mas fuerte que respirar hondo.
         abre_parte = any(abs(siguiente.tl_start - c) < 0.35 for c in marcados)
-        pausa_de_tema = hueco >= TOPIC_GAP
+        pausa_de_tema = hueco >= TOPIC_GAP and not solo_contenido
 
         if (abre_parte or pausa_de_tema) and largo_suficiente and queda_sitio:
             inicios.append(round(inicio_tl, 3))

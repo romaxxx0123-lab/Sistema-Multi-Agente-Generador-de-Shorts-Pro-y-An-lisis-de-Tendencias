@@ -469,9 +469,9 @@ entendiendo:    6,7s de silencio · 2,0s en cierre · 1,9s en aviso
 El aviso conserva el doble de aire alrededor -- que es lo que hace que la frase
 importante caiga con peso -- y la intro y el cierre se aprietan. Ademas:
 
-- los **capitulos** siguen lo que se dice y no solo las pausas. Decir "ahora
-  vamos a" es mejor senal de cambio de tema que respirar hondo, que una persona
-  hace tambien para pensar o para beber agua.
+- los **capitulos** siguen lo que se dice y no las pausas (ver "Donde cambia el
+  tema"). Decir "ahora vamos a" es mejor senal de cambio de tema que respirar
+  hondo, que una persona hace tambien para pensar o para beber agua.
 - los **zooms** valen mas donde se avisa de algo (x1,6) y menos en la intro
   (x0,6). En la guia de ejemplo, el unico zoom del montaje pasa a caer sobre el
   aviso.
@@ -809,6 +809,54 @@ medio video.
 **anterior** como fallida, y es de lo poco que se puede quitar entero sin perder
 contenido: lo estas diciendo tu. Se quita como mucho la cola de la frase
 anterior (3,5 s), no un parrafo, y va con el mismo permiso que las muletillas.
+
+## Donde cambia el tema
+
+Los capitulos salian de dos senales: las formulas de enlace ("ahora vamos a") y
+las **pausas largas**. La primera es buena. La segunda resulto ser un apano, y
+se puede medir cuanto: en una guia de tres temas escrita a proposito **sin una
+sola formula de enlace**, con las pausas largas repartidas donde el tema **no**
+cambia (que es lo que pasa al hablar: se respira hondo en mitad de una
+explicacion),
+
+```
+                     encuentra          se inventa
+por pausas           0 de 2 cambios     6 capitulos
+por vocabulario      2 de 2 cambios     0 capitulos
+
+y en un video de un solo tema, de control:
+por pausas                              15 capitulos
+por vocabulario                          0 capitulos
+```
+
+Una pausa dice que has respirado, no que hayas cambiado de asunto.
+
+Lo que si lo dice es el **vocabulario**. Mientras hablas de instalar el driver
+dices "driver", "tarjeta", "version"; cuando pasas al microfono esas palabras
+desaparecen y aparecen "ganancia", "nivel", "retumbe". Comparando el vocabulario
+de dos ventanas consecutivas sale una curva, y los **valles** de esa curva son
+los cambios de tema. Es TextTiling (Hearst, 1997), de antes de las redes
+neuronales, y sigue funcionando porque mide algo real.
+
+Tres cosas que lo hacen servir en un montaje y no solo en un papel:
+
+- **la frontera se afina hasta el principio de frase** que mejor separa los dos
+  vocabularios. La ventana da la zona, no el punto, y un capitulo que empieza a
+  mitad de frase se lee como un fallo. En la prueba, el primer cambio cae a
+  **0,0 s** del real y el segundo a 4,1 s.
+- **dos criterios de profundidad, no uno.** El relativo (este valle comparado
+  con los demas del video) se adapta a como hable cada uno, pero por si solo le
+  inventa un capitulo a un video monotematico, porque siempre hay un valle que
+  es el mas profundo de los suyos. Hace falta ademas que la caida sea grande de
+  verdad.
+- **lo dice en palabras.** Cada frontera explica que se deja de decir y que
+  empieza a decirse: *"se deja de hablar de instalar/driver/limpia y se pasa a
+  nivel/entrada/microfono"*. Eso es tambien lo que titula el capitulo, con las
+  palabras tal y como se dijeron y no con las raices.
+
+Las pausas no desaparecen: si no hay vocabulario que comparar -- porque casi
+todo son muletillas, o porque el video es muy corto -- se vuelven a usar, que es
+mejor que quedarse sin capitulos.
 
 ## Senalar lo que se nombra
 

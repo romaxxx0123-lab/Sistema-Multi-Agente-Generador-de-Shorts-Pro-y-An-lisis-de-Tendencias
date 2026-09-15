@@ -202,11 +202,63 @@ def test_estilo_sin_zoom_no_genera_ninguno() -> None:
 # -- capitulos -------------------------------------------------------------
 
 
-def test_las_pausas_se_buscan_en_el_original_no_en_el_montaje() -> None:
-    """El corte se come las pausas: si se buscan en el montaje, no hay ninguna."""
+def test_los_capitulos_siguen_el_contenido_y_no_las_pausas() -> None:
+    """Un capitulo se abre donde cambia el asunto, no donde respiras.
+
+    Antes se abrian por pausas largas y salian tres o cuatro; ahora salen de
+    donde cambia el vocabulario o de lo que dices al enlazar. En la guia
+    sintetica, que repite las mismas frases, eso es un cambio de tema y no
+    tres: es menos capitulos y son los que hay.
+    """
+    from forge.understand.topics import find_boundaries
+
     a = synthetic_guide_analysis(300.0)
     edl = build_edl(a, "tutorial")
-    assert len(edl.chapters) >= 3, "deberia encontrar varios cambios de tema"
+    assert len(edl.chapters) >= 2
+    assert edl.chapters[0].start == 0.0
+
+    # Cada capitulo que no sea el primero tiene que corresponder a una senal de
+    # contenido, no a un hueco cualquiera del audio.
+    fronteras = [
+        edl.source_to_timeline(b.time)
+        for b in find_boundaries(a.transcript, min_seconds=40.0)
+    ]
+    marcas = [t for t in fronteras if t is not None]
+    for capitulo in edl.chapters[1:]:
+        assert any(abs(capitulo.start - m) < 1.0 for m in marcas), capitulo
+
+
+def test_sin_senal_de_contenido_se_cae_a_las_pausas() -> None:
+    """Es peor, pero es mejor que quedarse sin capitulos.
+
+    Si no hay vocabulario que comparar -- porque casi todo son muletillas --
+    las pausas largas vuelven a valer, que es como funcionaba antes.
+    """
+    from forge.analysis.types import Transcript, TranscriptSegment, Word
+    from forge.plan.chapters import plan_chapters
+    from forge.plan.styles import load_style
+
+    palabras, segmentos, t = [], [], 0.0
+    for i in range(60):
+        ws = []
+        for p in "y esto es lo que hay aqui".split():
+            ws.append(Word(start=round(t, 2), end=round(t + 0.3, 2), text=p))
+            t += 0.4
+        segmentos.append(TranscriptSegment(
+            start=ws[0].start, end=ws[-1].end, text="y esto es lo que hay aqui", words=ws
+        ))
+        palabras += ws
+        t += 2.2 if i % 10 == 9 else 0.3
+
+    transcript = Transcript(language="es", segments=segmentos)
+    edl = EDL(
+        source="a.mp4",
+        source_duration=round(t, 2),
+        render=RenderSpec(width=1920, height=1080, fps=30),
+        timeline=[Clip(id="c0", source_start=0, source_end=round(t, 2))],
+    )
+    capitulos = plan_chapters(edl, transcript, load_style("tutorial").chapters)
+    assert len(capitulos) >= 2
 
 
 def test_los_capitulos_respetan_la_duracion_minima() -> None:
