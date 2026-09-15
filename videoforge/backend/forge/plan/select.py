@@ -17,13 +17,19 @@ unica excepcion, y solo si el estilo lo pide explicitamente.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..analysis.types import Analysis
 from .styles import PacingRules
 
 #: Margen alrededor de una muletilla al quitarla, para no dejar un chasquido.
 FILLER_PAD = 0.03
+#: Cuanto se busca la espera despues de anunciarla. Se dice "esto tarda un rato"
+#: y despues se calla, pero a veces quedan un par de frases por medio.
+WAIT_LOOKAHEAD = 12.0
+#: Tope de lo que se salta de una vez. Si no vuelves a hablar en mucho rato, lo
+#: que hay ahi es una espera, no medio video.
+SKIP_MAX_SECONDS = 90.0
 
 
 @dataclass
@@ -45,6 +51,9 @@ class Selection:
 
     keeps: list[tuple[float, float]]
     removals: list[Removal]
+    #: (inicio, fin, velocidad) de los tramos que van acelerados en vez de
+    #: recortados: las esperas que tu mismo anuncias.
+    speed_ranges: list[tuple[float, float, float]] = field(default_factory=list)
 
     @property
     def kept_seconds(self) -> float:
@@ -146,8 +155,15 @@ def _silence_removals(
     margen_cola = max(rules.silence_keep / 2.0, rules.tail_pad)
     margen_entrada = max(rules.silence_keep / 2.0, rules.speech_pad)
 
+    esperas = _announced_waits(analysis, rules)
+
     out: list[Removal] = []
     for i, s in enumerate(analysis.audio.silences):
+        # Una espera que tu mismo anunciaste no se recorta: se acelera, que es
+        # lo que hace un editor. Cortarla entera es lo facil y es peor, porque
+        # quien mira quiere ver que el proceso pasa.
+        if any(a <= s.start < b for a, b, _v in esperas):
+            continue
         factor, papel = _role_factor(segments, (s.start + s.end) / 2, rules)
         if factor <= 0:
             # Factor cero = esta parte no se toca en absoluto.
@@ -186,6 +202,69 @@ def _silence_removals(
             motivo = f"silencio en {papel}" if papel and papel != "cuerpo" else "silencio"
             out.append(Removal(start=round(start, 3), end=round(end, 3), reason=motivo))
     return out
+
+
+def _announced_waits(
+    analysis: Analysis, rules: PacingRules
+) -> list[tuple[float, float, float]]:
+    """Esperas que anuncias y el silencio largo que viene justo detras.
+
+    Devuelve (inicio, fin, velocidad). La velocidad sube de `wait_speed` si con
+    eso el tramo sigue siendo largo: treinta segundos a 8x son casi cuatro, pero
+    dos minutos a 8x son quince y eso ya no lo aguanta nadie.
+    """
+    if not analysis.audio or not analysis.cues or rules.wait_speed <= 1.0:
+        return []
+
+    from ..understand.speech_cues import CueKind
+
+    salida: list[tuple[float, float, float]] = []
+    for cue in analysis.cues:
+        if cue.kind is not CueKind.WAIT:
+            continue
+        # El primer silencio largo despues del aviso es la espera.
+        silencio = next(
+            (
+                s for s in analysis.audio.silences
+                if s.start >= cue.start - 0.5
+                and s.duration >= rules.wait_min_seconds
+                and s.start - cue.start < WAIT_LOOKAHEAD
+            ),
+            None,
+        )
+        if silencio is None:
+            continue
+        velocidad = max(
+            rules.wait_speed, silencio.duration / max(rules.wait_max_seconds, 0.5)
+        )
+        salida.append((silencio.start, silencio.end, round(velocidad, 2)))
+    return salida
+
+
+def _skip_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
+    """Quita lo que tu mismo dices que sobra ("esto os lo salto")."""
+    if not rules.remove_fillers or not analysis.cues or not analysis.transcript:
+        return []
+
+    from ..understand.speech_cues import CueKind
+
+    salida: list[Removal] = []
+    for cue in analysis.cues:
+        if cue.kind is not CueKind.SKIP:
+            continue
+        # Se salta hasta que vuelves a hablar, con un tope: si no vuelves a
+        # hablar en mucho rato, lo que sobra es una espera, no medio video.
+        siguiente = next(
+            (f.start for f in analysis.transcript.segments if f.start > cue.start + 0.2),
+            analysis.duration,
+        )
+        fin = min(siguiente, cue.start + SKIP_MAX_SECONDS)
+        if fin - cue.start < 1.0:
+            continue
+        salida.append(
+            Removal(start=round(cue.start, 3), end=round(fin, 3), reason="te lo saltas")
+        )
+    return salida
 
 
 def _filler_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
@@ -243,8 +322,9 @@ def _protected_ranges(analysis: Analysis, rules: PacingRules) -> list[tuple[floa
         # protegen. Si no, el recorte se anula solo: se marca para quitar y
         # acto seguido se devuelve entero por ser "contenido".
         tomas_malas = [
-            (c.start, c.end) for c in analysis.cues if c.kind is CueKind.RETAKE
-        ]
+            (c.start, c.end) for c in analysis.cues
+            if c.kind is CueKind.RETAKE
+        ] + [(r.start, r.end) for r in _skip_removals(analysis, rules)]
 
     return [
         (w.start, w.end)
@@ -307,10 +387,15 @@ def plan_selection(
         _silence_removals(analysis, rules, segments)
         + _filler_removals(analysis, rules)
         + _retake_removals(analysis, rules)
+        + _skip_removals(analysis, rules)
     )
 
+    acelerados = _announced_waits(analysis, rules)
+
     if not removals:
-        return Selection(keeps=[(0.0, round(duration, 3))], removals=[])
+        return Selection(
+            keeps=[(0.0, round(duration, 3))], removals=[], speed_ranges=acelerados
+        )
 
     # Las palabras reales son intocables: restamos sus intervalos de lo que
     # ibamos a quitar. Aqui es donde la deteccion acustica deja de mandar.
@@ -336,4 +421,4 @@ def plan_selection(
         )
         reales.append(Removal(start=round(a, 3), end=round(b, 3), reason=motivo))
 
-    return Selection(keeps=keeps, removals=reales)
+    return Selection(keeps=keeps, removals=reales, speed_ranges=acelerados)

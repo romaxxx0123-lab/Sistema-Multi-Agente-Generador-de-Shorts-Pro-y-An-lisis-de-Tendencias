@@ -260,3 +260,136 @@ def test_cada_senal_se_explica() -> None:
     assert cues
     for c in cues:
         assert c.rationale and (c.phrase in c.rationale or "mas alto" in c.rationale)
+
+
+# -- cuando narras tu propio montaje ---------------------------------------
+
+
+def _analisis_con(tr: Transcript, duracion: float, silencios=()) -> Analysis:
+    from forge.analysis.types import SilenceRange
+
+    a = Analysis(
+        media=MediaInfo(path="x.mp4", size_bytes=1, duration=duracion,
+                        video=VideoStream(index=0, codec="h264", width=1280,
+                                          height=720, fps=30.0), has_audio=True),
+        audio=AudioAnalysis(
+            duration=duracion,
+            silences=[SilenceRange(start=a_, end=b_) for a_, b_ in silencios],
+        ),
+        transcript=tr,
+    )
+    a.cues = find_all(tr)
+    return a
+
+
+@pytest.mark.parametrize(
+    "aviso",
+    ["esto tarda un rato", "mientras carga vamos viendo",
+     "esperamos a que termine", "esto va bastante lento"],
+)
+def test_reconoce_que_avisas_de_una_espera(aviso: str) -> None:
+    from forge.understand.speech_cues import find_waits
+
+    assert find_waits(_transcript((0.0, aviso)))
+
+
+def test_una_espera_anunciada_se_acelera_en_vez_de_cortarse() -> None:
+    """Cortarla es lo facil y es peor: quien mira quiere **ver** que paso.
+
+    Ademas resucita `Clip.speed`, que el renderer soportaba desde el principio
+    (setpts + rubberband, con tests) y que ningun sitio del planner usaba.
+    """
+    from forge.plan.planner import build_edl
+
+    tr = _transcript((1.0, "le damos a instalar y esto tarda un rato"),
+                     (35.0, "ya esta listo asi que seguimos"))
+    edl = build_edl(_analisis_con(tr, 40.0, [(4.5, 34.5)]), "tutorial")
+
+    acelerados = [c for c in edl.timeline if c.speed > 1.0]
+    assert acelerados, "la espera se corto en vez de acelerarse"
+    c = acelerados[0]
+    assert c.source_start == pytest.approx(4.5, abs=0.5)
+    assert c.duration < 6.0, f"acelerada sigue durando {c.duration:.1f}s"
+    # Y sigue estando: es lo que la diferencia de cortarla.
+    assert c.source_duration > 20.0
+
+
+def test_una_espera_muy_larga_se_acelera_mas() -> None:
+    """Treinta segundos a 8x son cuatro; dos minutos a 8x son quince."""
+    from forge.plan.planner import build_edl
+
+    tr = _transcript((1.0, "esto tarda un rato"), (130.0, "ya esta"))
+    edl = build_edl(_analisis_con(tr, 135.0, [(3.0, 129.0)]), "tutorial")
+    c = next(c for c in edl.timeline if c.speed > 1.0)
+    assert c.duration <= 4.5, f"{c.duration:.1f}s acelerada"
+    assert c.speed > 8.0
+
+
+def test_un_silencio_sin_avisar_se_corta_como_siempre() -> None:
+    from forge.plan.planner import build_edl
+
+    tr = _transcript((1.0, "abrimos el menu de configuracion"), (35.0, "y seguimos"))
+    edl = build_edl(_analisis_con(tr, 40.0, [(4.5, 34.5)]), "tutorial")
+    assert all(c.speed == 1.0 for c in edl.timeline)
+
+
+def test_solo_se_aceleran_silencios() -> None:
+    """Acelerar tu voz ocho veces seria ininteligible.
+
+    Sale gratis por construccion: la espera se busca entre los **silencios**
+    detectados, asi que nunca puede caer sobre algo que estas diciendo.
+    """
+    from forge.plan.select import _announced_waits
+
+    tr = _transcript((1.0, "esto tarda un rato"), (6.0, "pero sigo hablando aqui"))
+    a = _analisis_con(tr, 20.0, [])   # sin silencios
+    assert _announced_waits(a, load_style("tutorial").pacing) == []
+
+
+@pytest.mark.parametrize(
+    "salto",
+    ["esto os lo salto", "no hace falta que veais esto",
+     "me salto esta parte", "os ahorro esto"],
+)
+def test_reconoce_que_dices_que_algo_sobra(salto: str) -> None:
+    from forge.understand.speech_cues import find_skips
+
+    assert find_skips(_transcript((0.0, salto)))
+
+
+def test_lo_que_dices_que_sobra_se_quita() -> None:
+    from forge.plan.select import plan_selection
+
+    tr = _transcript((1.0, "ahora copiamos los ficheros pero esto os lo salto"),
+                     (40.0, "y con esto ya lo tenemos"))
+    a = _analisis_con(tr, 46.0)
+    quitado = plan_selection(a, load_style("tutorial").pacing, []).reasons()
+    assert quitado.get("te lo saltas", 0) > 5.0, quitado
+
+
+def test_saltarse_algo_no_se_lleva_medio_video() -> None:
+    """Si no vuelves a hablar en mucho rato, eso es una espera, no un salto."""
+    from forge.plan.select import SKIP_MAX_SECONDS, _skip_removals
+
+    tr = _transcript((1.0, "esto os lo salto"))
+    a = _analisis_con(tr, 600.0)
+    quitados = _skip_removals(a, load_style("tutorial").pacing)
+    assert quitados and quitados[0].duration <= SKIP_MAX_SECONDS + 0.1
+
+
+def test_sin_permiso_no_se_salta_nada() -> None:
+    from forge.plan.select import plan_selection
+
+    tr = _transcript((1.0, "esto os lo salto"), (40.0, "y ya esta"))
+    a = _analisis_con(tr, 46.0)
+    reglas = load_style("tutorial").pacing.model_copy(update={"remove_fillers": False})
+    assert "te lo saltas" not in plan_selection(a, reglas, []).reasons()
+
+
+def test_el_montaje_explica_las_esperas() -> None:
+    from forge.plan.planner import build_edl
+
+    tr = _transcript((1.0, "esto tarda un rato"), (35.0, "ya esta"))
+    edl = build_edl(_analisis_con(tr, 40.0, [(4.5, 34.5)]), "tutorial")
+    assert any("espera" in n for n in edl.notes), edl.notes
+    assert any("espera" in c.reason for c in edl.timeline if c.speed > 1.0)

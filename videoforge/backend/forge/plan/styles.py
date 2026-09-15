@@ -101,6 +101,15 @@ class PacingRules(BaseModel):
     cuts_per_minute: Band = Field(default_factory=lambda: Band(lo=6, hi=18))
     #: cuanto se aprieta el recorte en cada parte del video
     roles: RoleRules = Field(default_factory=RoleRules)
+    #: A cuanto se acelera una espera que tu mismo anuncias ("esto tarda un
+    #: rato"). Cortarla entera es lo facil y es peor: quien mira quiere **ver**
+    #: que el proceso pasa, no fiarse de que paso. A 8x, medio minuto de
+    #: instalacion son cuatro segundos en los que se ve la barra avanzar.
+    wait_speed: float = 8.0
+    #: Y si aun asi queda larga, se acelera mas hasta caber en esto.
+    wait_max_seconds: float = 4.0
+    #: Espera minima para que compense acelerarla en vez de recortarla.
+    wait_min_seconds: float = 2.5
 
 
 class CaptionRules(BaseModel):

@@ -526,6 +526,33 @@ umbral   aciertos   falsos positivos
 Se elige 3,2, que cae en el centro de la meseta. Ajustarlo al borde es como se
 consigue un numero bonito que se rompe con el primer video distinto.
 
+**Avisas de una espera.** "Esto tarda un rato", "mientras carga", "esperamos a
+que termine". Lo que viene detras **no es tiempo muerto que tirar**: es un
+proceso que hay que ver pasar, solo que deprisa. Asi que en vez de cortarlo se
+acelera, que es lo que hace un editor:
+
+```
+ 0,0- 4,5   x1     tramo con contenido
+ 4,5-34,5   x8     espera que anuncias, a 8x     <- 30 s que se ven en 4
+34,5-48,1   x1     tramo con contenido
+```
+
+Si la espera es muy larga se acelera mas, para que el resultado quepa en unos
+segundos: treinta segundos a 8x son cuatro, pero dos minutos a 8x son quince y
+eso ya no lo aguanta nadie.
+
+Esto resucita `Clip.speed`, que el renderer soportaba desde el principio
+(`setpts` + `rubberband`, con sus tests) y que **ningun sitio del planner usaba**
+-- la tercera funcion muerta del proyecto, despues de los recuadros y los
+rotulos de capitulo. Y es seguro por construccion: la espera se busca entre los
+**silencios** detectados, asi que nunca puede caer sobre algo que estas
+diciendo (acelerar tu voz ocho veces seria ininteligible).
+
+**Dices que algo sobra.** "Esto os lo salto", "no hace falta que veais esto",
+"os ahorro esto". Se quita hasta que vuelves a hablar, con un tope de 90
+segundos: si no vuelves a hablar en mucho rato, lo que hay ahi es una espera, no
+medio video.
+
 **Te corriges.** "No, perdon", "mejor dicho", "me he liado". Eso marca la toma
 **anterior** como fallida, y es de lo poco que se puede quitar entero sin perder
 contenido: lo estas diciendo tu. Se quita como mucho la cola de la frase

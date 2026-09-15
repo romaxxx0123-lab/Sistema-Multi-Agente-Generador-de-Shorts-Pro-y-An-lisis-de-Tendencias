@@ -49,6 +49,44 @@ def _render_spec(analysis: Analysis) -> RenderSpec:
 MIN_KEEP_RATIO = 0.35
 
 
+def _clips_with_speed(seleccion) -> list[Clip]:
+    """Convierte lo conservado en clips, partiendo donde va acelerado.
+
+    Una espera que tu mismo anunciaste ("esto tarda un rato") no se recorta: se
+    parte en su propio clip y se acelera. Es lo que hace un editor, y es mejor
+    que cortarla porque quien mira **ve** que el proceso pasa.
+    """
+    clips: list[Clip] = []
+    for a, b in seleccion.keeps:
+        # Los tramos acelerados que caen dentro de este trozo, en orden.
+        dentro = sorted(
+            (max(a, x), min(b, y), v)
+            for x, y, v in seleccion.speed_ranges
+            if x < b and y > a and min(b, y) - max(a, x) > 0.2
+        )
+
+        cursor = a
+        for inicio, fin, velocidad in dentro:
+            if inicio - cursor > 0.05:
+                clips.append(Clip(
+                    id=f"clip{len(clips):04d}", source_start=round(cursor, 3),
+                    source_end=round(inicio, 3), reason="tramo con contenido",
+                ))
+            clips.append(Clip(
+                id=f"clip{len(clips):04d}", source_start=round(inicio, 3),
+                source_end=round(fin, 3), speed=velocidad,
+                reason=f"espera que anuncias, a {velocidad:.0f}x",
+            ))
+            cursor = fin
+
+        if b - cursor > 0.05:
+            clips.append(Clip(
+                id=f"clip{len(clips):04d}", source_start=round(cursor, 3),
+                source_end=round(b, 3), reason="tramo con contenido",
+            ))
+    return clips
+
+
 def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip], list[str]]:
     """Corta el video y explica por que."""
     seleccion = plan_selection(analysis, style.pacing, analysis.narrative)
@@ -57,6 +95,14 @@ def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip],
         from ..understand.segments import summarize
 
         notas.append(f"Estructura entendida: {summarize(analysis.narrative)}.")
+    if seleccion.speed_ranges:
+        ahorro = sum(
+            (b - a) - (b - a) / v for a, b, v in seleccion.speed_ranges
+        )
+        notas.append(
+            f"{len(seleccion.speed_ranges)} espera(s) que anuncias van aceleradas "
+            f"en vez de cortadas: se ven y ocupan {ahorro:.0f}s menos."
+        )
 
     # Red de seguridad. Si la seleccion se lleva casi todo el video, lo que
     # pasa no es que el video fuera silencio: es que el detector se equivoco, y
@@ -81,15 +127,7 @@ def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip],
                  reason="video completo: la deteccion de silencio no era fiable")
         ], notas
 
-    clips = [
-        Clip(
-            id=f"clip{i:04d}",
-            source_start=a,
-            source_end=b,
-            reason="tramo con contenido",
-        )
-        for i, (a, b) in enumerate(seleccion.keeps)
-    ]
+    clips = _clips_with_speed(seleccion)
 
     quitado = seleccion.removed_seconds
     if quitado > 0:

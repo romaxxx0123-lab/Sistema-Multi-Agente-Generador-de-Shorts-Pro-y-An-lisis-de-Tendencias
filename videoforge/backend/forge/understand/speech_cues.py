@@ -42,6 +42,8 @@ class CueKind(str, Enum):
     POINT = "senala"
     EMPHASIS = "enfasis"
     RETAKE = "se corrige"
+    WAIT = "toca esperar"
+    SKIP = "se salta"
 
 
 @dataclass
@@ -65,6 +67,10 @@ class SpeechCue:
     @property
     def rationale(self) -> str:
         donde = ""
+        if self.kind is CueKind.WAIT:
+            return f'{self.kind.value}: avisas con "{self.phrase}"'
+        if self.kind is CueKind.SKIP:
+            return f'{self.kind.value}: dices "{self.phrase}"'
         if self.region:
             donde = f" hacia ({self.region[0]:.0%}, {self.region[1]:.0%})"
         if self.phrase:
@@ -150,6 +156,75 @@ _CORRECCIONES = (
 #: Cuanto se puede retirar hacia atras al detectar una correccion. Es poco a
 #: proposito: lo que se quita es una frase fallida, no un parrafo.
 RETAKE_MAX_SECONDS = 3.5
+
+
+# ---------------------------------------------------------------------------
+# Esperas y saltos: cuando narras tu propio montaje
+# ---------------------------------------------------------------------------
+
+#: Avisos de que ahora viene una espera. Lo que sigue no es tiempo muerto que
+#: haya que tirar: es un proceso que hay que **ver pasar**, solo que deprisa.
+_ESPERAS = (
+    (r"(esto|eso) (va a |suele )?(tardar|tarda)\b", 0.9),
+    (r"mientras (carga|se instala|se copia|termina|acaba)\b", 0.9),
+    (r"(esperamos|hay que esperar|toca esperar)\b", 0.9),
+    (r"(esto|eso) (va|tarda) (un poco |bastante )?(lento|rato)\b", 0.85),
+    (r"(se tarda|tarda un rato|tarda lo suyo)\b", 0.9),
+    (r"(en lo que|mientras) (carga|instala|descarga)\b", 0.8),
+    (r"(this|it) (takes|will take) a (while|bit)\b", 0.85),
+)
+
+#: Y avisos de que lo que viene sobra directamente.
+_SALTOS = (
+    (r"(esto|eso) (os |te )?(lo )?(salto|me lo salto)\b", 0.95),
+    (r"(no hace falta|no hace falta que) (que )?(veais|veas|lo veas|lo veais)\b", 0.9),
+    (r"(os|te) (ahorro|lo ahorro)\b", 0.9),
+    (r"(me salto|nos saltamos) (esto|esta parte)\b", 0.95),
+    (r"(esto|esta parte) (no|tampoco) (aporta|interesa|hace falta)\b", 0.85),
+)
+
+
+def _find_announcements(
+    transcript: "Transcript | None",
+    patrones: tuple[tuple[str, float], ...],
+    kind: CueKind,
+) -> list[SpeechCue]:
+    """Frases en las que narras lo que hay que hacer con lo que viene ahora.
+
+    El tramo marcado empieza **donde acaba la frase**: lo que se anuncia es lo
+    que viene despues, no la frase que lo anuncia.
+    """
+    if transcript is None:
+        return []
+
+    salida: list[SpeechCue] = []
+    for frase in transcript.segments:
+        texto = _normalize(frase.text)
+        for patron, peso in patrones:
+            encaje = re.search(patron, texto)
+            if not encaje:
+                continue
+            salida.append(
+                SpeechCue(
+                    kind=kind,
+                    start=round(frase.end, 3),
+                    end=round(frase.end, 3),
+                    phrase=encaje.group(0),
+                    strength=peso,
+                )
+            )
+            break
+    return salida
+
+
+def find_waits(transcript: "Transcript | None") -> list[SpeechCue]:
+    """Momentos en los que avisas de que toca esperar."""
+    return _find_announcements(transcript, _ESPERAS, CueKind.WAIT)
+
+
+def find_skips(transcript: "Transcript | None") -> list[SpeechCue]:
+    """Momentos en los que dices que lo que viene sobra."""
+    return _find_announcements(transcript, _SALTOS, CueKind.SKIP)
 
 
 def _normalize(texto: str) -> str:
@@ -334,7 +409,13 @@ def find_all(
     transcript: "Transcript | None", audio: "AudioAnalysis | None" = None
 ) -> list[SpeechCue]:
     """Todas las senales de lo que se dice, ordenadas en el tiempo."""
-    todas = find_pointing(transcript) + find_emphasis(transcript, audio) + find_retakes(transcript)
+    todas = (
+        find_pointing(transcript)
+        + find_emphasis(transcript, audio)
+        + find_retakes(transcript)
+        + find_waits(transcript)
+        + find_skips(transcript)
+    )
     todas.sort(key=lambda c: c.start)
     return todas
 
