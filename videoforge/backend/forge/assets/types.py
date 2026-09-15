@@ -71,6 +71,12 @@ class AssetQuery(BaseModel):
     at_timeline: float = 0.0
     #: contexto adicional (lo que se dice alrededor), para desempatar
     context: str = ""
+    #: la palabra concreta que se esta nombrando. El resto de `text` es
+    #: contexto: compartirlo no convierte un material en el que hace falta.
+    head: str = ""
+    #: todo lo que se dice o se lee en pantalla **en todo el video**. Sirve
+    #: para descartar material que va de algo que ahi no se menciona nunca.
+    vocabulary: list[str] = Field(default_factory=list)
 
 
 class AssetBundle(BaseModel):

@@ -48,6 +48,15 @@ class TopicMoment:
     score: float
     context: str
 
+    @property
+    def head(self) -> str:
+        """Lo concreto que se nombra ahi: la primera palabra de la consulta.
+
+        La consulta lleva dos palabras, y no valen lo mismo. La primera es la
+        que mas distingue a este tramo de los demas; la segunda acompana.
+        """
+        return self.query.split()[0] if self.query else ""
+
 
 def _windows(transcript_words: list[Word], duration: float) -> list[tuple[float, float, list[str]]]:
     """Agrupa las palabras en ventanas siguiendo el habla, no un reloj.
@@ -172,6 +181,7 @@ def plan_broll(
     providers: list[BrollProvider],
     rules: BrollRules,
     bundle: AssetBundle,
+    screen_terms: list[str] | None = None,
 ) -> tuple[list[BrollEffect], list[BrollEffect]]:
     """Coloca material de apoyo donde se nombra algo concreto.
 
@@ -184,6 +194,13 @@ def plan_broll(
     momentos = find_topic_moments(edl, transcript)
     if not momentos:
         return [], []
+
+    # Todo lo que se dice en el video (y lo que se lee en pantalla, si lo hay).
+    # Sirve para descartar material que va de algo que aqui no se menciona
+    # nunca: es lo que separa una foto de Palworld de una de Minecraft cuando
+    # las dos estan etiquetadas como "videojuego".
+    vocabulario = tokenize(" ".join(w.text for w in transcript.words))
+    vocabulario += tokenize(" ".join(screen_terms or ()))
 
     maximo = budget(rules.max_per_minute, edl.duration, rules.default_seconds * 2)
     tope_cobertura = rules.max_coverage * edl.duration
@@ -222,6 +239,10 @@ def plan_broll(
             orientation="portrait" if edl.render.aspect < 1 else "landscape",
             at_timeline=inicio,
             context=momento.context,
+            # La cabeza es lo concreto que se nombra ahi; lo demas es contexto
+            # y no basta para elegir material (ver assets/coherence.py).
+            head=momento.head,
+            vocabulary=vocabulario,
         )
         resultados = search_all(providers, consulta)
         # Se prefiere material que no se haya usado ya; si todo esta usado, se

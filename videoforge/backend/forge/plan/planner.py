@@ -13,6 +13,7 @@ miedo.
 
 from __future__ import annotations
 
+from ..analysis.ocr import recurring_terms
 from ..analysis.types import Analysis
 from ..assets.providers import BrollProvider
 from ..assets.types import AssetBundle
@@ -255,7 +256,12 @@ def build_edl(
     if providers:
         bundle = assets if assets is not None else AssetBundle()
         brolls, brolls_reserva = plan_broll(
-            edl, analysis.transcript, providers, style.broll, bundle
+            edl,
+            analysis.transcript,
+            providers,
+            style.broll,
+            bundle,
+            screen_terms=[t for t, _ in recurring_terms(analysis.screen_text)],
         )
         efectos += brolls
         reservas += brolls_reserva

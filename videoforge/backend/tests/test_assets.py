@@ -196,6 +196,7 @@ def test_pexels_se_interpreta_bien() -> None:
             }
         ]
     }
+    respuesta["videos"][0]["url"] = "https://www.pexels.com/video/gente-en-una-oficina-123/"
     proveedor = StockProvider("pexels", "clave")
     proveedor._request = lambda url, headers: respuesta  # type: ignore[method-assign]
 
@@ -209,7 +210,7 @@ def test_pexels_se_interpreta_bien() -> None:
 def test_pixabay_se_interpreta_bien() -> None:
     respuesta = {
         "hits": [
-            {"id": 7, "duration": 8, "user": "Otro",
+            {"id": 7, "duration": 8, "user": "Otro", "tags": "ciudad, calle, noche",
              "videos": {"large": {"width": 1920, "height": 1080, "url": "http://x.mp4"}}}
         ]
     }

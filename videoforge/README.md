@@ -388,16 +388,65 @@ tramo esta tratando. No hace falta ningun modelo de lenguaje, no depende del
 idioma, y la decision se explica sola:
 
 ```
-material de apoyo en 60s porque ahi hablas de 'chrome' · de tu biblioteca,
-coincide en: chrome
+material de apoyo en 60s porque ahi hablas de 'chrome' · de tu biblioteca:
+coincide con lo que dices: chrome
 ```
+
+### Que lo que entra sea de lo que hablas
+
+Saber **cuando** poner material no sirve de nada si luego se pone el que no es.
+El fallo, dicho como lo sufrio quien lo vio: *"hablo de Palworld y me mete una
+imagen de Minecraft porque es un videojuego"*. Y era literalmente eso:
+compartir **una** palabra bastaba.
+
+```
+dices:      palworld, base
+fichero:    minecraft-videojuego-base.png
+en comun:   base                            ->  dentro, con un 70%
+```
+
+La pregunta estaba mal hecha: "tiene algo en comun" no es "es esto". Ahora se
+pregunta por dos cosas y las dos tienen que salir bien:
+
+1. **¿Lleva la cabeza de lo que buscas?** La consulta tiene una cabeza -- lo
+   concreto que se acaba de nombrar -- y el resto es contexto para desempatar.
+   "Base" no convierte una foto de Minecraft en una foto de Palworld.
+2. **¿De que es el material?** La primera etiqueta de un fichero es su sujeto:
+   `minecraft-videojuego-base.png` es una foto **de Minecraft**, y lo de
+   videojuego y base la describe. De lo que describe a un material se puede no
+   decir nada -- una foto de Palworld sigue siendo de Palworld aunque no digas
+   "granja" en todo el video -- pero **de lo que es hay que hablar**. Si el
+   sujeto no se nombra en ningun momento, ese material no entra.
+
+La segunda regla es la que caza el caso feo, el que la primera no ve: dices
+"base", el fichero es de Minecraft, y Minecraft no aparece en todo el video.
+
+```
+dices: palworld    minecraft-videojuego-base.png    no esta etiquetado con "palworld"
+                   palworld-videojuego-granja.mp4   coincide: palworld, videojuego
+dices: base        minecraft-videojuego-base.png    es material de "minecraft", y eso
+                                                    no se nombra en todo el video
+```
+
+**Convencion**: nombra los ficheros empezando por el asunto
+(`palworld-base-construccion.mp4`), o pon el asunto el primero en `tags.json`.
+Es lo que ya hace todo el mundo, y es lo que permite distinguir de que es un
+material de lo que lo describe.
+
+Los bancos de stock llevan la primera regla y no la segunda, porque ahi las
+etiquetas vienen en el orden que quiera el banco. Y llevan una consecuencia que
+conviene entender: **pedir no es encontrar**. Si le pides "palworld" a un banco
+de stock te devuelve igualmente un mando o una pantalla cualquiera, asi que el
+resultado se comprueba contra sus propias etiquetas y, si no lleva lo que
+nombras, se descarta. Un hueco no se nota; una imagen equivocada la ve todo el
+mundo.
 
 ### De donde sale el material
 
 | Proveedor | Necesita | Notas |
 |---|---|---|
 | `self` | nada | Del propio video, eligiendo los planos con mas interes visual. Siempre disponible. |
-| `local` | tu carpeta `assets/broll/` | Etiquetas del nombre del fichero o de un `tags.json`. |
+| `local` | tu carpeta `assets/broll/` | Etiquetas del nombre del fichero o de un `tags.json`, **la primera es el asunto**. |
 | `pexels` | `PEXELS_API_KEY` (gratuita) | Opcional. |
 | `pixabay` | `PIXABAY_API_KEY` (gratuita) | Opcional. |
 
