@@ -118,7 +118,11 @@ DEFAULT_THEME = "clean"
 #: estar en el centro. Con caja, porque un titulo sobre una interfaz clara sin
 #: fondo no se lee.
 CARD_SIZE_RATIO = 0.042
-CARD_MARGIN_RATIO = 0.055
+#: Margen del rotulo. Tiene que dejar pasar la barra de titulo de la aplicacion
+#: que se este grabando: con un 5,5% el rotulo caia justo encima de ella y se
+#: leian las dos cosas superpuestas. Una barra de menu tipica ocupa el 8% de la
+#: altura, asi que se baja por debajo.
+CARD_MARGIN_RATIO = 0.115
 #: Milisegundos de entrada y salida del rotulo. ASS lo hace nativo con \fad,
 #: asi que no hace falta tocar el grafo de filtros.
 CARD_FADE_MS = 260

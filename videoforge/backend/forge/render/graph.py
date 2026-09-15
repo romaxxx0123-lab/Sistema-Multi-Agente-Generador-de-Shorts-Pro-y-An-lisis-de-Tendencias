@@ -667,7 +667,10 @@ def build_graph(
         filtros_marca = _callout_filters(marcas, w, h, callout_rules)
         if filtros_marca:
             post += filtros_marca
-            aplicado.append(f"{len(filtros_marca)} recuadros")
+            # Se cuentan los recuadros, no los filtros: cada recuadro emite
+            # varios `drawbox` para el fundido, y decir "156 recuadros" cuando
+            # son 26 asusta sin motivo.
+            aplicado.append(f"{len(marcas)} recuadros")
 
     # Los subtitulos van los ultimos: siempre encima de todo, tambien del b-roll.
     if ass_path and not audio_only:

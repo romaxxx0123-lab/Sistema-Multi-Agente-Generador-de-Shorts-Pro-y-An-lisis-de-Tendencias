@@ -154,3 +154,70 @@ def test_se_escribe_a_disco(tmp_path) -> None:
     destino = write_ass([_cap(palabras=[(1.0, 1.4, "hola")])], tmp_path / "s.ass", 1920, 1080)
     assert destino.is_file()
     assert "Dialogue:" in destino.read_text(encoding="utf-8")
+
+
+# -- rotulos de capitulo ---------------------------------------------------
+
+
+def test_el_rotulo_deja_pasar_la_barra_de_titulo() -> None:
+    """En una grabacion de pantalla, arriba del todo esta el menu de la app.
+
+    Con el margen anterior el rotulo de capitulo caia justo encima de la barra
+    de titulo y se leian las dos cosas a la vez. Se ve en cuanto se mira un
+    fotograma, y en ninguna medida numerica.
+    """
+    from forge.render.ass import CARD_MARGIN_RATIO
+
+    alto = 720
+    # Una barra de menu tipica ocupa unos 56 px de 720, un 7,8%.
+    assert CARD_MARGIN_RATIO * alto > 56
+
+
+def test_el_rotulo_y_los_subtitulos_no_se_pisan() -> None:
+    """Uno arriba y otro abajo: no pueden solaparse nunca."""
+    from forge.plan.edl import TextCardEffect
+    from forge.render.ass import build_ass
+
+    caption = CaptionEffect(
+        id="c0", start=0.0, end=3.0,
+        words=[Word(start=0.0, end=1.0, text="hola"), Word(start=1.0, end=2.0, text="mundo")],
+    )
+    card = TextCardEffect(id="k0", start=0.0, end=3.0, text="Primer capitulo")
+    salida = build_ass([caption], 1920, 1080, cards=[card])
+
+    estilos = {
+        linea.split(",")[0].removeprefix("Style: "): linea.split(",")
+        for linea in salida.splitlines() if linea.startswith("Style: ")
+    }
+    # Alineacion (campo 18): 7 es arriba-izquierda, 2 abajo-centro.
+    assert estilos["Card"][18] == "7"
+    assert estilos["Default"][18] == "2"
+
+
+def test_el_rotulo_se_desvanece_sin_tocar_el_grafo() -> None:
+    from forge.plan.edl import TextCardEffect
+    from forge.render.ass import build_ass
+
+    salida = build_ass([], 1920, 1080, cards=[
+        TextCardEffect(id="k0", start=1.0, end=3.0, text="Ajustes")
+    ])
+    assert "\\fad(" in salida
+    assert ",Card,," in salida
+
+
+def test_los_dialogos_salen_ordenados_en_el_tiempo() -> None:
+    """libass tolera el desorden, pero un .ass desordenado es ilegible a ojo."""
+    from forge.plan.edl import TextCardEffect
+    from forge.render.ass import build_ass
+
+    caption = CaptionEffect(
+        id="c0", start=5.0, end=6.0,
+        words=[Word(start=5.0, end=6.0, text="tarde")],
+    )
+    card = TextCardEffect(id="k0", start=0.0, end=2.0, text="Pronto")
+    lineas = [
+        l for l in build_ass([caption], 1920, 1080, cards=[card]).splitlines()
+        if l.startswith("Dialogue:")
+    ]
+    tiempos = [l.split(",")[1] for l in lineas]
+    assert tiempos == sorted(tiempos)

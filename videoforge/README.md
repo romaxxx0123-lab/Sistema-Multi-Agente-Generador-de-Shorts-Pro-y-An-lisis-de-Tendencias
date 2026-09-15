@@ -542,12 +542,22 @@ forge demo --minutes 20      # genera, analiza, monta y renderiza 20 min
 Pasar esa guia por el sistema entero saco tres fallos que en un minuto son
 invisibles.
 
-Lo que si escala sin problema:
+Lo que si escala sin problema, medido de punta a punta en un contenedor de
+**cuatro nucleos sin GPU** (o sea, el peor caso razonable):
 
 ```
-analisis      210 s para 20 min de video   ·  pico de RAM 0,2 GB
-planificacion   2,5 s
+analisis        210 s para 20 min de video   ·  pico de RAM 0,2 GB
+planificacion     2,5 s
+ajuste del master 137 s
+encode           790 s
+--------------------------------------------------------------
+render completo 1140 s para 17,1 min de salida  (0,9x tiempo real)
 ```
+
+Con NVENC en una GPU decente el encode deja de contar y el analisis pasa a ser
+lo que manda. El pico de RAM no llega a 0,3 GB en ningun momento: el analisis va
+por trozos y el render lo hace ffmpeg en streaming, asi que la duracion del
+video no cambia la memoria que hace falta.
 
 Lo que no escalaba:
 

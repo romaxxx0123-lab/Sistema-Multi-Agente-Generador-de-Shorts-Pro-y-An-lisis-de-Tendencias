@@ -206,7 +206,11 @@ MASTER_PROBES = 3
 
 
 def _plan_master(
-    medir, base_i: float, base_tp: float, target_lufs: float
+    medir,
+    base_i: float,
+    base_tp: float,
+    target_lufs: float,
+    progress: ProgressFn | None = None,
 ) -> tuple[float, float | None]:
     """Busca la ganancia del master midiendo, no estimando.
 
@@ -236,8 +240,12 @@ def _plan_master(
         return alto, None
 
     mejor, mejor_i = bajo, None
-    for _ in range(MASTER_PROBES):
+    for vuelta in range(MASTER_PROBES):
         medio = (bajo + alto) / 2.0
+        if progress:
+            # En una guia de veinte minutos cada prueba tarda medio minuto. Sin
+            # decir por donde va, parece que se ha colgado.
+            progress(0.0, f"ajustando el master ({vuelta + 1}/{MASTER_PROBES})")
         medida = medir(medio)
         if medida is None:
             break
@@ -404,9 +412,6 @@ def render(
             ffmpeg, source, edl_render, settings, target_lufs, sfx_paths, voice_rules
         )
         if medidas:
-            if progress:
-                progress(0.0, "ajustando el master")
-
             def _con_ganancia(g: float):
                 return _measure_loudness(
                     ffmpeg, source, edl_render, settings, target_lufs, sfx_paths,
@@ -415,7 +420,7 @@ def render(
 
             master_gain, sonoridad_final = _plan_master(
                 _con_ganancia, float(medidas["input_i"]),
-                float(medidas["input_tp"]), target_lufs,
+                float(medidas["input_tp"]), target_lufs, progress,
             )
             if sonoridad_final is None:
                 comprobacion = _con_ganancia(master_gain)

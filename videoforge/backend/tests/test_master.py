@@ -271,3 +271,33 @@ def test_si_la_medida_falla_no_se_masteriza_a_ciegas() -> None:
     assert g == pytest.approx(
         (TRUE_PEAK_CEILING_DB - LIMITER_MARGIN_DB) - (-4.0), abs=1e-6
     )
+
+
+def test_el_ajuste_del_master_dice_por_donde_va() -> None:
+    """En una guia de veinte minutos cada prueba tarda medio minuto.
+
+    Sin avisar, el usuario ve el indicador parado dos minutos y medio y da por
+    hecho que se ha colgado.
+    """
+    mensajes: list[str] = []
+
+    def progreso(_frac: float, mensaje: str) -> None:
+        mensajes.append(mensaje)
+
+    _plan_master(
+        _medidor(0.5, -24.0, -4.0), base_i=-24.0, base_tp=-4.0,
+        target_lufs=-14.0, progress=progreso,
+    )
+    assert mensajes, "no aviso de nada"
+    assert all("master" in m for m in mensajes)
+    assert mensajes[0] != mensajes[-1], "el mensaje tiene que avanzar"
+
+
+def test_sin_pruebas_no_avisa_de_nada() -> None:
+    """Si la ganancia cabe entera no hay busqueda que anunciar."""
+    mensajes: list[str] = []
+    _plan_master(
+        lambda _g: None, base_i=-20.0, base_tp=-12.0, target_lufs=-14.0,
+        progress=lambda f, m: mensajes.append(m),
+    )
+    assert mensajes == []
