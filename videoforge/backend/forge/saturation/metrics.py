@@ -46,6 +46,11 @@ class Metrics:
     motion_conflicts_per_minute: float
     callouts_per_minute: float = 0.0
     zooms_per_minute: float = 0.0
+    #: Que parte del montaje se apoya en repetir el mismo recurso. La densidad
+    #: no distingue once zooms seguidos de once efectos variados, y en pantalla
+    #: no se parecen en nada: lo primero deja de significar algo a la tercera
+    #: vez. Por eso hace falta medirlo aparte.
+    repeated_share: float = 0.0
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -61,6 +66,7 @@ class Metrics:
             "transitions_per_minute": self.transitions_per_minute,
             "caption_wpm": self.caption_wpm,
             "motion_conflicts_per_minute": self.motion_conflicts_per_minute,
+            "repeated_share": self.repeated_share,
         }
 
 
@@ -128,6 +134,29 @@ def _motion_conflicts(edl: EDL, analysis: Analysis | None) -> int:
     return conflictos
 
 
+def _repeated_share(edl: EDL) -> float:
+    """Que fraccion de los efectos llega en racha del mismo recurso.
+
+    Cero si el montaje alterna siempre; uno si todo viene en rachas. Se cuenta
+    en el montaje y no por tipos: si entre dos zooms hay un rotulo, el ojo ha
+    visto otra cosa por medio y la racha se rompe. Y cuenta el tiempo: usos
+    espaciados no son una racha aunque no haya nada entre ellos.
+    """
+    from ..plan.restraint import NEVER_TIRED, RUN_LIMIT, runs
+
+    visibles = sorted(
+        (e for e in edl.effects if e.kind not in NEVER_TIRED),
+        key=lambda e: (e.start, e.id),
+    )
+    if len(visibles) < RUN_LIMIT:
+        return 0.0
+
+    # Misma definicion de racha que usa el freno del planner, para que lo que
+    # se mide y lo que se corrige sean la misma cosa.
+    en_racha = sum(len(g) for g in runs(visibles) if len(g) >= RUN_LIMIT)
+    return round(en_racha / len(visibles), 4)
+
+
 def compute_metrics(edl: EDL, analysis: Analysis | None = None) -> Metrics:
     """Calcula todas las metricas de un montaje."""
     curva = density_curve(edl)
@@ -159,6 +188,7 @@ def compute_metrics(edl: EDL, analysis: Analysis | None = None) -> Metrics:
         transitions_per_minute=_per_minute(
             len(edl.effects_of(EffectKind.TRANSITION)), edl.duration
         ),
+        repeated_share=_repeated_share(edl),
         caption_wpm=reading_speed_wpm(captions),
         motion_conflicts_per_minute=_per_minute(
             _motion_conflicts(edl, analysis), edl.duration

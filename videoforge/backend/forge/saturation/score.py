@@ -35,6 +35,9 @@ WEIGHTS: dict[str, float] = {
     "sfx_per_minute": 0.6,
     "callouts_per_minute": 0.7,
     "zooms_per_minute": 1.1,
+    # Repetirse cansa tanto como cargar: once zooms seguidos y once efectos
+    # variados dan la misma densidad y no se parecen en nada en pantalla.
+    "repeated_share": 1.2,
     "transitions_per_minute": 0.6,
 }
 
@@ -56,6 +59,11 @@ ADVICE: dict[str, tuple[str, str]] = {
     "zooms_per_minute": ("la camara no se mueve nunca", "hay un zoom cada pocos segundos: cansa"),
     "transitions_per_minute": ("los cortes van todos secos", "demasiadas transiciones: distraen del contenido"),
     "caption_wpm": ("los subtitulos se quedan mucho rato en pantalla", "los subtitulos pasan demasiado rapido para leerlos"),
+    "repeated_share": (
+        "",
+        "se repite el mismo recurso en racha: varia, que a la tercera vez deja "
+        "de subrayar nada",
+    ),
     "motion_conflicts_per_minute": ("", "hay zooms sobre planos que ya se mueven: marea"),
 }
 

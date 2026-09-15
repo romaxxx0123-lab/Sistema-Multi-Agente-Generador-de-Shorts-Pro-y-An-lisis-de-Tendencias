@@ -116,6 +116,10 @@
     "zooms_per_minute": {
       "lo": 1.0,
       "hi": 16.0
+    },
+    "repeated_share": {
+      "lo": 0.0,
+      "hi": 0.3
     }
   },
   "callouts": {

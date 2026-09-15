@@ -33,6 +33,7 @@ from .edl import (
     TransitionEffect,
 )
 from .placement import ScreenUse
+from .restraint import apply_restraint
 from .emphasis import plan_ken_burns, plan_punch_ins
 from .select import plan_selection
 from .sfx import plan_sfx
@@ -412,6 +413,12 @@ def build_edl(
     # que otro efecto deja sin sentido: un recuadro debajo de un b-roll, dos
     # movimientos de camara a la vez, un zoom dentro de un avance rapido.
     edl.notes += resolve(edl)
+
+    # Y lo que no estorba a nadie pero se repite hasta dejar de significar algo.
+    # El cupo de un estilo dice cuantos, no dice como: sin esto salian rachas de
+    # once zooms seguidos sin saltarse ninguna regla (ver `plan/restraint.py`).
+    _, notas_fatiga = apply_restraint(edl, style)
+    edl.notes += notas_fatiga
 
     edl.notes.append(
         f"Montaje: {edl.duration:.1f}s en {len(edl.timeline)} clips "

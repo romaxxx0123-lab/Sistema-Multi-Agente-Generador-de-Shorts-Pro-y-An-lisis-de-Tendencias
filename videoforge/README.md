@@ -383,6 +383,42 @@ Hay una distincion que importa: las metricas cuya banda empieza en cero son
 carencia, asi que solo pueden empujar hacia la saturacion, nunca hacia la
 carencia, y si no son problema ni siquiera puntuan.
 
+### Repetirse tambien es sobresaturar
+
+Un cupo dice **cuantos** y no dice **como**. Con `gaming-hype` en una guia de 20
+minutos salian 310 efectos visibles, el cupo declarado exacto (doce zooms por
+minuto)... y dentro una **racha de once zooms seguidos**. No se salta ninguna
+regla: ese es el problema. Asi se delata una edicion automatica, no por hacer
+cosas raras sino por hacer la misma una y otra vez hasta que deja de significar
+algo. Un zoom subraya; cinco zooms seguidos son el fondo de pantalla.
+
+Lo que faltaba es lo que un montador lleva puesto sin pensarlo --- *acabo de
+hacer esto* --- y son dos cosas distintas:
+
+- **La racha**: tres usos seguidos del mismo recurso, sin nada por medio y a
+  menos de 20 segundos, ya es un bucle. Se adelgaza quedandose con los que mas
+  aportan. Esto **no baja el ritmo del estilo**, lo obliga a variar.
+- **El exceso sobre lo que el propio estilo pidio**: cada uso deja una huella
+  que se apaga con la constante de tiempo que declara el estilo. Asi
+  `documentary` sigue sobrio y `gaming-hype` sigue nervioso, y ninguno se queda
+  en bucle.
+
+Lo retirado **no se borra: va a reservas**, y el auto-balanceador puede
+recuperarlo --- en el tramo mas vacio, que es justo donde repetirse no cansa.
+
+Y se mide, porque la densidad no lo veia: once zooms seguidos y once efectos
+variados dan **exactamente la misma densidad** y en pantalla no se parecen en
+nada. La metrica `repeated_share` es la fraccion de efectos que llegan en racha,
+con la misma definicion que usa el freno, para que lo que se mide y lo que se
+corrige sean la misma cosa. Calibrada, no puesta a ojo: los montajes reales dan
+entre 0.00 y 0.15, un montaje monotono da 1.00, y el techo de cada estilo esta
+en medio (0.25-0.30).
+
+Un detalle que salio al medir y conviene no "arreglar": el 45% de los efectos de
+`gaming-hype` empezaban a menos de un segundo del anterior, pero al mirar los
+pares resulto que **79 de 102 eran un sonido con el zoom al que va anclado**.
+Eso es el diseno funcionando.
+
 ### El auto-balanceador
 
 Con `--balance` no solo mide: corrige. Es un bucle de control determinista que
