@@ -291,6 +291,13 @@ sobremuestrear, 0,7 dB a 4x).
 Antes de cada render se valida el grafo **con un segundo de video** contra
 `null`. Un error de filtros salta en un segundo en vez de a los diez minutos.
 
+El render escribe a un fichero aparte y lo mueve al destino al terminar, y antes
+comprueba que lo que salio se puede leer y dura lo que tenia que durar. Mirar el
+tamano no basta: ffmpeg escribe el indice del MP4 **al final**, asi que un
+render de veinte minutos cortado a mitad deja megas de datos sin indice, un
+fichero ilegible que pasaba la comprobacion y se daba por bueno -- y que ademas
+ya se habia cargado el render anterior. Paso de verdad.
+
 Si hay GPU NVIDIA con NVENC se usa automaticamente; si no, libx264. `--no-gpu`
 lo fuerza por CPU.
 

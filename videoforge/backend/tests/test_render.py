@@ -640,3 +640,103 @@ def test_el_rotulo_de_capitulo_se_dibuja(
         - _frame_exacto(sin, 5.2, settings).astype(int)
     ).max()
     assert fuera <= 40, "el rotulo sigue en pantalla despues de su tramo"
+
+
+# -- un render cortado no deja basura --------------------------------------
+
+
+def test_un_render_a_medias_no_se_da_por_bueno(
+    sample_video: Path, settings: Settings, tmp_path: Path
+) -> None:
+    """Mirar el tamano no basta: un MP4 cortado ocupa megas y parece correcto.
+
+    Paso de verdad: un render de veinte minutos se corto a mitad y dejo un
+    fichero de 9 MB sin indice, ilegible, que pasaba la comprobacion de tamano
+    y se daba por terminado.
+    """
+    from forge.render.renderer import _check_output
+
+    # Se reproduce como pasa de verdad: ffmpeg escribe el indice (`moov`) al
+    # **final**, asi que un render interrumpido se queda sin el y el fichero es
+    # ilegible aunque ocupe megas. Truncar un MP4 ya terminado no serviria de
+    # ejemplo: ese lleva el indice delante por `+faststart` y se sigue leyendo.
+    sin_indice = tmp_path / "a-medias.mp4"
+    subprocess.run(
+        [str(ffmpeg_bin(settings)), "-hide_banner", "-loglevel", "error", "-y",
+         "-i", str(sample_video), "-c:v", "libx264", "-preset", "ultrafast",
+         "-an", str(sin_indice)],
+        check=True, capture_output=True, timeout=300,
+    )
+    datos = sin_indice.read_bytes()
+    assert len(datos) > 3000
+    sin_indice.write_bytes(datos[: len(datos) // 3])
+
+    with pytest.raises(RenderError) as exc:
+        _check_output(sin_indice, probe(sample_video, settings).duration, settings)
+    mensaje = str(exc.value).lower()
+    assert "no se puede leer" in mensaje or "se quedo en" in mensaje, mensaje
+
+
+def test_un_render_completo_pasa_la_comprobacion(
+    sample_video: Path, settings: Settings
+) -> None:
+    from forge.render.renderer import _check_output
+
+    _check_output(sample_video, probe(sample_video, settings).duration, settings)
+
+
+def test_un_render_mas_corto_de_lo_planificado_falla(
+    sample_video: Path, settings: Settings
+) -> None:
+    """Un fichero legible pero que se quedo a mitad tampoco vale."""
+    from forge.render.renderer import _check_output
+
+    real = probe(sample_video, settings).duration
+    with pytest.raises(RenderError, match="se quedo en"):
+        _check_output(sample_video, real + 5.0, settings)
+
+
+def test_si_el_render_falla_no_se_toca_el_anterior(
+    sample_video: Path, settings: Settings, tmp_path: Path, monkeypatch
+) -> None:
+    """Relanzar un render que falla no puede costarte el que ya tenias.
+
+    Se corta el encode a mitad a proposito, que es justo lo que pasa con un
+    Ctrl-C o un apagon: lo que importa es que el destino siga como estaba y que
+    no quede ningun fichero a medias rondando.
+    """
+    from forge.plan.edl import EDL, Clip, RenderSpec
+    from forge.render import renderer as modulo
+
+    destino = tmp_path / "salida.mp4"
+    destino.write_bytes(b"el render bueno de ayer")
+
+    edl = EDL(
+        source=str(sample_video),
+        source_duration=probe(sample_video, settings).duration,
+        render=RenderSpec(width=640, height=360, fps=30),
+        timeline=[Clip(id="c0", source_start=0.0, source_end=2.0)],
+    )
+
+    real = modulo._run_with_progress
+    visto: list[Path] = []
+
+    def _cortar(cmd, duracion, progress, etiqueta):
+        if etiqueta == "renderizando":
+            # El fichero a medias existe justo antes de reventar.
+            parcial = Path(cmd[-1])
+            parcial.write_bytes(b"datos a medias" * 200)
+            visto.append(parcial)
+            raise KeyboardInterrupt
+        return real(cmd, duracion, progress, etiqueta)
+
+    monkeypatch.setattr(modulo, "_run_with_progress", _cortar)
+
+    with pytest.raises(KeyboardInterrupt):
+        render(edl, destino, settings)
+
+    assert visto, "no llego a lanzarse el encode"
+    assert destino.read_bytes() == b"el render bueno de ayer", (
+        "se cargo el render anterior"
+    )
+    assert not visto[0].exists(), f"quedo {visto[0].name} a medias"

@@ -26,7 +26,7 @@ from ..assets.types import AssetBundle
 from ..config import Settings
 from ..errors import ForgeError, RenderError
 from ..plan.edl import EDL, EffectKind
-from ..tools import Capabilities, capabilities, ffmpeg_bin
+from ..tools import Capabilities, capabilities, ffmpeg_bin, probe
 from .ass import write_ass
 from .graph import LIMITER_MARGIN_DB, TRUE_PEAK_CEILING_DB, build_graph
 
@@ -249,6 +249,41 @@ def _plan_master(
     return mejor, mejor_i
 
 
+#: Cuanto puede desviarse la duracion del fichero respecto a lo planificado.
+#: Un render cortado a mitad se queda muy por debajo; medio segundo de margen
+#: cubre el redondeo al ultimo fotograma y el cierre del contenedor.
+DURATION_TOLERANCE = 0.5
+
+
+def _check_output(path: Path, expected: float, settings: Settings) -> None:
+    """Comprueba que lo que salio es un video entero y reproducible.
+
+    Mirar solo el tamano no vale: un render cortado a mitad ocupa megas y
+    parece correcto. Lo que lo delata es que no se puede leer (le falta el
+    indice, que se escribe al final) o que dura menos de lo planificado.
+    """
+    if not path.is_file() or path.stat().st_size < 1024:
+        raise RenderError(f"El render termino pero {path.name} esta vacio.")
+
+    try:
+        info = probe(path, settings)
+    except ForgeError as exc:
+        raise RenderError(
+            "El render termino pero el fichero no se puede leer: se corto a medias.",
+            hint="Vuelve a lanzarlo; no se ha tocado el render anterior si lo habia.",
+        ) from exc
+
+    if not info.has_video:
+        raise RenderError("El render termino pero el fichero no tiene video.")
+
+    if expected > 0 and info.duration < expected - DURATION_TOLERANCE:
+        raise RenderError(
+            f"El render se quedo en {info.duration:.1f}s de los "
+            f"{expected:.1f}s planificados.",
+            hint="Se corto antes de acabar. Vuelve a lanzarlo.",
+        )
+
+
 def render(
     edl: EDL,
     out: Path | str,
@@ -337,8 +372,6 @@ def render(
         nombre = getattr(efecto, "asset_id", "")
         if efecto.kind is EffectKind.SFX and nombre in GENERATORS and nombre not in sfx_paths:
             sfx_paths[nombre] = str(ensure_sfx(settings.cache_dir, nombre))
-
-    from ..tools import probe
 
     has_audio = probe(source, settings).has_audio
 
@@ -432,12 +465,27 @@ def render(
     ]
     if settings.threads:
         cmd += ["-threads", str(settings.threads)]
-    cmd += [str(out)]
+    # Se escribe a un fichero aparte y se mueve al sitio al terminar. Un render
+    # de veinte minutos que se corta a mitad (un Ctrl-C, un apagon, quedarse sin
+    # disco) dejaba en el destino un MP4 a medias, sin indice y sin las ultimas
+    # escenas, que **pasaba la comprobacion de tamano** y se daba por bueno. Y
+    # si habia un render anterior bueno, lo habia machacado.
+    # La extension se conserva al final: ffmpeg deduce el contenedor de ella, y
+    # con un ".parcial" al final se queda sin saber que formato escribir.
+    parcial = out.with_name(f".{out.stem}.parcial{out.suffix}")
+    parcial.unlink(missing_ok=True)
+    cmd += [str(parcial)]
 
-    _run_with_progress(cmd, edl_render.duration, progress, "renderizando")
+    try:
+        _run_with_progress(cmd, edl_render.duration, progress, "renderizando")
+        _check_output(parcial, edl_render.duration, settings)
+    except BaseException:
+        # Tambien con Ctrl-C: lo que no se deja es un fichero a medias por ahi.
+        parcial.unlink(missing_ok=True)
+        raise
 
-    if not out.is_file() or out.stat().st_size < 1024:
-        raise RenderError(f"El render termino pero {out.name} esta vacio.")
+    out.unlink(missing_ok=True)
+    parcial.replace(out)
 
     return RenderResult(
         path=out,
