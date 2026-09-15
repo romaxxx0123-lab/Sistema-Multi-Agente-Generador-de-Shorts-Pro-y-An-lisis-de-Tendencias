@@ -17,6 +17,7 @@ from __future__ import annotations
 from ..analysis.types import Analysis
 from .edl import EDL, KenBurnsEffect, PunchInEffect, Rect
 from ..understand.segments import SegmentRole, role_at
+from ..understand.speech_cues import CueKind
 from .styles import EmphasisRules, budget
 
 #: Cada cuanto se evalua un posible zoom, en segundos de montaje.
@@ -50,6 +51,43 @@ def _narrative_boost(narrative, source_time: float) -> float:
     if not narrative:
         return 1.0
     return _PESO_NARRATIVO.get(role_at(narrative, source_time), 1.0)
+
+
+#: Cuanto sube el valor de un zoom si ahi se esta senalando o enfatizando algo.
+CUE_BOOST = {CueKind.POINT: 1.4, CueKind.EMPHASIS: 1.35}
+#: Margen alrededor de la senal en el que cuenta, en segundos.
+CUE_WINDOW = 1.2
+#: Puntuacion de un zoom colocado por lo que se dice. Alta a proposito: decir
+#: "mira arriba a la derecha" es la senal mas clara que existe de que ahi hay
+#: algo que ver, mucho mas que cualquier medida de la imagen.
+POINTED_SCORE = 0.95
+
+
+def _cue_boost(cues, source_time: float) -> float:
+    """Multiplicador si en ese instante se senala o se enfatiza algo."""
+    if not cues:
+        return 1.0
+    factor = 1.0
+    for c in cues:
+        if c.start - CUE_WINDOW <= source_time <= c.end + CUE_WINDOW:
+            factor = max(factor, CUE_BOOST.get(c.kind, 1.0))
+    return factor
+
+
+def _pointed_candidates(edl: EDL, analysis: Analysis, rules) -> list:
+    """Zooms colocados por lo que se dice, apuntando a la zona que se nombra."""
+    salida = []
+    for c in analysis.cues:
+        if c.kind is not CueKind.POINT or c.region is None:
+            continue
+        t = edl.source_to_timeline(c.start)
+        if t is None or t < 0.2 or t > edl.duration - rules.punch_seconds:
+            continue
+        movimiento = analysis.motion.value_at(c.start) if analysis.motion else 0.0
+        if movimiento > rules.max_motion_for_punch:
+            continue
+        salida.append((POINTED_SCORE * c.strength, t, c.region[0], c.region[1]))
+    return salida
 
 
 def plan_punch_ins(
@@ -91,8 +129,14 @@ def plan_punch_ins(
             # esto, los zooms caen donde la saliencia da mas alta, que puede ser
             # cualquier sitio.
             puntos *= _narrative_boost(analysis.narrative, origen)
+            puntos *= _cue_boost(analysis.cues, origen)
             candidatos.append((puntos, t, foco.cx, foco.cy))
         t += CANDIDATE_STEP
+
+    # Donde dices **donde** hay que mirar ("este boton de arriba a la derecha"),
+    # el encuadre lo decide lo que dices, no el mapa de saliencia. La saliencia
+    # sabe donde hay contraste; tu sabes donde hay que mirar, y eso gana.
+    candidatos += _pointed_candidates(edl, analysis, rules)
 
     # 2. Elegir los mejores respetando la separacion minima.
     cortes = edl.cut_points()

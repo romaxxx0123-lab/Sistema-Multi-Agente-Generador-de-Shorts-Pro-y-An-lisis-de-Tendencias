@@ -57,30 +57,36 @@ class Beat:
     highlight: int | None = None
     #: destino del cursor en coordenadas normalizadas
     cursor: tuple[float, float] = (0.5, 0.5)
+    #: palabra que se dice mas alto, si alguna. El habla real acentua: una
+    #: silaba tonica esta entre 4 y 10 dB por encima del resto de la frase.
+    #: Sin esto, la voz sintetica tenia **cero** dinamica entre palabras (medido:
+    #: la mas alta quedaba 0,6 dB sobre la media) y no habia forma de comprobar
+    #: que la deteccion de enfasis sirviera para nada.
+    stress: str = ""
 
 
 #: Guion de la guia. Las pausas son deliberadamente variadas: las cortas son el
 #: ritmo natural del habla y no deben recortarse; las largas son tiempo muerto y
 #: si, y ademas marcan el cambio de tema para los capitulos.
 GUIDE_SCRIPT: tuple[Beat, ...] = (
-    Beat("hola, en este video vamos a configurar el panel de ajustes", 0.5, "inicio", None, (0.5, 0.45)),
+    Beat("hola, en este video vamos a configurar el panel de ajustes", 0.5, "inicio", None, (0.5, 0.45), stress="ajustes"),
     Beat("lo primero es abrir la aplicacion", 0.35, "inicio", None, (0.5, 0.5)),
-    Beat("eh, y buscar el menu lateral", 1.9, "inicio", 0, (0.12, 0.35)),
+    Beat("eh, y buscar el menu lateral", 1.9, "inicio", 0, (0.12, 0.35), stress="lateral"),
 
     Beat("aqui en el menu pulsamos sobre ajustes", 0.4, "menu", 2, (0.12, 0.52)),
-    Beat("fijate bien en este boton de la izquierda", 0.35, "menu", 2, (0.12, 0.52)),
+    Beat("fijate bien en este boton de la izquierda", 0.35, "menu", 2, (0.12, 0.52), stress="izquierda"),
     Beat("osea, el que pone configuracion avanzada", 2.4, "menu", 3, (0.12, 0.62)),
 
     Beat("ahora se abre el panel de la derecha", 0.4, "ajustes", 3, (0.62, 0.4)),
     Beat("y activamos esta casilla de aqui", 0.3, "ajustes", 3, (0.72, 0.46)),
-    Beat("esto es lo importante, sin esto no funciona", 2.2, "ajustes", 3, (0.72, 0.46)),
+    Beat("esto es lo importante, sin esto no funciona", 2.2, "ajustes", 3, (0.72, 0.46), stress="importante"),
 
     Beat("bueno, tambien conviene revisar el limite de memoria", 0.4, "avanzado", 4, (0.62, 0.58)),
     Beat("yo lo dejo en el valor por defecto", 0.35, "avanzado", 4, (0.72, 0.58)),
-    Beat("pero si tu equipo va justo, bajalo", 2.6, "avanzado", 4, (0.72, 0.58)),
+    Beat("pero si tu equipo va justo, bajalo", 2.6, "avanzado", 4, (0.72, 0.58), stress="bajalo"),
 
     Beat("por ultimo guardamos los cambios", 0.4, "guardar", 5, (0.82, 0.86)),
-    Beat("y ya esta, con esto queda configurado", 0.3, "guardar", 5, (0.82, 0.86)),
+    Beat("y ya esta, con esto queda configurado", 0.3, "guardar", 5, (0.82, 0.86), stress="configurado"),
     Beat("nos vemos en el siguiente video", 1.2, "guardar", None, (0.5, 0.5)),
 )
 
@@ -211,6 +217,11 @@ def build_timing(script: tuple[Beat, ...] = GUIDE_SCRIPT) -> Timing:
 F0 = 118.0
 #: Formantes aproximados de una vocal neutra.
 FORMANTES = ((620.0, 1.0), (1180.0, 0.55), (2600.0, 0.22))
+#: Cuanto se levanta una palabra acentuada, en dB. Seis es un acento claro de
+#: habla normal: se oye sin que parezca un grito.
+STRESS_DB = 6.0
+STRESS_GAIN = 10.0 ** (STRESS_DB / 20.0)
+
 #: Nivel del ruido de sala en los silencios. Bajo pero no cero: en una grabacion
 #: real nunca hay silencio digital, y el detector tiene que distinguirlo igual.
 ROOM_TONE = 0.0018
@@ -282,6 +293,30 @@ def _sibilance(n: int, sample_rate: int, rng) -> np.ndarray:
     return (ruido - suave)[:n].astype(np.float32)
 
 
+def _stressed_words(timing: Timing) -> list:
+    """Las palabras que el guion marca como acentuadas, ya situadas en el tiempo.
+
+    Es la **verdad conocida** del generador: aqui sabemos exactamente que
+    palabras se dijeron mas altas, asi que se puede comprobar que la deteccion
+    de enfasis encuentra esas y no otras.
+    """
+    salida = []
+    for inicio, fin, beat in timing.phrases:
+        if not beat.stress:
+            continue
+        objetivo = beat.stress.lower()
+        for w in timing.words:
+            if inicio <= w.start <= fin and w.text.lower().strip(",.") == objetivo:
+                salida.append(w)
+                break
+    return salida
+
+
+def demo_stressed_words(timing: Timing) -> list[tuple[str, float, float]]:
+    """(palabra, inicio, fin) de lo que el guion dice mas alto."""
+    return [(w.text, w.start, w.end) for w in _stressed_words(timing)]
+
+
 def synth_speech(timing: Timing, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
     """Sintetiza audio con la forma **y los defectos** del habla grabada.
 
@@ -320,6 +355,11 @@ def synth_speech(timing: Timing, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
                 return ganancia_frase[indice]
         return 1.0
 
+    acentuadas = {id(w) for w in _stressed_words(timing)}
+
+    def _stress_at(palabra) -> float:
+        return STRESS_GAIN if id(palabra) in acentuadas else 1.0
+
     for i, palabra in enumerate(timing.words):
         a = int(palabra.start * sample_rate)
         b = min(n, int(palabra.end * sample_rate))
@@ -349,7 +389,7 @@ def synth_speech(timing: Timing, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
         caida = np.clip(((palabra.end - palabra.start) - t) / 0.03, 0, 1)
         envolvente = (0.35 + 0.65 * ciclo) * ataque * caida
 
-        ganancia = _gain_at(palabra.start)
+        ganancia = _gain_at(palabra.start) * _stress_at(palabra)
         senal[a:b] += (onda * envolvente * 0.09 * ganancia).astype(np.float32)
 
         # Sibilancia en las palabras con "s" o "c/z": justo donde molesta.

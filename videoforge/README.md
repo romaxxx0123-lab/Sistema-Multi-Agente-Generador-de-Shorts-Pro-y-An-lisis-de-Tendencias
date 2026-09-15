@@ -482,6 +482,55 @@ antes (hay un test que lo fija). Y las marcas tienen que **abrir** la frase: un
 "ahora" en la palabra veinte ya no enlaza nada, igual que el "este" de "en este
 video" no es una muletilla.
 
+## Lo que le pides al montaje sin saberlo
+
+La estructura dice **de que va cada parte**. Esto es lo otro: los momentos
+sueltos en los que lo que dices pide una decision concreta.
+
+**Senalas.** "Mira aqui", "este boton de arriba a la derecha". Cuando senalas
+estas dirigiendo la mirada a un sitio **en ese instante**, y a veces dices a
+cual. Eso es mejor informacion que cualquier mapa de saliencia: la saliencia
+sabe donde hay **contraste**, tu sabes donde hay que **mirar**. De la frase sale
+la zona:
+
+```
+"pulsa este boton de la izquierda"        -> (22%, 50%)
+"lo tienes arriba a la derecha"           -> (78%, 25%)
+"fijate en esta casilla de abajo"         -> (50%, 75%)
+```
+
+Y ahi va el zoom. Si dices "a la derecha" pero no la altura, la altura se queda
+en el centro: no se inventa la mitad que no dijiste.
+
+**Enfatizas**, por dos vias a la vez. Las palabras ("esto es clave", "sobre
+todo") y el **nivel de voz**, que ya se medía para encontrar los silencios y se
+estaba tirando. Guardar esa curva no cuesta ninguna pasada mas y da prosodia
+medida, no adivinada.
+
+La referencia es **local**, no la del video entero, y eso importa: quien baja la
+voz durante una frase sigue acentuando dentro de ella. Medido contra las
+palabras que el generador acentua a proposito, la referencia global perdia una
+de seis (quedaba a +2,2 dB porque su frase iba baja entera) y metia 3 falsos
+positivos; la local acierta 6 de 6 con ninguno.
+
+El umbral tambien sale de ahi:
+
+```
+umbral   aciertos   falsos positivos
+  2,5       6/6            3
+  3,0       6/6            0
+  3,5       6/6            0
+  4,0       5/6            0
+```
+
+Se elige 3,2, que cae en el centro de la meseta. Ajustarlo al borde es como se
+consigue un numero bonito que se rompe con el primer video distinto.
+
+**Te corriges.** "No, perdon", "mejor dicho", "me he liado". Eso marca la toma
+**anterior** como fallida, y es de lo poco que se puede quitar entero sin perder
+contenido: lo estas diciendo tu. Se quita como mucho la cola de la frase
+anterior (3,5 s), no un parrafo, y va con el mismo permiso que las muletillas.
+
 ## Senalar lo que se nombra
 
 Es lo que hace un editor humano en una guia: cuando dices *"pulsa en

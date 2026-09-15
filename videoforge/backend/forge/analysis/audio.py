@@ -50,6 +50,11 @@ MIN_SEPARATION_DB = 10.0
 #: palabra de verdad en medio.
 MAX_BRIDGE_GAP = 0.18
 
+#: Muestras por segundo de la curva de nivel que se guarda. Veinte basta para
+#: ver que silaba se dijo mas fuerte y deja un fichero de cache manejable:
+#: veinte minutos son 24.000 numeros.
+ENVELOPE_RATE = 20.0
+
 #: Margen sobre el fondo cuando la separacion es pobre (grabacion ruidosa,
 #: musica de fondo, habla continua). Pequeno a proposito: mejor detectar de
 #: menos que cortar donde alguien esta hablando bajito.
@@ -273,12 +278,41 @@ def analyze_audio(
         umbral = noise_db
 
     silencios = find_silences(niveles, RMS_WINDOW_SECONDS, umbral, min_silence, duracion)
+    curva, ritmo = _envelope(niveles, ENVELOPE_RATE)
 
     return AudioAnalysis(
         silences=silencios,
         loudness=measure_loudness(audio_path, settings),
         silence_threshold_db=round(umbral, 2),
+        envelope=curva,
+        envelope_rate=ritmo,
     )
+
+
+def _envelope(levels: np.ndarray, rate: float) -> tuple[list[float], float]:
+    """Reduce la curva de niveles y devuelve **el ritmo que sale de verdad**.
+
+    Las ventanas de 20 ms hacen falta para colocar un corte al milimetro, pero
+    para saber si una palabra se dijo mas fuerte sobran: se queda el **maximo**
+    de cada grupo, que es lo que conserva el pico de una silaba acentuada en vez
+    de promediarlo con el silencio de al lado.
+
+    El ritmo pedido casi nunca cabe un numero entero de veces en la ventana, asi
+    que se devuelve el real. Dar por bueno el pedido descuadra la curva del
+    video entero: con 20 Hz pedidos salen grupos de dos ventanas, o sea 25 Hz, y
+    un video de 59 s pasaba a "durar" 74.
+    """
+    if levels.size == 0 or rate <= 0:
+        return [], rate
+    por_muestra = max(1, int(round(1.0 / (RMS_WINDOW_SECONDS * rate))))
+    ritmo = 1.0 / (RMS_WINDOW_SECONDS * por_muestra)
+
+    sobra = levels.size % por_muestra
+    util = levels[: levels.size - sobra] if sobra else levels
+    if util.size == 0:
+        return [round(float(levels.max()), 1)], ritmo
+    agrupado = util.reshape(-1, por_muestra).max(axis=1)
+    return [round(float(v), 1) for v in agrupado], ritmo
 
 
 def speech_ranges(

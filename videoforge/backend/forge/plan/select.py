@@ -205,21 +205,52 @@ def _filler_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
     ]
 
 
+def _retake_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
+    """Quita la toma que tu mismo das por mala.
+
+    Cuando dices "no, perdon" o "mejor dicho", lo que sobra es lo de **antes**.
+    Es de lo poco que se puede quitar entero sin perder contenido, porque lo
+    estas diciendo tu: eso no valia.
+
+    Va con las mismas reglas que las muletillas (`remove_fillers`), porque es el
+    mismo permiso: quitar palabras dichas, no solo silencio.
+    """
+    if not rules.remove_fillers or not analysis.cues:
+        return []
+
+    from ..understand.speech_cues import CueKind
+
+    return [
+        Removal(start=round(c.start, 3), end=round(c.end, 3), reason="toma fallida")
+        for c in analysis.cues
+        if c.kind is CueKind.RETAKE
+    ]
+
+
 def _protected_ranges(analysis: Analysis, rules: PacingRules) -> list[tuple[float, float]]:
     """Intervalos que no se pueden tocar: las palabras que si son contenido."""
     if not analysis.transcript:
         return []
 
     protegidas = set()
+    tomas_malas: list[tuple[float, float]] = []
     if rules.remove_fillers:
         from ..analysis.speech import find_fillers
+        from ..understand.speech_cues import CueKind
 
         protegidas = {(w.start, w.end) for w in find_fillers(analysis.transcript)}
+        # Las palabras de una toma que tu mismo das por mala tampoco se
+        # protegen. Si no, el recorte se anula solo: se marca para quitar y
+        # acto seguido se devuelve entero por ser "contenido".
+        tomas_malas = [
+            (c.start, c.end) for c in analysis.cues if c.kind is CueKind.RETAKE
+        ]
 
     return [
         (w.start, w.end)
         for w in analysis.transcript.words
         if (w.start, w.end) not in protegidas
+        and not any(a <= w.start and w.end <= b for a, b in tomas_malas)
     ]
 
 
@@ -275,6 +306,7 @@ def plan_selection(
     removals = (
         _silence_removals(analysis, rules, segments)
         + _filler_removals(analysis, rules)
+        + _retake_removals(analysis, rules)
     )
 
     if not removals:

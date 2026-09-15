@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from ..media import MediaInfo
 from ..understand.segments import NarrativeSegment
+from ..understand.speech_cues import SpeechCue
 from .ocr import ScreenText
 
 
@@ -104,6 +105,12 @@ class AudioAnalysis(BaseModel):
     loudness: Loudness = Field(default_factory=Loudness)
     #: umbral en dB usado para detectar los silencios, para poder explicarlo
     silence_threshold_db: float = -32.0
+    #: Curva de nivel en dB, muestreada a `envelope_rate` por segundo. Se
+    #: calculaba ya para encontrar los silencios y se tiraba. Guardarla permite
+    #: saber **que palabras dices mas fuerte**, que es prosodia de verdad y sale
+    #: gratis: no hace falta ninguna pasada mas sobre el audio.
+    envelope: list[float] = Field(default_factory=list)
+    envelope_rate: float = 20.0
 
     @property
     def silent_seconds(self) -> float:
@@ -111,6 +118,61 @@ class AudioAnalysis(BaseModel):
 
     def is_silent_at(self, t: float) -> bool:
         return any(s.start <= t < s.end for s in self.silences)
+
+    def level_at(self, t: float) -> float | None:
+        """Nivel en dB en ese instante, o None si no hay curva."""
+        if not self.envelope or self.envelope_rate <= 0:
+            return None
+        i = int(t * self.envelope_rate)
+        if not 0 <= i < len(self.envelope):
+            return None
+        return self.envelope[i]
+
+    def level_between(self, start: float, end: float) -> float | None:
+        """Nivel medio de un tramo, para medir el de una palabra."""
+        if not self.envelope or self.envelope_rate <= 0 or end <= start:
+            return None
+        a = max(0, int(start * self.envelope_rate))
+        b = min(len(self.envelope), max(a + 1, int(end * self.envelope_rate)))
+        if a >= b:
+            return None
+        tramo = self.envelope[a:b]
+        return sum(tramo) / len(tramo)
+
+    def speech_level(self, around: float | None = None, window: float = 8.0) -> float | None:
+        """Nivel tipico de la voz, de todo el video o **alrededor de un punto**.
+
+        Es la referencia contra la que se mide el enfasis. La mediana y no la
+        media porque un grito o un golpe no pueden mover la referencia.
+
+        Con `around` se mide solo lo que hay cerca, y eso es lo correcto: una
+        persona baja la voz durante una frase entera y aun asi acentua dentro de
+        ella. Medido sobre la guia de prueba, la palabra que el guion acentua 6
+        dB quedaba a +2,2 dB de la mediana global -- por debajo de cualquier
+        umbral razonable -- porque esa frase iba baja entera. Contra la mediana
+        local vuelve a estar a +6.
+        """
+        if not self.envelope or self.envelope_rate <= 0:
+            return None
+
+        if around is None:
+            desde, hasta = 0, len(self.envelope)
+        else:
+            medio = int(around * self.envelope_rate)
+            radio = max(1, int(window * self.envelope_rate / 2))
+            desde = max(0, medio - radio)
+            hasta = min(len(self.envelope), medio + radio)
+
+        hablando = [
+            v for i, v in enumerate(self.envelope[desde:hasta], start=desde)
+            if v > self.silence_threshold_db
+            and not self.is_silent_at(i / self.envelope_rate)
+        ]
+        if not hablando:
+            # Cerca no hay voz: se cae a la referencia global antes que mentir.
+            return self.speech_level() if around is not None else None
+        hablando.sort()
+        return hablando[len(hablando) // 2]
 
 
 class Word(BaseModel):
@@ -167,6 +229,9 @@ class Analysis(BaseModel):
     #: Que es cada parte del video segun lo que se dice en ella (intro, paso,
     #: aviso, cierre...). Vacio si no hay transcripcion o si nadie enlaza nada.
     narrative: list[NarrativeSegment] = Field(default_factory=list)
+    #: Momentos sueltos en los que lo que se dice pide algo del montaje:
+    #: senalar un sitio de la pantalla, enfatizar, o corregirse.
+    cues: list[SpeechCue] = Field(default_factory=list)
 
     @property
     def duration(self) -> float:

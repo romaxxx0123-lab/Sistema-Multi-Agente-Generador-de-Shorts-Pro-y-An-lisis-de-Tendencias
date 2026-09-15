@@ -370,6 +370,16 @@ def plan(
             )
         console.print(tabla)
 
+    if analysis is not None and analysis.cues:
+        console.print("\n[bold]Lo que le pediste al montaje sin saberlo[/bold]")
+        for c in analysis.cues[:14]:
+            console.print(
+                f"  [cyan]{int(c.start // 60)}:{int(c.start % 60):02d}[/cyan]"
+                f"  [dim]{c.rationale}[/dim]"
+            )
+        if len(analysis.cues) > 14:
+            console.print(f"  [dim]... y {len(analysis.cues) - 14} mas[/dim]")
+
     if edl.chapters:
         console.print("\n[bold]Capitulos[/bold] [dim](listos para la descripcion de YouTube)[/dim]")
         for c in edl.chapters:
