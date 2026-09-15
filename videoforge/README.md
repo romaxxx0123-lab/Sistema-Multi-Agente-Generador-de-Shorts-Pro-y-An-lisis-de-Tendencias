@@ -486,7 +486,7 @@ ensenar, y el material de apoyo solo ilustra y puede esperar dos segundos.
 
 | Proveedor | Necesita | Notas |
 |---|---|---|
-| `self` | nada | Del propio video, eligiendo los planos con mas interes visual. Siempre disponible. |
+| `self` | nada | Del propio video: el momento en que eso se vio en pantalla, o al que **vuelves** al decir "como vimos antes". |
 | `local` | tu carpeta `assets/broll/` | Etiquetas de `tags.json`, de **las carpetas** y del nombre del fichero, en ese orden; **la primera es el asunto**. |
 | `pexels` | `PEXELS_API_KEY` (gratuita) | Opcional. Se le pide con `locale`. |
 | `pixabay` | `PIXABAY_API_KEY` (gratuita) | Opcional. Se le pide con `lang`. |
@@ -497,6 +497,36 @@ describe. Antes no contaban, y eso dejaba invisible la biblioteca de cualquiera
 que ordene por carpetas: `palworld/base-01.mp4` se etiquetaba `["base"]`, sin
 rastro de Palworld, asi que la regla de coherencia lo descartaba justo cuando
 hablabas de Palworld.
+
+#### Volver a lo que ya ensenaste
+
+El recorte del propio video solo salia si lo que nombrabas se habia **leido en
+pantalla**, y leer la pantalla necesita tesseract instalado. Sin el --- que es
+el caso por defecto --- el unico proveedor que se anuncia como "siempre
+disponible" no devolvia nada nunca.
+
+Y la ocasion buena no necesita OCR ninguna: cuando dices *"como vimos antes"*,
+*"te decia que..."*, *"acuerdate de..."*, lo que hay que ensenar es lo de antes,
+y donde lo dijiste esta en la transcripcion. Esa senal (`RECALL`) se detecta
+aparte de las de ir hacia delante, que son las facilies de confundir y las que
+mas se dicen: *"vamos a ver"* no vuelve a nada. Y volver a algo de **otro**
+video tampoco cuenta.
+
+La senal por si sola nunca mete material: ademas tiene que haber un momento
+anterior donde hablaras de eso, a mas de ocho segundos. Por eso un
+*"recuerda que hay que guardar"* sobre algo nuevo no ensena nada --- y por eso
+un falso positivo de la deteccion es inofensivo.
+
+#### Lo que la transcripcion no tiene claro
+
+El material se coloca sobre lo **mas distintivo** que dices. Y lo mas
+distintivo de una guia son los nombres propios y la jerga, que es exactamente
+donde una transcripcion se equivoca: sin mirar la confianza, el sistema tiende a
+ilustrar justo las palabras con mas papeletas de estar mal oidas. Ahora lo
+distintivo se pondera por lo segura que esta la transcripcion, y por debajo de
+0.45 una palabra puede seguir siendo contexto pero no puede ser la **cabeza**
+de una busqueda. Si la transcripcion no da confianzas, no se castiga nada: todo
+se comporta como antes.
 
 ### Se mira antes de meterlo
 

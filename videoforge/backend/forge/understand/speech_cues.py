@@ -48,6 +48,7 @@ class CueKind(str, Enum):
     POINT = "senala"
     EMPHASIS = "enfasis"
     RETAKE = "se corrige"
+    RECALL = "vuelve a algo"
     WAIT = "toca esperar"
     SKIP = "se salta"
 
@@ -632,6 +633,70 @@ def _acoustic_emphasis(
     return salida
 
 
+#: Formulas con las que **vuelves** a algo que ya ensenaste. Son las que dan
+#: sentido a recuperar un momento anterior del propio video: no es relleno, es
+#: que lo estas pidiendo tu.
+#:
+#: El peligro aqui es confundirlas con las de ir hacia delante ("vamos a ver"),
+#: que se dicen mucho mas. Por eso todas llevan marca de pasado -- el verbo, o
+#: un "antes"/"al principio" -- y ninguna vale en presente a secas.
+_RECUERDA = (
+    (r"\b(como|lo que)\s+(vimos|viste|visteis|hicimos|hiciste|dijimos|dije|"
+     r"explique|explicamos|comente|comentamos|ensene|ensenamos)\b", 0.9),
+    (r"\b(te|os|les)\s+(dije|decia|explique|ensene|comente)\b", 0.8),
+    (r"\b(acuerdate|acordaos|recuerda|recordad|recordais|te acuerdas)\b", 0.85),
+    (r"\b(volvemos|vuelvo|volvamos)\s+(a|al|atras)\b", 0.8),
+    (r"\b(lo|la|eso)\s+(de|del)\s+(antes|hace un rato|al principio)\b", 0.85),
+    (r"\b(al principio|antes)\s+\w*\s*(vimos|dije|explique|ensene|hicimos|"
+     r"lo hicimos|pusimos)\b", 0.85),
+    (r"\b(como|igual que)\s+(antes|la vez anterior|la primera vez)\b", 0.75),
+)
+
+
+#: ...y esto **no** vuelve a nada de este video: vuelve a otro. Recuperar aqui
+#: un momento anterior seria ensenar algo que no es lo que dices.
+_OTRO_VIDEO = re.compile(
+    r"\b(otro|anterior|primer|segundo|pasado|ultimo)\s+(video|capitulo|tutorial|parte)"
+    r"|\b(video|capitulo|tutorial|parte)\s+(anterior|pasado|de ayer)"
+)
+
+
+def find_recalls(transcript: "Transcript | None") -> list[SpeechCue]:
+    """Momentos en los que vuelves a algo que ya habias ensenado.
+
+    Es la senal que le faltaba al material sacado del **propio video**. Hasta
+    aqui, un recorte propio solo salia si lo que nombrabas se habia **leido en
+    pantalla** con OCR; sin tesseract instalado eso no pasa nunca, asi que el
+    unico proveedor que se anuncia como "siempre disponible" no devolvia nada.
+
+    Y sin embargo la ocasion buena no necesita OCR ninguna: cuando dices "como
+    vimos antes", lo que hay que ensenar es justo lo de antes. Lo pides tu.
+    """
+    if transcript is None:
+        return []
+
+    salida: list[SpeechCue] = []
+    for frase in transcript.segments:
+        texto = _normalize(frase.text).strip()
+        if _OTRO_VIDEO.search(texto):
+            continue
+        for patron, peso in _RECUERDA:
+            encontrado = re.search(patron, texto)
+            if not encontrado:
+                continue
+            salida.append(
+                SpeechCue(
+                    kind=CueKind.RECALL,
+                    start=round(frase.start, 3),
+                    end=round(frase.end, 3),
+                    phrase=encontrado.group(0),
+                    strength=peso,
+                )
+            )
+            break
+    return salida
+
+
 def find_retakes(transcript: "Transcript | None") -> list[SpeechCue]:
     """Momentos en los que te corriges: la toma anterior no vale.
 
@@ -695,6 +760,7 @@ def find_all(
         find_pointing(transcript, screen_text, cursor)
         + find_emphasis(transcript, audio)
         + find_retakes(transcript)
+        + find_recalls(transcript)
         + find_waits(transcript, mias)
         + find_skips(transcript, mias)
     )

@@ -68,19 +68,21 @@ subtitulos y **no decide nada**. Es informacion gratis que esta ahi tirada.
 - **Se comprueba**: si, con transcripciones sinteticas con confianzas dadas.
 - **Riesgo**: ninguno.
 
-### 3. Caras con el clasificador que ya trae OpenCV · RECOMENDADO
+### 3. Caras con el clasificador que ya trae OpenCV · ~~RECOMENDADO~~ COMPROBADO Y NO
 
 El plan original prometia que "los subtitulos nunca tapan una cara". No hay
 deteccion de caras en el proyecto.
 
 - **Aporta**: en una guia con camara en una esquina (muy comun), los
   subtitulos, la ventanita de material y los recuadros dejan de taparla.
-- **Cuesta**: **nada que bajar**: OpenCV distribuye los cascades Haar dentro
-  del propio paquete (`cv2.data.haarcascades`). Es un detector viejo y eso aqui
-  da igual: una cara de webcam, frontal y grande, es justo su caso facil.
-- **Se comprueba**: si, y sin red.
-- **Riesgo**: bajo. Falsos positivos posibles en texturas; se exige que la
-  deteccion se repita en varios fotogramas del mismo plano.
+- **Cuesta**: aqui daba por hecho que OpenCV distribuye los cascades Haar
+  dentro del paquete (`cv2.data.haarcascades`). **Comprobado despues: en esta
+  instalacion ese directorio esta vacio** -- solo trae `__init__.py` --, asi
+  que no hay ningun clasificador que usar y habria que bajarlo, que es justo lo
+  que esta descartado. La recomendacion queda anulada; se deja escrita con el
+  motivo para que nadie la vuelva a dar por buena sin mirar.
+- **Se comprueba**: no, en este entorno.
+- **Riesgo**: irrelevante mientras no haya clasificador.
 
 ### 4. Embeddings de frase locales · SI, PERO NO AHORA
 

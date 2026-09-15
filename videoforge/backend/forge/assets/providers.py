@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ..analysis.types import Analysis
+from ..understand.speech_cues import CueKind
 from ..config import Settings
 from .coherence import judge, tag_stem
 from .inspect import Inspection, inspect_cached
@@ -83,6 +84,9 @@ SELF_MAX_RELEVANCE = 0.35
 #: Lo cerca que puede estar el recorte del momento en el que se usa. Ensenar
 #: como recuerdo lo que se esta viendo ahora mismo no recuerda nada.
 MIN_SELF_DISTANCE = 8.0
+#: Margen alrededor de un "como vimos antes" dentro del cual todavia se
+#: considera que estas pidiendo volver atras.
+RECALL_WINDOW = 3.0
 
 
 class SelfProvider:
@@ -101,6 +105,41 @@ class SelfProvider:
     def __init__(self, analysis: Analysis, *, min_concentration: float = 0.25) -> None:
         self.analysis = analysis
         self.min_concentration = min_concentration
+
+    def _donde_se_dijo(self, cabeza: str, ahora: float) -> list[tuple[float, str]]:
+        """Momentos en los que **dijiste** eso, antes de ahora.
+
+        Es la otra mitad del recorte propio, y la que funciona sin OCR. Hasta
+        aqui un recorte del propio video solo salia si lo que nombrabas se
+        habia **leido en pantalla**, y leer la pantalla necesita tesseract
+        instalado: sin el, el unico proveedor que se anuncia como "siempre
+        disponible" no devolvia nada nunca.
+
+        Esto no lo necesita. Y no vale para cualquier momento: solo cuando
+        **pides** volver atras ("como vimos antes"), que es cuando ensenar lo
+        de antes es justo lo que toca.
+        """
+        transcript = self.analysis.transcript
+        if transcript is None:
+            return []
+        raiz = tag_stem(cabeza)
+        if not raiz:
+            return []
+        dichas = [
+            (w.start, w.text)
+            for w in transcript.words
+            if w.start < ahora - MIN_SELF_DISTANCE and tag_stem(w.text) == raiz
+        ]
+        # La mas reciente primero: "lo de antes" es lo ultimo, no lo primero.
+        dichas.sort(key=lambda v: -v[0])
+        return dichas
+
+    def _vuelve_atras(self, ahora: float) -> bool:
+        """Si en ese momento estas pidiendo volver a algo ya ensenado."""
+        return any(
+            c.kind is CueKind.RECALL and c.start - RECALL_WINDOW <= ahora <= c.end + RECALL_WINDOW
+            for c in self.analysis.cues
+        )
 
     def _donde_se_vio(self, cabeza: str, ahora: float) -> list[tuple[float, str]]:
         """Momentos en los que eso que nombras estuvo **escrito en pantalla**.
@@ -142,7 +181,13 @@ class SelfProvider:
         ahora = query.at_timeline
         candidatos: list[Asset] = []
 
-        for i, (cuando, texto) in enumerate(self._donde_se_vio(cabeza, ahora)):
+        vistos = self._donde_se_vio(cabeza, ahora)
+        # Si pides volver atras, vale tambien con haberlo **dicho**: no hace
+        # falta que estuviera escrito en pantalla.
+        pedido = self._vuelve_atras(ahora)
+        momentos = vistos or (self._donde_se_dijo(cabeza, ahora) if pedido else [])
+
+        for i, (cuando, texto) in enumerate(momentos):
             shot = self.analysis.shot_at(cuando)
             mitad = query.seconds / 2
             inicio = max(0.0, cuando - mitad)
@@ -171,6 +216,9 @@ class SelfProvider:
                     reason=(
                         f'de tu propio video: ahi se veia "{texto}" en pantalla '
                         f"({cuando:.0f}s)"
+                        if vistos else
+                        f'de tu propio video: vuelves a lo de antes, y de "{texto}" '
+                        f"hablabas en el {cuando:.0f}s"
                     ),
                     license="propio",
                     # Sigue por debajo de una coincidencia de etiquetas, que es

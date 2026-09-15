@@ -94,6 +94,13 @@ class TopicMoment:
         return self.query.split()[0] if self.query else ""
 
 
+#: Por debajo de esta confianza, la transcripcion no esta segura de haber oido
+#: esa palabra, y no se ilustra lo que no se sabe si dijiste. Es un suelo
+#: prudente: `faster-whisper` da valores altos en lo que oye bien, y este
+#: umbral solo aparta lo que ya venia marcado como dudoso.
+MIN_HEAD_CONFIDENCE = 0.45
+
+
 #: Cuanto puede seguir el material despues de acabar el tramo de habla. Cortar
 #: exactamente al acabar la frase es artificial: el final de una ventana es un
 #: corte de la segmentacion, no un final de nada.
@@ -156,6 +163,8 @@ def find_topic_moments(
     if len(ventanas) < 2:
         return []
 
+    confianza = _confidences(transcript.words)
+
     # Documento = ventana. Una palabra en pocas ventanas es distintiva.
     apariciones: Counter[str] = Counter()
     veces: Counter[str] = Counter()
@@ -170,7 +179,11 @@ def find_topic_moments(
             continue
         frecuencias = Counter(palabras)
         puntuaciones = {
-            palabra: (n / len(palabras)) * math.log(total / apariciones[palabra])
+            # Lo distintivo, por lo segura que esta la transcripcion de haberlo
+            # oido: una palabra rara y mal oida deja de ser la mas jugosa.
+            palabra: (n / len(palabras))
+            * math.log(total / apariciones[palabra])
+            * confianza.get(palabra, 1.0)
             for palabra, n in frecuencias.items()
             if apariciones[palabra] > 0
         }
@@ -183,10 +196,22 @@ def find_topic_moments(
         # base de datos guarda toda la informacion" sacaba "informacion" en vez
         # de "base de datos". Un termino al que se vuelve varias veces si es un
         # tema, y es lo que merece material de apoyo.
-        mejores = sorted(
+        ordenadas = sorted(
             puntuaciones.items(),
             key=lambda kv: (-kv[1] * (1.0 + math.log(veces[kv[0]])), kv[0]),
-        )[:QUERY_WORDS]
+        )
+        # Y la cabeza -- lo que se busca -- tiene que ser algo que se haya oido
+        # bien. Como contexto una palabra dudosa no hace dano; como cabeza
+        # manda la busqueda entera.
+        segura = [
+            kv for kv in ordenadas
+            if confianza.get(kv[0], 1.0) >= MIN_HEAD_CONFIDENCE
+        ]
+        if not segura:
+            continue
+        mejores = (segura[:1] + [kv for kv in ordenadas if kv[0] != segura[0][0]])[
+            :QUERY_WORDS
+        ]
 
         # Se normaliza contra el maximo que esa ventana podria dar (una palabra
         # suya que no salga en ninguna otra), para que el umbral signifique lo
@@ -219,6 +244,29 @@ def find_topic_moments(
     # un b-roll, mejor ilustrar lo que vertebra el video que un detalle suelto.
     momentos.sort(key=lambda m: (-m.score, -max(veces[p] for p in m.query.split())))
     return momentos
+
+
+def _confidences(palabras: list[Word]) -> dict[str, float]:
+    """Como de segura esta la transcripcion de cada palabra que oyo.
+
+    Esto importa mas de lo que parece, y por un motivo incomodo: el material se
+    coloca sobre lo **mas distintivo** que se dice, y lo mas distintivo de una
+    guia son los nombres propios y la jerga -- que es exactamente donde una
+    transcripcion se equivoca. Sin mirar la confianza, el sistema tiende a
+    ilustrar justo las palabras que tienen mas papeletas de estar mal oidas.
+
+    Cuando la transcripcion no da confianza (`None`), se asume 1.0 y todo se
+    comporta como antes: no se castiga por no tener el dato.
+    """
+    suma: dict[str, float] = {}
+    veces: dict[str, int] = {}
+    for w in palabras:
+        if w.probability is None:
+            continue
+        for token in tokenize(w.text):
+            suma[token] = suma.get(token, 0.0) + float(w.probability)
+            veces[token] = veces.get(token, 0) + 1
+    return {t: suma[t] / veces[t] for t in suma}
 
 
 def _topic_end(ventanas, desde: int, cabeza: str) -> float:
