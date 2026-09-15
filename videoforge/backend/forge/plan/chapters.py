@@ -57,7 +57,15 @@ def _strip_openers(texto: str) -> str:
 
 
 def _clean_title(words) -> str:
-    """Construye un titulo legible con las primeras palabras del capitulo."""
+    """Construye un titulo legible con las primeras palabras del capitulo.
+
+    Solo con las de **su primera frase**: pegar el final de una frase con el
+    principio de la siguiente daba titulos que no son de nadie ("Como se
+    configura esto ahora guardamos").
+    """
+    primera = getattr(words[0], "frase", None) if words else None
+    if primera is not None:
+        words = [w for w in words if getattr(w, "frase", primera) == primera]
     texto = " ".join(w.text for w in words[:TITLE_WORDS]).strip()
     # Cortamos en la primera frase si la hay.
     corte = re.search(r"[.!?]", texto)
@@ -93,13 +101,26 @@ def _topic_title(bloque, resto) -> str:
 
 
 def _titles_for(bloques) -> list[str]:
-    """Titulo de cada capitulo, con reserva por terminos propios."""
+    """Titulo de cada capitulo, con reserva por terminos propios.
+
+    Y sin repetirse: dos capitulos con el mismo nombre no orientan a nadie, que
+    es para lo unico que sirve una lista de capitulos. Cuando el titulo por
+    frase sale repetido se prueba con los terminos propios del tramo, que por
+    definicion son los que lo distinguen de los demas.
+    """
     titulos: list[str] = []
+    vistos: set[str] = set()
     for i, bloque in enumerate(bloques):
+        resto = [b for j, b in enumerate(bloques) if j != i]
         texto = _clean_title(bloque)
-        if len(texto.split()) < MIN_TITLE_WORDS:
-            resto = [b for j, b in enumerate(bloques) if j != i]
-            texto = _topic_title(bloque, resto) or texto
+        if len(texto.split()) < MIN_TITLE_WORDS or texto.lower() in vistos:
+            propio = _topic_title(bloque, resto)
+            if propio and propio.lower() not in vistos:
+                texto = propio
+        if texto.lower() in vistos:
+            # Ni por frase ni por terminos: se numera antes que repetir.
+            texto = f"{texto} ({i + 1})"
+        vistos.add(texto.lower())
         titulos.append(texto)
     return titulos
 
@@ -112,9 +133,17 @@ class _Mapped:
     capitulo hay que medirla en el MONTAJE, que es lo que vera el espectador.
     """
 
-    __slots__ = ("source_start", "source_end", "tl_start", "text")
+    __slots__ = ("source_start", "source_end", "tl_start", "text", "frase")
 
-    def __init__(self, source_start: float, source_end: float, tl_start: float, text: str) -> None:
+    def __init__(
+        self,
+        source_start: float,
+        source_end: float,
+        tl_start: float,
+        text: str,
+        frase: int = 0,
+    ) -> None:
+        self.frase = frase
         self.source_start = source_start
         self.source_end = source_end
         self.tl_start = tl_start
@@ -124,11 +153,12 @@ class _Mapped:
 def _map_words(edl: EDL, transcript: Transcript) -> list[_Mapped]:
     """Palabras que sobrevivieron al corte, con tiempo de origen y de montaje."""
     out: list[_Mapped] = []
-    for w in transcript.words:
-        t = edl.source_to_timeline(w.start)
-        if t is None:
-            continue
-        out.append(_Mapped(w.start, w.end, t, w.text))
+    for i, frase in enumerate(transcript.segments):
+        for w in frase.words:
+            t = edl.source_to_timeline(w.start)
+            if t is None:
+                continue
+            out.append(_Mapped(w.start, w.end, t, w.text, i))
     out.sort(key=lambda m: m.tl_start)
     return out
 

@@ -218,12 +218,21 @@ def test_los_capitulos_siguen_el_contenido_y_no_las_pausas() -> None:
     assert edl.chapters[0].start == 0.0
 
     # Cada capitulo que no sea el primero tiene que corresponder a una senal de
-    # contenido, no a un hueco cualquiera del audio.
-    fronteras = [
-        edl.source_to_timeline(b.time)
-        for b in find_boundaries(a.transcript, min_seconds=40.0)
+    # contenido -- un cambio de vocabulario o una formula de enlace -- y no a un
+    # hueco cualquiera del audio.
+    from forge.plan.chapters import _chapter_cuts_from_narrative
+    from forge.plan.styles import load_style
+
+    minimo = max(
+        load_style("tutorial").chapters.min_seconds, edl.duration / 8
+    )
+    marcas = [
+        t for t in (
+            edl.source_to_timeline(b.time)
+            for b in find_boundaries(a.transcript, min_seconds=minimo)
+        ) if t is not None
     ]
-    marcas = [t for t in fronteras if t is not None]
+    marcas += _chapter_cuts_from_narrative(edl, a.narrative, minimo)
     for capitulo in edl.chapters[1:]:
         assert any(abs(capitulo.start - m) < 1.0 for m in marcas), capitulo
 
@@ -370,3 +379,33 @@ def test_el_montaje_es_determinista() -> None:
     uno = build_edl(a, "tutorial")
     otro = build_edl(a, "tutorial")
     assert uno.model_dump_json() == otro.model_dump_json()
+
+
+def test_el_zoom_mira_el_movimiento_de_toda_su_ventana() -> None:
+    """Arrancaba quieto y acababa sobre un barrido de camara.
+
+    El planner miraba el movimiento **en el instante en que empieza** el zoom y
+    el medidor de saturacion lo miraba en el medio, asi que el propio sistema
+    contaba como conflicto lo que el mismo acababa de colocar: cuatro de
+    diecinueve zooms en la guia de veinte minutos.
+    """
+    from forge.analysis.types import MotionTrack
+    from forge.plan.emphasis import _pointed_candidates
+    from forge.plan.styles import load_style
+    from forge.understand.speech_cues import CueKind, SpeechCue
+
+    reglas = load_style("tutorial").emphasis
+    a = _analysis_para_zoom(concentracion=0.9, movimiento=0.05)
+    # Quieto al empezar y un barrido dos segundos despues, dentro del zoom.
+    muestras = [0.05] * 400
+    for i in range(int(2.0 * 4), int(4.0 * 4)):
+        muestras[i] = 0.9
+    a.motion = MotionTrack(rate=4.0, diff=[0.1] * 400, flow=muestras)
+    a.cues = [SpeechCue(kind=CueKind.POINT, start=1.0, end=2.6, phrase="mira aqui",
+                        strength=0.9, region=(0.5, 0.5))]
+
+    edl = _edl()
+    assert a.motion.value_at(1.0) < reglas.max_motion_for_punch, "el fixture no sirve"
+    assert a.motion.peak_between(1.0, 1.0 + reglas.punch_seconds) > reglas.max_motion_for_punch
+
+    assert _pointed_candidates(edl, a, reglas) == []

@@ -1,6 +1,11 @@
 # Auditoria de coherencia
 
-> **Estado: los diez hallazgos, cerrados.** Cada uno lleva debajo como se
+> **Segunda ronda abajo.** La primera salio de un sintoma que conto el usuario;
+> la segunda, de buscar sin que nadie contara nada: correr el sistema sobre una
+> guia de veinte minutos y mirar **cada numero que escupe**. Salieron siete mas,
+> y uno de ellos era otra funcion entera que no existia.
+>
+> **Estado: los diez hallazgos de la primera ronda, cerrados.** Cada uno lleva debajo como se
 > arreglo y donde esta el test que lo fija. La auditoria se queda como esta
 > porque el valor no era la lista: era el metodo de mirar el sistema entero
 > buscando decisiones que no se siguen de lo que el propio sistema sabe.
@@ -197,3 +202,125 @@ final lo que no existe:
 5. **C1 + C2** -- o se implementan o se quitan del estilo. Prometer y no hacer
    es peor que no prometer.
 6. **A4, B4, D1, D2** -- cierres pequenos.
+
+
+---
+
+# Segunda ronda: buscando sin que nadie avise
+
+El metodo: montar una guia de veinte minutos, **imprimir todo lo que decide**
+(notas, capitulos, efectos, metricas de saturacion) y leerlo como lo leeria
+quien lo va a usar. Casi todo lo que sigue estaba a la vista y nadie lo habia
+mirado.
+
+### E1. El fixture principal no se parecia a un analisis de verdad · HECHO
+
+`synthetic_guide_analysis` -- el fixture que usan los tests de integracion --
+devolvia un `Analysis` con `narrative` y `cues` **vacios**, mientras el pipeline
+real los rellena. Y `detect_segments` sobre su propio transcript encuentra 105
+tramos, asi que no era que no hubiera estructura: era que el fixture no la
+calculaba.
+
+Consecuencia: el recorte segun el papel del tramo, las esperas anunciadas, los
+zooms hacia lo que senalas y los capitulos por lo que se dice -- justo lo que
+distingue a este montador -- **no los ejercitaba ningun test de integracion**.
+Y las medidas que yo mismo habia tomado sobre ese fixture estaban tomadas con
+medio sistema apagado.
+
+Arreglado: el fixture hace lo mismo que `pipeline.py`. Y al encenderlo
+aparecieron E2, E5, E6 y E7, que llevaban ahi desde siempre.
+
+### E2. "Intro" treinta y nueve veces en veinte minutos · HECHO
+
+Con la estructura encendida, el reparto de papeles era: 67 cuerpo, 57 paso, 52
+aviso... y **39 intros**, repartidas de punta a punta del video. Una intro pasa
+una vez. Lo que fallaba: las formulas de presentacion ("vamos a ver", "en este
+video") se buscaban al principio de **la frase**, no del **video**, asi que
+"vamos a ver como se configura esto" en el minuto doce abria una intro.
+
+Y no es cosmetico: cada tramo marcado como intro **se edita como una intro**,
+o sea que se le aprieta mas el recorte y sus zooms valen menos.
+
+Arreglado con la guarda simetrica a la del cierre: hasta el 12% del video una
+presentacion presenta; despues se cree a medias, y a medias no llega a papel.
+De 39 intros a 3.
+
+### E3. El material de los bancos no se descargaba nunca · HECHO · grave
+
+Los proveedores de stock devuelven una ficha con una **direccion**. El render,
+cuando no encuentra el fichero, se lo salta:
+
+```python
+if not asset.is_self and (asset.path is None or not ...is_file()):
+    continue   # "se omite en vez de tumbar el render por una descarga
+               #  que fallo"
+```
+
+Esa descarga no existia en ninguna parte del codigo (`grep urlopen` daba **una**
+aparicion, la de buscar en la API). Con una clave de Pexels o de Pixabay
+configurada, el montaje escribia "material de apoyo en 60s porque ahi hablas de
+X" y el video salia sin un solo material, sin aviso y sin forma de notarlo salvo
+abriendo el fichero.
+
+Era el mismo agujero que los efectos de sonido y la musica, con el agravante de
+que aqui habia trabajo hecho a los dos lados: buscar, parsear, comprobar
+coherencia... y componer en el grafo.
+
+Arreglado en `assets/download.py`, con lo que se le pide a una descarga dentro
+de un render que puede tardar una hora: cache por identificador, tope de 80 MB
+por fichero, tiempo limite, escritura atomica (para que una descarga cortada no
+deje medio fichero que el siguiente render tome por bueno) y fallo silencioso
+pero **contado** en el informe. De paso, la direccion pasa a ser un campo del
+modelo: estaba en `__dict__`, y el EDL se guarda en JSON, asi que al volver a
+renderizar un montaje guardado ya no se podia traer.
+
+### E4. Un quinto de los zooms caia sobre movimiento · HECHO
+
+El planner miraba el movimiento **en el instante en que empieza** el zoom; el
+medidor de saturacion lo mira **en el medio**. Asi que el sistema contaba como
+conflicto lo que el mismo acababa de colocar. Medido: 4 de 19 zooms arrancaban
+sobre imagen quieta (flujo 0,08) y acababan sobre un barrido de camara (0,58).
+
+Arreglado mirando el **pico de toda la ventana** del zoom, que es lo que
+importa: un tramo quieto con un barrido en medio da una media baja y hace que el
+zoom se lea como un tiron justo ahi. Quedan 13 zooms y **cero** conflictos.
+
+### E5. El resumen de la estructura volcaba 215 tramos en una nota · HECHO
+
+`summarize()` escribia un tramo por frase: *"paso 3s · aviso 3s · cuerpo 9s ·
+intro 6s · ..."* doscientas quince veces, en la nota que sale por el terminal y
+por la API. Ahora, cuando hay demasiados, cuenta por papel:
+
+```
+184 tramos: cuerpo x72 (11 min) · paso x57 (4 min) · aviso x52 (5 min) · intro x3 (19s)
+```
+
+### E6. Titulos de capitulo que no eran titulos · HECHO
+
+Tres defectos a la vez, todos visibles en la misma lista:
+
+```
+0:00  El siguiente paso es el importante fijate bien     <- cruza dos frases
+3:43  Como se configura esto                             <- repetido con el de 10:52
+7:58  Funcionando osea casilla                           <- titula con una muletilla
+```
+
+El titulo se construia con las primeras palabras del **bloque**, que abarca
+varias frases; no se comprobaba si otro capitulo ya se llamaba igual; y los
+terminos propios salian en orden de puntuacion, no de lectura, y sin filtrar
+muletillas (las que el propio montaje quita del audio).
+
+### E7. La nota de recorte se fragmentaba por papel · HECHO
+
+*"371s de silencio, 77s de silencio en paso, 74s de silencio en aviso, 51s de
+silencio en intro"*: cuatro entradas al mismo nivel para decir una cosa, y la
+suma no cuadraba a ojo con el total. Ahora el papel va entre parentesis:
+*"371.3s de silencio (paso 77s, aviso 74s, intro 10s), 5.4s de muletilla"*.
+
+### Lo que se miro y estaba bien
+
+Merece decirse, porque tambien es resultado: el **escapado del fichero .ass**
+aguanta llaves, barras invertidas, comillas, saltos de linea, acentos y emoji
+sin romperse (se probaron los ocho casos); el **mapeo de tiempos** con clips
+acelerados es correcto en las dos direcciones; y un video **sin transcripcion**
+o de **doce segundos** se monta sin fallar ni inventarse nada.

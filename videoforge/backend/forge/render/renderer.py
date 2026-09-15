@@ -21,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..assets.download import ensure_local
 from ..assets.sfx import GENERATORS, ensure_sfx
 from ..assets.types import AssetBundle
 from ..config import Settings
@@ -400,6 +401,29 @@ def render(
     # La musica la pones tu: el planner decide que va, aqui se busca el
     # fichero. Sin fichero no se rompe nada, se avisa y se sigue -- igual que
     # con un b-roll que no se pudo descargar.
+    # -- material de apoyo que todavia esta en internet ---------------------
+    # Un banco de stock devuelve una ficha con una direccion, no un fichero.
+    # Hasta ahora nadie la bajaba y el render se saltaba ese material en
+    # silencio: el montaje prometia "material de apoyo en 60s" y el video salia
+    # sin el.
+    sin_traer = 0
+    if assets is not None:
+        for efecto in edl_render.effects:
+            if efecto.kind is not EffectKind.BROLL:
+                continue
+            asset = assets.get(getattr(efecto, "asset_id", ""))
+            if asset is None or asset.is_self:
+                continue
+            if asset.path is not None and Path(asset.path).is_file():
+                continue
+            if progress:
+                progress(0.0, f"trayendo material de apoyo ({asset.provider})")
+            traido = ensure_local(asset, settings.cache_dir)
+            if traido is None:
+                sin_traer += 1
+            else:
+                asset.path = traido
+
     quiere_musica = any(e.kind is EffectKind.MUSIC for e in edl_render.effects)
     music_path = _find_music(music_dir) if quiere_musica else None
     aviso_musica = (
@@ -527,7 +551,11 @@ def render(
         duration=edl_render.duration,
         seconds_taken=time.time() - inicio,
         encoder=nombre_encoder,
-        applied=graph.applied + ([aviso_musica] if aviso_musica else []),
+        applied=(
+            graph.applied
+            + ([aviso_musica] if aviso_musica else [])
+            + ([f"{sin_traer} materiales no se pudieron traer"] if sin_traer else [])
+        ),
         measured_lufs=(
             sonoridad_final if sonoridad_final is not None
             else (float(medidas["input_i"]) if medidas else None)

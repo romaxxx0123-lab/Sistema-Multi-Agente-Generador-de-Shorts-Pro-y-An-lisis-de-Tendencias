@@ -494,6 +494,18 @@ ensenar, y el material de apoyo solo ilustra y puede esperar dos segundos.
 Nunca se repite el mismo recurso, y si un banco esta caido o no hay red, el
 montaje sigue con lo que tenga. Los creditos de licencia se emiten aparte.
 
+Un banco devuelve una **ficha con una direccion**, no un fichero, asi que el
+material se **baja** antes de renderizar: cacheado por identificador (reencuadrar
+o cambiar de estilo no lo vuelve a bajar), con tope de 80 MB por fichero -- un
+clip 4K de cien megas para verse dos segundos no compensa --, con tiempo limite
+y escrito de forma atomica, para que una descarga cortada no deje medio fichero
+que el siguiente render tome por bueno. Si una descarga falla se monta sin ese
+material, y el informe dice cuantos no se pudieron traer.
+
+(Esto no existia: la descarga estaba dada por hecha en un comentario del render
+--- "se omite en vez de tumbar el render por una descarga que fallo" --- y con
+una clave configurada el montaje prometia material que el video no llevaba.)
+
 Un detalle que importa: a diferencia de un zoom, un b-roll a pantalla completa
 **no** esquiva los cortes, los tapa. En una guia muy recortada los cortes caen
 cada pocos segundos, asi que exigirle que no los cruce dejaria el montaje sin un

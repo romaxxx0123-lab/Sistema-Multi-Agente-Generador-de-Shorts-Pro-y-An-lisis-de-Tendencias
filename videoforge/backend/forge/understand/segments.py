@@ -71,10 +71,10 @@ _DEBIL = 0.4
 _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
     SegmentRole.INTRO: [
         (r"(hola|buenas|muy buenas|bienvenid[oa]s?)\b", _FUERTE, True),
-        (r"en (este|el) (video|tutorial|capitulo)\b", _FUERTE, True),
-        (r"(hoy|en el dia de hoy) (vamos a|os (voy|traigo)|te (voy|traigo))", _FUERTE, True),
-        (r"(vamos a ver|os enseno|te enseno|voy a ensenarte)\b", _MEDIA, True),
-        (r"antes de (empezar|nada)\b", _MEDIA, True),
+        (r"en (este|el) (video|tutorial|capitulo)\b", _FUERTE, True, "principio"),
+        (r"(hoy|en el dia de hoy) (vamos a|os (voy|traigo)|te (voy|traigo))", _FUERTE, True, "principio"),
+        (r"(vamos a ver|os enseno|te enseno|voy a ensenarte)\b", _MEDIA, True, "principio"),
+        (r"antes de (empezar|nada)\b", _MEDIA, True, "principio"),
         # Con \b delante: sin el, el "hi" de "ahi" convertia en intro cualquier\n        # frase con un "ahi" dentro. Lo encontro una frase de prueba que decia\n        # "cuidadin con lo que tocas ahi" y salia clasificada como saludo.\n        (r"\b(hi|hey|welcome)\b", _FUERTE, True),
         (r"\bin this (video|tutorial)\b", _FUERTE, True),
     ],
@@ -207,6 +207,16 @@ class NarrativeSegment:
         return f"{self.role.value}: por donde cae en el video"
 
 
+#: Hasta esta fraccion del video, una presentacion es una presentacion. Despues
+#: no: "vamos a ver como se configura esto" en el minuto doce no presenta nada,
+#: es un paso mas. Sin esta guarda, en una guia de veinte minutos salian
+#: **treinta y nueve intros** repartidas de punta a punta, y cada una se
+#: editaba como una intro (se aprieta mas y los zooms valen menos).
+INTRO_POSITION = 0.12
+#: Y antes de ahi, tampoco se descarta sin mas: se cree a medias, igual que con
+#: el cierre. Una guia que empieza con dos minutos de contexto existe.
+INTRO_LATE_FACTOR = 0.5
+
 #: A partir de esta fraccion del video, una despedida es una despedida sin mas
 #: preguntas.
 OUTRO_POSITION = 0.7
@@ -271,6 +281,10 @@ def _guard_factor(guarda: str | None, texto: str, encontrado, posicion: float) -
         # Una despedida se dice al final, y eso es parte de lo que la hace una
         # despedida; pero no se descarta por sitio, solo se cree menos.
         return 1.0 if posicion >= OUTRO_POSITION else OUTRO_EARLY_FACTOR
+    if guarda == "principio":
+        # Simetrico: una presentacion presenta el video, y el video se presenta
+        # al empezar.
+        return 1.0 if posicion <= INTRO_POSITION else INTRO_LATE_FACTOR
     if guarda == "cambia":
         # "seguimos con la misma pantalla" no pasa a otra cosa.
         resto = " ".join(texto[encontrado.end():].split()[:3])
@@ -450,8 +464,33 @@ def role_at(segmentos: list[NarrativeSegment], t: float) -> SegmentRole:
     return SegmentRole.BODY
 
 
-def summarize(segmentos: list[NarrativeSegment]) -> str:
-    """Una linea con la estructura que se entendio, para poder revisarla."""
+#: Cuantos tramos caben en el resumen antes de que deje de ser un resumen.
+SUMMARY_MAX = 12
+
+
+def summarize(segmentos: list[NarrativeSegment], maximo: int = SUMMARY_MAX) -> str:
+    """Una linea con la estructura que se entendio, para poder revisarla.
+
+    Tiene que caber en una linea de terminal. Antes escribia **un tramo por
+    frase**: en una guia de veinte minutos eran doscientos quince, y la nota
+    del montaje pasaba a ser un muro de texto que nadie iba a leer. Cuando hay
+    demasiados se cuenta por papel, que es lo que de verdad se quiere saber.
+    """
     if not segmentos:
         return "sin estructura reconocible"
-    return " · ".join(f"{s.role.value} {s.duration:.0f}s" for s in segmentos)
+    if len(segmentos) <= maximo:
+        return " · ".join(f"{s.role.value} {s.duration:.0f}s" for s in segmentos)
+
+    from collections import Counter
+
+    veces: Counter[str] = Counter()
+    tiempo: dict[str, float] = {}
+    for s in segmentos:
+        veces[s.role.value] += 1
+        tiempo[s.role.value] = tiempo.get(s.role.value, 0.0) + s.duration
+    partes = [
+        f"{papel} x{n} ({tiempo[papel] / 60:.0f} min)" if tiempo[papel] >= 90
+        else f"{papel} x{n} ({tiempo[papel]:.0f}s)"
+        for papel, n in veces.most_common()
+    ]
+    return f"{len(segmentos)} tramos: " + " · ".join(partes)

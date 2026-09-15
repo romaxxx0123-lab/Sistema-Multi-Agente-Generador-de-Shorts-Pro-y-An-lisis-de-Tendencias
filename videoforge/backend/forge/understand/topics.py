@@ -334,6 +334,17 @@ def _surface_forms(textos) -> dict[str, Counter]:
     return formas
 
 
+#: Una muletilla no es el tema de nada. Se sacan de donde ya estan definidas,
+#: que es el mismo sitio donde el montaje decide quitarlas del audio: sin esto
+#: salian capitulos titulados "Funcionando osea casilla".
+def _muletillas() -> frozenset[str]:
+    from ..analysis.speech import FILLER_WORDS
+
+    return frozenset(
+        stem(p) for palabras in FILLER_WORDS.values() for p in palabras
+    )
+
+
 def label(propios: list[str], ajenos: list[str], n: int = 3) -> str:
     """De que va un tramo, en palabras que se puedan leer.
 
@@ -342,13 +353,23 @@ def label(propios: list[str], ajenos: list[str], n: int = 3) -> str:
     que se dijo**, que es la que entiende quien lee el capitulo.
     """
     formas = _surface_forms(propios)
-    raices = topic_terms(
-        [s for t in propios for s in content_stems(t)],
-        [s for t in ajenos for s in content_stems(t)],
-        n,
-    )
+    fuera = _muletillas()
+    raices = [
+        r for r in topic_terms(
+            [s for t in propios for s in content_stems(t)],
+            [s for t in ajenos for s in content_stems(t)],
+            n + len(fuera),
+        )
+        if r not in fuera
+    ][:n]
     palabras = [formas[r].most_common(1)[0][0] for r in raices if r in formas]
     if not palabras:
         return ""
+
+    # En el orden en que se dicen, no en el de la puntuacion: "seccion
+    # terminamos abrimos" son las mismas tres palabras que "abrimos la seccion
+    # y terminamos", y solo una de las dos se puede leer.
+    texto_completo = normalize(" ".join(propios))
+    palabras.sort(key=lambda w: texto_completo.find(w))
     texto = " ".join(palabras)
     return texto[:1].upper() + texto[1:]

@@ -34,6 +34,11 @@ class Asset(BaseModel):
     query: str = ""
     #: por que se eligio este y no otro
     reason: str = ""
+    #: de donde se baja, cuando el proveedor solo da una ficha. Es un campo del
+    #: modelo y no un apano en `__dict__` porque el EDL se guarda en JSON: en
+    #: `__dict__` la direccion se perdia al guardarlo, y al volver a renderizar
+    #: ese material ya no se podia traer.
+    source_url: str = ""
     license: str = ""
     attribution: str = ""
     #: 0..1, cuanto encaja con la consulta segun el proveedor

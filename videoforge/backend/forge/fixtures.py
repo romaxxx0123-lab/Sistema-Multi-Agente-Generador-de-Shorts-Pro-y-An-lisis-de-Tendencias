@@ -238,13 +238,27 @@ def synthetic_guide_analysis(
         flow=[round(rng.uniform(0.0, 0.6), 3) for _ in range(muestras)],
     )
 
+    transcript = (
+        Transcript(language=language, segments=segmentos) if with_transcript else None
+    )
+
+    # Lo mismo que hace `pipeline.py` con material de verdad. Sin esto el
+    # fixture no se parece a un analisis real: `narrative` y `cues` salian
+    # vacios, y con ellos vacios **no se ejercitaba** ni el recorte segun el
+    # papel del tramo, ni las esperas anunciadas, ni los zooms hacia lo que
+    # senalas, ni los capitulos por lo que se dice. Es decir, justo lo que
+    # distingue a este montador, no lo probaba ningun test de integracion.
+    from .understand.segments import detect_segments
+    from .understand.speech_cues import find_all
+
+    audio = AudioAnalysis(silences=silencios)
     return Analysis(
         media=media,
         shots=shots,
         motion=motion,
         focus=focus,
-        audio=AudioAnalysis(silences=silencios),
-        transcript=(
-            Transcript(language=language, segments=segmentos) if with_transcript else None
-        ),
+        audio=audio,
+        transcript=transcript,
+        narrative=detect_segments(transcript, duration),
+        cues=find_all(transcript, audio),
     )

@@ -205,10 +205,20 @@ def test_el_aviso_conserva_mas_aire_que_la_intro() -> None:
 
 
 def test_el_informe_dice_de_que_parte_sale_cada_recorte() -> None:
+    """Con el desglose entre parentesis, no como entradas al mismo nivel.
+
+    Iba todo suelto -- "173s de silencio, 77s de silencio en paso, 74s de
+    silencio en aviso, 51s de silencio en intro" -- que son cuatro entradas
+    para decir una cosa y encima la suma no cuadraba a ojo con el total.
+    """
     analisis = _analisis_con_estructura()
     edl = build_edl(analisis, "tutorial")
     recortes = next(n for n in edl.notes if "Recortados" in n)
-    assert " en intro" in recortes or " en cierre" in recortes, recortes
+
+    assert "de silencio (" in recortes, recortes
+    assert "intro" in recortes or "cierre" in recortes, recortes
+    # Una sola entrada por tipo de recorte.
+    assert recortes.count("de silencio") == 1, recortes
 
 
 def test_la_estructura_entendida_se_cuenta() -> None:
@@ -252,3 +262,60 @@ def test_los_capitulos_siguen_lo_que_se_dice() -> None:
     edl = build_edl(analisis, "tutorial")
     cortes = _chapter_cuts_from_narrative(edl, analisis.narrative, 5.0)
     assert cortes, "no encontro ningun cambio de parte"
+
+
+# -- una intro pasa una vez, y al principio -------------------------------
+
+
+def test_una_formula_de_intro_a_mitad_de_video_no_es_una_intro() -> None:
+    """Medido en la guia de veinte minutos: salian 39 intros repartidas.
+
+    Y no es cosmetico: cada una se editaba **como una intro**, o sea que se
+    apretaba mas el recorte y los zooms valian menos justo ahi.
+    """
+    from forge.understand.segments import SegmentRole, _match
+
+    frase = "vamos a ver como se configura esto"
+    from forge.understand.segments import MIN_CONFIDENCE
+
+    al_principio = _match(frase, 0.02)
+    a_mitad = _match(frase, 0.55)
+
+    assert al_principio is not None and al_principio[0] is SegmentRole.INTRO
+    assert al_principio[1] >= MIN_CONFIDENCE
+    # A mitad de video la misma frase se cree a medias, y con eso no llega a
+    # papel: `detect_segments` la deja como cuerpo.
+    assert a_mitad is None or a_mitad[1] < MIN_CONFIDENCE
+
+
+def test_en_los_primeros_segundos_si_lo_es() -> None:
+    from forge.understand.segments import SegmentRole, _match
+
+    for frase in (
+        "hoy vamos a configurar el servidor",
+        "en este video os traigo una cosa",
+        "antes de empezar una aclaracion",
+    ):
+        encaje = _match(frase, 0.01)
+        assert encaje is not None and encaje[0] is SegmentRole.INTRO, frase
+
+
+def test_el_resumen_de_estructura_cabe_en_una_linea() -> None:
+    """Escribia un tramo por frase: 215 en una guia de veinte minutos."""
+    from forge.understand.segments import NarrativeSegment, SegmentRole, summarize
+
+    muchos = [
+        NarrativeSegment(
+            start=float(i) * 4, end=float(i) * 4 + 4,
+            role=SegmentRole.STEP if i % 2 else SegmentRole.BODY, confidence=0.7,
+        )
+        for i in range(215)
+    ]
+    resumen = summarize(muchos)
+    assert len(resumen) < 200, resumen
+    assert "215 tramos" in resumen
+    assert "x108" in resumen or "x107" in resumen
+
+    # Con pocos tramos se sigue viendo uno a uno, que es mas util.
+    pocos = muchos[:5]
+    assert summarize(pocos).count("·") == 4

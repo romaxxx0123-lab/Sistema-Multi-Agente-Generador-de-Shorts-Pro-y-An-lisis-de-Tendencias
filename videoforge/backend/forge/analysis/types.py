@@ -61,6 +61,19 @@ class MotionTrack(BaseModel):
         window = self.flow[a:b]
         return sum(window) / len(window) if window else 0.0
 
+    def peak_between(self, start: float, end: float) -> float:
+        """El movimiento **maximo** del tramo, no el promedio.
+
+        Para decidir si cabe un zoom importa el pico y no la media: un tramo
+        quieto con un barrido de camara en medio da una media baja y hace que
+        el zoom se lea como un tiron justo en ese barrido.
+        """
+        if not self.flow or self.rate <= 0:
+            return 0.0
+        a = max(0, int(start * self.rate))
+        b = min(len(self.flow), max(a + 1, int(end * self.rate)))
+        return max(self.flow[a:b]) if b > a else 0.0
+
 
 class ShotFocus(BaseModel):
     """Donde mira el ojo dentro de un plano.

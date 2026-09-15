@@ -133,7 +133,16 @@ def _pointed_candidates(edl: EDL, analysis: Analysis, rules) -> list:
         t = edl.source_to_timeline(c.start)
         if t is None or t < 0.2 or t > edl.duration - rules.punch_seconds:
             continue
-        movimiento = analysis.motion.value_at(c.start) if analysis.motion else 0.0
+        # El movimiento se mira en **toda la ventana** del zoom y por su pico,
+        # no en el instante en que empieza. Medido en la guia de veinte
+        # minutos, cuatro de diecinueve zooms arrancaban sobre imagen quieta
+        # (0,08) y acababan sobre un barrido de camara (0,58): el planner los
+        # daba por buenos y el medidor de saturacion los contaba como conflicto
+        # despues, cuando ya estaban puestos.
+        movimiento = (
+            analysis.motion.peak_between(c.start, c.start + rules.punch_seconds)
+            if analysis.motion else 0.0
+        )
         if movimiento > rules.max_motion_for_punch:
             continue
         zoom = _framing_zoom(c.box, rules)
@@ -178,7 +187,10 @@ def plan_punch_ins(
             continue
 
         foco = analysis.focus_at(origen)
-        movimiento = analysis.motion.value_at(origen) if analysis.motion else 0.0
+        movimiento = (
+            analysis.motion.peak_between(origen, origen + rules.punch_seconds)
+            if analysis.motion else 0.0
+        )
 
         if (
             foco is not None

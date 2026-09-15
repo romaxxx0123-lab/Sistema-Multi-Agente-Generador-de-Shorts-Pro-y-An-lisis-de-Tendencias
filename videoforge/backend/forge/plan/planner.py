@@ -135,12 +135,32 @@ def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip],
     quitado = seleccion.removed_seconds
     if quitado > 0:
         porcentaje = quitado / analysis.duration * 100 if analysis.duration else 0
-        detalle = ", ".join(
-            f"{segundos:.1f}s de {motivo}"
-            for motivo, segundos in sorted(
-                seleccion.reasons().items(), key=lambda kv: -kv[1]
+        # Agrupado por **que** se quito, con el desglose por papel entre
+        # parentesis. Antes iba todo al mismo nivel -- "173s de silencio, 77s
+        # de silencio en paso, 74s de silencio en aviso, 51s de silencio en
+        # intro" -- que son cuatro entradas para decir una cosa, y ademas la
+        # suma no cuadraba a ojo con el total.
+        por_tipo: dict[str, float] = {}
+        por_papel: dict[str, dict[str, float]] = {}
+        for motivo, segundos in seleccion.reasons().items():
+            clave, _, papel = motivo.partition(" en ")
+            por_tipo[clave] = por_tipo.get(clave, 0.0) + segundos
+            if papel:
+                por_papel.setdefault(clave, {})[papel] = (
+                    por_papel.setdefault(clave, {}).get(papel, 0.0) + segundos
+                )
+
+        partes = []
+        for motivo, segundos in sorted(por_tipo.items(), key=lambda kv: -kv[1]):
+            desglose = sorted(
+                por_papel.get(motivo, {}).items(), key=lambda kv: -kv[1]
+            )[:4]
+            donde = (
+                " (" + ", ".join(f"{p} {v:.0f}s" for p, v in desglose) + ")"
+                if desglose else ""
             )
-        )
+            partes.append(f"{segundos:.1f}s de {motivo}{donde}")
+        detalle = ", ".join(partes)
         notas.append(f"Recortados {quitado:.1f}s ({porcentaje:.0f}%): {detalle}.")
     else:
         notas.append("No habia tiempo muerto que recortar.")

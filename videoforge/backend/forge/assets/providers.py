@@ -378,9 +378,9 @@ class StockProvider:
                         license="Pexels License",
                         attribution=f"Pexels / {(item.get('user') or {}).get('name', 'desconocido')}",
                         relevance=0.6,
-                    ).model_copy(update={"path": None})
+                        source_url=str(mejor.get("link") or ""),
+                    )
                 )
-                salida[-1].__dict__["_download_url"] = mejor.get("link")
         else:
             for item in datos.get("hits", []) or []:
                 videos = (item.get("videos") or {})
@@ -403,9 +403,9 @@ class StockProvider:
                         license="Pixabay Content License",
                         attribution=f"Pixabay / {item.get('user', 'desconocido')}",
                         relevance=0.6,
+                        source_url=str(mejor.get("url") or ""),
                     )
                 )
-                salida[-1].__dict__["_download_url"] = mejor.get("url")
 
         return salida
 
