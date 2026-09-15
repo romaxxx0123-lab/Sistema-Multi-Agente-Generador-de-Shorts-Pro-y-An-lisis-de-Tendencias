@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from ..media import MediaInfo
 from ..understand.segments import NarrativeSegment
 from ..understand.speech_cues import SpeechCue
+from .cursor import CursorTrack
 from .ocr import ScreenText
 
 
@@ -239,6 +240,10 @@ class Analysis(BaseModel):
     #: Texto leido en pantalla, con su posicion. Vacio si no hay OCR: nada de
     #: lo que depende de el es obligatorio.
     screen_text: list[ScreenText] = Field(default_factory=list)
+    #: Por donde anduvo el puntero del raton. En una grabacion de pantalla es
+    #: la mejor senal de donde hay que mirar, mejor que cualquier mapa de
+    #: saliencia: quien graba lo lleva a lo que va a explicar.
+    cursor: CursorTrack | None = None
     #: Que es cada parte del video segun lo que se dice en ella (intro, paso,
     #: aviso, cierre...). Vacio si no hay transcripcion o si nadie enlaza nada.
     narrative: list[NarrativeSegment] = Field(default_factory=list)

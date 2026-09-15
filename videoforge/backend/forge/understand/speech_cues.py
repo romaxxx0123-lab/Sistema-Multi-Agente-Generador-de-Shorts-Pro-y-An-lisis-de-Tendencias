@@ -465,7 +465,7 @@ def _find_region(palabras: list[str], desde: int) -> tuple[float, float] | None:
 
 
 def find_pointing(
-    transcript: "Transcript | None", screen_text=None
+    transcript: "Transcript | None", screen_text=None, cursor=None
 ) -> list[SpeechCue]:
     """Momentos en los que senalas algo de la pantalla.
 
@@ -523,10 +523,27 @@ def find_pointing(
                 if patron is _SOLO_NOMBRE and not nombre:
                     continue
 
+                # Si no se pudo leer que se nombra, queda **el puntero**: en una
+                # grabacion de pantalla es donde esta la mirada, y es mucho mas
+                # preciso que la zona que se dice ("arriba a la derecha" es un
+                # tercio de pantalla; el puntero es un punto, y medido acierta
+                # con un error de 24 px en 1280).
+                con_puntero = False
+                if not nombre and cursor is not None:
+                    parado = cursor.resting_at(palabra.start)
+                    if parado is not None and (
+                        region is None or _distance(region, parado) <= MAX_DISAGREEMENT
+                    ):
+                        # Con zona dicha el puntero solo afina; si se
+                        # contradicen gana lo que dijiste, igual que con el OCR.
+                        region, con_puntero = parado, True
+
                 if nombre:
                     # Nombrarlo sin senalarlo dirige menos que senalarlo, pero
                     # se sabe exactamente de que se habla.
                     fuerza = 0.7 if patron is _SOLO_NOMBRE else 0.98
+                elif con_puntero:
+                    fuerza = 0.9
                 elif solo_zona:
                     fuerza = 0.45
                 else:
@@ -542,7 +559,7 @@ def find_pointing(
                         phrase=encaje.group(0),
                         strength=fuerza,
                         region=region,
-                        target=nombre,
+                        target=nombre or ("el puntero" if con_puntero else ""),
                         box=caja,
                     )
                 )
@@ -665,15 +682,17 @@ def find_all(
     audio: "AudioAnalysis | None" = None,
     user_dir=None,
     screen_text=None,
+    cursor=None,
 ) -> list[SpeechCue]:
     """Todas las senales de lo que se dice, ordenadas en el tiempo.
 
-    Con `user_dir` se leen ademas tus propias formulas de `frases.json`, y con
-    `screen_text` lo que senalas se ata al texto que hay en pantalla.
+    Con `user_dir` se leen ademas tus propias formulas de `frases.json`, con
+    `screen_text` lo que senalas se ata al texto que hay en pantalla, y con
+    `cursor` a donde tienes el raton cuando no hay texto que atar.
     """
     mias = load_user_phrases(user_dir)
     todas = (
-        find_pointing(transcript, screen_text)
+        find_pointing(transcript, screen_text, cursor)
         + find_emphasis(transcript, audio)
         + find_retakes(transcript)
         + find_waits(transcript, mias)

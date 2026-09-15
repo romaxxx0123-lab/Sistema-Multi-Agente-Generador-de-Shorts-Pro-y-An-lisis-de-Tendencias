@@ -29,6 +29,7 @@ from .audio import analyze_audio
 from .motion import analyze_motion, rate_for_duration
 from ..understand.segments import detect_segments
 from ..understand.speech_cues import find_all
+from .cursor import CursorSample, CursorTrack, track_cursor
 from .ocr import ScreenText, WordBox, read_screen_text, tesseract_available
 from .saliency import analyze_saliency
 from .shots import detect_shots
@@ -70,6 +71,7 @@ _STAGE_CODE = {
     "audio": ("forge.analysis.audio",),
     "transcript": ("forge.analysis.speech",),
     "screen_text": ("forge.analysis.ocr",),
+    "cursor": ("forge.analysis.cursor",),
 }
 
 #: Version efectiva de cada etapa, calculada una vez al importar.
@@ -88,6 +90,7 @@ STAGE_LABELS = {
     "audio": "analizando audio",
     "transcript": "transcribiendo voz",
     "screen_text": "leyendo el texto en pantalla",
+    "cursor": "siguiendo el puntero",
 }
 
 ProgressFn = Callable[[str, str], None]
@@ -150,6 +153,28 @@ class AnalysisRun:
         )
         self.cache.write("motion", track.model_dump(mode="json"), v)
         return track
+
+    def _cursor(self, bundle: ProxyBundle, force: bool) -> CursorTrack | None:
+        """Por donde anduvo el puntero del raton.
+
+        En una grabacion de pantalla es la mejor senal de donde hay que mirar.
+        En material donde no hay puntero -- una camara, un juego -- no encuentra
+        nada, y eso es lo correcto: esa senal no aplica a ese material.
+        """
+        v = STAGE_VERSIONS["cursor"]
+        if not force and (cached := self.cache.read("cursor", v)) is not None:
+            return CursorTrack(
+                rate=cached.get("rate", 4.0),
+                samples=[CursorSample(**m) for m in cached.get("samples", [])],
+            )
+        self.progress("cursor", STAGE_LABELS["cursor"])
+        pista = track_cursor(bundle.video, self.settings)
+        self.cache.write(
+            "cursor",
+            {"rate": pista.rate, "samples": [s.__dict__ for s in pista.samples]},
+            v,
+        )
+        return pista if pista.samples else None
 
     def _shots(self, bundle: ProxyBundle, motion: MotionTrack, force: bool) -> list[Shot]:
         v = STAGE_VERSIONS["shots"]
@@ -262,6 +287,10 @@ class AnalysisRun:
         info = self._probe(forced("probe"))
         bundle = self._proxy(info, forced("proxy"))
         motion = self._motion(bundle, forced("motion"))
+        # El puntero: barato (una pasada a 4/s sobre el proxy, mas ligera que la
+        # del movimiento) y es la mejor senal de donde mirar en una grabacion de
+        # pantalla, que es el caso de uso.
+        cursor = self._cursor(bundle, forced("cursor"))
         shots = self._shots(bundle, motion, forced("shots"))
         focus = self._focus(bundle, shots, forced("focus"))
         audio = self._audio(bundle, forced("audio"))
@@ -284,6 +313,7 @@ class AnalysisRun:
             audio=audio,
             transcript=transcript,
             screen_text=self.screen_text,
+            cursor=cursor,
             # Que es cada parte del video. Sale de lo que se dice, asi que no
             # cuesta una pasada mas: se deduce del transcript que ya tenemos.
             narrative=detect_segments(transcript, info.duration),
@@ -291,7 +321,8 @@ class AnalysisRun:
             # y donde te corriges. Sale del transcript y de la curva de nivel
             # que ya se calculo, asi que no cuesta ninguna pasada mas.
             cues=find_all(
-                transcript, audio, self.settings.cache_dir.parent, self.screen_text
+                transcript, audio, self.settings.cache_dir.parent, self.screen_text,
+                cursor,
             ),
         )
 
