@@ -95,23 +95,43 @@ def test_un_umbral_fijo_de_pico_no_habria_servido(analisis, settings: Settings) 
     assert find_silences(niveles, 0.02, umbral_adaptado, 0.5, duracion)
 
 
-def test_sin_separacion_clara_el_umbral_sigue_siendo_relativo() -> None:
-    """Sin dos poblaciones claras se es conservador, pero nunca absoluto.
+def test_sin_separacion_clara_no_se_marca_nada(analisis) -> None:
+    """Si no se distingue la voz del fondo, no se recorta. Nunca al reves.
 
-    Un umbral fijo (-32 dB, el clasico) es lo que rompia el montaje en cuanto
-    la grabacion estaba unos pocos dB mas alta o mas baja de lo esperado: o no
-    encontraba un solo silencio, o se tragaba la voz entera. Aqui se pega al
-    suelo medido del propio audio.
+    Este test fijaba antes justo el fallo: exigia que el umbral quedase "un
+    poco por encima del suelo", que suena razonable y es exactamente lo que
+    borra el video. Con un audio de nivel plano (musica constante, una voz ya
+    muy comprimida, un tono) ese umbral cae **por encima de la senal entera**,
+    el 100% del video pasa a ser silencio y el montaje se lo come todo. Medido:
+    12 s de entrada, 0,8 s de salida, sin un solo error por ningun lado.
     """
     import numpy as np
 
     plano = np.full(500, -25.0, dtype=np.float32)
     umbral, suelo, _voz = choose_threshold_db(plano)
-    assert suelo < umbral < suelo + 5.0
 
-    # Y el mismo material 20 dB mas bajo da el mismo umbral, 20 dB mas bajo.
+    assert umbral < plano.min(), (
+        f"umbral {umbral:.1f} dB por encima del audio ({plano.min():.1f} dB): "
+        "marcaria el video entero como silencio"
+    )
+    assert find_silences(plano, 0.02, umbral, 0.5, 10.0) == []
+
+    # Y sigue siendo relativo: el mismo material 20 dB mas bajo da el mismo
+    # umbral 20 dB mas bajo. Un valor absoluto no serviria para nada.
     bajo, _s, _v = choose_threshold_db(plano - 20.0)
     assert abs(bajo - (umbral - 20.0)) < 1e-4
+
+
+def test_con_separacion_clara_si_se_marca(analisis) -> None:
+    """La comprobacion de arriba no puede dejar el detector inutil."""
+    import numpy as np
+
+    senal = np.full(500, -12.0, dtype=np.float32)
+    senal[100:200] = -55.0   # un silencio de verdad
+    umbral, suelo, voz = choose_threshold_db(senal)
+
+    assert suelo < umbral < voz
+    assert find_silences(senal, 0.02, umbral, 0.5, 10.0), "no vio un silencio obvio"
 
 
 # -- planos en una grabacion de pantalla -----------------------------------

@@ -160,16 +160,22 @@ def choose_threshold_db(levels: np.ndarray) -> tuple[float, float, float]:
     suelo = float(np.percentile(levels, FLOOR_PERCENTILE))
     voz = float(np.percentile(levels, SPEECH_PERCENTILE))
 
-    # Sin separacion clara (grabacion ruidosa, musica de fondo, habla continua)
-    # se usa un margen pequeno sobre el fondo.
+    # Sin separacion clara no hay dos poblaciones que separar: puede ser musica
+    # de fondo constante, una voz ya muy comprimida, un tono, o una grabacion
+    # tan ruidosa que el fondo tape las pausas. Entonces el umbral se pone por
+    # **debajo de todo**, para no marcar nada.
     #
-    # Lo que NO se puede hacer es caer a un valor absoluto: los dB de un fichero
-    # dependen de como se grabo, asi que un -32 fijo puede estar por debajo del
-    # fondo y no marcar ni un silencio, o por encima de la voz y comersela. Con
-    # un umbral relativo se detecta de menos en el peor caso, que es el error
-    # barato: quedarse sin recortar es mucho mejor que cortar sobre una palabra.
+    # Es el unico valor seguro, y el error que costo entenderlo: poniendolo un
+    # poco por encima del suelo (que suena razonable) el umbral cae por encima
+    # de la senal entera cuando el audio es plano, el video pasa a ser 100%
+    # silencio y el montaje se lo come **todo**. Medido: 12 s de entrada, 0,8 s
+    # de salida, y sin un solo error por ningun lado.
+    #
+    # Tampoco se puede caer a un valor absoluto: los dB de un fichero dependen
+    # de como se grabo, asi que un -32 fijo puede estar por debajo del fondo y
+    # no marcar ni un silencio, o por encima de la voz y comersela.
     if voz - suelo < MIN_SEPARATION_DB:
-        return suelo + NARROW_MARGIN_DB, suelo, voz
+        return float(levels.min()) - NARROW_MARGIN_DB, suelo, voz
 
     umbral = suelo + (voz - suelo) * THRESHOLD_POSITION
     umbral = max(umbral, suelo + MARGIN_ABOVE_FLOOR_DB)

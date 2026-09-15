@@ -42,9 +42,40 @@ def _render_spec(analysis: Analysis) -> RenderSpec:
     return RenderSpec(width=width - width % 2, height=height - height % 2, fps=fps)
 
 
+#: Por debajo de esta fraccion del original, el montaje deja de ser un montaje.
+#: Recortar tiempo muerto quita entre un 10% y un 30% de una guia; quedarse con
+#: menos de un tercio significa que la deteccion de silencio se ha equivocado,
+#: no que el video fuera casi todo silencio.
+MIN_KEEP_RATIO = 0.35
+
+
 def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip], list[str]]:
     """Corta el video y explica por que."""
     seleccion = plan_selection(analysis, style.pacing)
+    notas: list[str] = []
+
+    # Red de seguridad. Si la seleccion se lleva casi todo el video, lo que
+    # pasa no es que el video fuera silencio: es que el detector se equivoco, y
+    # el resultado es un fichero de dos segundos entregado como si fuera el
+    # montaje. Paso de verdad con audio de nivel plano (musica constante, una
+    # voz ya muy comprimida, un tono): el umbral caia por encima de la senal
+    # entera, todo era silencio, y el montaje salia con el 2% del original sin
+    # un solo error por ningun lado.
+    #
+    # En ese caso no se recorta nada y se dice por que. Entregar el video sin
+    # tocar es un mal resultado; entregar dos segundos es una perdida de datos.
+    conservado = sum(b - a for a, b in seleccion.keeps)
+    if analysis.duration > 0 and conservado < analysis.duration * MIN_KEEP_RATIO:
+        notas.append(
+            f"No se recorto nada: el analisis marcaba como silencio el "
+            f"{100 - conservado / analysis.duration * 100:.0f}% del video, que no "
+            f"puede ser. Suele pasar con musica de fondo constante o con un audio "
+            f"ya muy comprimido, donde no se distingue la voz del fondo."
+        )
+        return [
+            Clip(id="clip0000", source_start=0.0, source_end=analysis.duration,
+                 reason="video completo: la deteccion de silencio no era fiable")
+        ], notas
 
     clips = [
         Clip(
@@ -56,7 +87,6 @@ def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip],
         for i, (a, b) in enumerate(seleccion.keeps)
     ]
 
-    notas: list[str] = []
     quitado = seleccion.removed_seconds
     if quitado > 0:
         porcentaje = quitado / analysis.duration * 100 if analysis.duration else 0

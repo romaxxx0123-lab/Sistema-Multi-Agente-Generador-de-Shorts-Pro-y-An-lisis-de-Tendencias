@@ -596,6 +596,42 @@ saturacion 51,8/100 · en el punto
   30 x transition  7 x text_card    1 x grade
 ```
 
+## Material que no se parece al de pruebas
+
+Una grabacion real trae cosas que ningun fixture sintetico tiene. Diez ficheros
+con esas rarezas, pasados por el sistema entero:
+
+| caso | resultado |
+|---|---|
+| fps variable (lo que sacan OBS y ShareX) | ok |
+| 4K, vertical 9:16, 1366x768, 60 fps | ok |
+| matriz de rotacion de 90 grados (movil) | ok, sale 720x1280 como se ve |
+| audio mono a 44,1 kHz, 5.1, 40 dB por debajo | ok |
+| sin pista de audio | ok |
+
+Los diez pasaban, y ese "pasaban" escondia **el fallo mas grave de todo el
+proyecto**: la duracion de salida era de 0,8 segundos. Doce segundos de entrada,
+ocho decimas de salida, sin un solo error por ningun lado.
+
+**Un audio de nivel plano borraba el video entero.** Cuando el fondo y la voz no
+se distinguen, el umbral de silencio se ponia un poco *por encima* del suelo de
+ruido, que suena de lo mas razonable hasta que el audio es plano: entonces el
+umbral cae por encima de la senal entera, el 100% del video pasa a ser silencio
+y el montaje se lo come todo. Pasa con musica de fondo constante, con una voz ya
+muy comprimida o con un tono.
+
+Era una regresion propia, de arreglar el umbral fijo unas horas antes. Y habia
+un test que fijaba esa conducta como la correcta: exigia que el umbral quedase
+"un poco por encima del suelo". Ahora, sin separacion clara, el umbral se pone
+**por debajo de todo** y no se marca nada: quedarse sin recortar es el error
+barato, borrar el video no lo es.
+
+Y una red de seguridad encima, porque el fallo no puede depender de que el
+detector acierte siempre: si la seleccion se lleva mas de dos tercios del video,
+no se recorta nada y se explica por que. Recortar tiempo muerto quita entre un
+10% y un 30% de una guia; quedarse con menos de un tercio significa que algo se
+ha equivocado, no que el video fuera casi todo silencio.
+
 ## Por que hay un generador de material realista
 
 El fixture de barras de color sirve para probar la mecanica, pero **escondia dos
