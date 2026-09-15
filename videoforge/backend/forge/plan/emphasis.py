@@ -14,6 +14,8 @@ Si no se cumplen, no se hace zoom. Preferimos un montaje sobrio a uno nervioso.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from ..analysis.types import Analysis
 from .edl import EDL, KenBurnsEffect, PunchInEffect, Rect
 from ..understand.segments import SegmentRole, role_at
@@ -74,8 +76,56 @@ def _cue_boost(cues, source_time: float) -> float:
     return factor
 
 
+#: Por debajo de esto, acercarse no se nota y solo gasta cupo.
+MIN_USEFUL_ZOOM = 1.03
+
+#: Aire que se deja a cada lado de lo que se encuadra, en fracciones de
+#: pantalla. Un boton pegado al borde del recorte se lee como un fallo.
+TARGET_MARGIN = 0.04
+
+
+class _Candidate(NamedTuple):
+    """Un zoom propuesto, antes de saber si cabe en el ritmo del estilo."""
+
+    score: float
+    start: float
+    cx: float
+    cy: float
+    #: cuanto se acerca. Fijo para los que salen de la saliencia; calculado
+    #: cuando se sabe **que** se encuadra.
+    zoom: float
+    #: el texto de pantalla que se estaba nombrando, si lo habia
+    target: str = ""
+
+
+def _framing_zoom(box, rules) -> float:
+    """Cuanto hay que acercarse para que eso que nombras se vea de verdad.
+
+    El zoom de enfasis es el mismo para todo (1,18), porque hasta ahora no se
+    sabia a **que** se acercaba. Sabiendo el tamano del elemento se puede
+    encuadrar: un boton de un 9% de ancho pide mucho mas acercamiento que un
+    panel que ya ocupa media pantalla.
+
+    Con un zoom `z` se ve `1/z` de la imagen, asi que algo de ancho `w` pasa a
+    ocupar `w * z`. Despejando para que ocupe lo que pide el estilo sale el
+    zoom, y se recorta por dos sitios: por arriba, porque en una grabacion de
+    pantalla lo que se gana en tamano se pierde en nitidez; y por el tamano del
+    propio elemento, porque un zoom que **corta** lo que estas senalando es
+    peor que no acercarse. Eso ultimo es lo que hace que un panel ancho salga
+    con un zoom minimo o con ninguno, en vez de quedarse a medias.
+    """
+    if not box:
+        return rules.punch_zoom
+    ancho = max(box[2], box[3], 0.01)
+    deseado = rules.punch_target_share / ancho
+    # El zoom mas cerrado en el que eso todavia cabe entero, con aire.
+    cabe = 1.0 / min(1.0, ancho + 2 * TARGET_MARGIN)
+    tope = max(1.0, min(rules.punch_zoom_max, cabe))
+    return round(min(max(deseado, rules.punch_zoom), tope), 3)
+
+
 def _pointed_candidates(edl: EDL, analysis: Analysis, rules) -> list:
-    """Zooms colocados por lo que se dice, apuntando a la zona que se nombra."""
+    """Zooms colocados por lo que se dice, apuntando a lo que se nombra."""
     salida = []
     for c in analysis.cues:
         if c.kind is not CueKind.POINT or c.region is None:
@@ -86,7 +136,20 @@ def _pointed_candidates(edl: EDL, analysis: Analysis, rules) -> list:
         movimiento = analysis.motion.value_at(c.start) if analysis.motion else 0.0
         if movimiento > rules.max_motion_for_punch:
             continue
-        salida.append((POINTED_SCORE * c.strength, t, c.region[0], c.region[1]))
+        zoom = _framing_zoom(c.box, rules)
+        if zoom < MIN_USEFUL_ZOOM:
+            # Lo que senalas ocupa ya casi toda la pantalla: no hay a donde
+            # acercarse. Un zoom de 1,0 no es un zoom, es un efecto vacio que
+            # ocupa sitio en el cupo y suma en el medidor de saturacion.
+            continue
+        salida.append(_Candidate(
+            score=POINTED_SCORE * c.strength,
+            start=t,
+            cx=c.region[0],
+            cy=c.region[1],
+            zoom=zoom,
+            target=c.target,
+        ))
     return salida
 
 
@@ -106,7 +169,7 @@ def plan_punch_ins(
     maximo = budget(rules.max_punch_per_minute, edl.duration, rules.punch_seconds * 2)
 
     # 1. Proponer candidatos a lo largo del montaje y puntuarlos.
-    candidatos: list[tuple[float, float, float, float]] = []  # (score, t, cx, cy)
+    candidatos: list[_Candidate] = []
     t = rules.punch_seconds
     while t < edl.duration - rules.punch_seconds:
         origen = edl.timeline_to_source(t)
@@ -130,7 +193,7 @@ def plan_punch_ins(
             # cualquier sitio.
             puntos *= _narrative_boost(analysis.narrative, origen)
             puntos *= _cue_boost(analysis.cues, origen)
-            candidatos.append((puntos, t, foco.cx, foco.cy))
+            candidatos.append(_Candidate(puntos, t, foco.cx, foco.cy, rules.punch_zoom))
         t += CANDIDATE_STEP
 
     # Donde dices **donde** hay que mirar ("este boton de arriba a la derecha"),
@@ -140,47 +203,52 @@ def plan_punch_ins(
 
     # 2. Elegir los mejores respetando la separacion minima.
     cortes = edl.cut_points()
-    elegidos: list[tuple[float, float, float, float]] = []
-    reservas: list[tuple[float, float, float, float]] = []
+    elegidos: list[_Candidate] = []
+    reservas: list[_Candidate] = []
 
-    for score, inicio, cx, cy in sorted(candidatos, key=lambda c: -c[0]):
+    for candidato in sorted(candidatos, key=lambda c: -c.score):
+        inicio = candidato.start
         fin = min(edl.duration, inicio + rules.punch_seconds)
         # Un zoom que se queda a medias al llegar un corte se ve como un fallo.
         if any(inicio < c < fin for c in cortes):
             continue
         ya_puestos = elegidos + reservas
-        if any(abs(inicio - otro[1]) < rules.punch_min_gap for otro in ya_puestos):
+        if any(abs(inicio - otro.start) < rules.punch_min_gap for otro in ya_puestos):
             continue
 
         if len(elegidos) < maximo:
-            elegidos.append((score, inicio, cx, cy))
+            elegidos.append(candidato)
         elif len(reservas) < maximo + 4:
             # Solo guardamos unas cuantas reservas: mas no aportan y engordan
             # el EDL sin motivo.
-            reservas.append((score, inicio, cx, cy))
+            reservas.append(candidato)
 
-    elegidos.sort(key=lambda c: c[1])
-    reservas.sort(key=lambda c: c[1])
-
-    coste = min(1.0, (rules.punch_zoom - 1.0) * 2.5)
+    elegidos.sort(key=lambda c: c.start)
+    reservas.sort(key=lambda c: c.start)
 
     def construir(lote, prefijo):
-        return [
-            PunchInEffect(
+        efectos = []
+        for i, (score, inicio, cx, cy, zoom, nombre) in enumerate(lote):
+            # Un zoom mas cerrado molesta mas: cuesta en proporcion a lo que se
+            # acerca, no un valor fijo para todos.
+            coste = min(1.0, (zoom - 1.0) * 2.5)
+            porque = (
+                f'zoom sobre "{nombre}": ahi lo estas senalando'
+                if nombre else
+                f"zoom a ({cx:.0%}, {cy:.0%}): la atencion se concentra ahi "
+                f"y el plano esta quieto"
+            )
+            efectos.append(PunchInEffect(
                 id=f"{prefijo}{i:03d}",
                 start=round(inicio, 3),
                 end=round(min(edl.duration, inicio + rules.punch_seconds), 3),
-                rect=Rect.centered(cx, cy, rules.punch_zoom),
+                rect=Rect.centered(cx, cy, zoom),
                 drift=rules.punch_drift,
                 value_score=round(score, 3),
                 cost_weight=round(coste, 3),
-                rationale=(
-                    f"zoom a ({cx:.0%}, {cy:.0%}): la atencion se concentra ahi "
-                    f"y el plano esta quieto"
-                ),
-            )
-            for i, (score, inicio, cx, cy) in enumerate(lote)
-        ]
+                rationale=porque,
+            ))
+        return efectos
 
     return construir(elegidos, "punch"), construir(reservas, "punchalt")
 

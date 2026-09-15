@@ -241,7 +241,7 @@ def test_el_zoom_apunta_donde_dices() -> None:
 
     candidatos = _pointed_candidates(edl, a, load_style("tutorial").emphasis)
     assert candidatos, "no coloco ningun zoom por lo que se dice"
-    _score, _t, cx, cy = candidatos[0]
+    cx, cy = candidatos[0].cx, candidatos[0].cy
     assert cx > 0.6 and cy < 0.4, f"apunto a ({cx:.2f}, {cy:.2f}) diciendo 'arriba a la derecha'"
 
 

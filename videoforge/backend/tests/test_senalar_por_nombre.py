@@ -205,3 +205,67 @@ def test_sin_senales_no_se_pierde_ningun_candidato() -> None:
     t, pantalla = _dos_momentos()
     marcas, reservas = plan_callouts(_edl(), t, pantalla, CalloutRules())
     assert sorted(m.label for m in marcas + reservas) == ["Archivo", "Guardar"]
+
+
+# -- y el zoom encuadra lo que senalas ------------------------------------
+
+
+def test_el_zoom_se_acerca_segun_el_tamano_de_lo_que_senalas() -> None:
+    """Antes el zoom era el mismo para todo, porque no sabia a que se acercaba.
+
+    Sabiendo el tamano del elemento se puede encuadrar: un boton pequeno pide
+    mucho mas acercamiento que un panel que ya ocupa media pantalla.
+    """
+    from forge.plan.emphasis import _framing_zoom
+    from forge.plan.styles import load_style
+
+    reglas = load_style("tutorial").emphasis
+    boton = _framing_zoom((0.8, 0.9, 0.09, 0.03), reglas)
+    panel = _framing_zoom((0.1, 0.1, 0.30, 0.60), reglas)
+
+    assert boton > panel
+    assert boton <= reglas.punch_zoom_max, "en pantalla grabada, mas ya se ve"
+    assert panel == reglas.punch_zoom, "lo grande no necesita mas del de serie"
+    assert _framing_zoom(None, reglas) == reglas.punch_zoom, "sin OCR, como antes"
+
+
+def test_no_se_acerca_tanto_que_corte_lo_que_senalas() -> None:
+    """Un zoom que corta el elemento es peor que no acercarse."""
+    from forge.plan.emphasis import _framing_zoom
+    from forge.plan.styles import load_style
+
+    reglas = load_style("tutorial").emphasis
+    barra = _framing_zoom((0.04, 0.9, 0.92, 0.05), reglas)
+    assert barra < reglas.punch_zoom
+    assert 0.92 + 0.02 <= 1.0 / barra, "tiene que seguir cabiendo entero"
+
+
+def test_lo_que_ocupa_la_pantalla_entera_no_lleva_zoom() -> None:
+    """No hay a donde acercarse, y un zoom de 1,0 solo gasta cupo."""
+    from forge.analysis.types import Analysis
+    from forge.media import MediaInfo, VideoStream
+    from forge.plan.edl import EDL, Clip, RenderSpec
+    from forge.plan.emphasis import _pointed_candidates
+    from forge.plan.styles import load_style
+    from forge.understand.speech_cues import CueKind, SpeechCue
+
+    a = Analysis(
+        media=MediaInfo(
+            path="x.mp4", size_bytes=1, duration=20.0,
+            video=VideoStream(index=0, codec="h264", width=1280, height=720, fps=30.0),
+            has_audio=True,
+        ),
+    )
+    edl = EDL(source="x.mp4", source_duration=20.0,
+              render=RenderSpec(width=1280, height=720, fps=30),
+              timeline=[Clip(id="c0", source_start=0.0, source_end=20.0)])
+
+    def senal(box):
+        return SpeechCue(kind=CueKind.POINT, start=5.0, end=6.6, phrase="dale al",
+                         strength=0.98, region=(0.5, 0.5), target="X", box=box)
+
+    a.cues = [senal((0.02, 0.02, 0.96, 0.96))]
+    assert _pointed_candidates(edl, a, load_style("tutorial").emphasis) == []
+
+    a.cues = [senal((0.8, 0.9, 0.09, 0.03))]
+    assert _pointed_candidates(edl, a, load_style("tutorial").emphasis)

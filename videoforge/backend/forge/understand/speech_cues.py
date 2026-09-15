@@ -67,6 +67,9 @@ class SpeechCue:
     #: el texto de pantalla que estabas nombrando, cuando se pudo leer. Es lo
     #: que convierte "senala hacia arriba" en "senala el boton Guardar".
     target: str = ""
+    #: y donde esta, en fracciones de pantalla (x, y, ancho, alto). Con el
+    #: tamano, el zoom puede **encuadrarlo** en vez de solo centrarse en el.
+    box: tuple[float, float, float, float] | None = None
 
     @property
     def mid(self) -> float:
@@ -473,9 +476,9 @@ def find_pointing(
                 # al tercio de arriba.
                 fin_formula = texto[: encaje.end()].count(" ")
                 encontrado = locate(frase.words, fin_formula, screen_text)
-                nombre = ""
+                nombre, caja = "", None
                 if encontrado is not None:
-                    leido, donde = encontrado
+                    leido, donde, medida = encontrado
                     if region is not None and _distance(region, donde) > MAX_DISAGREEMENT:
                         # Dices una zona y la palabra se leyo en la contraria.
                         # Uno de los dos se equivoca y no se puede saber cual,
@@ -483,7 +486,7 @@ def find_pointing(
                         # tenia antes de mirar la pantalla.
                         pass
                     else:
-                        nombre, region = leido, donde
+                        nombre, region, caja = leido, donde, medida
 
                 if patron is _SOLO_NOMBRE and not nombre:
                     continue
@@ -508,6 +511,7 @@ def find_pointing(
                         strength=fuerza,
                         region=region,
                         target=nombre,
+                        box=caja,
                     )
                 )
     return _dedupe(salida)

@@ -129,6 +129,14 @@ class EmphasisRules(BaseModel):
     punch_in: bool = True
     #: cuanto amplia el zoom de enfasis
     punch_zoom: float = 1.18
+    #: tope cuando el zoom encuadra algo concreto (un boton que nombras). Mas
+    #: que esto en una grabacion de pantalla ya se ve el recorte: 1,45 sobre
+    #: 1080p es recortar a 745 lineas y volver a subirlas.
+    punch_zoom_max: float = 1.45
+    #: que fraccion del ancho de la imagen quieres que ocupe eso que nombras.
+    #: Un tercio es lo que hace un editor: lo bastante grande para leerlo, lo
+    #: bastante pequeno para no perder de vista donde esta.
+    punch_target_share: float = 0.32
     punch_seconds: float = 1.6
     #: separacion minima entre dos zooms, para que no maree
     punch_min_gap: float = 6.0

@@ -138,12 +138,15 @@ def locate(
     readings: "list[ScreenText] | None",
     *,
     lookahead: int = NAME_LOOKAHEAD,
-) -> tuple[str, tuple[float, float]] | None:
+) -> tuple[str, tuple[float, float], tuple[float, float, float, float]] | None:
     """El nombre que se dice a partir de `desde` y donde esta en la pantalla.
 
-    Devuelve `(nombre leido en pantalla, centro)` o `None`. Se prueban las
+    Devuelve `(nombre leido en pantalla, centro, caja)` o `None`. Se prueban las
     palabras siguientes en orden, porque el nombre del objetivo va detras de la
     formula: "dale **al boton de guardar**".
+
+    La **caja**, y no solo el centro, es lo que permite encuadrarlo: un boton
+    pequeno pide mas zoom que un panel entero, y con el tamano se sabe cuanto.
     """
     if not readings:
         return None
@@ -159,5 +162,7 @@ def locate(
             continue
         x, y, w, h = bounds(cajas)
         etiqueta = " ".join(c.text for c in cajas)
-        return etiqueta, (round(x + w / 2, 4), round(y + h / 2, 4))
+        centro = (round(x + w / 2, 4), round(y + h / 2, 4))
+        caja = (round(x, 4), round(y, 4), round(w, 4), round(h, 4))
+        return etiqueta, centro, caja
     return None

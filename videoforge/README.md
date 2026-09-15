@@ -634,6 +634,52 @@ frente a un zoom al elemento. Tres cosas que hace por el lado seguro:
 Sin Tesseract instalado no cambia nada de lo de antes: se sigue senalando por
 zona.
 
+**Y el zoom encuadra, no solo apunta.** Sabiendo el tamano del elemento se
+puede decidir cuanto acercarse, que antes era un numero fijo para todo porque
+no se sabia a que se acercaba:
+
+```
+un boton "Guardar"          9% de ancho   -> zoom 1,45   (el tope)
+"Configuracion avanzada"   22% de ancho   -> zoom 1,45
+un panel lateral           60% de alto    -> zoom 1,16   (el de serie)
+una barra de lado a lado   92% de ancho   -> sin zoom
+```
+
+Los dos extremos son los que importan. Arriba hay un **tope**: en una grabacion
+de pantalla, 1,45 sobre 1080p ya es recortar a 745 lineas y volver a subirlas, y
+pasado ese punto lo que se gana en tamano se pierde en nitidez. Abajo hay una
+regla mas util todavia: **un zoom que corta lo que estas senalando es peor que
+no acercarse**, asi que a lo ancho no se le hace zoom, y si ocupa la pantalla
+entera no se propone ninguno -- un zoom de 1,0 no es un zoom, es un efecto vacio
+que gasta cupo y suma en el medidor de saturacion.
+
+### Leer la pantalla donde hablas de ella
+
+El OCR se muestreaba en una rejilla: unas cuarenta lecturas repartidas por el
+video. Para **identificar** el contenido (los menus y titulos que se repiten)
+sobra. Para **senalar** no vale, y era un fallo invisible: en un video de veinte
+minutos la rejilla cae cada treinta segundos y una lectura solo sirve para los
+cuatro segundos de alrededor, asi que **el 73% del video no tenia nada que
+leer**. Decir "dale al boton de Guardar" en un hueco no daba error: simplemente
+no aparecia el zoom.
+
+La correccion no es leer mas, es leer **donde importa**. Los momentos en los que
+senalas salen del transcript, que ya esta calculado, asi que se anaden a la
+rejilla los fotogramas de esos momentos:
+
+```
+senalas en...   lectura mas cercana (rejilla)   ahora
+  1:40                 5,0 s   (fuera)          0,8 s
+  3:21                 6,5 s   (fuera)          0,8 s
+  5:55                10,0 s   (fuera)          0,8 s
+ 10:20                 5,0 s   (fuera)          0,8 s
+ 16:21                 6,0 s   (fuera)          0,8 s
+```
+
+Cuesta un fotograma por momento -- en ese ejemplo, 39 lecturas pasan a 44 -- con
+un tope para que un video donde senalas sin parar no se convierta en mil
+llamadas a Tesseract.
+
 **Enfatizas**, por dos vias a la vez. Las palabras ("esto es clave", "sobre
 todo") y el **nivel de voz**, que ya se medía para encontrar los silencios y se
 estaba tirando. Guardar esa curva no cuesta ninguna pasada mas y da prosodia

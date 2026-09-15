@@ -182,8 +182,10 @@ class AnalysisRun:
         self.cache.write("audio", result.model_dump(mode="json"), v)
         return result
 
-    def _screen_text(self, bundle: ProxyBundle, force: bool) -> list[ScreenText]:
-        """Lee el texto en pantalla en fotogramas muestreados.
+    def _screen_text(
+        self, bundle: ProxyBundle, force: bool, transcript: Transcript | None = None
+    ) -> list[ScreenText]:
+        """Lee el texto en pantalla, y lo lee **donde hablas de ella**.
 
         Es opcional: sin Tesseract el resto del analisis no cambia, solo se
         pierde la senal mas literal para identificar el video.
@@ -195,7 +197,10 @@ class AnalysisRun:
             )
             return []
 
-        v = STAGE_VERSIONS["screen_text"]
+        instantes = ocr_timestamps(bundle.duration, transcript)
+        # La huella de los instantes entra en la version de la etapa: leer otros
+        # fotogramas es otra cosa, y el cache tiene que saberlo.
+        v = f"{STAGE_VERSIONS['screen_text']}+{_fingerprint(instantes)}"
         if not force and (cached := self.cache.read("screen_text", v)) is not None:
             return [
                 ScreenText(
@@ -207,10 +212,6 @@ class AnalysisRun:
             ]
 
         self.progress("screen_text", STAGE_LABELS["screen_text"])
-        # Un muestreo espaciado basta: interesa el texto que se repite (menus,
-        # titulos), no el que pasa un instante.
-        paso = max(3.0, bundle.duration / 40)
-        instantes = [t for t in _frange(paso / 2, bundle.duration, paso)]
         lecturas = read_screen_text(bundle.video, self.settings, instantes)
         self.cache.write(
             "screen_text", [x.__dict__ for x in lecturas], v
@@ -267,10 +268,12 @@ class AnalysisRun:
         transcript = (
             None if skip_speech else self._transcript(bundle, forced("transcript"), language)
         )
-        # El OCR se salta por defecto: cuesta tiempo y solo hace falta al
-        # identificar el contenido, no al montar.
+        # El OCR va despues del transcript a proposito: lo que se dice decide
+        # que fotogramas merece la pena leer.
         self.screen_text = (
-            [] if skip_ocr else self._screen_text(bundle, forced("screen_text"))
+            []
+            if skip_ocr
+            else self._screen_text(bundle, forced("screen_text"), transcript)
         )
 
         return Analysis(
@@ -291,6 +294,72 @@ class AnalysisRun:
                 transcript, audio, self.settings.cache_dir.parent, self.screen_text
             ),
         )
+
+
+#: Cuantas lecturas de pantalla se reparten por el video para saber **de que
+#: va**: los menus y titulos que se repiten. Cuarenta bastan para eso.
+OCR_GRID = 40
+#: Y nunca mas espaciadas que esto, para un video corto.
+OCR_MIN_STEP = 3.0
+#: Ademas se lee en los momentos en los que senalas algo. Tope, para que un
+#: video donde senalas sin parar no se convierta en mil llamadas a Tesseract.
+OCR_MAX_TARGETED = 120
+#: Dos lecturas mas juntas que esto son la misma: en una guia la pantalla
+#: cambia despacio.
+OCR_MIN_GAP = 1.5
+
+
+def ocr_timestamps(
+    duration: float,
+    transcript: Transcript | None = None,
+    *,
+    grid: int = OCR_GRID,
+    max_targeted: int = OCR_MAX_TARGETED,
+) -> list[float]:
+    """En que instantes se lee la pantalla.
+
+    Dos criterios distintos, porque el texto en pantalla sirve para dos cosas:
+
+    - **identificar el video**: ahi interesa el texto que se repite (menus,
+      titulos), y para eso basta una rejilla espaciada;
+    - **senalar lo que nombras**: ahi no vale una rejilla. En un video de veinte
+      minutos la rejilla cae cada treinta segundos, y una lectura solo sirve
+      para los cuatro segundos de alrededor: el 73% del video quedaba fuera de
+      alcance. Si dices "dale al boton de Guardar" en un hueco, no habia nada
+      que leer y no se podia senalar nada.
+
+    Asi que se lee ademas **en los momentos en los que senalas**, que salen del
+    transcript y no cuestan nada de averiguar. Son unas pocas decenas de
+    fotogramas de mas, y son justo los que importan.
+    """
+    if duration <= 0:
+        return []
+
+    paso = max(OCR_MIN_STEP, duration / max(1, grid))
+    instantes = _frange(paso / 2, duration, paso)
+
+    if transcript is not None:
+        from ..understand.speech_cues import CueKind, find_pointing
+
+        senales = [c for c in find_pointing(transcript) if c.kind is CueKind.POINT]
+        # Si hay mas de las que caben, se quedan las mas claras: senalar y decir
+        # donde pesa mas que nombrar de pasada.
+        senales.sort(key=lambda c: (-c.strength, c.start))
+        instantes += [c.mid for c in senales[:max_targeted]]
+
+    # Se ordenan y se juntan las que caen casi encima: leer dos veces el mismo
+    # fotograma es tiempo de Tesseract tirado.
+    ordenados: list[float] = []
+    for t in sorted(instantes):
+        t = round(min(max(0.0, t), max(0.0, duration - 0.05)), 3)
+        if not ordenados or t - ordenados[-1] >= OCR_MIN_GAP:
+            ordenados.append(t)
+    return ordenados
+
+
+def _fingerprint(valores: list[float]) -> str:
+    h = hashlib.sha256(",".join(f"{v:.3f}" for v in valores).encode())
+    return h.hexdigest()[:8]
 
 
 def _frange(start: float, stop: float, step: float) -> list[float]:
