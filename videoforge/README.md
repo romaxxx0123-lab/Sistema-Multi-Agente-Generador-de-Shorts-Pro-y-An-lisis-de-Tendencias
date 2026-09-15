@@ -564,6 +564,26 @@ material, y el informe dice cuantos no se pudieron traer.
 --- "se omite en vez de tumbar el render por una descarga que fallo" --- y con
 una clave configurada el montaje prometia material que el video no llevaba.)
 
+### Cuando entra y donde se pone
+
+El material entra **cuando dices la palabra**, no cuando empieza el tema. Parece
+lo mismo y no lo es: los temas se detectan en ventanas de hasta seis segundos de
+habla, y colocar el material al principio de la ventana lo dejaba a 1,78 s de
+mediana de la palabra que ilustra, con casos de 6,6 s. Es decir, en la mitad de
+los casos la imagen entraba mientras hablabas todavia de otra cosa. Con el
+instante real de la palabra -- que la transcripcion trae desde el principio --
+la mediana baja a **0,29 s** y ningun caso pasa de 1,1 s.
+
+Y la ventanita ya no va siempre arriba a la derecha, que en una guia es justo
+donde suele estar lo que explicas. Se queda ahi **salvo que estorbe**: si tapa
+la caja del texto que acabas de nombrar, donde tienes el puntero o la banda de
+subtitulos, se va a la esquina que menos tape. Solo se mueve cuando hace falta,
+porque cambiar de sitio en cada insercion se ve nervioso.
+
+Si estas senalando algo mientras entra material, el material **no tapa la
+pantalla**: pasa a ventanita apartada. Antes ese choque se resolvia tirando el
+material entero.
+
 Un detalle que importa: a diferencia de un zoom, un b-roll a pantalla completa
 **no** esquiva los cortes, los tapa. En una guia muy recortada los cortes caen
 cada pocos segundos, asi que exigirle que no los cruce dejaria el montaje sin un

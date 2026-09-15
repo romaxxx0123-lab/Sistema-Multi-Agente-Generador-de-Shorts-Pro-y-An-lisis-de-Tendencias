@@ -24,6 +24,7 @@ from .conflicts import resolve
 from .captions import plan_captions
 from .chapters import chapter_cards, plan_chapters
 from .edl import EDL, Clip, GradeEffect, MusicEffect, RenderSpec, TransitionEffect
+from .placement import ScreenUse
 from .emphasis import plan_ken_burns, plan_punch_ins
 from .select import plan_selection
 from .sfx import plan_sfx
@@ -339,6 +340,14 @@ def build_edl(
             screen_terms=[t for t, _ in recurring_terms(analysis.screen_text)],
             narrative=analysis.narrative,
             pacing=style.pacing,
+            # Lo que ya se sabe de la pantalla: donde senalas, donde tienes el
+            # puntero y donde van los subtitulos. Sirve para no plantar la
+            # ventanita encima de lo que estas ensenando.
+            screen=ScreenUse(
+                cues=list(analysis.cues),
+                cursor=analysis.cursor,
+                captions=style.captions.enabled,
+            ),
         )
         efectos += brolls
         reservas += brolls_reserva

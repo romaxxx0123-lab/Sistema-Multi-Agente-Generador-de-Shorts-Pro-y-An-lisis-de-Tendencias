@@ -20,6 +20,7 @@ from ..analysis.types import Transcript, Word
 from ..assets.providers import BrollProvider, search_all, tokenize
 from ..assets.types import Asset, AssetBundle, AssetQuery
 from .edl import EDL, BrollEffect, Rect
+from .placement import ScreenUse, place
 from .styles import BrollRules, budget
 
 #: Duracion maxima de la ventana en la que se busca de que se esta hablando.
@@ -47,6 +48,11 @@ class TopicMoment:
     query: str
     score: float
     context: str
+    #: el instante en el que **dices** la cabeza, que no es el principio de la
+    #: ventana. Una ventana dura hasta seis segundos de habla, asi que colocar
+    #: el material en `start` lo dejaba, de mediana, a 2,2 s de la palabra que
+    #: ilustra: la imagen entraba mientras hablabas todavia de otra cosa.
+    head_at: float = 0.0
 
     @property
     def head(self) -> str:
@@ -155,6 +161,7 @@ def find_topic_moments(
         if score < min_score:
             continue
 
+        cabeza = mejores[0][0] if mejores else ""
         momentos.append(
             TopicMoment(
                 start=round(inicio, 3),
@@ -162,6 +169,7 @@ def find_topic_moments(
                 query=" ".join(p for p, _ in mejores),
                 score=round(min(1.0, score), 3),
                 context=" ".join(palabras[:20]),
+                head_at=_when_said(en_montaje, cabeza, inicio, fin),
             )
         )
 
@@ -169,6 +177,27 @@ def find_topic_moments(
     # un b-roll, mejor ilustrar lo que vertebra el video que un detalle suelto.
     momentos.sort(key=lambda m: (-m.score, -max(veces[p] for p in m.query.split())))
     return momentos
+
+
+def _when_said(
+    palabras: list[Word], cabeza: str, inicio: float, fin: float
+) -> float:
+    """Cuando se dice esa palabra dentro de la ventana.
+
+    Es el dato que faltaba para colocar el material donde toca, y estaba ahi
+    desde el principio: la transcripcion trae el instante de cada palabra. Si
+    por lo que sea no se encuentra (la cabeza sale de tokenizar y podria no
+    casar con ninguna palabra suelta), se cae al principio de la ventana, que
+    es lo que se hacia antes.
+    """
+    if not cabeza:
+        return round(inicio, 3)
+    for w in palabras:
+        if w.start < inicio - 0.01 or w.start > fin + 0.01:
+            continue
+        if cabeza in tokenize(w.text):
+            return round(w.start, 3)
+    return round(inicio, 3)
 
 
 def _respects_spacing(candidato: float, puestos: list[float], min_gap: float) -> bool:
@@ -316,6 +345,7 @@ def plan_broll(
     screen_terms: list[str] | None = None,
     narrative=None,
     pacing=None,
+    screen: ScreenUse | None = None,
 ) -> tuple[list[BrollEffect], list[BrollEffect]]:
     """Coloca material de apoyo donde se nombra algo concreto.
 
@@ -360,10 +390,22 @@ def plan_broll(
         if duracion < 1.0:
             continue
 
-        # Se entra en la pausa mas cercana: un material que aparece a mitad de
-        # palabra se lee como un fallo, y el hueco entre dos frases es
+        # **Cuando dices la palabra**, no cuando empieza la ventana. Una
+        # ventana dura hasta seis segundos de habla, asi que colocar aqui
+        # `momento.start` dejaba la imagen a 2,2 s de mediana de lo que
+        # ilustra: entraba mientras hablabas todavia de otra cosa.
+        #
+        # Y desde ahi, a la pausa mas cercana: un material que aparece a mitad
+        # de palabra se lee como un fallo, y el hueco entre dos frases es
         # exactamente donde un editor lo mete.
-        inicio = _snap(pausas, momento.start)
+        dicho = momento.head_at if momento.head_at > 0 else momento.start
+        inicio = _snap(pausas, dicho)
+        # Sin salirse del tema: la pausa mas cercana podria estar en la ventana
+        # de al lado, y entonces estaria ilustrando otra cosa.
+        inicio = min(max(inicio, momento.start), max(momento.start, momento.end - MIN_USEFUL_SECONDS))
+        duracion = min(duracion, max(0.0, momento.end - inicio))
+        if duracion < MIN_USEFUL_SECONDS:
+            continue
         fin = inicio + duracion
         if fin > edl.duration:
             continue
@@ -418,6 +460,19 @@ def plan_broll(
             continue
         modo, duracion_real = encaje
 
+        # Si en ese tramo estas senalando algo de la pantalla, el material no
+        # la tapa: pasa a ventanita. Antes esto lo resolvia `conflicts.py`
+        # tirando el material entero; no taparlo es mejor que perderlo.
+        origen_inicio = edl.timeline_to_source(inicio)
+        origen_fin = edl.timeline_to_source(min(edl.duration, inicio + duracion_real))
+        senalando = (
+            screen is not None
+            and origen_inicio is not None
+            and screen.pointing(origen_inicio, origen_fin or origen_inicio)
+        )
+        if senalando and modo == "full":
+            modo = "pip"
+
         # La salida tambien busca pausa, y nunca se alarga mas de lo pedido.
         fin = _snap(pausas, inicio + duracion_real, PAUSE_SNAP / 2)
         fin = min(max(fin, inicio + MIN_USEFUL_SECONDS), inicio + duracion_real + 0.4)
@@ -439,16 +494,23 @@ def plan_broll(
         usados.add(asset.id)
         bundle.add(asset)
 
+        # Y la esquina: la de siempre, salvo que ahi tape lo que senalas, lo
+        # que nombras o donde tienes el puntero (ver `plan/placement.py`).
+        rect, movida = Rect(), ""
+        if modo != "full":
+            rect = pip_rect(asset, edl.render.width, edl.render.height)
+            if screen is not None and origen_inicio is not None:
+                rect, movida = place(
+                    rect, screen.busy(origen_inicio, origen_fin or origen_inicio)
+                )
+
         efecto = BrollEffect(
             id=f"broll{i:03d}",
             start=round(inicio, 3),
             end=round(fin, 3),
             asset_id=asset.id,
             mode=modo,
-            rect=(
-                pip_rect(asset, edl.render.width, edl.render.height)
-                if modo != "full" else Rect()
-            ),
+            rect=rect,
             query=momento.query,
             # Lo que aporta depende de lo concreto que sea lo que se nombra y de
             # lo bien que encaje el material encontrado.
@@ -460,7 +522,8 @@ def plan_broll(
             rationale=(
                 f"material de apoyo en {inicio:.0f}s porque ahi hablas de "
                 f"'{momento.query}'{f' ({papel})' if papel else ''}"
-                f"{'' if modo == 'full' else ' (en ventanita: no da para mas)'}"
+                f"{'' if modo == 'full' else (' (en ventanita: no te tapo lo que senalas)' if senalando else ' (en ventanita: no da para mas)')}"
+                f"{f' · movido {movida} para no taparlo' if movida else ''}"
                 f" · {asset.reason}"
             ),
         )
