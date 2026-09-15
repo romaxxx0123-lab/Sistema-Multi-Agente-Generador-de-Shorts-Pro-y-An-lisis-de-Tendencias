@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..analysis.types import Analysis
+from .cuts import judge_cut
 from .styles import PacingRules
 
 #: Margen alrededor de una muletilla al quitarla, para no dejar un chasquido.
@@ -54,6 +55,8 @@ class Selection:
     #: (inicio, fin, velocidad) de los tramos que van acelerados en vez de
     #: recortados: las esperas que tu mismo anuncias.
     speed_ranges: list[tuple[float, float, float]] = field(default_factory=list)
+    #: recortes que se descartaron porque no compensaban el corte que dejaban
+    unworthy_cuts: list[Removal] = field(default_factory=list)
 
     @property
     def kept_seconds(self) -> float:
@@ -373,6 +376,20 @@ def _grow_short_keeps(
     return [(round(a, 3), round(b, 3)) for a, b in out if b > a]
 
 
+def _worthwhile(
+    removals: list[Removal], analysis: Analysis
+) -> tuple[list[Removal], list[Removal]]:
+    """Separa los recortes que compensan de los que solo dejan un salto."""
+    valen: list[Removal] = []
+    no_valen: list[Removal] = []
+    for r in removals:
+        if judge_cut(analysis, r.start, r.end, r.reason):
+            valen.append(r)
+        else:
+            no_valen.append(r)
+    return valen, no_valen
+
+
 def plan_selection(
     analysis: Analysis, rules: PacingRules, segments=None
 ) -> Selection:
@@ -421,4 +438,14 @@ def plan_selection(
         )
         reales.append(Removal(start=round(a, 3), end=round(b, 3), reason=motivo))
 
-    return Selection(keeps=keeps, removals=reales, speed_ranges=acelerados)
+    # Y la ultima pregunta, que no se hacia nadie: ¿compensa el corte que deja?
+    # Un corte se ve, y quitar dos decimas de pausa no vale un salto en pantalla
+    # (ver `plan/cuts.py`).
+    reales, descartados = _worthwhile(reales, analysis)
+    if descartados:
+        keeps = _complement([(r.start, r.end) for r in reales], duration)
+
+    return Selection(
+        keeps=keeps, removals=reales, speed_ranges=acelerados,
+        unworthy_cuts=descartados,
+    )

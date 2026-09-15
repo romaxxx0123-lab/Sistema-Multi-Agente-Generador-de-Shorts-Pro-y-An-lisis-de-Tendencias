@@ -107,6 +107,14 @@ def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip],
         from ..understand.segments import summarize
 
         notas.append(f"Estructura entendida: {summarize(analysis.narrative)}.")
+    if seleccion.unworthy_cuts:
+        # Un corte se ve. Los que ahorraban una miseria no se hacen, y se dice:
+        # es una decision de montaje, no un despiste (ver `plan/cuts.py`).
+        ganancia = sum(r.duration for r in seleccion.unworthy_cuts)
+        notas.append(
+            f"{len(seleccion.unworthy_cuts)} cortes no se hicieron: entre todos "
+            f"ahorraban {ganancia:.1f}s y cada uno se habria visto."
+        )
     if seleccion.speed_ranges:
         ahorro = sum(
             (b - a) - (b - a) / v for a, b, v in seleccion.speed_ranges

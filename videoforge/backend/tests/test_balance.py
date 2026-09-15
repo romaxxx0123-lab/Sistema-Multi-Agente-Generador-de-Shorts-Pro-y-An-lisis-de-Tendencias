@@ -233,3 +233,53 @@ def test_worst_elige_por_eficiencia() -> None:
 
 def test_worst_con_lista_vacia() -> None:
     assert _worst([]) is None
+
+
+# -- donde se anade, no solo cuanto -----------------------------------------
+
+
+def test_lo_que_falta_se_pone_donde_falta(analysis) -> None:
+    """El balanceador era asimetrico y eso se notaba en el montaje.
+
+    Al podar miraba **donde** sobraba -- la ventana mas cargada -- pero al
+    anadir cogia el mejor candidato del video entero sin mirar donde caia. Con
+    un tramo ya cargado y otro vacio, metia lo nuevo donde ya habia cosas y
+    dejaba el hueco como estaba. Un montaje no se juzga por su media: se ve en
+    orden, y un minuto sin que pase nada se nota.
+    """
+    from forge.plan.edl import PunchInEffect, Rect
+    from forge.saturation.balance import _best_candidate, _coldest_window
+
+    edl = build_edl(analysis, "tutorial")
+    edl.candidates = []
+    # Dos reservas igual de buenas: una en un tramo lleno, otra en el vacio.
+    lleno = min(e.start for e in edl.effects if e.kind is EffectKind.CAPTION)
+    vacio, _ = _coldest_window(edl)
+    for nombre, t in (("en-lo-lleno", lleno + 1.0), ("en-el-hueco", vacio + 2.0)):
+        edl.candidates.append(PunchInEffect(
+            id=nombre, start=t, end=t + 2.0, rect=Rect(x=0.2, y=0.2, w=0.6, h=0.6),
+            value_score=0.7, cost_weight=0.4, rationale="reserva",
+        ))
+
+    inicio, fin = _coldest_window(edl)
+    elegido = _best_candidate(edl, inicio, fin)
+    assert elegido is not None and elegido.id == "en-el-hueco"
+
+    # Y sin acotar tramo, el de siempre: el mejor sin mirar donde cae.
+    assert _best_candidate(edl) is not None
+
+
+def test_el_tramo_mas_vacio_no_es_el_mas_cargado(analysis) -> None:
+    from forge.saturation.balance import _coldest_window, _hottest_window
+
+    edl = build_edl(analysis, "tutorial")
+    frio = _coldest_window(edl)
+    caliente = _hottest_window(edl)
+    assert not (frio[0] <= caliente[0] < frio[1])
+
+
+def test_se_dice_que_se_relleno_el_hueco(analysis) -> None:
+    edl = _sub_editado(analysis)
+    informe = rebalance(edl, analysis, intensity=90)
+    if informe.added:
+        assert any("vacio" in c.reason or "corto" in c.reason for c in informe.added)

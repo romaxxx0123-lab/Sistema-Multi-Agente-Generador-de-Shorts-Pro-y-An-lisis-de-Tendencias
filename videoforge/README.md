@@ -171,6 +171,36 @@ caption    subtitulo: "abrimos el menu de ajustes"
 text_card  rotulo de capitulo en 1:37
 ```
 
+### Un corte tiene que pagarse
+
+En una grabacion de pantalla un corte **se ve**: la imagen da un salto. Hasta
+aqui la seleccion no se hacia esa pregunta -- quitaba lo que pasaba del umbral,
+le devolvia aire por los lados, alargaba los trozos cortos, y lo que quedaba
+recortado se quedaba recortado valiera lo que valiera.
+
+Medido sobre una guia de 20 minutos (260 clips): **28 cortes, el 11%, ahorraban
+menos de tres decimas cada uno; 2 segundos entre los 28**. Es el peor negocio
+posible: un salto visible a cambio de nada.
+
+Ahora cada recorte se juzga con las dos mitades que faltaban:
+
+- **cuanto cuesta ese corte ahi**. Si en ese instante el plano ya cambia, o la
+  pantalla se esta moviendo, el salto queda escondido detras de algo que iba a
+  pasar igual, y cortar sale casi gratis. En mitad de una pantalla quieta el
+  corte es lo unico que se mueve, y hay que ganarselo.
+- **cuanto se gana, y por que**. Una pausa solo vale el tiempo que quita; una
+  muletilla molesta, asi que vale mas; una toma fallida o algo que tu mismo
+  mandas saltar se quitan duren lo que duren, porque ahi lo que sobra no es
+  tiempo, es un error.
+
+El resultado sobre esa misma guia: **25 saltos menos y un segundo mas de
+montaje**. Y de regalo desaparecen los fragmentos de tartamudeo: al no hacer los
+cortes de miseria, los trozos sueltos se unen al vecino y el mas corto pasa de
+0,80 s a 1,81 s.
+
+El montaje lo cuenta: *"25 cortes no se hicieron: entre todos ahorraban 0.9s y
+cada uno se habria visto."*
+
 ### Que hace el planner, en orden
 
 1. **Seleccion** — recorta silencios y muletillas. En una guia de 20 minutos
@@ -359,7 +389,13 @@ Con `--balance` no solo mide: corrige. Es un bucle de control determinista que
 busca la ventana mas caliente de la curva y quita de ahi el efecto con peor
 relacion valor/coste, hasta entrar en banda. Si el montaje se queda corto,
 asciende candidatos que el planner ya habia validado pero no habia llegado a
-poner.
+poner --- y los asciende **en el tramo mas vacio**.
+
+Eso ultimo faltaba, y era una asimetria que se notaba: al podar miraba *donde*
+sobraba, pero al anadir cogia el mejor candidato del video entero sin mirar
+donde caia, asi que podia recargar un tramo que ya iba lleno mientras un minuto
+y medio seguido se quedaba sin nada. Un montaje no se juzga por su media: se ve
+en orden.
 
 **Nunca toca los cortes, solo los efectos**, asi que la duracion del montaje no
 cambia por mucho que pode. Los efectos que fijes (`locked`) son intocables.

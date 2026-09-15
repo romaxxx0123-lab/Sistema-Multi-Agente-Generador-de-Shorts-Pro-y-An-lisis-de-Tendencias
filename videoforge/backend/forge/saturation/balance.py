@@ -116,6 +116,35 @@ def _hottest_window(edl: EDL, seconds: float = 3.0) -> tuple[float, float]:
     return i / RATE, (i + ancho) / RATE
 
 
+#: Ancho de la ventana con la que se busca el tramo mas vacio. Una zona muerta
+#: de montaje no se mide en segundos sueltos: son decenas de segundos sin que
+#: pase nada.
+COLD_SECONDS = 20.0
+
+
+def _coldest_window(edl: EDL, seconds: float = COLD_SECONDS) -> tuple[float, float]:
+    """El tramo mas vacio del montaje.
+
+    Es el simetrico de `_hottest_window`, y faltaba. Al podar se miraba **donde**
+    sobraba (la ventana mas cargada), pero al anadir se cogia el mejor candidato
+    del video entero sin mirar donde caia: se podia meter otro efecto en un
+    tramo ya cargado mientras un minuto y medio seguido se quedaba sin nada.
+    Un montaje no se juzga por su media, se ve en orden.
+    """
+    curva = density_curve(edl)
+    if curva.size == 0:
+        return 0.0, edl.duration
+
+    ancho = max(1, int(seconds * RATE))
+    if curva.size <= ancho:
+        return 0.0, edl.duration
+
+    acumulado = np.concatenate([[0.0], np.cumsum(curva)])
+    sumas = acumulado[ancho:] - acumulado[:-ancho]
+    i = int(np.argmin(sumas))
+    return i / RATE, (i + ancho) / RATE
+
+
 def _prunable(edl: EDL, start: float, end: float) -> list[BaseEffect]:
     """Efectos que se pueden quitar dentro de una ventana."""
     return [
@@ -135,13 +164,18 @@ def _worst(effects: list[BaseEffect]) -> BaseEffect | None:
     return min(effects, key=lambda e: (e.efficiency, -e.cost_weight)) if effects else None
 
 
-def _best_candidate(edl: EDL) -> BaseEffect | None:
+def _best_candidate(
+    edl: EDL, start: float | None = None, end: float | None = None
+) -> BaseEffect | None:
     """El candidato en reserva que mas aporta y no pisa a otro efecto.
 
     "No pisa" es de dos maneras: ni a otro del mismo tipo (dos zooms encimados)
     ni a uno de otro tipo que lo dejaria sin verse (un recuadro debajo de un
     b-roll). Lo segundo faltaba, y subir la densidad metiendo algo que no se ve
     no sube ninguna densidad: solo la del medidor.
+
+    Con `start`/`end` se busca **dentro de ese tramo**, que es como se pone algo
+    donde de verdad hace falta en vez de donde ya habia.
     """
     disponibles = [
         c
@@ -150,6 +184,7 @@ def _best_candidate(edl: EDL) -> BaseEffect | None:
             e.kind is c.kind and e.overlaps(c.start, c.end) for e in edl.effects
         )
         and not conflicts_with(edl, c)
+        and (start is None or c.overlaps(start, end))
     ]
     return max(disponibles, key=lambda e: e.efficiency) if disponibles else None
 
@@ -233,7 +268,13 @@ def rebalance(
                 )
             )
         else:
-            candidato = _best_candidate(edl)
+            # Se anade **donde falta**, no donde ya hay. Mirar solo la media
+            # dejaba tramos enteros sin nada mientras se recargaban otros.
+            frio_inicio, frio_fin = _coldest_window(edl)
+            candidato = _best_candidate(edl, frio_inicio, frio_fin)
+            en_el_hueco = candidato is not None
+            if candidato is None:
+                candidato = _best_candidate(edl)
             if candidato is None:
                 break
 
@@ -252,7 +293,14 @@ def rebalance(
                     kind=candidato.kind.value,
                     start=candidato.start,
                     end=candidato.end,
-                    reason="el montaje se quedaba corto para el estilo elegido",
+                    reason=(
+                        "el montaje se quedaba corto para el estilo elegido"
+                        + (
+                            f" y ese tramo ({frio_inicio:.0f}-{frio_fin:.0f}s) "
+                            "era el mas vacio"
+                            if en_el_hueco else ""
+                        )
+                    ),
                 )
             )
 
