@@ -511,6 +511,50 @@ importa mas que la primera**: doce frases que no deben disparar nada ("corto por
 lo sano y empiezo de cero", "tengo que instalar una actualizacion algun dia").
 Sin ese segundo numero, el primero se sube a base de romper el sistema.
 
+### El examen dificil
+
+Ese 98% tenia trampa, y se vio al escribir un examen hecho para suspenderlo.
+Las frases que no debian disparar eran **neutras**: no llevaban dentro ninguna
+palabra del detector, asi que aprobarlas no costaba nada. El examen dificil
+(`tests/test_deteccion_dura.py`) cambia las dos mitades:
+
+- **veinte trampas** que llevan las palabras de los patrones en sentido
+  inocente: *"cuidado es el nombre de la carpeta"*, *"hasta aqui llega el menu
+  lateral"*, *"me salto una linea en el editor"*, *"gracias por el consejo que
+  me disteis el otro dia"*;
+- **veintiuna parafrasis** que no se parecen a ninguna formula del diccionario:
+  *"y ale a mirar la barrita subir"*, *"ni me molesto en ensenaroslo"*,
+  *"cerramos esto y abrimos lo otro"*.
+
+La primera vez que se paso, de las veinte trampas se colaban **catorce**, y de
+las parafrasis reconocia **tres**. Buscar la raiz de la palabra generaliza, pero
+tambien dispara en cualquier frase que la lleve.
+
+```
+                       trampas coladas   parafrasis reconocidas
+buscando la raiz            14 / 20            3 / 21
++ contexto de la frase       1 / 20            3 / 21
++ mas formas de decirlo      0 / 20           21 / 21
+```
+
+Lo que cerro las trampas no fue estrechar los patrones -- eso habria devuelto el
+42% -- sino mirar **el contexto** alrededor de la palabra, en `understand/text.py`:
+
+| se pregunta | separa |
+|---|---|
+| ¿va negada? | "esto **no** tarda nada" de "esto tarda" |
+| ¿habla de siempre o de ahora? | "esta app tarda **en general**" de "esto tarda" |
+| ¿hay algo que la ate a este momento? | "yo **esperaba** que fuera mas facil" de "a esperar" |
+| ¿es un nombre o es una interjeccion? | "cuidado **es** el nombre" y "clave **de registro**" de "esto es clave" |
+| ¿el verbo dice **que** se salta? | "**corto** y pego el texto" de "esto lo corto" |
+| ¿cae al final del video? | "un saludo" que despide de "un saludo" que manda un recado |
+
+Ninguna de esas preguntas necesita un modelo de lenguaje, y cada una tiene el
+tamano justo: la del imperfecto empezo buscando la terminacion `-ia` y se comia
+"paciencia" y "todavia"; la del verbo copulativo miraba cuatro palabras por
+delante y se comia "atencion, que esto **es** clave". Las dos cosas las cazo el
+examen, no una revision a ojo.
+
 ### Y si aun asi hablas distinto
 
 Un fichero `frases.json` al lado de la configuracion:
@@ -530,12 +574,23 @@ que se va a romper.
 
 ### Lo que sigue sin saber hacer
 
-Esto no **entiende** lo que dices, reconoce **como** lo dices. Si dices que
-toca esperar con una formula que no se parece a ninguna ("le doy al boton y me
-voy a por un cafe"), no lo pilla, y no hay truco de expresiones regulares que lo
-arregle. Para eso hace falta comparar por significado, con un modelo pequeno de
-embeddings local -- que cabe en el proyecto (ya se usa ONNX Runtime) pero es
-otra cosa, y hasta que este, esto es lo que hay.
+Esto no **entiende** lo que dices, reconoce **como** lo dices, y eso pone un
+techo que no sube a base de anadir patrones. Lo que falla hoy:
+
+- **Senalar algo por su nombre y no por su sitio.** *"Justo donde pone
+  ajustes"* es la unica frase que sigue sin reconocer de las cincuenta: para
+  apuntar ahi hay que leer la pantalla y buscar la palabra "ajustes", no
+  interpretar la frase. El OCR ya lee el texto de pantalla; falta atarlo a lo
+  que se dice, y es lo siguiente que toca.
+- **Decirlo de una forma que no se parece a ninguna.** Cada parafrasis nueva que
+  se reconoce es un patron mas escrito a mano. *"Le doy y me voy a por un cafe"*
+  se reconoce hoy porque irse a por un cafe esta en la lista; *"me voy a fumar"*
+  tambien, pero *"me voy a fregar los platos"* no. Comparar por
+  **significado** -- con un modelo pequeno de embeddings local, que cabe en el
+  proyecto porque ya se usa ONNX Runtime -- es lo que quitaria la lista de en
+  medio. Hasta entonces, `frases.json` es el atajo honesto.
+- **La ironia y el tono.** "Ah, buenisimo" dicho con retintin es un aviso, y
+  aqui no lo es.
 
 ## Lo que le pides al montaje sin saberlo
 

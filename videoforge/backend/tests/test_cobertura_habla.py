@@ -12,6 +12,12 @@ Este fichero fija las dos cifras. La de cobertura para que no se degrade al
 tocar los patrones, y la de falsos positivos porque ensanchar patrones es la
 forma clasica de empezar a ver senales donde no las hay: sin ese segundo numero,
 el primero se sube a base de romper el sistema.
+
+Aviso sobre sus negativas: son frases **neutras**, sin ninguna palabra del
+detector dentro, asi que aprobarlas no demuestra gran cosa. Las de verdad
+dificiles -- las que llevan "cuidado", "hasta aqui" o "me salto" en sentido
+inocente -- estan en `test_deteccion_dura.py`, y ahi se colaban catorce de
+veinte cuando este fichero ya daba el 98%.
 """
 
 from __future__ import annotations

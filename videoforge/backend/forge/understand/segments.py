@@ -27,10 +27,11 @@ comporta como antes.
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
+
+from .text import is_a_noun_here, is_negated, normalize
 
 if TYPE_CHECKING:  # solo para los tipos: `Analysis` guarda estos tramos, asi
     # que importarlo de verdad daria una dependencia circular.
@@ -74,23 +75,39 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
         (r"\b(el|al|la)? ?(primer|segund|tercer|cuart|quint|sext|ultim)\w*\s+(paso|punto|parte|cosa)\b", _FUERTE, True),
         (r"\b(paso|punto)\s+(uno|dos|tres|cuatro|cinco|seis|\d+)\b", _FUERTE, True),
         (r"\bpor ultimo\b", _FUERTE, True),
-        (r"(ahora|luego|despues|a continuacion|seguidamente)\b", _MEDIA, True),
+        (r"(ahora|luego|despues|a continuacion|seguidamente)\b(?! de todo)", _MEDIA, True, "cambia"),
         (r"(lo|el) siguiente( paso| que| es)?\b", _MEDIA, True),
-        (r"\b(seguimos|continuamos|pasamos|vamos)\s+(con|a por|a la|al)\b", _MEDIA, True),
+        (r"\b(seguimos|continuamos|pasamos|vamos)\s+(con|a por|a la|al)\b", _MEDIA, True, "cambia"),
         (r"\bvamos (a|con) (la|el|los|las|por)\b", _MEDIA, True),
         (r"una vez (que )?(has|hayas|tengas|este|hecho)\b", _MEDIA, True),
-        (r"\bhecho esto\b", _MEDIA, True),
+        (r"\b(hecho|acabado|terminado|cerrado) esto\b", _MEDIA, True),
+        (r"\btoca (ahora )?(la|el|los|las)\b", _MEDIA, True),
+        (r"\bvamos al lio\b", _MEDIA, True),
+        # Transicion sin formula: cierras una cosa y abres otra. No dice
+        # "ahora" ni "el siguiente paso", pero cambia de sitio igual.
+        (
+            r"\b(cerramos|cierro|cierras|cerrad|guardamos|guardo|salimos"
+            r"|minimizamos)\b[^.]{0,20}\by\s+(abrimos|abro|abres|abrid"
+            r"|entramos|creamos|pasamos|vamos|nos vamos)\b",
+            _MEDIA,
+            True,
+        ),
         (r"(first|next|then|after that|now (we|you))\b", _MEDIA, True),
     ],
     SegmentRole.WARNING: [
         # Raices, no frases: "cuidado", "cuidadito", "cuidadin" son lo mismo.
         (r"\b(ojo|aviso)\b", _FUERTE, True),
-        (r"\bcuidad\w*\b", _FUERTE, True),
-        (r"\batenci\w*\b", _FUERTE, False),
+        (r"\bcuidad\w*\b", _FUERTE, True, "sustantivo"),
+        (r"\batenci\w*\b", _FUERTE, False, "sustantivo"),
         (r"\bpresta(d)? atenci\w*", _FUERTE, False),
-        (r"\bimportant\w*\b", _MEDIA, False),
-        (r"\b(critic[oa]|clave|imprescindible|fundamental)\b", _FUERTE, False),
-        (r"\b(no|nunca)\s+(te |os )?(salt\w*|olvid\w*)", _FUERTE, False),
+        (r"\bimportant\w*\b", _MEDIA, False, "sustantivo"),
+        (r"\b(critic[oa]|clave|imprescindible|fundamental)\b", _FUERTE, False, "sustantivo"),
+        (r"\b(no|nunca)\s+(se\s+)?(te|os|me|nos)?\s*(salt\w*|olvid\w*)", _FUERTE, False),
+        (r"\bcomo (te|os) (lo |la )?salt\w*", _FUERTE, False),
+        (r"\b(mete[ns]?|metiendo) la pata\b", _FUERTE, False),
+        (r"\b(si o si|a huevo|obligatorio)\b", _MEDIA, False),
+        (r"\bhay que (hacerlo|ponerlo|tenerlo)\b", _MEDIA, False),
+        (r"\b(vigila|revisa|comprueba)\w*\s+(bien|mucho)\b", _MEDIA, False),
         (r"si no,? no (te |os )?(funciona|va|sirve)\b", _FUERTE, False),
         (r"\b(la lias|la cagas|se lia|se rompe todo)\b", _FUERTE, False),
         (r"\b(lo que )?mas (falla|se falla|se equivoca)\b", _FUERTE, False),
@@ -120,13 +137,16 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
     ],
     SegmentRole.OUTRO: [
         (r"(nos vemos|hasta (la proxima|luego|el proximo|otra))\b", _FUERTE, False),
-        (r"\bhasta aqui\b", _FUERTE, True),
-        (r"(gracias por (ver|verme|estar|acompanar\w*|aguantar\w*))\b", _FUERTE, False),
+        (r"\bhasta aqui\b", _FUERTE, True, "final+extension"),
+        (r"(gracias por (ver|verme|estar|acompanar\w*|aguantar\w*))\b", _FUERTE, False, "final"),
         (r"espero que (os|te) haya\s+\w*(servid|gustad|ayudad|valid)\w*", _FUERTE, False),
-        (r"\bun (saludo|abrazo)\b", _FUERTE, False),
+        (r"\bun (saludo|abrazo)\b", _FUERTE, False, "final+recado"),
         (r"(suscrib\w*|dale (a )?like|comenta[dn]?)\b", _FUERTE, False),
         (r"(en el (siguiente|proximo) video)\b", _MEDIA, False),
         (r"(thanks for watching|see you|subscribe)\b", _FUERTE, False),
+        (r"\b(esto|eso) (ha sido|es) todo\b", _FUERTE, False, "final"),
+        (r"\bnada mas por (mi|nuestra) parte\b", _FUERTE, False, "final"),
+        (r"\blo dejamos (aqui|por hoy)\b", _FUERTE, False, "final"),
     ],
     SegmentRole.ASIDE: [
         (r"por cierto\b", _FUERTE, True),
@@ -134,6 +154,9 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
         (r"(aunque|pero) (bueno|vamos|da igual)\b", _MEDIA, True),
         (r"(que no viene a cuento|fuera de tema)\b", _FUERTE, False),
         (r"(by the way|anyway|side note)\b", _MEDIA, True),
+        # "ahora te cuento una anecdota" lleva marca de paso y no es un paso.
+        (r"\b(te|os) cuento\b.*\b(anecdota|historia|curiosidad|chascarrillo)\b", _FUERTE, False),
+        (r"\bque no viene al caso\b", _FUERTE, False),
     ],
 }
 
@@ -175,26 +198,89 @@ class NarrativeSegment:
         return f"{self.role.value}: por donde cae en el video"
 
 
-def _normalize(texto: str) -> str:
-    """Minusculas, sin acentos y sin puntuacion: el habla transcrita varia."""
-    limpio = "".join(
-        c for c in unicodedata.normalize("NFD", texto.lower())
-        if unicodedata.category(c) != "Mn"
-    )
-    return re.sub(r"[^a-z0-9\s]", " ", limpio)
+#: A partir de esta fraccion del video, una despedida es una despedida sin mas
+#: preguntas.
+OUTRO_POSITION = 0.7
+#: Antes de ahi no se descarta: se cree a medias. Una despedida a mitad de
+#: video existe (cortas dos guias en un mismo archivo), solo es rara. Con este
+#: factor, una formula fuerte ("gracias por ver") sigue contando y una regular
+#: ("en el siguiente video") se cae sola por debajo de `MIN_CONFIDENCE`.
+OUTRO_EARLY_FACTOR = 0.55
+
+_normalize = normalize
 
 
-def _match(texto: str) -> tuple[SegmentRole, float, str] | None:
-    """El papel que mejor encaja con lo que se dice en ese tramo."""
+#: "hasta aqui" tambien mide hasta donde llega una cosa en pantalla. Cuando
+#: detras viene uno de estos verbos, habla de extension, no de despedida.
+_EXTENSION = re.compile(
+    r"^\s*(llega|llegan|va|van|sale|salen|abarca|abarcan|ocupa|ocupan|mide|miden"
+    r"|se (extiende|extienden|ve|ven|estira|queda|quedan|alarga|muestra))\b"
+)
+#: "un saludo" despide... salvo cuando se lo mandas a alguien concreto: "un
+#: saludo de mi parte al que pregunto" saluda a un tercero y el video sigue.
+_RECADO = re.compile(r"^\s*(de (mi|nuestra|su|tu) parte|al que\b|a quien\b)")
+
+
+def _guard_factor(guarda: str | None, texto: str, encontrado, posicion: float) -> float:
+    """Cuanto se cree la marca, mirando el contexto que la rodea.
+
+    Buscar la palabra no basta: "cuidado con esto" es un aviso y "cuidado es el
+    nombre de la carpeta" no. Sin estas comprobaciones, de veinte frases trampa
+    escritas a proposito se colaban catorce.
+
+    Devuelve un factor sobre el peso: 0 la tumba, 1 la deja intacta, y los
+    valores de en medio son para el contexto que resta sin descartar. Una marca
+    puede pedir varias comprobaciones a la vez, separadas por `+`.
+    """
+    if is_negated(texto, encontrado.start()):
+        return 0.0
+    if guarda is None:
+        return 1.0
+    if "+" in guarda:
+        factor = 1.0
+        for una in guarda.split("+"):
+            factor *= _guard_factor(una, texto, encontrado, posicion)
+        return factor
+    if guarda == "extension":
+        return 0.0 if _EXTENSION.search(texto[encontrado.end():]) else 1.0
+    if guarda == "recado":
+        return 0.0 if _RECADO.search(texto[encontrado.end():]) else 1.0
+    if guarda == "sustantivo":
+        # La palabra tiene que estar usada como interjeccion, no como nombre.
+        # "la tecla de ATENCION", "esto ES clave de registro", "CUIDADO es el
+        # nombre de la carpeta": las tres llevan la palabra y ninguna avisa.
+        return 0.0 if is_a_noun_here(texto, encontrado.start(), encontrado.end()) else 1.0
+    if guarda == "final":
+        # Una despedida se dice al final, y eso es parte de lo que la hace una
+        # despedida; pero no se descarta por sitio, solo se cree menos.
+        return 1.0 if posicion >= OUTRO_POSITION else OUTRO_EARLY_FACTOR
+    if guarda == "cambia":
+        # "seguimos con la misma pantalla" no pasa a otra cosa.
+        resto = " ".join(texto[encontrado.end():].split()[:3])
+        return 0.0 if re.search(r"\b(la misma|el mismo|lo mismo|igual)\b", resto) else 1.0
+    return 1.0
+
+
+def _match(texto: str, posicion: float = 0.5) -> tuple[SegmentRole, float, str] | None:
+    """El papel que mejor encaja con lo que se dice en ese tramo.
+
+    `posicion` es donde cae el tramo en el video (0 al principio, 1 al final):
+    hay marcas que solo significan lo que parecen cerca del final.
+    """
     limpio = _normalize(texto)
     apertura = " ".join(limpio.split()[:OPENING_WORDS])
 
     mejor: tuple[SegmentRole, float, str] | None = None
     for papel, marcas in _CUES.items():
-        for patron, peso, solo_al_inicio in marcas:
+        for marca in marcas:
+            patron, peso, solo_al_inicio = marca[0], marca[1], marca[2]
+            guarda = marca[3] if len(marca) > 3 else None
             donde = apertura if solo_al_inicio else limpio
             encontrado = re.search(patron, donde)
             if not encontrado:
+                continue
+            peso *= _guard_factor(guarda, donde, encontrado, posicion)
+            if peso <= 0.0:
                 continue
             if mejor is None or peso > mejor[1]:
                 mejor = (papel, peso, encontrado.group(0).strip())
@@ -217,7 +303,8 @@ def detect_segments(
     for frase in transcript.segments:
         if frase.end - frase.start < 0.05:
             continue
-        encaje = _match(frase.text)
+        posicion = frase.start / duration if duration > 0 else 0.5
+        encaje = _match(frase.text, posicion)
         if encaje and encaje[1] >= MIN_CONFIDENCE:
             papel, confianza, marca = encaje
         else:

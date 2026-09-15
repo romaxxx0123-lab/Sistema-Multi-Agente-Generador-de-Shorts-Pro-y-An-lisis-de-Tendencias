@@ -30,6 +30,8 @@ import json
 import re
 import unicodedata
 from pathlib import Path
+
+from .text import has_present_anchor, is_habitual, is_negated
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -182,6 +184,29 @@ _ESPERAS = (
     (r"se queda\s+(pensando|colgad|trabajand)\w*", 0.85),
     (r"(this|it) (takes|will take) a (while|bit)\b", 0.85),
     (r"\bwait(ing)? for\b", 0.8),
+    # Hiperboles: dicen "no acaba" y significan que tarda muchisimo. Van aqui
+    # y no arriba porque la guarda de negacion las tumbaria.
+    (r"\bno\s+(va a\s+)?(acabar|terminar)\s+(nunca|en la vida|jamas)\b", 0.85),
+    (r"\baprovech\w*\s+para\b.*\bmientras\b", 0.8),
+    (r"\bmientras\s*$", 0.75),
+    # Irse a por algo: no dices que tarda, te vas mientras tarda. Pide un
+    # objeto consumible a proposito, porque "vamos a por la siguiente parte"
+    # es pasar al paso siguiente, no esperar.
+    (
+        r"\b(me voy|nos vamos|me piro|salgo|voy|vamos)\s+a\s+"
+        r"(por\s+|tomar\s+|tomarme\s+|hacerme\s+|prepararme\s+|beber\s+)?"
+        r"(un |una |el |la |unos |unas )?"
+        r"(cafe|te|agua|cerveza|bocata|bocadillo|snack|fumar|comer|merendar"
+        r"|estirar las piernas|dar una vuelta)\b",
+        0.8,
+    ),
+    # Mirar la barra de progreso es la forma mas pura de tiempo muerto.
+    (r"\b(barra|barrita) de (progreso|carga|descarga|instalacion)\b", 0.85),
+    (
+        r"\b(barra|barrita|porcentaje|numerito)\b[^.]{0,30}"
+        r"\b(subir|sube|suba|avanzar|avanza|llenarse|se llena|llegar al cien)\b",
+        0.8,
+    ),
 )
 
 #: Y avisos de que lo que viene sobra directamente.
@@ -198,6 +223,11 @@ _SALTOS = (
     (r"\bpaso (rapido|por encima)\b", 0.85),
     (r"\bno aporta\b", 0.8),
     (r"\b(os|te) (lo |la )?ahorro\b", 0.9),
+    (r"\bno tiene\s+(interes|gracia|nada de interes)\b", 0.85),
+    (r"\b(os|te) pongo\s+(directamente|ya)\b", 0.85),
+    (r"\b(pasamos|vamos|voy)\s+direct\w*\b", 0.85),
+    (r"\bni (me|nos) molesto\b", 0.9),
+    (r"\basi que fuera\b", 0.8),
 )
 
 def _find_announcements(
@@ -232,6 +262,8 @@ def _find_announcements(
             encaje = re.search(patron, texto)
             if not encaje:
                 continue
+            if not _announcement_makes_sense(kind, texto, encaje):
+                continue
             salida.append(
                 SpeechCue(
                     kind=kind,
@@ -243,6 +275,32 @@ def _find_announcements(
             )
             break
     return salida
+
+
+def _announcement_makes_sense(kind: CueKind, texto: str, encaje) -> bool:
+    """Comprueba que la frase de verdad anuncia algo, y no lo menciona.
+
+    Las tres llevan la misma raiz y solo la primera pide algo al montaje:
+
+        "esto tarda un rato"                      -> avisa de una espera
+        "esta aplicacion tarda mucho en general"  -> describe una propiedad
+        "no te preocupes que esto no tarda nada"  -> dice lo contrario
+
+    Lo que las separa es la negacion, el aspecto (ahora o siempre) y si hay algo
+    que ate la frase a este momento. Sin esto, de veinte frases trampa escritas
+    a proposito se colaban catorce.
+    """
+    if is_negated(texto, encaje.start()):
+        return False
+    if kind is CueKind.WAIT:
+        return has_present_anchor(texto) and not is_habitual(texto)
+    if kind is CueKind.SKIP and re.search(r"\b\w*(salt|cort)\w*\b", encaje.group(0)):
+        # Los verbos genericos necesitan decir QUE se salta: "me salto una
+        # linea en el editor" es lo que se esta haciendo en pantalla, no un
+        # corte del montaje. Los patrones que ya son especificos ("ni me
+        # molesto en ensenaroslo") no necesitan esta muleta.
+        return bool(re.search(r"\b(esto|esta parte|este trozo|aqui|todo esto)\b", texto))
+    return True
 
 
 def find_waits(
