@@ -30,6 +30,7 @@ from pathlib import Path
 
 from ..assets.types import Asset, AssetBundle, AssetKind
 from ..plan.edl import (
+    MusicEffect,
     EDL,
     BrollEffect,
     CalloutEffect,
@@ -256,7 +257,12 @@ CALLOUT_MIN_THICKNESS = 2
 
 
 def _callout_filters(
-    effects: list[CalloutEffect], w: int, h: int, rules
+    effects: list[CalloutEffect],
+    w: int,
+    h: int,
+    rules,
+    *,
+    window: tuple[float, float] | None = None,
 ) -> list[str]:
     """Recuadros que aparecen y desaparecen sobre lo que se esta nombrando.
 
@@ -268,15 +274,26 @@ def _callout_filters(
     Asi que el fundido se hace con varios `drawbox` encadenados, cada uno con su
     opacidad y su tramo de tiempo, que no se solapan. Tres pasos de 80 ms bastan
     para que no parezca que la imagen ha parpadeado.
+
+    Con `window` (inicio, fin) se emiten **dentro de un clip**: los tiempos pasan
+    a ser locales del clip y solo salen los recuadros que caen ahi. Eso es lo
+    que permite dibujarlos **antes** del zoom, que es donde tienen que ir: la
+    caja sale en coordenadas del original y el zoom se la lleva con la imagen.
+    Dibujandola despues, un zoom de 1,45 la dejaba 134 px fuera de un boton que
+    mide 170.
     """
     if not effects:
         return []
+
+    desplazamiento = window[0] if window else 0.0
 
     grueso = max(CALLOUT_MIN_THICKNESS, int(round(h * rules.thickness)))
     color = (rules.color or "FFD200").lstrip("#")
     filtros: list[str] = []
 
     for efecto in effects:
+        if window is not None and not (efecto.start < window[1] and window[0] < efecto.end):
+            continue
         rect = efecto.rect.clamped()
         x = int(rect.x * w)
         y = int(rect.y * h)
@@ -306,6 +323,13 @@ def _callout_filters(
             tramos.append((inicio, inicio + paso, alpha - CALLOUT_ALPHA / CALLOUT_FADE_STEPS))
 
         for desde, hasta, alpha in tramos:
+            desde -= desplazamiento
+            hasta -= desplazamiento
+            if window is not None:
+                # Recortado al clip: un recuadro que cruza un corte se emite en
+                # los dos trozos, cada uno con su parte.
+                desde = max(desde, 0.0)
+                hasta = min(hasta, window[1] - window[0])
             if hasta - desde > 1e-3 and alpha > 0.01:
                 filtros.append(caja(desde, hasta, alpha))
     return filtros
@@ -333,6 +357,17 @@ LIMITER_OVERSAMPLE_HZ = 192000
 DEESS_HZ = 5500
 #: Ratio del compresor de banda alta del de-esser.
 DEESS_RATIO = 4.0
+
+#: Cuanto dura el fundido con el que se va la musica al final.
+MUSIC_FADE = 2.0
+#: Ajustes del sidechain que agacha la musica bajo la voz. El umbral bajo y el
+#: release largo son a proposito: lo que se busca es que la musica se aparte
+#: entera mientras hablas y vuelva sin que se note, no que respire al ritmo de
+#: cada silaba.
+MUSIC_DUCK_THRESHOLD = 0.03
+MUSIC_DUCK_RATIO = 8
+MUSIC_DUCK_ATTACK = 20
+MUSIC_DUCK_RELEASE = 900
 
 #: Duracion de los desvanecidos que se ponen en los bordes de cada clip de
 #: audio. Doce milisegundos no se oyen como un fundido, pero bastan para que un
@@ -499,6 +534,7 @@ def build_graph(
     audio_only: bool = False,
     assets: AssetBundle | None = None,
     sfx_paths: dict[str, str] | None = None,
+    music_path: str | None = None,
     voice_rules=None,
     master_gain_db: float | None = None,
     callout_rules=None,
@@ -546,6 +582,15 @@ def build_graph(
             "setsar=1",
             f"fps={fps:.6f}",
         ]
+
+        # Los recuadros van **antes** del zoom para que se acerquen con la
+        # imagen en vez de quedarse pegados al fotograma de salida. Aqui la
+        # escala ya es la de salida, asi que sus coordenadas son las buenas.
+        if callout_rules is not None:
+            cadena += _callout_filters(
+                [e for e in edl.effects if isinstance(e, CalloutEffect)],
+                w, h, callout_rules, window=(inicio_tl, fin_tl),
+            )
 
         zooms = _clip_zooms(edl, i, inicio_tl, fin_tl)
         if zooms:
@@ -658,18 +703,11 @@ def build_graph(
         if colocados:
             aplicado.append(f"{colocados} b-roll")
 
-    # Recuadros: encima del b-roll pero debajo de los subtitulos.
+    # Los recuadros ya se dibujaron dentro de cada clip, antes del zoom. Aqui
+    # solo se cuentan para el resumen.
     if not audio_only and callout_rules is not None:
-        marcas = sorted(
-            (e for e in edl.effects if isinstance(e, CalloutEffect)),
-            key=lambda e: e.start,
-        )
-        filtros_marca = _callout_filters(marcas, w, h, callout_rules)
-        if filtros_marca:
-            post += filtros_marca
-            # Se cuentan los recuadros, no los filtros: cada recuadro emite
-            # varios `drawbox` para el fundido, y decir "156 recuadros" cuando
-            # son 26 asusta sin motivo.
+        marcas = [e for e in edl.effects if isinstance(e, CalloutEffect)]
+        if marcas:
             aplicado.append(f"{len(marcas)} recuadros")
 
     # Los subtitulos van los ultimos: siempre encima de todo, tambien del b-roll.
@@ -689,6 +727,21 @@ def build_graph(
     # -- 4. audio -----------------------------------------------------------
     a_label: str | None = None
     if a_actual:
+        # La voz se trata **antes** de mezclar. Estaba al reves: el paso-alto a
+        # 80 Hz, el de-esser y el compresor se aplicaban a la mezcla ya hecha,
+        # asi que le quitaban los graves a un impacto y el de-esser bombeaba
+        # con el ruido de un whoosh. Eso es tratamiento de voz, y solo la voz
+        # tiene que pasar por ahi.
+        if voice_rules is not None:
+            etapas = voice_chain(voice_rules)
+            if etapas:
+                # Con `_emit_audio_chain` porque el de-esser no es un filtro
+                # suelto: parte la senal en dos bandas y las vuelve a sumar,
+                # asi que necesita sus propias etiquetas.
+                _emit_audio_chain(partes, a_actual, etapas, "[avoz]")
+                a_actual = "[avoz]"
+                aplicado.append("voz tratada")
+
         efectos_sonido = [e for e in edl.effects if isinstance(e, SfxEffect)]
         disponibles = [
             (e, (sfx_paths or {}).get(e.asset_id))
@@ -719,12 +772,42 @@ def build_graph(
             a_actual = "[amixed]"
             aplicado.append(f"{len(disponibles)} efectos de sonido")
 
+        musica = next((e for e in edl.effects if isinstance(e, MusicEffect)), None)
+        if musica is not None and music_path:
+            indice = len(input_args) + 1
+            input_args.append(["-i", str(music_path)])
+            # Se repite hasta cubrir el montaje y se corta con un fundido, que
+            # es lo que hace que no acabe de golpe.
+            partes.append(
+                f"[{indice}:a]aloop=loop=-1:size=2e9,atrim=duration={edl.duration:.3f},"
+                f"asetpts=PTS-STARTPTS,volume={musica.gain_db:.1f}dB,"
+                f"afade=t=out:st={max(0.0, edl.duration - MUSIC_FADE):.3f}:d={MUSIC_FADE}"
+                "[amus]"
+            )
+            if musica.duck and a_actual:
+                # La voz manda: la musica se agacha sola cuando hablas. Es la
+                # diferencia entre musica de fondo y musica encima.
+                partes.append(
+                    f"{a_actual}asplit=2[avoz1][avozkey]"
+                )
+                partes.append(
+                    f"[amus][avozkey]sidechaincompress="
+                    f"threshold={MUSIC_DUCK_THRESHOLD}:ratio={MUSIC_DUCK_RATIO}"
+                    f":attack={MUSIC_DUCK_ATTACK}:release={MUSIC_DUCK_RELEASE}"
+                    ":makeup=1[amusduck]"
+                )
+                a_actual = "[avoz1]"
+                etiqueta_musica = "[amusduck]"
+            else:
+                etiqueta_musica = "[amus]"
+            partes.append(
+                f"{a_actual}{etiqueta_musica}amix=inputs=2:duration=first"
+                ":dropout_transition=0:normalize=0[amusmix]"
+            )
+            a_actual = "[amusmix]"
+            aplicado.append("musica" + (" agachada bajo la voz" if musica.duck else ""))
+
         audio_post: list = []
-        if voice_rules is not None:
-            etapas = voice_chain(voice_rules)
-            if etapas:
-                audio_post += etapas
-                aplicado.append("voz tratada")
 
         if master_gain_db is not None:
             # Master medido: se sube exactamente lo que dice la medida R128 y

@@ -162,7 +162,12 @@ def test_el_recuadro_se_dibuja_de_verdad(
     """Se renderiza con y sin recuadro y se resta: lo que queda es el trazo."""
     analysis, _ = analyze(sample_video, settings, skip_speech=True)
     edl = build_edl(analysis, "tutorial")
-    edl.effects = [e for e in edl.effects if e.kind is not EffectKind.CAPTION]
+    # Sin subtitulos y **sin zooms**: aqui se comprueba la posicion a secas.
+    # Lo que pasa cuando ademas hay un zoom tiene su propio test debajo.
+    edl.effects = [
+        e for e in edl.effects
+        if e.kind not in (EffectKind.CAPTION, EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
+    ]
 
     marca = CalloutEffect(
         id="call000",
@@ -219,3 +224,59 @@ def test_el_recuadro_no_esta_antes_de_su_momento(
     assert np.abs(b.astype(int) - a.astype(int)).max() <= 40, (
         "el recuadro aparece fuera de su ventana"
     )
+
+
+def test_el_recuadro_se_acerca_con_la_imagen(
+    sample_video: Path, settings: Settings, tmp_path: Path
+) -> None:
+    """El fallo que motivo la auditoria, medido en el fotograma.
+
+    El recuadro se calculaba en coordenadas del fotograma de **salida** y se
+    dibujaba **despues** del zoom, asi que con un zoom activo senalaba otro
+    sitio: con 1,45 se iba 134 px, y un boton de menu mide 170. Y no era un
+    caso raro, era el normal: el zoom y el recuadro se colocan por la misma
+    senal, que es que estas senalando algo.
+
+    Ahora la caja se dibuja dentro del clip, antes del zoom, asi que el zoom se
+    la lleva con la imagen. Aqui se renderiza con zoom y se comprueba que el
+    trazo cae donde el recorte dice, no donde caia antes.
+    """
+    from forge.plan.edl import PunchInEffect
+
+    analysis, _ = analyze(sample_video, settings, skip_speech=True)
+    edl = build_edl(analysis, "tutorial")
+    edl.effects = [
+        e for e in edl.effects
+        if e.kind not in (EffectKind.CAPTION, EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
+    ]
+
+    rect = Rect(x=0.30, y=0.30, w=0.30, h=0.20)
+    zoom = 1.4
+    recorte = Rect.centered(0.5, 0.5, zoom)   # zoom al centro, sin deriva
+
+    marca = CalloutEffect(id="call000", start=1.0, end=min(3.0, edl.duration), rect=rect)
+    punch = PunchInEffect(
+        id="punch000", start=0.5, end=min(3.5, edl.duration),
+        rect=recorte, ease_seconds=0.2, drift=0.0,
+    )
+
+    sin = tmp_path / "sin-zoom.mp4"
+    edl.effects = [*edl.effects, punch]
+    render(edl, sin, settings)
+    con = tmp_path / "con-zoom.mp4"
+    edl.effects = [*edl.effects, marca]
+    render(edl, con, settings)
+
+    t = 2.0
+    a = extract_frames_at(sin, settings, [t], width=640, height=360)[0]
+    b = extract_frames_at(con, settings, [t], width=640, height=360)[0]
+    diferencia = np.abs(b.astype(int) - a.astype(int)).max(axis=2)
+    columnas = np.where(diferencia.max(axis=0) > 40)[0]
+    assert len(columnas), "no se dibujo nada"
+
+    # Donde tiene que verse el borde izquierdo: el recorte lo acerca.
+    esperado = (rect.x - recorte.x) / recorte.w
+    visto = columnas.min() / 640
+    assert abs(visto - esperado) < 0.05, f"se ve en {visto:.2f} y toca en {esperado:.2f}"
+    # Y desde luego ya no donde se pintaba antes.
+    assert abs(visto - rect.x) > 0.03, "sigue pintandose en el fotograma de salida"

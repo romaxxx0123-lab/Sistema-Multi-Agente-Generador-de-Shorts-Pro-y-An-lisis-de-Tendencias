@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ..analysis.types import Analysis
-from .coherence import judge
+from .coherence import judge, tag_stem
 from .types import Asset, AssetKind, AssetQuery
 
 
@@ -77,6 +77,9 @@ class BrollProvider(Protocol):
 #: Tope de relevancia del material sacado del propio video. Cualquier
 #: coincidencia real de palabras queda por encima.
 SELF_MAX_RELEVANCE = 0.35
+#: Lo cerca que puede estar el recorte del momento en el que se usa. Ensenar
+#: como recuerdo lo que se esta viendo ahora mismo no recuerda nada.
+MIN_SELF_DISTANCE = 8.0
 
 
 class SelfProvider:
@@ -96,56 +99,88 @@ class SelfProvider:
         self.analysis = analysis
         self.min_concentration = min_concentration
 
+    def _donde_se_vio(self, cabeza: str, ahora: float) -> list[tuple[float, str]]:
+        """Momentos en los que eso que nombras estuvo **escrito en pantalla**.
+
+        Es lo que convierte un recorte del propio video en un recurso con
+        sentido: dices "la pestana de Ajustes" y se ensena el momento en el que
+        Ajustes se veia. Un recordatorio, que es justo para lo que un editor
+        usa un plano de archivo del propio material.
+
+        Se prefiere lo **ya visto**: ensenar algo que todavia no has explicado
+        confunde en vez de recordar.
+        """
+        raiz = tag_stem(cabeza)
+        if not raiz:
+            return []
+        vistos = [
+            (lectura.at, texto)
+            for lectura in self.analysis.screen_text
+            for texto in lectura.words
+            if tag_stem(texto) == raiz
+        ]
+        anteriores = [v for v in vistos if v[0] < ahora - MIN_SELF_DISTANCE]
+        posteriores = [v for v in vistos if v[0] > ahora + MIN_SELF_DISTANCE]
+        anteriores.sort(key=lambda v: -v[0])
+        posteriores.sort(key=lambda v: v[0])
+        return anteriores + posteriores
+
     def search(self, query: AssetQuery) -> list[Asset]:
+        """Un recorte del propio video, pero solo si viene a cuento.
+
+        Antes elegia por **interes visual** y el montaje lo anunciaba como
+        "material de apoyo porque ahi hablas de X", que era falso: ese recorte
+        no tenia nada que ver con X, era el plano con mas contraste. Ahora solo
+        sale cuando lo que nombras se vio en pantalla en otro momento, y lo que
+        se ensena es ese momento.
+        """
         media = self.analysis.media
+        cabeza = query.head or _first_word(query.text)
+        ahora = query.at_timeline
         candidatos: list[Asset] = []
 
-        for shot in self.analysis.shots:
-            foco = self.analysis.focus_of(shot.index)
-            if foco is None or foco.concentration < self.min_concentration:
-                continue
-            if shot.duration < max(1.0, query.seconds * 0.6):
+        for i, (cuando, texto) in enumerate(self._donde_se_vio(cabeza, ahora)):
+            shot = self.analysis.shot_at(cuando)
+            mitad = query.seconds / 2
+            inicio = max(0.0, cuando - mitad)
+            fin = inicio + query.seconds
+            if shot is not None:
+                # Sin salirse del plano: cruzar un corte dentro de un b-roll se
+                # ve como un fallo de montaje.
+                inicio = max(inicio, shot.start)
+                fin = min(max(fin, inicio + 0.5), shot.end)
+            if fin - inicio < 0.5:
                 continue
 
-            # Se toma del centro del plano, lejos de los cortes.
-            centro = shot.start + shot.duration / 2
-            mitad = min(query.seconds, shot.duration) / 2
-
+            foco = self.analysis.focus_at(cuando)
+            nitidez = foco.concentration if foco is not None else 0.5
             candidatos.append(
                 Asset(
-                    id=f"self-{shot.index:03d}",
+                    id=f"self-{int(cuando * 10):05d}",
                     kind=AssetKind.SELF,
                     provider=self.name,
-                    source_start=round(max(shot.start, centro - mitad), 3),
-                    source_end=round(min(shot.end, centro + mitad), 3),
+                    source_start=round(inicio, 3),
+                    source_end=round(fin, 3),
                     width=media.video.display_width if media.video else 0,
                     height=media.video.display_height if media.video else 0,
-                    duration=round(min(query.seconds, shot.duration), 3),
+                    duration=round(fin - inicio, 3),
                     query=query.text,
                     reason=(
-                        f"recorte del plano {shot.index} ({shot.start:.0f}s), "
-                        f"donde la imagen tiene mas interes visual"
+                        f'de tu propio video: ahi se veia "{texto}" en pantalla '
+                        f"({cuando:.0f}s)"
                     ),
                     license="propio",
-                    # Un recorte del propio video no ilustra de lo que se esta
-                    # hablando: es un recurso de relleno, por bonito que sea el
-                    # plano. Por eso su relevancia vive en una banda por debajo
-                    # de cualquier coincidencia real de palabras. Antes se
-                    # usaba la concentracion de la saliencia tal cual, en la
-                    # misma escala que los demas, y un plano vistoso le ganaba
-                    # a un material que si hablaba del tema: se decia "Chrome"
-                    # y salia un trozo del mismo video.
-                    relevance=round(foco.concentration * SELF_MAX_RELEVANCE, 3),
+                    # Sigue por debajo de una coincidencia de etiquetas, que es
+                    # material buscado a proposito; pero ya no es relleno.
+                    relevance=round(
+                        SELF_MAX_RELEVANCE * (0.7 + 0.3 * nitidez), 3
+                    ),
                 )
             )
+            if len(candidatos) >= query.limit:
+                break
 
-        candidatos.sort(key=lambda a: -a.relevance)
-        return candidatos[: query.limit]
-
-
-# ---------------------------------------------------------------------------
-# Carpeta local
-# ---------------------------------------------------------------------------
+        return candidatos
 
 
 class LocalProvider:

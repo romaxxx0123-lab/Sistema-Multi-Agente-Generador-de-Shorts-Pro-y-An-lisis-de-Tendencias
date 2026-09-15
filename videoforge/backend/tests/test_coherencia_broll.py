@@ -191,3 +191,61 @@ def test_y_si_de_verdad_lo_tiene_entra() -> None:
     ))
     assert len(resultados) == 1
     assert "granja" in resultados[0].reason
+
+
+# -- y el papel del tramo tambien manda ----------------------------------
+
+
+def _analisis_con_aviso():
+    """Una guia donde en 40s se avisa de algo y en 80s no."""
+    from forge.analysis.types import Transcript, TranscriptSegment, Word
+    from forge.fixtures import synthetic_guide_analysis
+    from forge.understand.segments import detect_segments
+
+    a = synthetic_guide_analysis(150.0)
+    frases = [
+        (10.0, "vamos a configurar el servidor de correo con calma"),
+        (40.0, "ojo con esto que si lo pones mal no arranca el servidor"),
+        (80.0, "por cierto el servidor tiene un panel que casi nadie usa"),
+    ]
+    segmentos = []
+    for inicio, texto in frases:
+        ws, t = [], inicio
+        for p in texto.split():
+            ws.append(Word(start=round(t, 2), end=round(t + 0.3, 2), text=p))
+            t += 0.4
+        segmentos.append(TranscriptSegment(start=inicio, end=round(t, 2), text=texto, words=ws))
+    a.transcript = Transcript(language="es", segments=segmentos)
+    a.narrative = detect_segments(a.transcript, a.duration)
+    return a
+
+
+def test_un_aviso_no_se_tapa_con_material_de_apoyo() -> None:
+    """Es el momento del video que menos se puede tapar."""
+    from forge.plan.broll import _role_weight
+    from forge.plan.styles import load_style
+    from forge.understand.segments import SegmentRole, role_at
+
+    a = _analisis_con_aviso()
+    pacing = load_style("tutorial").pacing
+    assert role_at(a.narrative, 41.0) is SegmentRole.WARNING, "el fixture no avisa"
+
+    peso, papel = _role_weight(a.narrative, 41.0, pacing)
+    assert peso == 0.0 and papel == "aviso"
+
+
+def test_en_una_digresion_se_agradece_mas_que_en_un_paso() -> None:
+    """Donde la pantalla importa menos, una imagen de apoyo estorba menos."""
+    from forge.plan.broll import _role_weight
+    from forge.plan.styles import load_style
+    from forge.understand.segments import NarrativeSegment, SegmentRole
+
+    pacing = load_style("tutorial").pacing
+    pasos = [NarrativeSegment(start=0.0, end=100.0, role=SegmentRole.STEP, confidence=0.9)]
+    digresiones = [
+        NarrativeSegment(start=0.0, end=100.0, role=SegmentRole.ASIDE, confidence=0.9)
+    ]
+
+    digresion, _ = _role_weight(digresiones, 50.0, pacing)
+    paso, _ = _role_weight(pasos, 50.0, pacing)
+    assert digresion > paso

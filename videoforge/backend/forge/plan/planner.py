@@ -20,11 +20,13 @@ from ..assets.types import AssetBundle
 from ..errors import PlanError
 from .broll import plan_broll
 from .callouts import plan_callouts
+from .conflicts import resolve
 from .captions import plan_captions
 from .chapters import chapter_cards, plan_chapters
-from .edl import EDL, Clip, GradeEffect, RenderSpec, TransitionEffect
+from .edl import EDL, Clip, GradeEffect, MusicEffect, RenderSpec, TransitionEffect
 from .emphasis import plan_ken_burns, plan_punch_ins
 from .select import plan_selection
+from .sfx import plan_sfx
 from .styles import StylePreset, load_style
 
 #: Resolucion de respaldo si el sondeo no trajo dimensiones.
@@ -146,17 +148,70 @@ def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip],
     return clips, notas
 
 
-def _plan_transitions(edl: EDL, style: StylePreset) -> list[TransitionEffect]:
-    """Pone transicion en una fraccion de los cortes; el resto van secos."""
+#: Margen para dar por bueno que un corte cae en el mismo sitio que otra cosa.
+TRANSITION_SNAP = 0.35
+
+
+def _cambia_el_plano(edl: EDL, analysis: Analysis, t: float) -> bool:
+    """Si a los dos lados del corte se ve **otra cosa**.
+
+    Se mira en el original y a los dos lados, no en el montaje: un corte puede
+    haberse comido un silencio largo que se llevaba por delante un cambio de
+    plano, y entonces el corte si cambia la imagen aunque el silencio no.
+    """
+    antes = edl.timeline_to_source(max(0.0, t - 0.05))
+    despues = edl.timeline_to_source(min(edl.duration - 1e-3, t + 0.05))
+    if antes is None or despues is None:
+        return False
+    a, b = analysis.shot_at(antes), analysis.shot_at(despues)
+    return a is not None and b is not None and a.index != b.index
+
+
+def _plan_transitions(
+    edl: EDL, style: StylePreset, analysis: Analysis | None = None
+) -> list[TransitionEffect]:
+    """Pone transicion donde de verdad cambia algo.
+
+    Antes se repartia una fraccion de los cortes de forma regular
+    (`cortes[::paso]`), **sin mirar que corte era**. En una guia la mayoria de
+    los cortes son silencios quitados dentro del mismo plano: ahi la imagen no
+    cambia, y un fundido es un bajon de brillo en mitad de una pantalla quieta.
+
+    Un corte merece transicion cuando a los dos lados se ve otra cosa (cambia
+    el plano) o cuando ahi empieza un capitulo. Las dos cosas las sabe el
+    sistema y no las usaba ninguna.
+    """
     rules = style.transitions
     cortes = edl.cut_points()
     if not rules.enabled or not cortes or rules.fraction <= 0:
         return []
 
-    cuantas = max(1, int(len(cortes) * rules.fraction))
-    # Repartidas de forma regular, para que no se amontonen al principio.
-    paso = max(1, len(cortes) // cuantas)
-    elegidos = cortes[::paso][:cuantas]
+    capitulos = [c.start for c in edl.chapters]
+    motivos: list[tuple[float, str]] = []
+    for t in cortes:
+        titulo = next(
+            (c.title for c in edl.chapters if abs(c.start - t) <= TRANSITION_SNAP),
+            None,
+        )
+        if titulo is not None and t > 0.01:
+            motivos.append((t, f'ahi empieza el capitulo "{titulo}"'))
+        elif analysis is not None and _cambia_el_plano(edl, analysis, t):
+            motivos.append((t, "ahi cambia el plano"))
+
+    if not motivos:
+        if analysis is not None or capitulos:
+            # Se sabia donde mirar y no habia nada: una guia de pantalla no
+            # cambia de plano, y eso no es un fallo, es que no van transiciones.
+            return []
+        # Sin analisis no hay forma de saberlo; se cae al reparto de antes.
+        cuantas = max(1, int(len(cortes) * rules.fraction))
+        paso = max(1, len(cortes) // cuantas)
+        motivos = [(t, "corte repartido") for t in cortes[::paso][:cuantas]]
+
+    # El tope del estilo se sigue respetando: si cambia de plano cada dos
+    # segundos, tampoco se pone una transicion en cada uno.
+    tope = max(1, int(len(cortes) * rules.fraction))
+    elegidos = motivos[:tope]
 
     return [
         TransitionEffect(
@@ -166,9 +221,9 @@ def _plan_transitions(edl: EDL, style: StylePreset) -> list[TransitionEffect]:
             transition=rules.default,
             value_score=0.35,
             cost_weight=0.30,
-            rationale=f"transicion {rules.default} en el corte de {t:.1f}s",
+            rationale=f"transicion {rules.default} en {t:.1f}s: {motivo}",
         )
-        for i, t in enumerate(elegidos)
+        for i, (t, motivo) in enumerate(elegidos)
     ]
 
 
@@ -262,6 +317,8 @@ def build_edl(
             style.broll,
             bundle,
             screen_terms=[t for t, _ in recurring_terms(analysis.screen_text)],
+            narrative=analysis.narrative,
+            pacing=style.pacing,
         )
         efectos += brolls
         reservas += brolls_reserva
@@ -274,8 +331,38 @@ def build_edl(
 
     edl.effects = efectos
     # Las transiciones y el color dependen de la linea de tiempo ya cerrada.
-    edl.effects += _plan_transitions(edl, style)
+    edl.effects += _plan_transitions(edl, style, analysis)
     edl.effects += _plan_grade(edl, style)
+
+    if style.music.enabled and edl.duration > 0:
+        # La musica es una sola pista de punta a punta. Quien pone el fichero
+        # eres tu (`assets/music/`): aqui solo se decide que va, a que volumen
+        # y si se agacha bajo la voz. Sin fichero, el render lo dice y sigue.
+        edl.effects.append(
+            MusicEffect(
+                id="music000",
+                start=0.0,
+                end=round(edl.duration, 3),
+                asset_id="music",
+                gain_db=style.music.gain_db,
+                duck=style.music.duck,
+                value_score=0.4,
+                cost_weight=0.2,
+                rationale=(
+                    f"musica de fondo a {style.music.gain_db:.0f} dB"
+                    + (", agachada bajo la voz" if style.music.duck else "")
+                ),
+            )
+        )
+
+    # Los sonidos van los ultimos porque acompanan a lo que ya hay decidido:
+    # nunca suenan solos.
+    edl.effects += plan_sfx(edl, style.sfx)
+
+    # Cada planner ha decidido lo suyo sin mirar a los demas. Aqui se quita lo
+    # que otro efecto deja sin sentido: un recuadro debajo de un b-roll, dos
+    # movimientos de camara a la vez, un zoom dentro de un avance rapido.
+    edl.notes += resolve(edl)
 
     edl.notes.append(
         f"Montaje: {edl.duration:.1f}s en {len(edl.timeline)} clips "

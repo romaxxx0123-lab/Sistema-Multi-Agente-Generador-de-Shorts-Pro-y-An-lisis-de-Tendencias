@@ -153,6 +153,7 @@ def _measure_loudness(
     sfx_paths: dict[str, str] | None = None,
     voice_rules=None,
     master_gain_db: float | None = None,
+    music_path: str | None = None,
 ) -> dict | None:
     """Mide la sonoridad del audio ya montado.
 
@@ -292,6 +293,20 @@ def _check_output(path: Path, expected: float, settings: Settings) -> None:
         )
 
 
+#: Extensiones de musica que se reconocen en tu carpeta.
+MUSIC_EXTS = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus")
+
+
+def _find_music(music_dir: Path | None) -> str | None:
+    """El primer fichero de musica de tu carpeta, por orden alfabetico."""
+    if music_dir is None or not Path(music_dir).is_dir():
+        return None
+    for path in sorted(Path(music_dir).iterdir()):
+        if path.is_file() and path.suffix.lower() in MUSIC_EXTS:
+            return str(path)
+    return None
+
+
 def render(
     edl: EDL,
     out: Path | str,
@@ -301,6 +316,7 @@ def render(
     use_gpu: bool = True,
     two_pass_audio: bool = True,
     fonts_dir: Path | None = None,
+    music_dir: Path | None = None,
     work_dir: Path | None = None,
     assets: AssetBundle | None = None,
     progress: ProgressFn | None = None,
@@ -381,6 +397,18 @@ def render(
         if efecto.kind is EffectKind.SFX and nombre in GENERATORS and nombre not in sfx_paths:
             sfx_paths[nombre] = str(ensure_sfx(settings.cache_dir, nombre))
 
+    # La musica la pones tu: el planner decide que va, aqui se busca el
+    # fichero. Sin fichero no se rompe nada, se avisa y se sigue -- igual que
+    # con un b-roll que no se pudo descargar.
+    quiere_musica = any(e.kind is EffectKind.MUSIC for e in edl_render.effects)
+    music_path = _find_music(music_dir) if quiere_musica else None
+    aviso_musica = (
+        "Este estilo lleva musica y no hay ninguna en assets/music/: "
+        "se monta sin ella."
+        if quiere_musica and music_path is None
+        else ""
+    )
+
     has_audio = probe(source, settings).has_audio
 
     # -- validacion en seco -------------------------------------------------
@@ -409,13 +437,14 @@ def render(
         if progress:
             progress(0.0, "midiendo la sonoridad del montaje")
         medidas = _measure_loudness(
-            ffmpeg, source, edl_render, settings, target_lufs, sfx_paths, voice_rules
+            ffmpeg, source, edl_render, settings, target_lufs, sfx_paths, voice_rules,
+            music_path=music_path,
         )
         if medidas:
             def _con_ganancia(g: float):
                 return _measure_loudness(
                     ffmpeg, source, edl_render, settings, target_lufs, sfx_paths,
-                    voice_rules, master_gain_db=g,
+                    voice_rules, master_gain_db=g, music_path=music_path,
                 )
 
             master_gain, sonoridad_final = _plan_master(
@@ -440,6 +469,7 @@ def render(
         loudnorm_measured=medidas,
         assets=assets,
         sfx_paths=sfx_paths,
+        music_path=music_path,
         voice_rules=voice_rules,
         master_gain_db=master_gain,
         callout_rules=callout_rules,
@@ -497,7 +527,7 @@ def render(
         duration=edl_render.duration,
         seconds_taken=time.time() - inicio,
         encoder=nombre_encoder,
-        applied=graph.applied,
+        applied=graph.applied + ([aviso_musica] if aviso_musica else []),
         measured_lufs=(
             sonoridad_final if sonoridad_final is not None
             else (float(medidas["input_i"]) if medidas else None)

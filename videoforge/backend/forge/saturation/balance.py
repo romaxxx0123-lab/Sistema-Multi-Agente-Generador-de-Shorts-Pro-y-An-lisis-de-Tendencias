@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..analysis.types import Analysis
+from ..plan.conflicts import conflicts_with
 from ..plan.edl import EDL, BaseEffect, EffectKind
 from ..plan.styles import StylePreset, load_style
 from .density import RATE, density_curve
@@ -135,13 +136,20 @@ def _worst(effects: list[BaseEffect]) -> BaseEffect | None:
 
 
 def _best_candidate(edl: EDL) -> BaseEffect | None:
-    """El candidato en reserva que mas aporta y no pisa a otro efecto."""
+    """El candidato en reserva que mas aporta y no pisa a otro efecto.
+
+    "No pisa" es de dos maneras: ni a otro del mismo tipo (dos zooms encimados)
+    ni a uno de otro tipo que lo dejaria sin verse (un recuadro debajo de un
+    b-roll). Lo segundo faltaba, y subir la densidad metiendo algo que no se ve
+    no sube ninguna densidad: solo la del medidor.
+    """
     disponibles = [
         c
         for c in edl.candidates
         if not any(
             e.kind is c.kind and e.overlaps(c.start, c.end) for e in edl.effects
         )
+        and not conflicts_with(edl, c)
     ]
     return max(disponibles, key=lambda e: e.efficiency) if disponibles else None
 

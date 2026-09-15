@@ -175,6 +175,30 @@ def _respects_spacing(candidato: float, puestos: list[float], min_gap: float) ->
     return all(abs(candidato - otro) >= min_gap for otro in puestos)
 
 
+#: Papeles en los que tapar la pantalla es justo lo que no hay que hacer. En un
+#: aviso ("ojo, si no haces esto no funciona") lo que se ve es lo que hay que
+#: mirar, y taparlo con una imagen de archivo es el peor momento posible.
+NO_TAPAR = ("aviso",)
+#: Y en los demas, cuanto se agradece ahi una imagen de apoyo. Sale del mismo
+#: sitio que el recorte: donde se puede recortar mas es donde la pantalla
+#: importa menos.
+def _role_weight(narrative, t: float, rules) -> tuple[float, str]:
+    if not narrative:
+        return 1.0, ""
+    from ..understand.segments import role_at
+
+    papel = role_at(narrative, t).value
+    if papel in NO_TAPAR:
+        return 0.0, papel
+    return min(1.3, rules.roles.factor(_CAMPO_POR_PAPEL.get(papel, "body"))), papel
+
+
+_CAMPO_POR_PAPEL = {
+    "intro": "intro", "paso": "step", "aviso": "warning", "consejo": "tip",
+    "resumen": "recap", "cierre": "outro", "digresion": "aside", "cuerpo": "body",
+}
+
+
 def plan_broll(
     edl: EDL,
     transcript: Transcript | None,
@@ -182,6 +206,8 @@ def plan_broll(
     rules: BrollRules,
     bundle: AssetBundle,
     screen_terms: list[str] | None = None,
+    narrative=None,
+    pacing=None,
 ) -> tuple[list[BrollEffect], list[BrollEffect]]:
     """Coloca material de apoyo donde se nombra algo concreto.
 
@@ -221,6 +247,17 @@ def plan_broll(
         inicio = momento.start
         fin = inicio + duracion
         if fin > edl.duration:
+            continue
+
+        # Que parte del video es esto. Un aviso no se tapa nunca: es el momento
+        # que menos se puede tapar de todo el video.
+        origen = edl.timeline_to_source(inicio)
+        peso_papel, papel = (
+            _role_weight(narrative, origen, pacing)
+            if origen is not None and pacing is not None
+            else (1.0, "")
+        )
+        if peso_papel <= 0.0:
             continue
         if not _respects_spacing(inicio, instantes, rules.min_gap):
             continue
@@ -264,11 +301,14 @@ def plan_broll(
             query=momento.query,
             # Lo que aporta depende de lo concreto que sea lo que se nombra y de
             # lo bien que encaje el material encontrado.
-            value_score=round(min(1.0, 0.45 + momento.score * 0.35 + asset.relevance * 0.2), 3),
+            value_score=round(
+                min(1.0, (0.45 + momento.score * 0.35 + asset.relevance * 0.2) * peso_papel),
+                3,
+            ),
             cost_weight=0.65 if rules.mode == "full" else 0.45,
             rationale=(
                 f"material de apoyo en {inicio:.0f}s porque ahi hablas de "
-                f"'{momento.query}' · {asset.reason}"
+                f"'{momento.query}'{f' ({papel})' if papel else ''} · {asset.reason}"
             ),
         )
 

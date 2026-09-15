@@ -1,5 +1,10 @@
 # Auditoria de coherencia
 
+> **Estado: los diez hallazgos, cerrados.** Cada uno lleva debajo como se
+> arreglo y donde esta el test que lo fija. La auditoria se queda como esta
+> porque el valor no era la lista: era el metodo de mirar el sistema entero
+> buscando decisiones que no se siguen de lo que el propio sistema sabe.
+
 El caso de Palworld y Minecraft no era un caso: era un **sintoma**. El sistema
 tiene muchas partes que deciden bien por separado y **no se hablan entre
 ellas**, y cada sitio donde no se hablan produce la misma clase de fallo: hacer
@@ -17,7 +22,7 @@ comprobo:
 
 ## A. Lo que se ve en pantalla
 
-### A1. El recuadro se pinta donde el elemento **ya no esta** · demostrable · grave
+### A1. El recuadro se pinta donde el elemento **ya no esta** · HECHO
 
 `_callout_filters` calcula la caja en coordenadas del **fotograma de salida**
 (`x = rect.x * w`) y el filtro se aplica **despues** del `zoompan`. Cuando hay
@@ -42,13 +47,13 @@ Lo mas feo del caso: el zoom y el recuadro se colocan **por la misma senal**
 (senalas algo por su nombre), asi que no es una coincidencia rara, es el caso
 normal.
 
-### A2. El recuadro se pinta encima del b-roll · demostrable · grave
+### A2. El recuadro se pinta encima del b-roll · HECHO
 
 Orden del grafo: b-roll → recuadros → subtitulos. Si en ese momento hay
 material de apoyo a pantalla completa, el recuadro senala un sitio de una imagen
 que ya no esta. Nadie comprueba que no coincidan.
 
-### A3. Nadie mira los solapes entre efectos de **distinto tipo** · demostrable
+### A3. Nadie mira los solapes entre efectos de **distinto tipo** · HECHO
 
 `balance.py:143` solo compara efectos del mismo tipo (`e.kind is c.kind`). Cada
 planner decide por su cuenta y el balanceador, que seria el sitio natural para
@@ -59,7 +64,7 @@ resolverlo, tampoco mira. De ahi salen A1 y A2, y ademas:
 - subtitulo sobre b-roll en PiP: el subtitulo se dibuja el ultimo y lo tapa
   (`captions.py` no sabe que existe el b-roll).
 
-### A4. Dos movimientos a la vez · latente
+### A4. Dos movimientos a la vez · HECHO
 
 `plan_ken_burns` anade deriva a todo plano largo y quieto sin mirar si ese
 plano ya lleva un zoom de enfasis; el render los **suma**. Ken Burns existe para
@@ -71,7 +76,7 @@ puerta esta abierta.
 
 ## B. Decisiones que ignoran lo que el sistema ya sabe
 
-### B1. Las transiciones se reparten con una regla de tres · medido · importante
+### B1. Las transiciones se reparten con una regla de tres · HECHO
 
 ```python
 elegidos = cortes[::paso][:cuantas]     # planner.py:159
@@ -88,7 +93,7 @@ tema (`understand/topics.py`, recien hecho). No usa ninguna de las dos.
 
 Su explicacion tampoco explica nada: *"transicion fade en el corte de 12.3s"*.
 
-### B2. El b-roll no mira el papel del tramo · demostrable · importante
+### B2. El b-roll no mira el papel del tramo · HECHO
 
 `select.py` y `emphasis.py` usan el papel narrativo (intro, paso, aviso,
 cierre) para decidir cuanto recortan y cuanto valen los zooms. `broll.py`,
@@ -96,7 +101,7 @@ cierre) para decidir cuanto recortan y cuanto valen los zooms. `broll.py`,
 puede tapar la pantalla **justo en un aviso** ("ojo, si no haces esto no
 funciona"), que es el momento del video que menos se puede tapar.
 
-### B3. El material del propio video se anuncia como algo que no es · demostrable
+### B3. El material del propio video se anuncia como algo que no es · HECHO
 
 El proveedor `self` lo dice en su propio docstring: *"no entiende la consulta:
 elige por interes visual"*. Pero el montaje lo escribe asi:
@@ -110,7 +115,7 @@ plano con mas contraste del video. Y ahora **es el que mas va a salir**, porque
 al poner estrictos los otros dos proveedores, `self` es el que queda de reserva.
 Esto es una consecuencia directa del arreglo anterior.
 
-### B4. Un zoom puede caer dentro de un tramo acelerado · latente
+### B4. Un zoom puede caer dentro de un tramo acelerado · HECHO
 
 Las esperas anunciadas se aceleran hasta 8x. `plan_punch_ins` no sabe nada de
 `Clip.speed`, asi que puede colocar un acercamiento de 1,5 s sobre un tramo que
@@ -123,7 +128,7 @@ que no hay voz ni subtitulos dentro. Eso ya es coherente.)
 
 ## C. Lo que el estilo promete y no pasa
 
-### C1. Los efectos de sonido no existen · medido · importante
+### C1. Los efectos de sonido no existen · HECHO
 
 ```
 gaming-hype    sfx.enabled=True   -> efectos: caption, punch_in, transition, grade
@@ -135,7 +140,7 @@ sintetizador procedural en `assets/sfx.py` y la mezcla en el render: todo esta.
 **Ningun planner crea un solo SfxEffect.** Eliges un estilo que pide diez
 sonidos por minuto y no suena ninguno.
 
-### C2. La musica tampoco · medido · importante
+### C2. La musica tampoco · HECHO
 
 `MusicRules` (`enabled`, `gain_db`, `duck`) no tiene **ni un solo consumidor**
 en todo el codigo. Cuatro estilos de seis la piden activada. El plan original
@@ -156,7 +161,28 @@ estilo miente.
 
 ---
 
-## Orden propuesto
+## Como se cerro cada uno
+
+| # | arreglo | test |
+|---|---|---|
+| A1 | el recuadro se dibuja **dentro del clip, antes del zoom**: la caja sale en coordenadas del original y el zoom se la lleva con la imagen | `test_callouts.py::test_el_recuadro_se_acerca_con_la_imagen` (renderiza con zoom y mide donde cae el trazo) |
+| A2, A3, A4, B4 | un **arbitro** (`plan/conflicts.py`) que se pasa al cerrar el montaje y quita lo que otro efecto deja sin sentido; el auto-balanceador le consulta antes de recuperar un candidato | `test_conflictos.py` (11 casos) |
+| B1 | transicion donde **cambia el plano** o **empieza un capitulo**, y si no hay ninguna de las dos, ninguna transicion | `test_planner.py`, y la explicacion ahora dice el motivo |
+| B2 | el papel narrativo pesa en el b-roll, y un **aviso no se tapa nunca** | `test_coherencia_broll.py::test_un_aviso_no_se_tapa_con_material_de_apoyo` |
+| B3 | el proveedor `self` solo ensena **donde se vio en pantalla** lo que nombras (y prefiere lo ya visto); si no se vio nunca, no ensena nada | `test_assets.py`, cuatro casos |
+| C1 | `plan_sfx`: cada sonido acompana a algo ya decidido y se va con ello | `test_conflictos.py`, y `gaming-hype` pasa de 0 a 33 sonidos |
+| C2 | musica desde `assets/music/`, agachada bajo la voz con `sidechaincompress` | `test_musica.py::test_la_musica_se_agacha_mientras_hablas` (medido en dB) |
+| D1 | la transicion explica por que esta ahi | incluido en B1 |
+| D2 | `cinematic` es deliberado ("casi sin texto", y asi lo dice la tabla de estilos) | sin cambios |
+
+De paso salio uno que no estaba en la lista: **el tratamiento de voz se
+aplicaba a la mezcla ya hecha**, asi que el corte de graves le quitaba el
+cuerpo a un golpe y el de-esser bombeaba con el ruido de un whoosh. La voz se
+trata ahora antes de mezclar.
+
+---
+
+## Orden propuesto (ya recorrido)
 
 Primero lo que se ve y esta mal colocado, despues lo que decide sin mirar, y al
 final lo que no existe:

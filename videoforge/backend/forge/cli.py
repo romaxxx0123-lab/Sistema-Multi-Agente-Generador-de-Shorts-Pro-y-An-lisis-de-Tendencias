@@ -512,6 +512,7 @@ def render(
                 preview=preview,
                 use_gpu=not no_gpu,
                 fonts_dir=ASSETS_DIR / "fonts",
+                music_dir=ASSETS_DIR / "music",
                 assets=bundle,
                 progress=on_render,
             )
@@ -868,6 +869,7 @@ def demo(
             resultado = do_render(
                 edl, editado, settings,
                 fonts_dir=ASSETS_DIR / "fonts",
+                music_dir=ASSETS_DIR / "music",
             )
         except ForgeError as exc:
             raise _fail(exc) from exc

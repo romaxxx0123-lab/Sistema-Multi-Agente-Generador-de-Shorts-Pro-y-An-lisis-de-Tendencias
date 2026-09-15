@@ -100,19 +100,59 @@ def test_tokenize_admite_acentos() -> None:
 # -- proveedor del propio video -------------------------------------------
 
 
-def test_el_propio_video_da_material_sin_dependencias() -> None:
-    a = synthetic_guide_analysis(300.0)
-    resultados = SelfProvider(a).search(AssetQuery(text="lo que sea", seconds=3.0))
+def _con_pantalla(duracion: float = 300.0, textos=(("Ajustes", 20.0), ("Ajustes", 45.0))):
+    """Una guia en la que el OCR leyo algo en pantalla en momentos concretos."""
+    from forge.analysis.ocr import ScreenText, WordBox
+
+    a = synthetic_guide_analysis(duracion)
+    a.screen_text = [
+        ScreenText(at=t, words=[texto],
+                   boxes=[WordBox(text=texto, x=0.1, y=0.1, w=0.1, h=0.04)])
+        for texto, t in textos
+    ]
+    return a
+
+
+def test_el_propio_video_recuerda_donde_se_vio_lo_que_nombras() -> None:
+    """Un recorte del propio video vale como **recordatorio**, no como relleno.
+
+    Antes elegia por interes visual y el montaje lo anunciaba como "material de
+    apoyo porque ahi hablas de X". Era falso: ese recorte era el plano con mas
+    contraste del video y no tenia nada que ver con X.
+    """
+    a = _con_pantalla()
+    resultados = SelfProvider(a).search(
+        AssetQuery(text="ajustes menu", head="ajustes", seconds=3.0, at_timeline=90.0)
+    )
     assert resultados
     assert all(r.is_self for r in resultados)
     assert all(r.source_end > r.source_start for r in resultados)
+    assert "Ajustes" in resultados[0].reason
+    # Y ensena uno de los momentos en los que se veia, no un plano cualquiera.
+    assert any(abs(resultados[0].source_start - t) < 5.0 for t in (20.0, 45.0))
 
 
-def test_elige_los_planos_con_mas_interes_visual() -> None:
-    a = synthetic_guide_analysis(300.0)
-    resultados = SelfProvider(a).search(AssetQuery(text="x", limit=5))
-    relevancias = [r.relevance for r in resultados]
-    assert relevancias == sorted(relevancias, reverse=True)
+def test_si_no_se_vio_nunca_no_ensena_nada() -> None:
+    """Mejor un hueco que un trozo del video que no viene a cuento."""
+    a = _con_pantalla()
+    assert SelfProvider(a).search(
+        AssetQuery(text="kubernetes", head="kubernetes", at_timeline=90.0)
+    ) == []
+
+
+def test_no_recuerda_lo_que_se_esta_viendo_ahora_mismo() -> None:
+    a = _con_pantalla(textos=(("Ajustes", 88.0),))
+    assert SelfProvider(a).search(
+        AssetQuery(text="ajustes", head="ajustes", at_timeline=90.0)
+    ) == []
+
+
+def test_prefiere_lo_ya_visto_a_lo_que_todavia_no_has_explicado() -> None:
+    a = _con_pantalla(textos=(("Ajustes", 20.0), ("Ajustes", 200.0)))
+    resultados = SelfProvider(a).search(
+        AssetQuery(text="ajustes", head="ajustes", at_timeline=100.0)
+    )
+    assert resultados[0].source_start < 100.0, "ensenar lo que no has contado confunde"
 
 
 def test_descarta_los_planos_sin_foco_claro() -> None:
@@ -255,8 +295,11 @@ def test_un_proveedor_roto_no_impide_a_los_demas() -> None:
         def search(self, query):
             raise RuntimeError("boom")
 
-    a = synthetic_guide_analysis(120.0)
-    resultados = search_all([Roto(), SelfProvider(a)], AssetQuery(text="x"))
+    a = _con_pantalla(120.0, (("Ajustes", 20.0),))
+    resultados = search_all(
+        [Roto(), SelfProvider(a)],
+        AssetQuery(text="ajustes", head="ajustes", at_timeline=60.0),
+    )
     assert resultados
 
 

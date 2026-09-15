@@ -188,10 +188,17 @@ text_card  rotulo de capitulo en 1:37
 4. **Recuadros** — senala en pantalla el boton o el menu que estas nombrando,
    cruzando el transcript con el texto que el OCR leyo y **donde** lo leyo. Solo
    donde las dos senales coinciden; ver "Senalar lo que se nombra".
-5. **Capitulos** — busca las pausas largas en el **original** (el corte se las
-   come, asi que buscarlas en el montaje no serviria) y mide la duracion minima
-   en el **montaje**, que es lo que vera el espectador.
-6. **Transiciones y color** — segun el estilo.
+5. **Capitulos** — donde cambia el **vocabulario** o donde lo dices, midiendo
+   la duracion minima en el montaje, que es lo que vera el espectador. Ver
+   "Donde cambia el tema".
+6. **Transiciones y color** — la transicion va donde cambia el plano o empieza
+   un capitulo, no cada N cortes; ver "Una transicion donde no cambia nada".
+7. **Sonido** — un efecto de sonido acompana a algo que ya esta decidido
+   (transicion, rotulo, zoom) y nunca suena solo; la musica, si el estilo la
+   pide y tu has puesto un fichero, va agachada bajo la voz.
+8. **Arbitraje** — se quita lo que otro efecto deja sin sentido: un recuadro
+   debajo de un b-roll, dos movimientos de camara a la vez, un zoom dentro de
+   un avance rapido. Ver "Cuando dos efectos se estorban".
 
 ### Estilos
 
@@ -464,6 +471,96 @@ Se **sintetizan** con numpy (barrido, golpe, subida y clic) en vez de
 distribuir ficheros. No es una limitacion: es la unica forma de traer efectos
 sin arrastrar un problema de licencias, y permite afinarlos sin buscar otro
 fichero.
+
+La regla que los hace soportables es una sola: **un sonido no va solo**. Se
+engancha a algo que ya esta decidido, y si eso desaparece, el sonido se va con
+ello:
+
+```
+transicion  -> whoosh     la imagen cambia
+rotulo      -> riser      entra un grafico
+zoom        -> impact     la camara se acerca de golpe
+```
+
+(Esto estaba prometido y no existia: `gaming-hype` pedia diez sonidos por
+minuto y no sonaba ninguno. Estaban el sintetizador, el tipo de efecto y la
+mezcla; faltaba quien los colocara.)
+
+### Musica
+
+Igual que la biblioteca de b-roll: **la pones tu**, en `assets/music/`. Sin
+fichero, el estilo que la pida se monta sin ella y el render lo dice.
+
+Lo que separa "musica de fondo" de "musica encima" es el **agachado**: la
+musica se aparta sola mientras hablas y vuelve cuando callas
+(`sidechaincompress` con la voz de llave, umbral bajo y vuelta lenta para que
+se aparte entera en vez de respirar con cada silaba). Medido sobre el material
+de pruebas: con agachado la musica baja mas de 3 dB mientras suena la voz y
+vuelve al mismo nivel en el silencio.
+
+Y un detalle del orden que estaba mal: el tratamiento de voz (corte de graves,
+de-esser, compresor) se aplicaba a la **mezcla ya hecha**, asi que le quitaba
+los graves a un golpe y el de-esser bombeaba con el ruido de un whoosh. La voz
+se trata ahora **antes** de mezclar nada, que es lo unico que tiene sentido.
+
+## Cuando dos efectos se estorban
+
+Cada planner decide bien lo suyo y ninguno miraba lo que habian decidido los
+demas. Por separado las decisiones eran razonables; juntas, no.
+
+**El caso grave era geometrico.** El recuadro que senala un boton se calculaba
+en coordenadas del fotograma de salida y se dibujaba **despues** del zoom:
+
+```
+boton al 84,5% del ancho, zoom centrado en el
+  zoom 1,06 (ken burns)   se ve al 83,6%   se pintaba al 84,5%    18 px
+  zoom 1,16               se ve al 82,0%   se pintaba al 84,5%    48 px
+  zoom 1,45               se ve al 77,5%   se pintaba al 84,5%   134 px
+```
+
+Un boton de menu mide unos 170 px en 1080p, asi que con el zoom de 1,45 la caja
+se salia entera. Y no era un caso raro: el zoom y el recuadro se colocan **por
+la misma senal** (estas senalando algo), asi que pasaba siempre que la cosa
+funcionaba. Ahora el recuadro se dibuja **dentro del clip, antes del zoom**, y
+el zoom se lo lleva con la imagen. Hay un test que lo renderiza con zoom y mide
+donde cae el trazo.
+
+El resto lo arregla un **arbitro** que se pasa al cerrar el montaje:
+
+| lo que se quita | por que |
+|---|---|
+| recuadro, zoom o deriva **debajo de un b-roll a pantalla completa** | tapan el video base: senalan o acercan algo que no se ve |
+| **Ken Burns** donde ya hay un zoom | Ken Burns existe para que un plano quieto no parezca congelado; con zoom no esta quieto |
+| **zoom dentro de un avance rapido** | a ocho veces la velocidad no se lee como un zoom, se lee como un tiron |
+| **b-roll sobre el rotulo de un capitulo** | dos graficos a la vez |
+| **sonido sin nada que acompanar** | un whoosh sin que se mueva nada es ruido |
+
+Quitarlos es lo correcto y no solo lo comodo: un efecto tapado no se ve pero
+**cuenta** en el medidor de saturacion y ocupa un hueco que podria llevar algo
+que si se vea. El auto-balanceador tampoco lo veia -- solo comparaba efectos
+del mismo tipo entre si -- y ahora consulta al mismo arbitro antes de recuperar
+un candidato.
+
+### Una transicion donde no cambia nada
+
+Las transiciones se repartian con una regla de tres: una fraccion de los
+cortes, espaciados de forma regular, **sin mirar que corte era**. En una guia
+la mayoria de los cortes son silencios quitados *dentro del mismo plano*: ahi
+la imagen no cambia, y un fundido es un bajon de brillo en mitad de una
+pantalla quieta.
+
+Ahora un corte lleva transicion cuando **a los dos lados se ve otra cosa** o
+cuando ahi **empieza un capitulo**, que son dos cosas que el sistema ya sabia y
+no usaba ninguna. Y lo dice:
+
+```
+transicion fade en 52.7s: ahi cambia el plano
+transicion fade en 65.0s: ahi empieza el capitulo "Instalar los drivers"
+```
+
+En la guia de ejemplo pasa de 7 transiciones repartidas a 5 justificadas. Si no
+hay ningun cambio de plano ni de capitulo -- una grabacion de pantalla de punta
+a punta -- no se pone ninguna, que es lo correcto.
 
 ## Entender de que va cada parte
 
