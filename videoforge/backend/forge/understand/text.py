@@ -43,7 +43,11 @@ _HABITUAL = (
 #: eso los verbos en `-ia` van uno a uno. Falta "hacia" a proposito: en una guia
 #: es casi siempre la preposicion ("hacia la derecha").
 _IMPERFECTO = (
-    r"\b\w{2,}(aba|abas|abamos|aban)\b",
+    # Tres letras de raiz como minimo, y no dos: con dos, "acaba" y "graba"
+    # (presente, y en una guia se dicen cada dos frases) pasaban por
+    # imperfecto y tumbaban la frase entera por hablar "de siempre". Con
+    # tres, "estaba" y "tardaba" siguen dentro y esas se quedan fuera.
+    r"\b\w{3,}(aba|abas|abamos|aban)\b",
     r"\b(tenia|habia|podia|queria|decia|iba|ibamos|iban|era|eran|solia"
     r"|salia|venia|ponia|veia|sabia|debia|parecia|servia|funcionaba)\b",
 )
@@ -148,3 +152,26 @@ def is_a_noun_here(texto: str, start: int, end: int) -> bool:
         or followed_by_copula(texto, end)
         or followed_by_complement(texto, end)
     )
+
+
+# ---------------------------------------------------------------------------
+# Lo que parece una despedida y no lo es
+# ---------------------------------------------------------------------------
+
+#: "Hasta aqui" tambien mide hasta donde llega algo en pantalla. Con uno de
+#: estos verbos detras habla de extension, no de despedida.
+EXTENT_AFTER = re.compile(
+    r"^\s*(llega|llegan|va|van|sale|salen|abarca|abarcan|ocupa|ocupan|mide|miden"
+    r"|se (extiende|extienden|ve|ven|estira|queda|quedan|alarga|muestra))\b"
+)
+#: "Un saludo" despide... salvo cuando se lo mandas a alguien concreto.
+RELAY_AFTER = re.compile(r"^\s*(de (mi|nuestra|su|tu) parte|al que\b|a quien\b)")
+#: Lo mismo, buscando la formula entera dentro de la frase.
+_RECADO = re.compile(
+    r"\bun (saludo|abrazo)\s+(de (mi|nuestra|su|tu) parte|al que\b|a quien\b)"
+)
+
+
+def is_relayed_greeting(texto: str) -> bool:
+    """Si el saludo va dirigido a un tercero: entonces el video no se acaba."""
+    return bool(_RECADO.search(texto))

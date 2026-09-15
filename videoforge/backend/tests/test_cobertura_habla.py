@@ -191,11 +191,14 @@ def test_puedes_anadir_tus_propias_formulas(tmp_path) -> None:
 
     from forge.understand.speech_cues import USER_PHRASES_FILE, load_user_phrases
 
-    frase = "y aqui se queda pillado un buen rato"
+    # Tiene que ser algo que de verdad no reconozca. "Se queda pillado" ya no
+    # vale de ejemplo: desde que hay campos de significado, eso se entiende
+    # solo. Esta no: no habla de ningun proceso ni mide ningun tiempo.
+    frase = "y en este punto el bicho se pone tonto"
     assert not find_waits(_transcript(frase)), "esta no deberia estar de serie"
 
     (tmp_path / USER_PHRASES_FILE).write_text(
-        json.dumps({"espera": ["se queda pillado"]}), encoding="utf-8"
+        json.dumps({"espera": ["se pone tonto"]}), encoding="utf-8"
     )
     mias = load_user_phrases(tmp_path)
     assert find_waits(_transcript(frase), mias)
@@ -207,7 +210,7 @@ def test_tus_formulas_no_sustituyen_a_las_de_serie(tmp_path) -> None:
     from forge.understand.speech_cues import USER_PHRASES_FILE, load_user_phrases
 
     (tmp_path / USER_PHRASES_FILE).write_text(
-        json.dumps({"espera": ["se queda pillado"]}), encoding="utf-8"
+        json.dumps({"espera": ["se pone tonto"]}), encoding="utf-8"
     )
     mias = load_user_phrases(tmp_path)
     assert find_waits(_transcript("esto tarda un rato"), mias)
@@ -219,10 +222,10 @@ def test_tus_formulas_no_necesitan_acentos_ni_mayusculas(tmp_path) -> None:
     from forge.understand.speech_cues import USER_PHRASES_FILE, load_user_phrases
 
     (tmp_path / USER_PHRASES_FILE).write_text(
-        json.dumps({"espera": ["Se Queda Pillado"]}), encoding="utf-8"
+        json.dumps({"espera": ["Se Pone Tonto"]}), encoding="utf-8"
     )
     mias = load_user_phrases(tmp_path)
-    assert find_waits(_transcript("aqui se queda pillado otra vez"), mias)
+    assert find_waits(_transcript("y en este punto el bicho se pone tonto"), mias)
 
 
 @pytest.mark.parametrize("contenido", ["{no es json", "[]", '{"inventado": ["x"]}', '{"espera": "no es lista"}'])

@@ -15,6 +15,10 @@ dependencies = [
     "opencv-python-headless>=4.9",
     "scenedetect>=0.6",
     "imageio-ffmpeg>=0.5",
+    # Raices de palabra en castellano. Puro Python y unos pocos KB: es lo que
+    # permite que los campos de significado se escriban con palabras normales
+    # ("descargar") y reconozcan todas sus formas.
+    "snowballstemmer>=2.2",
 ]
 
 [project.optional-dependencies]

@@ -31,6 +31,7 @@ import re
 import unicodedata
 from pathlib import Path
 
+from .meaning import infer
 from .on_screen import locate
 from .text import has_present_anchor, is_habitual, is_negated
 from dataclasses import dataclass
@@ -266,6 +267,15 @@ _SALTOS = (
     (r"\basi que fuera\b", 0.8),
 )
 
+#: Lo que reconoce `meaning.py` vale algo menos que una formula exacta: es una
+#: deduccion, no un encaje. Con esto, cuando las dos cosas compiten por el mismo
+#: sitio, gana la formula.
+MEANING_DISCOUNT = 0.85
+
+#: Como se llama cada senal en `meaning.py`.
+_INTENT = {CueKind.WAIT: "espera", CueKind.SKIP: "salto"}
+
+
 def _find_announcements(
     transcript: "Transcript | None",
     patrones: tuple[tuple[str, float], ...],
@@ -294,6 +304,7 @@ def _find_announcements(
             ))
             continue
 
+        encontrado = False
         for patron, peso in patrones:
             encaje = re.search(patron, texto)
             if not encaje:
@@ -309,7 +320,28 @@ def _find_announcements(
                     strength=peso,
                 )
             )
+            encontrado = True
             break
+
+        if encontrado:
+            continue
+
+        # Ninguna formula conocida. Queda mirar de **que** habla la frase, que
+        # es lo que cubre las formas de decirlo que nadie escribio: los campos
+        # de significado y las construcciones de `meaning.py`.
+        sentido = next(
+            (x for x in infer(frase.text) if x.intent == _INTENT[kind]), None
+        )
+        if sentido is not None:
+            salida.append(SpeechCue(
+                kind=kind,
+                start=round(frase.end, 3),
+                end=round(frase.end, 3),
+                phrase=sentido.why,
+                # Un poco por debajo de la formula equivalente: reconocer de
+                # que hablas es mas flojo que reconocer como lo dices.
+                strength=round(sentido.score * MEANING_DISCOUNT, 3),
+            ))
     return salida
 
 

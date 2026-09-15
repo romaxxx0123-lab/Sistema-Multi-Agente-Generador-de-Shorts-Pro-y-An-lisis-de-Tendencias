@@ -556,6 +556,78 @@ tamano justo: la del imperfecto empezo buscando la terminacion `-ia` y se comia
 delante y se comia "atencion, que esto **es** clave". Las dos cosas las cazo el
 examen, no una revision a ojo.
 
+### De reconocer frases a reconocer de que hablas
+
+Todo lo de arriba busca **formulas**. Funciona muy bien con las formas de
+decirlo que estan en la lista y **no existe** para las que no, que es la queja
+de verdad: *"¿tengo que decir exactamente eso?"*.
+
+Para saber cuanto de grave era, la unica forma honesta es medir sobre frases
+que no hayan influido en los patrones. Se escribieron tres conjuntos nuevos, a
+ciegas, y se midieron antes de tocar nada:
+
+```
+                  antes    ahora
+conjunto A  (38)   37%      100%
+conjunto B  (29)   38%      100%
+conjunto C  (29)   14%       86%
+```
+
+De cada tres cosas que dirias, dos no las veia. Y no se arregla escribiendo mas
+patrones: las formas de decir algo en castellano no se acaban nunca. Lo que si
+se acaba es de **cuantas cosas** se habla en una guia.
+
+Asi que `understand/meaning.py` cambia la pregunta. En vez de "¿encaja esta
+frase con alguna formula?", pregunta "¿de que habla y como lo dice?":
+
+- **Campos de significado** -- grupos de palabras que valen lo mismo para el
+  montaje: lo que hace la maquina (comprimir, indexar, sincronizar, clonar,
+  renderizar...), lo que mide el tiempo (rato, siglo, paciencia, despacio...),
+  formas de ausentarse (irse, volver, fumar, mientras...), de peligro, de
+  suprimir, de avanzar, de despedirse.
+
+- **Construcciones** -- moldes de la gramatica con un hueco. `se esta
+  <gerundio>` dice que algo esta en marcha **ahora**, y lo dice igual con un
+  verbo que no esta en ninguna lista. `no hay quien lo <verbo>` es una
+  hiperbole de duracion. `como <subjuntivo>, <consecuencia>` es una amenaza.
+
+Y la senal sale de **combinar** las dos cosas, nunca de una sola:
+
+```
+"el archivo comprimido ocupa la mitad"        campo             -> nada
+"se esta comprimiendo, esto va a su ritmo"    campo + molde     -> toca esperar
+"esto se esta chorizando entero"              molde con un
+                                              verbo inventado   -> toca esperar
+```
+
+Esa ultima es la prueba de que no es otra lista: el verbo no existe y la senal
+sale igual, porque lo que se reconoce es el molde.
+
+Debajo hay **morfologia de verdad**, no `\w*`: el stemmer de Snowball para
+castellano (puro Python, unos KB) mas dos capas propias para lo que el no
+quita, que al hablar sale todo el rato:
+
+```
+asegurate  -> asegurar     el pronombre pegado detras
+ensenaroslo-> ensenar
+ratito     -> rato         el diminutivo
+cuidadin   -> cuidado
+vigila     -> vigilar      y NO "vigi": el pronombre solo se pega a un verbo,
+pantalla   -> pantalla     asi que estas dos no pierden nada
+```
+
+Las cifras de arriba van con su contrapartida, que importa mas: **62 frases
+trampa, 0 falsos positivos**. Ensanchar la cobertura es facil; ensancharla sin
+empezar a ver senales donde no las hay es el trabajo.
+
+Dos errores viejos los encontro este conjunto de frases, no una revision a ojo:
+
+- la formula inglesa de saludo no llevaba `\b` delante, asi que **el "hi" de
+  "ahi"** convertia en intro cualquier frase con un "ahi" dentro;
+- la terminacion `-aba` del imperfecto pillaba **"acaba" y "graba"**, que son
+  presente y en una guia se dicen cada dos frases. Dar una frase por "habitual"
+  la desactiva entera.
+
 ### Y si aun asi hablas distinto
 
 Un fichero `frases.json` al lado de la configuracion:
@@ -578,13 +650,15 @@ que se va a romper.
 Esto no **entiende** lo que dices, reconoce **como** lo dices, y eso pone un
 techo que no sube a base de anadir patrones. Lo que falla hoy:
 
-- **Decirlo de una forma que no se parece a ninguna.** Cada parafrasis nueva que
-  se reconoce es un patron mas escrito a mano. *"Le doy y me voy a por un cafe"*
-  se reconoce hoy porque irse a por un cafe esta en la lista; *"me voy a fumar"*
-  tambien, pero *"me voy a fregar los platos"* no. Comparar por
-  **significado** -- con un modelo pequeno de embeddings local, que cabe en el
-  proyecto porque ya se usa ONNX Runtime -- es lo que quitaria la lista de en
-  medio. Hasta entonces, `frases.json` es el atajo honesto.
+- **Hablar de algo de lo que no habla ninguna guia.** Los campos cubren de lo
+  que se habla montando algo en un ordenador. Si tu guia va de otra cosa, sus
+  palabras no estan, y ahi `frases.json` sigue siendo el atajo. Un modelo
+  pequeno de embeddings local quitaria tambien esa lista -- cabe en el proyecto,
+  porque ya se usa ONNX Runtime -- y es lo siguiente que tiene sentido.
+- **El conjunto C saco un 86% y no un 100%.** Cada vez que se escribe un
+  conjunto nuevo aparecen formas que no cubre: es un sistema que mejora cuando
+  lo mides, no uno terminado. El numero para **tu** forma de hablar solo lo
+  sabes tu.
 - **La ironia y el tono.** "Ah, buenisimo" dicho con retintin es un aviso, y
   aqui no lo es.
 

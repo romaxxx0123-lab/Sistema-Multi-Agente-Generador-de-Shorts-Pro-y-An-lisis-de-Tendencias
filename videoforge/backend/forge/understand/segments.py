@@ -31,7 +31,16 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from .text import is_a_noun_here, is_negated, normalize
+from .meaning import infer
+from .text import (
+    EXTENT_AFTER,
+    followed_by_complement,
+    followed_by_copula,
+    RELAY_AFTER,
+    is_a_noun_here,
+    is_negated,
+    normalize,
+)
 
 if TYPE_CHECKING:  # solo para los tipos: `Analysis` guarda estos tramos, asi
     # que importarlo de verdad daria una dependencia circular.
@@ -66,13 +75,13 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
         (r"(hoy|en el dia de hoy) (vamos a|os (voy|traigo)|te (voy|traigo))", _FUERTE, True),
         (r"(vamos a ver|os enseno|te enseno|voy a ensenarte)\b", _MEDIA, True),
         (r"antes de (empezar|nada)\b", _MEDIA, True),
-        (r"(hi|hey|welcome)\b", _FUERTE, True),
-        (r"in this (video|tutorial)\b", _FUERTE, True),
+        # Con \b delante: sin el, el "hi" de "ahi" convertia en intro cualquier\n        # frase con un "ahi" dentro. Lo encontro una frase de prueba que decia\n        # "cuidadin con lo que tocas ahi" y salia clasificada como saludo.\n        (r"\b(hi|hey|welcome)\b", _FUERTE, True),
+        (r"\bin this (video|tutorial)\b", _FUERTE, True),
     ],
     SegmentRole.STEP: [
         (r"lo primero( que| es)?\b", _FUERTE, True),
         # Ordinales con cualquier terminacion: primer/primera/primero.
-        (r"\b(el|al|la)? ?(primer|segund|tercer|cuart|quint|sext|ultim)\w*\s+(paso|punto|parte|cosa)\b", _FUERTE, True),
+        (r"\b(el|al|la)? ?(primer|segund|tercer|cuart|quint|sext|ultim)\w*\s+(paso|punto|parte|cosa)\b", _FUERTE, True, "complemento"),
         (r"\b(paso|punto)\s+(uno|dos|tres|cuatro|cinco|seis|\d+)\b", _FUERTE, True),
         (r"\bpor ultimo\b", _FUERTE, True),
         (r"(ahora|luego|despues|a continuacion|seguidamente)\b(?! de todo)", _MEDIA, True, "cambia"),
@@ -92,7 +101,7 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
             _MEDIA,
             True,
         ),
-        (r"(first|next|then|after that|now (we|you))\b", _MEDIA, True),
+        (r"\b(first|next|then|after that|now (we|you))\b", _MEDIA, True),
     ],
     SegmentRole.WARNING: [
         # Raices, no frases: "cuidado", "cuidadito", "cuidadin" son lo mismo.
@@ -114,7 +123,7 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
         (r"\bcon (tiento|cuidado|ojo)\b", _MEDIA, False),
         (r"\b(sin esto|si te saltas esto)\b", _FUERTE, False),
         (r"\bte (puedes |podeis )?(cargar|carga[rs]|romper)\b", _MEDIA, False),
-        (r"(warning|careful|be careful|make sure)\b", _MEDIA, False),
+        (r"\b(warning|careful|be careful|make sure)\b", _MEDIA, False),
         # "fijate bien en este boton" es pedir atencion sobre algo concreto.
         (r"\b(fijate|fijaos|fijese|mira[dn]?)\s+(bien|mucho|atentamente)\b", _MEDIA, True),
     ],
@@ -133,17 +142,17 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
         # mismo error que quitar el "este" de "en este video".
         (r"(y )?ya (esta|estaria)\b", _MEDIA, True),
         (r"(con esto (ya )?(queda|tienes|esta))\b", _MEDIA, True),
-        (r"(to sum up|in short|recap)\b", _FUERTE, True),
+        (r"\b(to sum up|in short|recap)\b", _FUERTE, True),
     ],
     SegmentRole.OUTRO: [
         (r"(nos vemos|hasta (la proxima|luego|el proximo|otra))\b", _FUERTE, False),
         (r"\bhasta aqui\b", _FUERTE, True, "final+extension"),
         (r"(gracias por (ver|verme|estar|acompanar\w*|aguantar\w*))\b", _FUERTE, False, "final"),
         (r"espero que (os|te) haya\s+\w*(servid|gustad|ayudad|valid)\w*", _FUERTE, False),
-        (r"\bun (saludo|abrazo)\b", _FUERTE, False, "final+recado"),
+        (r"\bun (saludo|abrazo)\b", _FUERTE, False, "final+recado+definicion"),
         (r"(suscrib\w*|dale (a )?like|comenta[dn]?)\b", _FUERTE, False),
         (r"(en el (siguiente|proximo) video)\b", _MEDIA, False),
-        (r"(thanks for watching|see you|subscribe)\b", _FUERTE, False),
+        (r"\b(thanks for watching|see you|subscribe)\b", _FUERTE, False),
         (r"\b(esto|eso) (ha sido|es) todo\b", _FUERTE, False, "final"),
         (r"\bnada mas por (mi|nuestra) parte\b", _FUERTE, False, "final"),
         (r"\blo dejamos (aqui|por hoy)\b", _FUERTE, False, "final"),
@@ -153,7 +162,7 @@ _CUES: dict[SegmentRole, list[tuple[str, float, bool]]] = {
         (r"(esto )?(es un inciso|entre parentesis)\b", _FUERTE, True),
         (r"(aunque|pero) (bueno|vamos|da igual)\b", _MEDIA, True),
         (r"(que no viene a cuento|fuera de tema)\b", _FUERTE, False),
-        (r"(by the way|anyway|side note)\b", _MEDIA, True),
+        (r"\b(by the way|anyway|side note)\b", _MEDIA, True),
         # "ahora te cuento una anecdota" lleva marca de paso y no es un paso.
         (r"\b(te|os) cuento\b.*\b(anecdota|historia|curiosidad|chascarrillo)\b", _FUERTE, False),
         (r"\bque no viene al caso\b", _FUERTE, False),
@@ -209,16 +218,16 @@ OUTRO_EARLY_FACTOR = 0.55
 
 _normalize = normalize
 
+#: Lo que deduce `meaning.py` vale algo menos que una formula exacta: si las dos
+#: cosas se disputan el mismo tramo, gana la formula, que es mas explicable.
+MEANING_DISCOUNT = 0.85
 
-#: "hasta aqui" tambien mide hasta donde llega una cosa en pantalla. Cuando
-#: detras viene uno de estos verbos, habla de extension, no de despedida.
-_EXTENSION = re.compile(
-    r"^\s*(llega|llegan|va|van|sale|salen|abarca|abarcan|ocupa|ocupan|mide|miden"
-    r"|se (extiende|extienden|ve|ven|estira|queda|quedan|alarga|muestra))\b"
-)
-#: "un saludo" despide... salvo cuando se lo mandas a alguien concreto: "un
-#: saludo de mi parte al que pregunto" saluda a un tercero y el video sigue.
-_RECADO = re.compile(r"^\s*(de (mi|nuestra|su|tu) parte|al que\b|a quien\b)")
+#: Como se llama cada papel en `meaning.py`.
+_POR_SENTIDO = {
+    "aviso": SegmentRole.WARNING,
+    "paso": SegmentRole.STEP,
+    "cierre": SegmentRole.OUTRO,
+}
 
 
 def _guard_factor(guarda: str | None, texto: str, encontrado, posicion: float) -> float:
@@ -242,9 +251,17 @@ def _guard_factor(guarda: str | None, texto: str, encontrado, posicion: float) -
             factor *= _guard_factor(una, texto, encontrado, posicion)
         return factor
     if guarda == "extension":
-        return 0.0 if _EXTENSION.search(texto[encontrado.end():]) else 1.0
+        return 0.0 if EXTENT_AFTER.search(texto[encontrado.end():]) else 1.0
     if guarda == "recado":
-        return 0.0 if _RECADO.search(texto[encontrado.end():]) else 1.0
+        return 0.0 if RELAY_AFTER.search(texto[encontrado.end():]) else 1.0
+    if guarda == "definicion":
+        # "Un abrazo ES lo que le hacia falta" habla de un abrazo, no despide.
+        return 0.0 if followed_by_copula(texto, encontrado.end()) else 1.0
+    if guarda == "complemento":
+        # "El tercer punto DEL MENU no hace nada" no avanza al tercer punto:
+        # habla de uno. Lo delata el complemento con "de", no el verbo: "el
+        # siguiente paso ES abrir" si avanza, y lleva un "es" detras igual.
+        return 0.0 if followed_by_complement(texto, encontrado.end()) else 1.0
     if guarda == "sustantivo":
         # La palabra tiene que estar usada como interjeccion, no como nombre.
         # "la tecla de ATENCION", "esto ES clave de registro", "CUIDADO es el
@@ -284,6 +301,22 @@ def _match(texto: str, posicion: float = 0.5) -> tuple[SegmentRole, float, str] 
                 continue
             if mejor is None or peso > mejor[1]:
                 mejor = (papel, peso, encontrado.group(0).strip())
+
+    # Y ademas, lo que se deduce de **que** se habla en la frase, que es lo que
+    # cubre las mil formas de decir lo mismo que no estan escritas arriba. No
+    # es solo un recambio para cuando no hay formula: compite con ella. El
+    # descuento hace que una formula clara gane siempre, pero una marca floja
+    # ("luego") no deberia tapar un aviso entero ("si te lo saltas luego no
+    # arranca"), y antes lo tapaba.
+    for sentido in infer(texto):
+        papel = _POR_SENTIDO.get(sentido.intent)
+        if papel is None:
+            continue
+        peso = sentido.score * MEANING_DISCOUNT
+        if papel is SegmentRole.OUTRO and posicion < OUTRO_POSITION:
+            peso *= OUTRO_EARLY_FACTOR
+        if mejor is None or peso > mejor[1]:
+            mejor = (papel, round(peso, 3), sentido.why)
     return mejor
 
 
