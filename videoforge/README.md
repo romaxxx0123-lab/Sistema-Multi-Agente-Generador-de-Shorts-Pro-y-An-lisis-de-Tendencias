@@ -416,6 +416,72 @@ distribuir ficheros. No es una limitacion: es la unica forma de traer efectos
 sin arrastrar un problema de licencias, y permite afinarlos sin buscar otro
 fichero.
 
+## Entender de que va cada parte
+
+Hasta aqui el montaje sabia **donde respiras**, no **de que hablas**: los
+capitulos salian de las pausas largas y todo el video se editaba igual. Pero las
+partes de una guia no valen lo mismo, ni para quien la hace ni para quien la ve:
+
+- la **intro** se la salta casi todo el mundo,
+- un **paso** es lo que vienen a buscar,
+- un **aviso** ("ojo, si no haces esto no funciona") es el momento que no se
+  puede perder,
+- una **digresion** ("por cierto, aunque esto da igual...") es justo lo que
+  sobra,
+- el **cierre** ("nos vemos en el siguiente video") tampoco lo ve nadie entero.
+
+Se detecta por las **marcas del discurso**: las formulas con las que una persona
+enlaza lo que cuenta. En material explicativo son sorprendentemente fijas ("lo
+primero es", "ahora vamos a", "ojo con", "en resumen", "nos vemos"), van casi
+siempre al principio de la frase, y no hace falta ningun modelo de lenguaje. Lo
+mejor es que **explican su decision solas**:
+
+```
+parte      desde  dura   por que
+intro      0:00     5s   intro: dices "hola"
+paso       0:05     3s   paso: dices "lo primero es"
+cuerpo     0:08     8s   cuerpo: no enlaza con ninguna formula reconocible
+aviso      0:16     3s   aviso: dices "fijate bien"
+...
+aviso      0:31     5s   aviso: dices "esto es lo importante"
+resumen    0:52     3s   resumen: dices "y ya esta"
+cierre     0:55     2s   cierre: dices "nos vemos"
+```
+
+### Y entonces edita distinto cada parte
+
+Cada estilo declara cuanto aprieta en cada parte. 1.0 es el ritmo normal, mas
+de 1 recorta pausas mas cortas y deja menos aire, y 0 no toca nada:
+
+```json
+"roles": {"intro": 1.5, "paso": 1.0, "aviso": 0.5, "cierre": 1.6, "digresion": 1.6}
+```
+
+Sobre la guia de ejemplo, el resultado quita **lo mismo** (un 20%) pero quita
+**cosas distintas**:
+
+```
+sin entender:  11,8s de silencio
+entendiendo:    6,7s de silencio · 2,0s en cierre · 1,9s en aviso
+                0,9s en intro    · 0,3s en paso
+```
+
+El aviso conserva el doble de aire alrededor -- que es lo que hace que la frase
+importante caiga con peso -- y la intro y el cierre se aprietan. Ademas:
+
+- los **capitulos** siguen lo que se dice y no solo las pausas. Decir "ahora
+  vamos a" es mejor senal de cambio de tema que respirar hondo, que una persona
+  hace tambien para pensar o para beber agua.
+- los **zooms** valen mas donde se avisa de algo (x1,6) y menos en la intro
+  (x0,6). En la guia de ejemplo, el unico zoom del montaje pasa a caer sobre el
+  aviso.
+
+Dos cosas que hace **mal** a proposito. No se inventa estructura: si nadie
+enlaza nada, todo queda como cuerpo y el montaje se comporta exactamente como
+antes (hay un test que lo fija). Y las marcas tienen que **abrir** la frase: un
+"ahora" en la palabra veinte ya no enlaza nada, igual que el "este" de "en este
+video" no es una muletilla.
+
 ## Senalar lo que se nombra
 
 Es lo que hace un editor humano en una guia: cuando dices *"pulsa en

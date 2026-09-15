@@ -51,8 +51,12 @@ MIN_KEEP_RATIO = 0.35
 
 def _build_timeline(analysis: Analysis, style: StylePreset) -> tuple[list[Clip], list[str]]:
     """Corta el video y explica por que."""
-    seleccion = plan_selection(analysis, style.pacing)
+    seleccion = plan_selection(analysis, style.pacing, analysis.narrative)
     notas: list[str] = []
+    if analysis.narrative:
+        from ..understand.segments import summarize
+
+        notas.append(f"Estructura entendida: {summarize(analysis.narrative)}.")
 
     # Red de seguridad. Si la seleccion se lleva casi todo el video, lo que
     # pasa no es que el video fuera silencio: es que el detector se equivoco, y
@@ -185,7 +189,9 @@ def build_edl(
     efectos: list = []
     if analysis.transcript:
         efectos += plan_captions(edl, analysis.transcript, style.captions, analysis)
-        capitulos = plan_chapters(edl, analysis.transcript, style.chapters)
+        capitulos = plan_chapters(
+            edl, analysis.transcript, style.chapters, analysis.narrative
+        )
         edl.chapters = capitulos
         efectos += chapter_cards(capitulos, style.chapters)
     else:

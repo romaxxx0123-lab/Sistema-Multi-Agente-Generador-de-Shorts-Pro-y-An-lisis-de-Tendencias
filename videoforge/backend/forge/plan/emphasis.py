@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from ..analysis.types import Analysis
 from .edl import EDL, KenBurnsEffect, PunchInEffect, Rect
+from ..understand.segments import SegmentRole, role_at
 from .styles import EmphasisRules, budget
 
 #: Cada cuanto se evalua un posible zoom, en segundos de montaje.
@@ -27,6 +28,28 @@ MIN_CONCENTRATION = 0.15
 def _candidate_score(concentration: float, motion: float) -> float:
     """Cuanto merece la pena acercarse aqui."""
     return concentration * (1.0 - min(1.0, motion))
+
+
+#: Cuanto vale un zoom segun la parte del video donde cae. Un aviso o un
+#: consejo son momentos que la gente viene a buscar; la intro y el cierre se los
+#: salta casi todo el mundo, asi que ahi un zoom es decoracion.
+_PESO_NARRATIVO = {
+    SegmentRole.WARNING: 1.6,
+    SegmentRole.TIP: 1.3,
+    SegmentRole.STEP: 1.1,
+    SegmentRole.BODY: 1.0,
+    SegmentRole.RECAP: 0.9,
+    SegmentRole.INTRO: 0.6,
+    SegmentRole.OUTRO: 0.5,
+    SegmentRole.ASIDE: 0.5,
+}
+
+
+def _narrative_boost(narrative, source_time: float) -> float:
+    """Multiplicador del valor de un zoom segun que parte del video sea."""
+    if not narrative:
+        return 1.0
+    return _PESO_NARRATIVO.get(role_at(narrative, source_time), 1.0)
 
 
 def plan_punch_ins(
@@ -61,9 +84,14 @@ def plan_punch_ins(
             and foco.concentration >= MIN_CONCENTRATION
             and movimiento <= rules.max_motion_for_punch
         ):
-            candidatos.append(
-                (_candidate_score(foco.concentration, movimiento), t, foco.cx, foco.cy)
-            )
+            puntos = _candidate_score(foco.concentration, movimiento)
+            # Donde se avisa de algo ("ojo con esto", "fijate bien en este
+            # boton") es justo donde un zoom vale mas: no es que la imagen sea
+            # mas interesante ahi, es que lo que se esta diciendo lo es. Sin
+            # esto, los zooms caen donde la saliencia da mas alta, que puede ser
+            # cualquier sitio.
+            puntos *= _narrative_boost(analysis.narrative, origen)
+            candidatos.append((puntos, t, foco.cx, foco.cy))
         t += CANDIDATE_STEP
 
     # 2. Elegir los mejores respetando la separacion minima.

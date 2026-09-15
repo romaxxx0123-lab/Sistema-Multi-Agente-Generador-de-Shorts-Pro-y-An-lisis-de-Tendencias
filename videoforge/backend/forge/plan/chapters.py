@@ -18,6 +18,7 @@ from ..analysis.types import Transcript
 from ..assets.providers import tokenize
 from .captions import TRAILING_STOPWORDS
 from .edl import EDL, Chapter, TextCardEffect
+from ..understand.segments import SegmentRole
 from .styles import ChapterRules
 
 #: Pausa que sugiere cambio de tema.
@@ -144,8 +145,43 @@ def _map_words(edl: EDL, transcript: Transcript) -> list[_Mapped]:
 MAX_CHAPTERS = 8
 
 
-def plan_chapters(edl: EDL, transcript: Transcript, rules: ChapterRules) -> list[Chapter]:
-    """Divide el montaje en capitulos."""
+#: Papeles que abren una parte nueva del video. Un aviso o un consejo pasan
+#: *dentro* de un paso, no lo sustituyen, asi que no abren capitulo.
+_ABREN_CAPITULO = frozenset({
+    SegmentRole.INTRO, SegmentRole.STEP, SegmentRole.RECAP, SegmentRole.OUTRO,
+})
+
+
+def _chapter_cuts_from_narrative(edl: EDL, narrative, minimo: float) -> list[float]:
+    """Instantes de montaje donde empieza una parte nueva, segun lo que se dice.
+
+    Es mejor senal que la pausa: una persona hace pausas largas por muchos
+    motivos (piensa, bebe agua, se corta), pero solo dice "ahora vamos a" o "lo
+    siguiente es" cuando de verdad cambia de asunto.
+    """
+    cortes: list[float] = []
+    ultimo = 0.0
+    for tramo in narrative:
+        if tramo.role not in _ABREN_CAPITULO or tramo.start <= 0:
+            continue
+        t = edl.source_to_timeline(tramo.start)
+        if t is None or t - ultimo < minimo or edl.duration - t < minimo:
+            continue
+        cortes.append(round(t, 3))
+        ultimo = t
+    return cortes
+
+
+def plan_chapters(
+    edl: EDL, transcript: Transcript, rules: ChapterRules, narrative=None
+) -> list[Chapter]:
+    """Divide el montaje en capitulos.
+
+    Con `narrative` los capitulos siguen **lo que se dice** ("ahora vamos a...",
+    "lo siguiente es..."), que es cuando de verdad cambia el asunto. Sin ella se
+    cae a las pausas largas, que aciertan bastante pero no distinguen un cambio
+    de tema de un trago de agua.
+    """
     if not rules.enabled or not transcript.words:
         return []
 
@@ -167,6 +203,8 @@ def plan_chapters(edl: EDL, transcript: Transcript, rules: ChapterRules) -> list
     # Primero se deciden los cortes; los titulos despues, cuando ya se sabe lo
     # que dice cada capitulo **y lo que dicen los demas**, que es lo que permite
     # titular por lo propio de cada uno.
+    marcados = set(_chapter_cuts_from_narrative(edl, narrative or [], minimo))
+
     inicios: list[float] = []
     bloques: list[list[_Mapped]] = []
     inicio_tl = 0.0
@@ -180,7 +218,13 @@ def plan_chapters(edl: EDL, transcript: Transcript, rules: ChapterRules) -> list
         largo_suficiente = (anterior.tl_start - inicio_tl) >= minimo
         queda_sitio = (edl.duration - siguiente.tl_start) >= minimo
 
-        if hueco >= TOPIC_GAP and largo_suficiente and queda_sitio:
+        # Si la estructura ya dijo que aqui empieza una parte nueva, no hace
+        # falta que ademas haya una pausa larga: decir "ahora vamos a" es una
+        # senal mas fuerte que respirar hondo.
+        abre_parte = any(abs(siguiente.tl_start - c) < 0.35 for c in marcados)
+        pausa_de_tema = hueco >= TOPIC_GAP
+
+        if (abre_parte or pausa_de_tema) and largo_suficiente and queda_sitio:
             inicios.append(round(inicio_tl, 3))
             bloques.append(bloque)
             inicio_tl = round(siguiente.tl_start, 3)

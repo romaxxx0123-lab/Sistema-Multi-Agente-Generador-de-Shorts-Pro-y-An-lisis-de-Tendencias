@@ -110,8 +110,32 @@ def _complement(
     return [(a, b) for a, b in keeps if b > a]
 
 
-def _silence_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
-    """Recorta los silencios largos, dejando una pausa natural."""
+#: Nombre en ingles del papel, que es como se llaman los campos de RoleRules.
+_CAMPO_POR_PAPEL = {
+    "intro": "intro", "paso": "step", "aviso": "warning", "consejo": "tip",
+    "resumen": "recap", "cierre": "outro", "digresion": "aside", "cuerpo": "body",
+}
+
+
+def _role_factor(segments, t: float, rules: PacingRules) -> tuple[float, str]:
+    """Cuanto apretar el recorte en ese instante, y como se llama esa parte."""
+    if not segments:
+        return 1.0, ""
+    from ..understand.segments import role_at
+
+    papel = role_at(segments, t).value
+    return rules.roles.factor(_CAMPO_POR_PAPEL.get(papel, "body")), papel
+
+
+def _silence_removals(
+    analysis: Analysis, rules: PacingRules, segments=None
+) -> list[Removal]:
+    """Recorta los silencios largos, dejando una pausa natural.
+
+    Cuanto se recorta depende de **que parte del video** sea. Una pausa de medio
+    segundo en mitad de un aviso es parte de como se dice ("...sin esto, no
+    funciona"); la misma pausa en la intro es tiempo que nadie va a ver.
+    """
     if not analysis.audio or not rules.remove_silence:
         return []
 
@@ -124,8 +148,20 @@ def _silence_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
 
     out: list[Removal] = []
     for i, s in enumerate(analysis.audio.silences):
-        if s.duration <= rules.silence_min:
+        factor, papel = _role_factor(segments, (s.start + s.end) / 2, rules)
+        if factor <= 0:
+            # Factor cero = esta parte no se toca en absoluto.
             continue
+        if s.duration <= rules.silence_min / factor:
+            continue
+
+        # El papel tambien decide **cuanto** se deja, no solo si se recorta.
+        # Solo se aprieta por el lado seguro: la cola de una palabra se apaga
+        # sola y recortarla no se nota, mientras que el margen de ENTRADA
+        # protege la primera consonante de la palabra siguiente y ese no se
+        # toca nunca, sea cual sea la parte.
+        cola = margen_cola / factor
+        cabecera = rules.head_keep / factor
 
         es_cabecera = s.start <= 0.05
         es_cola = s.end >= analysis.duration - 0.05
@@ -137,17 +173,18 @@ def _silence_removals(analysis: Analysis, rules: PacingRules) -> list[Removal]:
             # al arrancar, que la fusion de fragmentos cortos volvia a estirar:
             # el video seguia empezando con el mismo silencio.
             start = 0.0
-            end = max(0.0, s.end - rules.head_keep)
+            end = max(0.0, s.end - cabecera)
         elif es_cola:
             # Al final, simetrico: se deja una cola corta y se tira el resto.
-            start = s.start + margen_cola
+            start = s.start + cola
             end = analysis.duration
         else:
-            start = s.start + margen_cola
+            start = s.start + cola
             end = s.end - margen_entrada
 
         if end > start:
-            out.append(Removal(start=round(start, 3), end=round(end, 3), reason="silencio"))
+            motivo = f"silencio en {papel}" if papel and papel != "cuerpo" else "silencio"
+            out.append(Removal(start=round(start, 3), end=round(end, 3), reason=motivo))
     return out
 
 
@@ -225,10 +262,20 @@ def _grow_short_keeps(
     return [(round(a, 3), round(b, 3)) for a, b in out if b > a]
 
 
-def plan_selection(analysis: Analysis, rules: PacingRules) -> Selection:
-    """Calcula que se conserva y que se quita, con el motivo de cada recorte."""
+def plan_selection(
+    analysis: Analysis, rules: PacingRules, segments=None
+) -> Selection:
+    """Calcula que se conserva y que se quita, con el motivo de cada recorte.
+
+    Con `segments` (los tramos narrativos que salen de lo que se dice) el
+    recorte deja de ser uniforme: aprieta en la intro, en el cierre y en las
+    digresiones, y no toca los avisos.
+    """
     duration = analysis.duration
-    removals = _silence_removals(analysis, rules) + _filler_removals(analysis, rules)
+    removals = (
+        _silence_removals(analysis, rules, segments)
+        + _filler_removals(analysis, rules)
+    )
 
     if not removals:
         return Selection(keeps=[(0.0, round(duration, 3))], removals=[])

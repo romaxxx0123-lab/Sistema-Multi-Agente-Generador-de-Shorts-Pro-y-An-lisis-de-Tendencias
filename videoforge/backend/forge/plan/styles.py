@@ -45,6 +45,37 @@ class Band(BaseModel):
         return Band(lo=self.lo * factor, hi=self.hi * factor)
 
 
+class RoleRules(BaseModel):
+    """Cuanto se aprieta el recorte segun **que parte del video** sea.
+
+    Las partes de una guia no valen lo mismo. La intro se la salta casi todo el
+    mundo, el cierre tampoco lo ve nadie entero, y una digresion es justo lo que
+    sobra: ahi se puede recortar mas. Un aviso ("ojo, sin esto no funciona") es
+    el momento que la gente viene a buscar, y ahi no se toca nada.
+
+    El numero es cuanto se aprieta respecto al ritmo normal del estilo: 1.0 es
+    igual que el resto, mas de 1 recorta pausas mas cortas y deja menos aire, y
+    0 no recorta nada en absoluto.
+    """
+
+    intro: float = 1.5
+    step: float = 1.0
+    #: Un aviso se recorta con la mitad de mano, no con ninguna. Poner 0 (no
+    #: tocar nada) suena bien y deja dentro pausas de dos segundos enteras, que
+    #: son aire muerto en cualquier parte del video. Con 0.5 se sigue quitando
+    #: lo que sobra de verdad y se conserva el doble de aire alrededor, que es
+    #: lo que hace que la frase importante caiga con peso.
+    warning: float = 0.5
+    tip: float = 0.85
+    recap: float = 1.2
+    outro: float = 1.6
+    aside: float = 1.6
+    body: float = 1.0
+
+    def factor(self, role: str) -> float:
+        return float(getattr(self, role, 1.0))
+
+
 class PacingRules(BaseModel):
     """Como se decide que entra en el montaje y a que ritmo."""
 
@@ -68,6 +99,8 @@ class PacingRules(BaseModel):
     min_clip: float = 0.9
     #: banda objetivo de cortes por minuto
     cuts_per_minute: Band = Field(default_factory=lambda: Band(lo=6, hi=18))
+    #: cuanto se aprieta el recorte en cada parte del video
+    roles: RoleRules = Field(default_factory=RoleRules)
 
 
 class CaptionRules(BaseModel):

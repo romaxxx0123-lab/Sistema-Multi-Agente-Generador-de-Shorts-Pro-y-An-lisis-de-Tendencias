@@ -9,6 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from ..media import MediaInfo
+from ..understand.segments import NarrativeSegment
 from .ocr import ScreenText
 
 
@@ -163,6 +164,9 @@ class Analysis(BaseModel):
     #: Texto leido en pantalla, con su posicion. Vacio si no hay OCR: nada de
     #: lo que depende de el es obligatorio.
     screen_text: list[ScreenText] = Field(default_factory=list)
+    #: Que es cada parte del video segun lo que se dice en ella (intro, paso,
+    #: aviso, cierre...). Vacio si no hay transcripcion o si nadie enlaza nada.
+    narrative: list[NarrativeSegment] = Field(default_factory=list)
 
     @property
     def duration(self) -> float:

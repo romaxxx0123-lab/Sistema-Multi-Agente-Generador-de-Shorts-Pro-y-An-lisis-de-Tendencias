@@ -27,6 +27,7 @@ from ..media import MediaInfo
 from ..tools import effective_device, probe
 from .audio import analyze_audio
 from .motion import analyze_motion, rate_for_duration
+from ..understand.segments import detect_segments
 from .ocr import ScreenText, WordBox, read_screen_text, tesseract_available
 from .saliency import analyze_saliency
 from .shots import detect_shots
@@ -279,6 +280,9 @@ class AnalysisRun:
             audio=audio,
             transcript=transcript,
             screen_text=self.screen_text,
+            # Que es cada parte del video. Sale de lo que se dice, asi que no
+            # cuesta una pasada mas: se deduce del transcript que ya tenemos.
+            narrative=detect_segments(transcript, info.duration),
         )
 
 

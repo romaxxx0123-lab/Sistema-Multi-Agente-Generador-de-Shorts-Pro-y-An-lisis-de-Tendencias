@@ -356,6 +356,20 @@ def plan(
             tabla.add_row(kind, str(n), ejemplo[:64])
         console.print(tabla)
 
+    if analysis is not None and analysis.narrative:
+        console.print("\n[bold]Lo que entendio del video[/bold]")
+        tabla = Table(show_header=True, header_style="dim", box=None, padding=(0, 2))
+        tabla.add_column("parte"); tabla.add_column("desde"); tabla.add_column("dura")
+        tabla.add_column("por que")
+        for tramo in analysis.narrative:
+            tabla.add_row(
+                f"[cyan]{tramo.role.value}[/cyan]",
+                f"{int(tramo.start // 60)}:{int(tramo.start % 60):02d}",
+                f"{tramo.duration:.0f}s",
+                f"[dim]{tramo.rationale}[/dim]",
+            )
+        console.print(tabla)
+
     if edl.chapters:
         console.print("\n[bold]Capitulos[/bold] [dim](listos para la descripcion de YouTube)[/dim]")
         for c in edl.chapters:
