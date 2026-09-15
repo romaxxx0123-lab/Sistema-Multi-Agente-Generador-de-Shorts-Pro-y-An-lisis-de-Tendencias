@@ -197,3 +197,40 @@ aquí, se le quitó el fallo de empaquetado que le impedía arrancar sin red, y 
 midió. En español pone una playa donde dijiste impresora, y da 0.540 de parecido
 entre una base de Palworld y una de Minecraft, que es exactamente el fallo del
 que partimos. Cuando haya un traductor local verificable, el sitio está hecho.
+
+
+---
+
+## Segunda vuelta
+
+Repasando lo entregado aparecieron tres cosas, dos de ellas fallos de lo que
+acababa de escribir:
+
+**1. Los subtítulos no siempre están abajo.** `ScreenUse` daba por hecho que sí
+y reservaba la banda inferior. Pero `captions.py` los sube cuando el foco del
+plano está en la parte baja, y en esos planos pasaban las dos cosas a la vez: la
+ventanita se apartaba de una zona libre y se plantaba encima de los subtítulos
+de verdad. Ahora se le pasan los subtítulos **ya planificados**, con su posición
+real (van antes que el b-roll en el planner, así que están disponibles).
+
+**2. Entrar en la palabra costaba inserciones.** Medido: la palabra suele caer
+tarde en la ventana, así que el hueco hasta el final se queda corto --- 2 de 31
+momentos por debajo del mínimo útil, y la duración media de 3.00 s a 2.60 s. La
+causa era arbitraria: el final de una ventana es un corte de la segmentación, no
+el final del tema. Ahora el material sigue mientras sigas nombrando lo mismo, y
+se va en cuanto nombras otra cosa. Recupera 1 de los 2 y la media sube a 2.85 s;
+el que queda se pierde **a propósito**, porque justo ahí ya estás nombrando otra
+cosa y el material sobraba.
+
+Y una lección de esa regla: en una guía real se nombra algo nuevo cada pocos
+segundos, así que el límite que manda casi siempre es "nombras otra cosa", no
+"el tema sigue". Ilustrar lo anterior mientras nombras lo nuevo es el mismo
+fallo de coherencia de siempre, sólo que en el eje del tiempo.
+
+**3. La ventanita no sabía dónde hay hueco.** Evitaba lo que señalas, pero entre
+las esquinas libres elegía siempre la misma. El análisis de foco ya calculaba un
+mapa por plano y se quedaba sólo con el centroide; ahora guarda además una
+rejilla de tercios con **cuánto hay** en cada zona (medida con detalle fino, no
+con saliencia: un área de texto uniforme no destaca y sin embargo está llena).
+Comprobado sobre vídeo real: con el contenido en el tercio izquierdo, las celdas
+de la izquierda dan más de 0.3 y las de la derecha menos de 0.05.

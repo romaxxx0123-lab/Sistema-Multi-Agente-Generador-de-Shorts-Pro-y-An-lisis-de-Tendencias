@@ -66,6 +66,42 @@ def _spectral_residual(gray: np.ndarray) -> np.ndarray:
     return (saliency - lo) / (hi - lo)
 
 
+#: Lo que se considera "lleno". Sale de la misma medida que usa la inspeccion
+#: de material (varianza del laplaciano): por encima de esto hay detalle de
+#: sobra, y por debajo se reparte proporcionalmente.
+GRID_FULL = 300.0
+
+
+def _content_grid(grises: list[np.ndarray]) -> list[float]:
+    """Cuanto **hay** en cada tercio del fotograma, de 0 a 1.
+
+    El foco de atencion contesta "a donde mira el ojo"; esto contesta "donde no
+    hay nada", que es lo que hace falta para meter una ventanita sin tapar nada.
+    No son la misma pregunta: en una guia el texto de la interfaz llena la
+    pantalla entera y el centro de atencion puede estar en cualquier sitio.
+
+    Se mide con detalle fino (laplaciano), no con saliencia: la saliencia marca
+    lo que **destaca**, y un area de texto uniforme no destaca aunque este
+    completamente ocupada.
+    """
+    import cv2
+
+    if not grises:
+        return []
+    celdas: list[float] = []
+    alto, ancho = grises[0].shape
+    for fila in range(3):
+        for columna in range(3):
+            trozos = [
+                g[fila * alto // 3:(fila + 1) * alto // 3,
+                  columna * ancho // 3:(columna + 1) * ancho // 3]
+                for g in grises
+            ]
+            energia = float(np.mean([cv2.Laplacian(t, cv2.CV_64F).var() for t in trozos]))
+            celdas.append(round(min(1.0, energia / GRID_FULL), 4))
+    return celdas
+
+
 def _focus_from_map(saliency: np.ndarray) -> tuple[float, float, float]:
     """Centro de atencion y como de concentrada esta.
 
@@ -126,11 +162,11 @@ def analyze_saliency(
             focos.append(ShotFocus(shot_index=shot.index, cx=0.5, cy=0.5, concentration=0.0))
             continue
 
-        mapas = [
-            _spectral_residual(cv2.cvtColor(f, cv2.COLOR_RGB2GRAY)) for f in frames
-        ]
+        grises = [cv2.cvtColor(f, cv2.COLOR_RGB2GRAY) for f in frames]
+        mapas = [_spectral_residual(g) for g in grises]
         promedio = np.mean(mapas, axis=0)
         cx, cy, concentracion = _focus_from_map(promedio)
+        rejilla = _content_grid(grises)
 
         focos.append(
             ShotFocus(
@@ -138,6 +174,7 @@ def analyze_saliency(
                 cx=round(cx, 4),
                 cy=round(cy, 4),
                 concentration=round(concentracion, 4),
+                grid=rejilla,
             )
         )
 

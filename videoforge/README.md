@@ -574,11 +574,31 @@ los casos la imagen entraba mientras hablabas todavia de otra cosa. Con el
 instante real de la palabra -- que la transcripcion trae desde el principio --
 la mediana baja a **0,29 s** y ningun caso pasa de 1,1 s.
 
+Y se queda **hasta que nombras otra cosa**, no hasta que acaba la frase. El
+final de una ventana de habla es un corte de la segmentacion, no el final de
+nada: si sigues hablando de lo mismo, el material sigue; y en cuanto nombras
+algo distinto, se va, aunque el tema anterior siguiera vivo. Esto hace falta
+justamente por lo anterior: como la palabra suele caer al final de la ventana,
+cortar ahi dejaba las inserciones sin sitio (2 de 31 se perdian y la duracion
+media bajaba un 13%).
+
 Y la ventanita ya no va siempre arriba a la derecha, que en una guia es justo
-donde suele estar lo que explicas. Se queda ahi **salvo que estorbe**: si tapa
-la caja del texto que acabas de nombrar, donde tienes el puntero o la banda de
-subtitulos, se va a la esquina que menos tape. Solo se mueve cuando hace falta,
-porque cambiar de sitio en cada insercion se ve nervioso.
+donde suele estar lo que explicas. Se coloca con dos criterios, en este orden:
+
+1. **No tapar**: la caja del texto que acabas de nombrar, donde tienes el
+   puntero (mirado cada medio segundo a lo largo de la insercion, no solo al
+   principio y al final) y la banda de subtitulos --- que **no siempre esta
+   abajo**: `captions.py` los sube cuando el foco del plano esta en la parte
+   baja, y darlo por hecho ponia la ventanita justo encima de ellos.
+2. **Donde haya menos cosas**: el analisis de cada plano trae ahora una rejilla
+   de tercios que dice cuanto **hay** en cada zona del fotograma. Es otra
+   pregunta que la del foco de atencion ("a donde mira el ojo"), y se mide con
+   detalle fino y no con saliencia, porque un area de texto uniforme no
+   destaca aunque este completamente ocupada.
+
+Lo segundo no manda sobre lo primero: taparte lo que explicas es un fallo, y
+ponerla sobre una zona con cosas es solo menos elegante. Y solo se mueve cuando
+compensa, porque cambiar de sitio en cada insercion se ve nervioso.
 
 Si estas senalando algo mientras entra material, el material **no tapa la
 pantalla**: pasa a ventanita apartada. Antes ese choque se resolvia tirando el

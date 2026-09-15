@@ -145,3 +145,41 @@ def test_el_plan_b_sin_datos_devuelve_un_solo_plano() -> None:
     planos = _shots_from_motion(MotionTrack(rate=0), 10.0, 0.4)
     assert len(planos) == 1
     assert (planos[0].start, planos[0].end) == (0.0, 10.0)
+
+
+# -- rejilla de ocupacion ---------------------------------------------------
+
+
+def test_la_rejilla_dice_donde_hay_contenido(tmp_path, settings) -> None:
+    """Sobre video de verdad: contenido a la izquierda, derecha en blanco.
+
+    El centro de atencion contesta "a donde mira el ojo"; esto contesta "donde
+    no hay nada", que es otra pregunta y la que hace falta para meter una
+    ventanita sin taparle nada al video de debajo.
+    """
+    import subprocess
+
+    from forge.analysis.saliency import analyze_saliency
+    from forge.analysis.types import Shot
+    from forge.tools import ffmpeg_bin
+
+    fuente = tmp_path / "medio-vacio.mp4"
+    subprocess.run(
+        [str(ffmpeg_bin(settings)), "-y", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=0xf0f0f0:s=1280x720:r=25:d=3",
+         "-vf", "drawgrid=x=0:y=0:w=40:h=24:t=3:c=0x202020,"
+                "crop=426:720:0:0,pad=1280:720:0:0:0xf0f0f0",
+         "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", str(fuente)],
+        check=True, capture_output=True,
+    )
+
+    focos = analyze_saliency(
+        fuente, [Shot(index=0, start=0.0, end=3.0)], settings, samples_per_shot=2
+    )
+    assert focos and len(focos[0].grid) == 9
+
+    foco = focos[0]
+    izquierda = [foco.cell(f, 0) for f in range(3)]
+    derecha = [foco.cell(f, 2) for f in range(3)]
+    assert min(izquierda) > 0.3, izquierda
+    assert max(derecha) < 0.05, derecha

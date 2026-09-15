@@ -23,7 +23,15 @@ from .callouts import plan_callouts
 from .conflicts import resolve
 from .captions import plan_captions
 from .chapters import chapter_cards, plan_chapters
-from .edl import EDL, Clip, GradeEffect, MusicEffect, RenderSpec, TransitionEffect
+from .edl import (
+    EDL,
+    Clip,
+    EffectKind,
+    GradeEffect,
+    MusicEffect,
+    RenderSpec,
+    TransitionEffect,
+)
 from .placement import ScreenUse
 from .emphasis import plan_ken_burns, plan_punch_ins
 from .select import plan_selection
@@ -346,7 +354,11 @@ def build_edl(
             screen=ScreenUse(
                 cues=list(analysis.cues),
                 cursor=analysis.cursor,
-                captions=style.captions.enabled,
+                # Los subtitulos **ya planificados**, con su posicion real: no
+                # siempre van abajo, y darlo por hecho ponia la ventanita
+                # encima de ellos en los planos donde se suben.
+                captions=[e for e in efectos if e.kind is EffectKind.CAPTION],
+                focus_at=analysis.focus_at,
             ),
         )
         efectos += brolls

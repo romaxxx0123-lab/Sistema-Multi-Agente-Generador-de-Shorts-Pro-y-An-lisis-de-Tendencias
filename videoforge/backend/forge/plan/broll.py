@@ -53,6 +53,36 @@ class TopicMoment:
     #: el material en `start` lo dejaba, de mediana, a 2,2 s de la palabra que
     #: ilustra: la imagen entraba mientras hablabas todavia de otra cosa.
     head_at: float = 0.0
+    #: hasta donde sigues hablando de lo mismo. `end` es el final de la
+    #: **ventana**, que es un corte de la segmentacion y no el final del tema:
+    #: si sigues nombrando lo mismo en la ventana siguiente, el material puede
+    #: seguir ahi. Sin esto, entrar en la palabra (que suele caer al final de
+    #: la ventana) dejaba el material sin sitio y se perdian inserciones.
+    topic_end: float = 0.0
+    #: cuando se nombra **la cosa siguiente**. Es el limite de verdad: el
+    #: material puede seguir en pantalla despues de acabar la frase, lo que no
+    #: puede es seguir ahi cuando ya estas nombrando otra cosa.
+    next_topic_at: float = 0.0
+
+    @property
+    def room_until(self) -> float:
+        """Hasta donde puede llegar el material sin ilustrar otra cosa.
+
+        Dos limites, y el segundo manda: mientras sigas nombrando lo mismo el
+        tema sigue (`topic_end`), pero en cuanto nombras **otra cosa** el
+        material sobra, aunque el tema anterior siguiera vivo. Se puede hablar
+        de dos cosas a la vez; ilustrar la de antes mientras nombras la nueva
+        es justo el fallo que se estaba arreglando.
+        """
+        hasta = max(self.end, self.topic_end)
+        if self.next_topic_at <= 0:
+            return hasta
+        if self.next_topic_at < hasta:
+            return self.next_topic_at
+        # Nada nuevo a la vista todavia: un desbordamiento corto es lo normal
+        # en un montaje, el material entra al nombrarlo y sigue un momento
+        # mientras rematas la frase.
+        return min(self.next_topic_at, hasta + MAX_OVERFLOW)
 
     @property
     def head(self) -> str:
@@ -62,6 +92,12 @@ class TopicMoment:
         que mas distingue a este tramo de los demas; la segunda acompana.
         """
         return self.query.split()[0] if self.query else ""
+
+
+#: Cuanto puede seguir el material despues de acabar el tramo de habla. Cortar
+#: exactamente al acabar la frase es artificial: el final de una ventana es un
+#: corte de la segmentacion, no un final de nada.
+MAX_OVERFLOW = 1.5
 
 
 def _windows(transcript_words: list[Word], duration: float) -> list[tuple[float, float, list[str]]]:
@@ -129,7 +165,7 @@ def find_topic_moments(
     total = len(ventanas)
 
     momentos: list[TopicMoment] = []
-    for inicio, fin, palabras in ventanas:
+    for indice, (inicio, fin, palabras) in enumerate(ventanas):
         if not palabras:
             continue
         frecuencias = Counter(palabras)
@@ -170,13 +206,36 @@ def find_topic_moments(
                 score=round(min(1.0, score), 3),
                 context=" ".join(palabras[:20]),
                 head_at=_when_said(en_montaje, cabeza, inicio, fin),
+                topic_end=_topic_end(ventanas, indice, cabeza),
             )
         )
+
+    # Cuando se nombra la cosa siguiente. Se hace ahora, que todavia estan en
+    # orden de tiempo.
+    for actual, siguiente in zip(momentos, momentos[1:]):
+        actual.next_topic_at = siguiente.head_at or siguiente.start
 
     # A igualdad de puntuacion manda el tema al que mas se vuelve: si solo cabe
     # un b-roll, mejor ilustrar lo que vertebra el video que un detalle suelto.
     momentos.sort(key=lambda m: (-m.score, -max(veces[p] for p in m.query.split())))
     return momentos
+
+
+def _topic_end(ventanas, desde: int, cabeza: str) -> float:
+    """Hasta donde se sigue hablando de lo mismo.
+
+    Las ventanas se cierran por pausa o por llegar a los seis segundos, asi que
+    su final no significa nada del tema: muy a menudo sigues con lo mismo en la
+    siguiente. Si la cabeza se sigue nombrando, el tema sigue.
+    """
+    fin = ventanas[desde][1]
+    if not cabeza:
+        return round(fin, 3)
+    for inicio_siguiente, fin_siguiente, palabras in ventanas[desde + 1:]:
+        if cabeza not in palabras:
+            break
+        fin = fin_siguiente
+    return round(fin, 3)
 
 
 def _when_said(
@@ -386,7 +445,7 @@ def plan_broll(
     ]
 
     for i, momento in enumerate(momentos):
-        duracion = min(rules.default_seconds, momento.end - momento.start)
+        duracion = min(rules.default_seconds, momento.room_until - momento.start)
         if duracion < 1.0:
             continue
 
@@ -402,8 +461,9 @@ def plan_broll(
         inicio = _snap(pausas, dicho)
         # Sin salirse del tema: la pausa mas cercana podria estar en la ventana
         # de al lado, y entonces estaria ilustrando otra cosa.
-        inicio = min(max(inicio, momento.start), max(momento.start, momento.end - MIN_USEFUL_SECONDS))
-        duracion = min(duracion, max(0.0, momento.end - inicio))
+        hasta = momento.room_until
+        inicio = min(max(inicio, momento.start), max(momento.start, hasta - MIN_USEFUL_SECONDS))
+        duracion = min(duracion, max(0.0, hasta - inicio))
         if duracion < MIN_USEFUL_SECONDS:
             continue
         fin = inicio + duracion
@@ -501,7 +561,12 @@ def plan_broll(
             rect = pip_rect(asset, edl.render.width, edl.render.height)
             if screen is not None and origen_inicio is not None:
                 rect, movida = place(
-                    rect, screen.busy(origen_inicio, origen_fin or origen_inicio)
+                    rect,
+                    screen.busy(
+                        origen_inicio, origen_fin or origen_inicio,
+                        timeline=(inicio, fin),
+                    ),
+                    screen.grid(origen_inicio),
                 )
 
         efecto = BrollEffect(

@@ -30,6 +30,7 @@ from forge.assets.types import AssetBundle
 from forge.fixtures import synthetic_guide_analysis
 from forge.plan.broll import _pauses, _snap, _when_said, find_topic_moments, plan_broll
 from forge.plan.edl import Rect
+from forge.plan.edl import CaptionEffect
 from forge.plan.placement import CAPTION_BAND, ScreenUse, corners, place
 from forge.plan.planner import build_edl
 from forge.plan.styles import load_style
@@ -127,13 +128,102 @@ def test_se_aparta_de_lo_que_senalas() -> None:
     assert colocado.x + colocado.w <= senalado.x
 
 
+def _subtitulo(inicio: float, fin: float, position: str) -> CaptionEffect:
+    return CaptionEffect(
+        id=f"cap{inicio}", start=inicio, end=fin, text="lo que dices",
+        position=position,
+    )
+
+
 def test_los_subtitulos_cuentan_como_ocupado() -> None:
-    """Una ventanita abajo tapa los subtitulos, que tambien son lo que dices."""
+    """Una ventanita encima de los subtitulos tapa tambien lo que dices."""
     banda = Rect(x=0.0, y=1.0 - CAPTION_BAND, w=1.0, h=CAPTION_BAND)
-    # Con algo arriba a la derecha y a la izquierda, lo unico libre es abajo...
-    # pero abajo estan los subtitulos, asi que gana la menos mala de arriba.
     colocado, _ = place(BASE, [banda])
     assert colocado.y + colocado.h <= 1.0 - CAPTION_BAND + 1e-6
+
+
+def test_los_subtitulos_no_siempre_estan_abajo() -> None:
+    """El fallo que tenia esto al entregarlo: darlo por hecho.
+
+    `captions.py` sube los subtitulos cuando el foco del plano esta abajo. La
+    ventanita, que va arriba a la derecha por defecto, se les plantaba encima
+    justo en esos planos -- y encima el "evita la banda de abajo" apartaba de
+    una zona que estaba libre.
+    """
+    pantalla = ScreenUse(captions=[_subtitulo(0.0, 20.0, "top")])
+    bandas = pantalla.busy(0.0, 5.0, timeline=(1.0, 4.0))
+    assert bandas == [Rect(x=0.0, y=0.0, w=1.0, h=CAPTION_BAND)]
+
+    colocado, movida = place(BASE, bandas)
+    assert movida, "con los subtitulos arriba hay que apartarse"
+    assert colocado.y >= CAPTION_BAND - 1e-6
+
+    # Y con ellos abajo, que es lo normal, la de siempre sigue valiendo.
+    abajo = ScreenUse(captions=[_subtitulo(0.0, 20.0, "bottom")])
+    colocado, movida = place(BASE, abajo.busy(0.0, 5.0, timeline=(1.0, 4.0)))
+    assert (colocado, movida) == (BASE, "")
+
+
+def test_fuera_del_tramo_los_subtitulos_no_cuentan() -> None:
+    pantalla = ScreenUse(captions=[_subtitulo(50.0, 60.0, "top")])
+    assert pantalla.busy(0.0, 5.0, timeline=(1.0, 4.0)) == []
+
+
+def test_el_puntero_se_mira_a_lo_largo_de_la_insercion() -> None:
+    """No solo al principio y al final: puede cruzar por medio."""
+
+    class _Cruza:
+        def at(self, t):
+            return (0.85, 0.12) if 11.0 < t < 11.6 else (0.1, 0.9)
+
+    pantalla = ScreenUse(cursor=_Cruza())
+    zonas = pantalla.busy(10.0, 13.0)
+    assert any(z.x > 0.5 and z.y < 0.4 for z in zonas), "se perdio el paso del puntero"
+
+
+# -- donde el video de debajo esta vacio ------------------------------------
+
+
+def _rejilla(llenas: list[tuple[int, int]]) -> list[float]:
+    g = [0.05] * 9
+    for fila, col in llenas:
+        g[fila * 3 + col] = 0.95
+    return g
+
+
+def test_la_ventanita_va_donde_el_video_esta_vacio() -> None:
+    """A igualdad de no tapar nada, la esquina mas vacia.
+
+    Sin esto la ventanita iba siempre a la misma esquina aunque justo ahi
+    estuviera todo el contenido del video y el otro lado estuviera en blanco.
+    """
+    # Todo el contenido a la derecha: se va a la izquierda.
+    derecha_llena = _rejilla([(0, 2), (1, 2), (2, 2)])
+    colocado, movida = place(BASE, [], derecha_llena)
+    assert colocado.x < 0.5 and "izquierda" in movida
+
+    # Y al reves, para probar que decide la rejilla y no una preferencia fija.
+    izquierda_llena = _rejilla([(0, 0), (1, 0), (2, 0)])
+    colocado, movida = place(BASE, [], izquierda_llena)
+    assert colocado.x > 0.5
+
+
+def test_tapar_lo_que_senalas_pesa_mas_que_una_zona_con_cosas() -> None:
+    """El orden de los dos criterios, que no es negociable.
+
+    La izquierda esta llena de contenido, pero arriba a la derecha es justo lo
+    que estas senalando: se va de ahi igualmente. Tapar una zona con cosas es
+    menos elegante; taparte lo que explicas es un fallo.
+    """
+    from forge.plan.placement import _overlap
+
+    senalado = Rect(x=0.70, y=0.04, w=0.25, h=0.18)
+    izquierda_llena = _rejilla([(0, 0), (1, 0)])
+    colocado, _ = place(BASE, [senalado], izquierda_llena)
+    assert _overlap(colocado, senalado) == 0.0
+    # Y sin nada que senalar, la misma rejilla sí la manda a la derecha.
+    solo_rejilla, _ = place(BASE, [], izquierda_llena)
+    assert solo_rejilla.x > 0.5
 
 
 def test_el_puntero_tambien_cuenta() -> None:
@@ -143,7 +233,7 @@ def test_el_puntero_tambien_cuenta() -> None:
         def at(self, t):
             return (0.88, 0.10)   # arriba a la derecha
 
-    pantalla = ScreenUse(cues=[], cursor=_Puntero(), captions=False)
+    pantalla = ScreenUse(cues=[], cursor=_Puntero())
     zonas = pantalla.busy(10.0, 12.0)
     assert zonas
     colocado, movida = place(BASE, zonas)
@@ -162,7 +252,7 @@ def test_una_senal_floja_no_mueve_nada() -> None:
         kind=CueKind.POINT, start=10.0, end=12.0, strength=0.1,
         box=(0.70, 0.04, 0.25, 0.18),
     )
-    assert ScreenUse(cues=[floja], captions=False).busy(10.0, 12.0) == []
+    assert ScreenUse(cues=[floja]).busy(10.0, 12.0) == []
 
 
 # -- y el modo ---------------------------------------------------------------
@@ -224,7 +314,7 @@ def test_si_senalas_algo_el_material_no_tapa_la_pantalla(montaje) -> None:
                   box=(0.70, 0.04, 0.25, 0.18))
         for t in range(0, 300, 30)
     ]
-    con_senal = _planear(montaje, ScreenUse(cues=senales, captions=True))
+    con_senal = _planear(montaje, ScreenUse(cues=senales))
     assert con_senal
     assert all(e.mode != "full" for e in con_senal)
     # Y la ventanita se aparta de lo senalado.
@@ -234,8 +324,98 @@ def test_si_senalas_algo_el_material_no_tapa_la_pantalla(montaje) -> None:
 
 def test_sin_datos_de_pantalla_se_comporta_igual_que_antes(montaje) -> None:
     """Un analisis sin `cues` ni puntero no puede cambiar el montaje."""
-    sin_nada = _planear(montaje, ScreenUse(cues=[], cursor=None, captions=False))
+    sin_nada = _planear(montaje, ScreenUse(cues=[], cursor=None))
     igual = _planear(montaje, None)
     assert [(e.start, e.mode, e.asset_id) for e in sin_nada] == [
         (e.start, e.mode, e.asset_id) for e in igual
     ]
+
+
+# -- y hasta cuando se queda ------------------------------------------------
+
+
+def test_el_tema_no_acaba_donde_acaba_la_ventana() -> None:
+    """Las tres reglas de hasta cuando se queda el material, una por una.
+
+    Importa desde que el material entra **en la palabra**: la palabra suele
+    caer al final de la ventana, y cortar ahi dejaba las inserciones sin sitio.
+    Pero el limite de verdad no es la ventana ni el tema: es el instante en que
+    nombras **otra cosa**.
+    """
+    from forge.plan.broll import MAX_OVERFLOW, TopicMoment
+
+    def momento(**kw) -> TopicMoment:
+        base = dict(start=10.0, end=16.0, query="impresora papel", score=0.8,
+                    context="", head_at=15.0)
+        return TopicMoment(**{**base, **kw})
+
+    # 1. Sigues nombrando lo mismo: el material llega hasta donde llega el tema.
+    assert momento(topic_end=22.0).room_until == 22.0
+
+    # 2. Nada nuevo a la vista: un margen corto tras rematar la frase.
+    assert momento(next_topic_at=30.0).room_until == 16.0 + MAX_OVERFLOW
+
+    # 3. Nombras otra cosa: se acaba ahi, aunque el tema siguiera vivo. Se
+    #    puede hablar de dos cosas a la vez; ilustrar la de antes mientras
+    #    nombras la nueva es justo el fallo que se estaba arreglando.
+    assert momento(topic_end=22.0, next_topic_at=17.5).room_until == 17.5
+
+
+def test_en_una_guia_de_verdad_manda_casi_siempre_la_cosa_siguiente() -> None:
+    """Y conviene saberlo: en una guia se nombra algo nuevo cada pocos segundos."""
+    a = synthetic_guide_analysis(duration=300.0)
+    edl = build_edl(a, "tutorial")
+    momentos = find_topic_moments(edl, a.transcript)
+    assert [m for m in momentos if m.topic_end > m.end], "hay temas que cruzan"
+    for m in momentos:
+        assert m.room_until >= m.end - 1e-6 or m.room_until == m.next_topic_at
+
+
+def test_el_material_se_va_cuando_nombras_otra_cosa() -> None:
+    """El limite de verdad, y no el final de una frase."""
+    a = synthetic_guide_analysis(duration=300.0)
+    edl = build_edl(a, "tutorial")
+    for m in find_topic_moments(edl, a.transcript):
+        if m.next_topic_at > 0:
+            assert m.room_until <= m.next_topic_at + 1e-6
+
+
+def test_entrar_en_la_palabra_casi_no_cuesta_inserciones() -> None:
+    """La medida del efecto secundario que tuvo entrar en la palabra.
+
+    Colocar el material en la palabra (que cae tarde en la ventana) dejaba 2 de
+    31 momentos sin hueco suficiente y acortaba la media un 13%. Dejar que siga
+    mientras no nombres otra cosa devuelve uno de los dos y casi toda la
+    duracion; el que queda se pierde a proposito, porque ahi ya estas nombrando
+    otra cosa y el material sobraba.
+    """
+    from forge.plan.styles import load_style
+
+    a = synthetic_guide_analysis(duration=300.0)
+    edl = build_edl(a, "tutorial")
+    momentos = find_topic_moments(edl, a.transcript)
+    reglas = load_style("tutorial").broll
+    pausas = [
+        t for t in (edl.source_to_timeline(p) for p in _pauses(a.transcript))
+        if t is not None
+    ]
+
+    def caben(hasta_de) -> tuple[int, float]:
+        duraciones = []
+        for m in momentos:
+            hasta = hasta_de(m)
+            dur = min(reglas.default_seconds, hasta - m.start)
+            if dur < 1.0:
+                continue
+            inicio = _snap(pausas, m.head_at or m.start)
+            inicio = min(max(inicio, m.start), max(m.start, hasta - 1.2))
+            dur = min(dur, max(0.0, hasta - inicio))
+            if dur >= 1.2:
+                duraciones.append(dur)
+        return len(duraciones), sum(duraciones) / len(duraciones)
+
+    cortando, media_cortando = caben(lambda m: m.end)
+    ahora, media_ahora = caben(lambda m: m.room_until)
+    assert ahora > cortando
+    assert ahora >= len(momentos) - 1
+    assert media_ahora > media_cortando

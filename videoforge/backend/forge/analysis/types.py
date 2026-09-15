@@ -88,10 +88,24 @@ class ShotFocus(BaseModel):
     cx: float = 0.5
     cy: float = 0.5
     concentration: float = 0.0
+    #: Cuanto **hay** en cada tercio del fotograma: 9 celdas 0..1, por filas.
+    #: El centro de atencion dice a donde mirar; esto dice donde no hay nada,
+    #: que es otra pregunta y la que hace falta para colocar una ventanita sin
+    #: taparle nada al video de debajo.
+    grid: list[float] = Field(default_factory=list)
 
     @property
     def has_focus(self) -> bool:
         return self.concentration >= 0.08
+
+    def busiest(self) -> float:
+        return max(self.grid) if self.grid else 0.0
+
+    def cell(self, fila: int, columna: int) -> float:
+        """Lo que hay en esa celda, o 0 si no se calculo la rejilla."""
+        if len(self.grid) != 9:
+            return 0.0
+        return self.grid[fila * 3 + columna]
 
 
 class SilenceRange(BaseModel):

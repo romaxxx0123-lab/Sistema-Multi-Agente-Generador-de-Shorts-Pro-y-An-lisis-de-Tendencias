@@ -30,8 +30,10 @@ from .edl import Rect
 #: Margen al borde del fotograma: una ventanita pegada al canto se ve como un
 #: error de encuadre.
 EDGE = 0.05
-#: Alto de la banda de subtitulos, medido desde abajo. Los subtitulos van
-#: centrados y abajo salvo que el planner los suba.
+#: Alto de la banda de subtitulos. Se mide desde abajo o desde arriba segun
+#: donde esten puestos: **no siempre estan abajo**. `captions.py` los sube
+#: cuando el foco del plano esta en la parte baja, y dar por hecho que van
+#: abajo ponia la ventanita justo encima de ellos en esos planos.
 CAPTION_BAND = 0.28
 #: Cuanto ocupa el puntero, en fraccion de pantalla. No es su tamano real: es
 #: la zona alrededor de el que hay que dejar libre para que se siga leyendo lo
@@ -49,19 +51,61 @@ def _overlap(a: Rect, b: Rect) -> float:
     return ancho * alto
 
 
+#: Cada cuanto se mira donde esta el puntero dentro de la insercion. Mirar
+#: solo el principio y el final deja pasar un puntero que cruza por medio.
+CURSOR_STEP = 0.5
+
+
 @dataclass
 class ScreenUse:
     """Que partes del fotograma estan ocupadas, y cuando.
 
     Se arma una vez por montaje a partir del analisis, y responde a la unica
     pregunta que le hace el planner: "en este instante, que no puedo tapar".
+
+    Ojo con los dos relojes: `cues` y `cursor` van en tiempo del **video
+    original**, y los subtitulos en tiempo del **montaje**. Por eso `busy` pide
+    los dos tramos.
     """
 
     cues: list = field(default_factory=list)
     cursor: object | None = None
-    captions: bool = True
+    #: los subtitulos ya planificados, con su posicion real
+    captions: list = field(default_factory=list)
+    #: rejilla de ocupacion del video de debajo, si el analisis la trae
+    focus_at: object | None = None
 
-    def busy(self, start: float, end: float) -> list[Rect]:
+    def caption_bands(self, inicio: float, fin: float) -> list[Rect]:
+        """La banda que ocupan los subtitulos en ese tramo del **montaje**."""
+        bandas: list[Rect] = []
+        arriba = abajo = False
+        for c in self.captions:
+            if c.end < inicio or c.start > fin:
+                continue
+            if getattr(c, "position", "bottom") == "top":
+                arriba = True
+            else:
+                abajo = True
+        if arriba:
+            bandas.append(Rect(x=0.0, y=0.0, w=1.0, h=CAPTION_BAND))
+        if abajo:
+            bandas.append(Rect(x=0.0, y=1.0 - CAPTION_BAND, w=1.0, h=CAPTION_BAND))
+        return bandas
+
+    def grid(self, at: float) -> list[float]:
+        """Cuanto hay en cada tercio del video de debajo, en ese instante."""
+        if self.focus_at is None:
+            return []
+        foco = self.focus_at(at)
+        return list(getattr(foco, "grid", []) or []) if foco is not None else []
+
+    def busy(
+        self,
+        start: float,
+        end: float,
+        *,
+        timeline: tuple[float, float] | None = None,
+    ) -> list[Rect]:
         """Lo que no se puede tapar entre esos dos instantes del **origen**."""
         zonas: list[Rect] = []
 
@@ -84,7 +128,9 @@ class ScreenUse:
                 ))
 
         if self.cursor is not None:
-            for t in (start, (start + end) / 2, end):
+            pasos = max(2, int((end - start) / CURSOR_STEP) + 1)
+            for i in range(pasos):
+                t = start + (end - start) * i / (pasos - 1)
                 punto = self.cursor.at(t)
                 if punto is None:
                     continue
@@ -94,8 +140,8 @@ class ScreenUse:
                     w=CURSOR_HALO * 2, h=CURSOR_HALO * 2,
                 ))
 
-        if self.captions:
-            zonas.append(Rect(x=0.0, y=1.0 - CAPTION_BAND, w=1.0, h=CAPTION_BAND))
+        if timeline is not None:
+            zonas += self.caption_bands(*timeline)
 
         return zonas
 
@@ -125,25 +171,59 @@ def corners(w: float, h: float) -> list[tuple[str, Rect]]:
     ]
 
 
-def place(base: Rect, avoid: list[Rect]) -> tuple[Rect, str]:
+#: Cuanto pesa la ocupacion del video de debajo frente a tapar algo concreto.
+#: Bajo a proposito: tapar lo que senalas es un fallo, y tapar una zona con
+#: cosas es solo menos elegante. Sirve para desempatar, no para mandar.
+GRID_WEIGHT = 0.25
+
+
+def _grid_cost(rect: Rect, grid: list[float]) -> float:
+    """Cuanto hay debajo de ese rectangulo, segun la rejilla de tercios."""
+    if len(grid) != 9:
+        return 0.0
+    total = peso = 0.0
+    for fila in range(3):
+        for columna in range(3):
+            celda = Rect(x=columna / 3, y=fila / 3, w=1 / 3, h=1 / 3)
+            comun = _overlap(rect, celda)
+            if comun > 0:
+                total += grid[fila * 3 + columna] * comun
+                peso += comun
+    return total / peso if peso else 0.0
+
+
+def place(
+    base: Rect, avoid: list[Rect], grid: list[float] | None = None
+) -> tuple[Rect, str]:
     """Elige donde va la ventanita, y devuelve tambien por que.
 
-    Se queda donde estaba si ahi no tapa nada; si tapa, se va a la esquina que
-    menos tape. Si todas tapan algo -- una pantalla llena de cosas --, se queda
-    con la menos mala, que sigue siendo mejor que no mirar.
+    Dos criterios, y en este orden: lo primero es **no tapar** lo que senalas,
+    nombras o los subtitulos; despues, a igualdad, ponerla donde el video de
+    debajo esta mas vacio. Lo segundo no manda sobre lo primero: taparle a
+    alguien lo que esta explicando es un fallo, y ponerla sobre una zona con
+    cosas es solo menos elegante.
+
+    Se queda donde estaba salvo que moverse compense de verdad. Cambiar de
+    esquina en cada insercion se ve nervioso.
     """
-    if not avoid:
+    rejilla = grid or []
+    if not avoid and not rejilla:
         return base, ""
 
-    tapa_base = sum(_overlap(base, z) for z in avoid)
+    def coste(rect: Rect) -> float:
+        return (
+            sum(_overlap(rect, z) for z in avoid)
+            + GRID_WEIGHT * _grid_cost(rect, rejilla)
+        )
+
+    coste_base = coste(base)
     opciones = [
-        (sum(_overlap(rect, z) for z in avoid), i, nombre, rect)
+        (coste(rect), i, nombre, rect)
         for i, (nombre, rect) in enumerate(corners(base.w, base.h))
     ]
-    mejor_tapa, _, nombre, rect = min(opciones, key=lambda o: (round(o[0], 5), o[1]))
+    mejor, _, nombre, rect = min(opciones, key=lambda o: (round(o[0], 5), o[1]))
 
-    # Moverse tiene que compensar: si la de siempre ya es de las buenas, se
-    # queda. El umbral es un 1% de pantalla, que es lo que se empieza a notar.
-    if tapa_base <= mejor_tapa + 0.01:
+    # El umbral es un 1% de pantalla tapada, que es lo que se empieza a notar.
+    if coste_base <= mejor + 0.01:
         return base, ""
     return rect, nombre
