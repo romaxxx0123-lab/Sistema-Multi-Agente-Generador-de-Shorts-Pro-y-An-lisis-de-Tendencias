@@ -314,7 +314,9 @@ def plan(
             status.update("[cyan]decidiendo el montaje...")
             edl = build_edl(
                 analysis, style, intensity=intensity,
-                providers=_broll_providers(analysis, enabled=broll, offline=offline),
+                providers=_broll_providers(
+                    analysis, enabled=broll, offline=offline, settings=settings
+                ),
             )
         except ForgeError as exc:
             raise _fail(exc) from exc
@@ -461,7 +463,9 @@ def render(
                 elegido = _resolve_style(style, analysis)
                 edl = build_edl(
                     analysis, elegido, intensity=intensity,
-                    providers=_broll_providers(analysis, enabled=broll, offline=offline),
+                    providers=_broll_providers(
+                    analysis, enabled=broll, offline=offline, settings=settings
+                ),
                     assets=bundle,
                 )
             except ForgeError as exc:
@@ -712,14 +716,15 @@ def _resolve_style(style: str, analysis) -> str:
     return perfil.suggested_style
 
 
-def _broll_providers(analysis, *, enabled: bool, offline: bool):
+def _broll_providers(analysis, *, enabled: bool, offline: bool, settings=None):
     """Proveedores de material de apoyo, si se pidieron."""
     if not enabled:
         return None
     from .assets.providers import build_providers
 
     return build_providers(
-        analysis, local_dir=ASSETS_DIR / "broll", allow_network=not offline
+        analysis, local_dir=ASSETS_DIR / "broll", allow_network=not offline,
+        settings=settings,
     )
 
 

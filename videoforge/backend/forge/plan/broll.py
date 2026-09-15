@@ -333,6 +333,7 @@ def plan_broll(
     # Sirve para descartar material que va de algo que aqui no se menciona
     # nunca: es lo que separa una foto de Palworld de una de Minecraft cuando
     # las dos estan etiquetadas como "videojuego".
+    idioma = (transcript.language or "es").lower()[:2]
     vocabulario = tokenize(" ".join(w.text for w in transcript.words))
     vocabulario += tokenize(" ".join(screen_terms or ()))
 
@@ -390,6 +391,10 @@ def plan_broll(
             # y no basta para elegir material (ver assets/coherence.py).
             head=momento.head,
             vocabulary=vocabulario,
+            # En el idioma en el que hablas, que es dato de la transcripcion.
+            # A un banco hay que decirselo o responde en ingles y la regla de
+            # coherencia no se puede cumplir (ver `assets/language.py`).
+            language=idioma,
         )
         resultados = search_all(providers, consulta)
         # Se prefiere material que no se haya usado ya; si todo esta usado, se

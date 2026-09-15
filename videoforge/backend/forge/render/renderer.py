@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..assets.download import ensure_local
+from ..assets.inspect import inspect_media
 from ..assets.sfx import GENERATORS, ensure_sfx
 from ..assets.types import AssetBundle
 from ..config import Settings
@@ -406,23 +407,47 @@ def render(
     # Hasta ahora nadie la bajaba y el render se saltaba ese material en
     # silencio: el montaje prometia "material de apoyo en 60s" y el video salia
     # sin el.
+    # Y una vez traido, **se mira antes de pegarlo**. Un banco de stock manda
+    # una ficha con etiquetas; lo que hay dentro del fichero no lo habia visto
+    # nadie, asi que un clip negro, desenfocado o congelado entraba igual. Si no
+    # se ve, se cae el material y se monta sin el: un hueco no se nota, una
+    # imagen mala la ve todo el mundo.
     sin_traer = 0
+    descartados: list[str] = []
     if assets is not None:
+        caidos: list[int] = []
         for efecto in edl_render.effects:
             if efecto.kind is not EffectKind.BROLL:
                 continue
             asset = assets.get(getattr(efecto, "asset_id", ""))
             if asset is None or asset.is_self:
                 continue
-            if asset.path is not None and Path(asset.path).is_file():
-                continue
-            if progress:
-                progress(0.0, f"trayendo material de apoyo ({asset.provider})")
-            traido = ensure_local(asset, settings.cache_dir)
-            if traido is None:
-                sin_traer += 1
-            else:
+            if asset.path is None or not Path(asset.path).is_file():
+                if progress:
+                    progress(0.0, f"trayendo material de apoyo ({asset.provider})")
+                traido = ensure_local(asset, settings.cache_dir)
+                if traido is None:
+                    sin_traer += 1
+                    continue
                 asset.path = traido
+                vista = inspect_media(traido, settings)
+                if not vista.ok:
+                    descartados.append(f"{asset.id} ({vista.reason})")
+                    caidos.append(id(efecto))
+                    # Y fuera de los creditos: acreditar material que no sale
+                    # en el video es mentir en el fichero de licencias.
+                    assets.assets.pop(asset.id, None)
+                    continue
+                if vista.measured and vista.crop and vista.crop.is_useful():
+                    asset.crop = vista.crop
+        if caidos:
+            edl_render = edl_render.model_copy(
+                update={
+                    "effects": [
+                        e for e in edl_render.effects if id(e) not in caidos
+                    ]
+                }
+            )
 
     quiere_musica = any(e.kind is EffectKind.MUSIC for e in edl_render.effects)
     music_path = _find_music(music_dir) if quiere_musica else None
@@ -555,6 +580,11 @@ def render(
             graph.applied
             + ([aviso_musica] if aviso_musica else [])
             + ([f"{sin_traer} materiales no se pudieron traer"] if sin_traer else [])
+            + (
+                [f"{len(descartados)} materiales descartados al verlos: "
+                 + ", ".join(descartados)]
+                if descartados else []
+            )
         ),
         measured_lufs=(
             sonoridad_final if sonoridad_final is not None

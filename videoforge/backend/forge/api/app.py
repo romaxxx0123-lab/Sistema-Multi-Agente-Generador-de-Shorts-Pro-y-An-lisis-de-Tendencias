@@ -287,6 +287,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 analysis,
                 local_dir=Path(__file__).resolve().parents[3] / "assets" / "broll",
                 allow_network=not req.offline,
+                settings=settings,
             )
 
         bundle = AssetBundle()

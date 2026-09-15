@@ -247,3 +247,56 @@ def test_la_ruta_del_ass_escapa_los_dos_puntos() -> None:
     """En Windows 'C:/...' romperia el parser de opciones de ffmpeg."""
     g = build_graph(_edl(), has_audio=True, ass_path="C:/subs/x.ass")
     assert r"C\:/subs/x.ass" in g.filter_complex
+
+
+# -- material de apoyo con barras negras ------------------------------------
+
+
+def _con_broll(asset, tmp_path):
+    """El material tiene que existir en disco: el grafo omite lo que no esta."""
+    from forge.assets.types import AssetBundle
+    from forge.plan.edl import BrollEffect
+
+    fichero = tmp_path / "material.mp4"
+    fichero.write_bytes(b"no es un mp4 de verdad, pero existe")
+    asset.path = fichero
+
+    bundle = AssetBundle()
+    bundle.add(asset)
+    edl = _edl(effects=[
+        BrollEffect(id="b0", start=1.0, end=4.0, asset_id=asset.id, mode="full")
+    ])
+    return build_graph(edl, has_audio=True, assets=bundle)
+
+
+def test_las_barras_negras_del_material_se_recortan_al_pegarlo(tmp_path) -> None:
+    """Un clip 2.35:1 dentro de un 16:9 trae sus propias barras negras.
+
+    Sin recortarlas se escalaban y se pegaban encima del video como si fueran
+    parte del material: dos franjas negras en mitad del montaje.
+    """
+    from forge.assets.types import Asset, AssetKind, Crop
+
+    asset = Asset(
+        id="a1", kind=AssetKind.VIDEO, provider="local",
+        width=1280, height=360, duration=8.0,
+        crop=Crop(x=0, y=180, w=1280, h=360),
+    )
+    g = _con_broll(asset, tmp_path)
+    assert "crop=1280:360:0:180" in g.filter_complex
+    # Y el recorte va **antes** del encaje: primero se quita lo que no es
+    # imagen, y despues se escala lo que queda.
+    assert g.filter_complex.index("crop=1280:360:0:180") < g.filter_complex.index(
+        "force_original_aspect_ratio=increase"
+    )
+
+
+def test_sin_barras_no_se_recorta_nada(tmp_path) -> None:
+    from forge.assets.types import Asset, AssetKind
+
+    asset = Asset(
+        id="a1", kind=AssetKind.VIDEO, provider="local",
+        width=1920, height=1080, duration=8.0,
+    )
+    g = _con_broll(asset, tmp_path)
+    assert "crop=1920:1080:0:0" not in g.filter_complex

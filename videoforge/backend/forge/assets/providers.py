@@ -26,7 +26,10 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ..analysis.types import Analysis
+from ..config import Settings
 from .coherence import judge, tag_stem
+from .inspect import Inspection, inspect_cached
+from .language import PEXELS_LOCALES, PIXABAY_LANGS, Translator, bank_query
 from .types import Asset, AssetKind, AssetQuery
 
 
@@ -186,16 +189,41 @@ class SelfProvider:
 class LocalProvider:
     """Tu carpeta de material etiquetado.
 
-    Las etiquetas salen del nombre del fichero (separadas por guiones o guiones
-    bajos) y, si existe, de un `tags.json` junto a los ficheros con la forma
-    `{"fichero.mp4": ["etiqueta", "otra"]}`.
+    Las etiquetas salen de tres sitios, en este orden: un `tags.json` junto a
+    los ficheros con la forma `{"fichero.mp4": ["etiqueta", "otra"]}`, **las
+    carpetas** en las que esta el fichero, y el nombre del fichero (separado
+    por guiones o guiones bajos).
+
+    Y antes de ofrecer nada, se **mira** el fichero: cuanto dura de verdad, que
+    tamano tiene y si se ve algo (ver `assets/inspect.py`). Las dos cosas
+    arreglan fallos que estaban a la vista:
+
+    - Sin las carpetas como etiqueta, la forma natural de ordenar material --
+      `assets/palworld/base-01.mp4` -- daba las etiquetas `["base"]`, sin
+      rastro de Palworld, asi que la regla de coherencia descartaba tu propio
+      material justo cuando hablabas de Palworld.
+    - Sin mirar el fichero, el `Asset` salia con `width`, `height` y `duration`
+      a cero, y `plan/broll.py::fit_asset` esta escrito alrededor de esos tres
+      numeros: toda la parte de "adaptate a lo que has conseguido" se aplicaba
+      solo al material de los bancos, que si manda metadatos, y con tu
+      biblioteca se saltaba entera.
     """
 
     name = "local"
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        settings: Settings | None = None,
+        look: bool = True,
+    ) -> None:
         self.directory = Path(directory)
+        self.settings = settings
+        self.look = look
         self._tags = self._load_tags()
+        #: lo que se ha descartado al mirarlo, y por que. Para poder contarlo.
+        self.rejected: list[tuple[Path, str]] = []
 
     def _load_tags(self) -> dict[str, list[str]]:
         fichero = self.directory / "tags.json"
@@ -213,25 +241,48 @@ class LocalProvider:
             if isinstance(v, list)
         }
 
+    def _folder_tags(self, path: Path) -> list[str]:
+        """Las carpetas en las que esta el fichero, de fuera hacia dentro.
+
+        De fuera hacia dentro porque asi la primera es el sujeto: en
+        `palworld/bases/nocturna.mp4`, el material es **de Palworld** y lo de
+        bases y nocturna lo describe.
+        """
+        try:
+            relativa = path.parent.relative_to(self.directory)
+        except ValueError:
+            return []
+        etiquetas: list[str] = []
+        for parte in relativa.parts:
+            etiquetas += tokenize(parte.replace("-", " ").replace("_", " "))
+        return etiquetas
+
     def _tags_for(self, path: Path) -> list[str]:
         """Las etiquetas de un fichero, **en orden**.
 
         El orden importa: la primera dice de que es el material y las demas lo
-        describen (ver `assets/coherence.py`). Por eso van primero las de
-        `tags.json`, que son las que escribes tu, y detras las del nombre del
-        fichero, que ya suele empezar por el asunto:
-        `palworld-base-construccion.mp4`.
+        describen (ver `assets/coherence.py`). Primero las de `tags.json`, que
+        son las que escribes tu a mano; despues las carpetas, que es como se
+        ordena el material de verdad; y al final el nombre del fichero.
         """
         etiquetas: list[str] = list(self._tags.get(path.name, []))
+        etiquetas += self._folder_tags(path)
         etiquetas += tokenize(path.stem.replace("-", " ").replace("_", " "))
         vistas: set[str] = set()
         return [t for t in etiquetas if not (t in vistas or vistas.add(t))]
+
+    def _look_at(self, path: Path) -> Inspection | None:
+        """Mira el fichero, si toca mirarlo."""
+        if not self.look:
+            return None
+        return inspect_cached(path, self.settings)
 
     def search(self, query: AssetQuery) -> list[Asset]:
         if not self.directory.is_dir():
             return []
 
         resultados: list[Asset] = []
+        self.rejected = []
 
         for path in sorted(self.directory.rglob("*")):
             if not path.is_file():
@@ -254,6 +305,14 @@ class LocalProvider:
             if not veredicto:
                 continue
 
+            # Y ahora que se sabe que **viene a cuento**, se mira si **se ve**.
+            # En este orden porque mirar cuesta (ffprobe y unos fotogramas) y
+            # la mayoria de los ficheros de una biblioteca no vienen a cuento.
+            vista = self._look_at(path)
+            if vista is not None and not vista.ok:
+                self.rejected.append((path, vista.reason))
+                continue
+
             comunes = set(veredicto.overlap)
             # El suelo de 0.4 deja el material propio (tope SELF_MAX_RELEVANCE)
             # siempre por debajo; el resto sube con lo que encaje de verdad.
@@ -261,6 +320,17 @@ class LocalProvider:
             relevancia = (
                 0.4 + 0.6 * len(comunes & pedidas) / len(pedidas) if pedidas else 0.4
             )
+            medido = {}
+            if vista is not None and vista.measured:
+                # El tamano que se apunta es el **util**: si el material lleva
+                # barras negras, lo que hay para ensenar es lo de dentro, y es
+                # con eso con lo que hay que decidir si tapa la pantalla.
+                medido = {
+                    "width": vista.usable_width,
+                    "height": vista.usable_height,
+                    "duration": round(vista.duration, 3),
+                    "crop": vista.crop if vista.crop and vista.crop.is_useful() else None,
+                }
             resultados.append(
                 Asset(
                     id=f"local-{path.stem}",
@@ -271,6 +341,7 @@ class LocalProvider:
                     reason=f"de tu biblioteca: {veredicto.reason}",
                     license="propio",
                     relevance=round(min(1.0, relevancia), 3),
+                    **medido,
                 )
             )
 
@@ -291,10 +362,18 @@ class StockProvider:
     justo el motivo de tener varios proveedores.
     """
 
-    def __init__(self, name: str, api_key: str, *, timeout: float = 15.0) -> None:
+    def __init__(
+        self,
+        name: str,
+        api_key: str,
+        *,
+        timeout: float = 15.0,
+        translator: Translator | None = None,
+    ) -> None:
         self.name = name
         self.api_key = api_key
         self.timeout = timeout
+        self.translator = translator
 
     # -- peticion (separada para poder sustituirla en los tests) -----------
 
@@ -303,29 +382,42 @@ class StockProvider:
         with urllib.request.urlopen(peticion, timeout=self.timeout) as respuesta:
             return json.loads(respuesta.read().decode("utf-8"))
 
-    def _fetch(self, query: AssetQuery) -> dict:
+    def _fetch(self, query: AssetQuery, texto: str | None = None) -> dict:
+        """Pide al banco, **diciendole en que idioma se le habla**.
+
+        Faltaba, y no era un detalle: se le mandaba "impresora" sin mas y
+        contestaba etiquetando en ingles, que es lo unico que sabe hacer si no
+        se le dice nada. Ver `assets/language.py`.
+        """
+        texto = texto if texto is not None else query.text
+        idioma = (query.language or "es").lower()[:2]
+
         if self.name == "pexels":
-            params = urllib.parse.urlencode(
-                {
-                    "query": query.text,
-                    "per_page": query.limit,
-                    "orientation": query.orientation,
-                }
-            )
+            params: dict[str, object] = {
+                "query": texto,
+                "per_page": query.limit,
+                "orientation": query.orientation,
+            }
+            if idioma in PEXELS_LOCALES:
+                params["locale"] = PEXELS_LOCALES[idioma]
             return self._request(
-                f"https://api.pexels.com/videos/search?{params}",
+                f"https://api.pexels.com/videos/search?{urllib.parse.urlencode(params)}",
                 {"Authorization": self.api_key},
             )
 
-        params = urllib.parse.urlencode(
-            {
-                "key": self.api_key,
-                "q": query.text,
-                "per_page": max(3, query.limit),
-                "safesearch": "true",
-            }
+        params = {
+            "key": self.api_key,
+            "q": texto,
+            "per_page": max(3, query.limit),
+            "safesearch": "true",
+        }
+        if idioma in PIXABAY_LANGS:
+            # Pixabay tambien **localiza sus etiquetas** con esto, que es lo que
+            # hace que la regla de coherencia pueda cumplirse en espanol.
+            params["lang"] = idioma
+        return self._request(
+            f"https://pixabay.com/api/videos/?{urllib.parse.urlencode(params)}", {}
         )
-        return self._request(f"https://pixabay.com/api/videos/?{params}", {})
 
     @staticmethod
     def _tags_de(item: dict) -> list[str]:
@@ -352,7 +444,7 @@ class StockProvider:
             if t and not t.isdigit() and t.lower() not in _RUIDO_URL
         ]
 
-    def _parse(self, datos: dict, query: AssetQuery) -> list[Asset]:
+    def _parse(self, datos: dict, query: AssetQuery, alias: tuple[str, ...] = ()) -> list[Asset]:
         salida: list[Asset] = []
 
         if self.name == "pexels":
@@ -362,7 +454,7 @@ class StockProvider:
                     continue
                 # El de mayor altura que siga siendo razonable para 1080p.
                 mejor = max(ficheros, key=lambda f: f.get("height") or 0)
-                veredicto = self._coherente(item, query)
+                veredicto = self._coherente(item, query, alias)
                 if not veredicto:
                     continue
                 salida.append(
@@ -387,7 +479,7 @@ class StockProvider:
                 mejor = videos.get("large") or videos.get("medium") or {}
                 if not mejor:
                     continue
-                veredicto = self._coherente(item, query)
+                veredicto = self._coherente(item, query, alias)
                 if not veredicto:
                     continue
                 salida.append(
@@ -409,7 +501,7 @@ class StockProvider:
 
         return salida
 
-    def _coherente(self, item: dict, query: AssetQuery):
+    def _coherente(self, item: dict, query: AssetQuery, alias: tuple[str, ...] = ()):
         """Que el resultado sea de lo que se nombra, y no de lo que el banco tenga.
 
         Un banco de stock **siempre** devuelve algo: si le pides "palworld" te
@@ -427,15 +519,26 @@ class StockProvider:
             # primera posicion del que fiarse, asi que solo se comprueba que
             # lleve lo que nombras.
             subject_first=False,
+            # ...o como lo llame el banco en su idioma, que sigue siendo lo que
+            # nombras. Sin esto la regla era imposible de cumplir en espanol.
+            head_aliases=alias,
         )
 
     def search(self, query: AssetQuery) -> list[Asset]:
+        # Se busca con el termino que el banco tiene indexado, y se guarda como
+        # lo llama el para poder comprobar despues que ha traido eso.
+        texto, alias = bank_query(
+            query.text,
+            query.head or _first_word(query.text),
+            query.language,
+            self.translator,
+        )
         try:
-            datos = self._fetch(query)
+            datos = self._fetch(query, texto)
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
             # Un banco caido o sin red no puede tumbar el montaje.
             return []
-        return self._parse(datos, query)
+        return self._parse(datos, query, alias)
 
 
 # ---------------------------------------------------------------------------
@@ -448,12 +551,13 @@ def build_providers(
     *,
     local_dir: Path | None = None,
     allow_network: bool = True,
+    settings: Settings | None = None,
 ) -> list[BrollProvider]:
     """Monta la lista de proveedores disponibles, por orden de preferencia."""
     proveedores: list[BrollProvider] = []
 
     if local_dir is not None and Path(local_dir).is_dir():
-        proveedores.append(LocalProvider(local_dir))
+        proveedores.append(LocalProvider(local_dir, settings=settings))
 
     if allow_network:
         for nombre, variable in (("pexels", "PEXELS_API_KEY"), ("pixabay", "PIXABAY_API_KEY")):

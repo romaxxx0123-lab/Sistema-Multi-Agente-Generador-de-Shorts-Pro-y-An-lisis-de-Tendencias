@@ -16,6 +16,24 @@ class AssetKind(str, Enum):
     AUDIO = "audio"
 
 
+class Crop(BaseModel):
+    """Un recorte en pixeles del material, para dejar fuera lo que no es imagen.
+
+    Un clip 2.35:1 dentro de un 16:9 dice que mide 1280x720 y de imagen tiene
+    la mitad; el resto son barras negras. Sin esto, la decision de "esto tapa
+    la pantalla o va en ventanita" se tomaba con un numero falso, y encima el
+    montaje pegaba las barras encima del video.
+    """
+
+    x: int = 0
+    y: int = 0
+    w: int = 0
+    h: int = 0
+
+    def is_useful(self) -> bool:
+        return self.w > 1 and self.h > 1
+
+
 class Asset(BaseModel):
     """Una pieza de material de apoyo, venga de donde venga."""
 
@@ -43,6 +61,9 @@ class Asset(BaseModel):
     attribution: str = ""
     #: 0..1, cuanto encaja con la consulta segun el proveedor
     relevance: float = 0.5
+    #: barras negras que hay que quitarle al pegarlo (ver `assets/inspect.py`).
+    #: `width` y `height` son ya los utiles, los de dentro del recorte.
+    crop: Crop | None = None
 
     @property
     def is_self(self) -> bool:
@@ -82,6 +103,11 @@ class AssetQuery(BaseModel):
     #: todo lo que se dice o se lee en pantalla **en todo el video**. Sirve
     #: para descartar material que va de algo que ahi no se menciona nunca.
     vocabulary: list[str] = Field(default_factory=list)
+    #: el idioma en el que hablas, tal como lo dice la transcripcion. Hace
+    #: falta porque a un banco de stock se le estaba preguntando en espanol y
+    #: exigiendole despues que respondiera con etiquetas en espanol, cosa que
+    #: no hace nunca (ver `assets/language.py`).
+    language: str = "es"
 
 
 class AssetBundle(BaseModel):

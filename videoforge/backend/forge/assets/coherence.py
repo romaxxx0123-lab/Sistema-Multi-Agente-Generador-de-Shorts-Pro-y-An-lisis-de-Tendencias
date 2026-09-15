@@ -107,6 +107,7 @@ def judge(
     context: str = "",
     vocabulary=(),
     subject_first: bool = True,
+    head_aliases=(),
 ) -> Verdict:
     """Decide si ese material es de lo que se esta hablando.
 
@@ -117,6 +118,11 @@ def judge(
     sujeto (ver `subject`). Vale para tu biblioteca, donde los nombres de
     fichero siguen esa convencion; no vale para un banco de stock, donde las
     etiquetas vienen en el orden que le apetezca al banco.
+
+    `head_aliases` son otras formas de nombrar lo mismo que cuentan igual que
+    la cabeza. Hace falta para los bancos: tu dices "impresora" y el banco
+    etiqueta "printer", y exigirle la palabra espanola era exigirle algo que no
+    puede dar (ver `assets/language.py`).
     """
     etiquetas_ordenadas = [t for t in tags if normalize_tag(t)]
     etiquetas = tag_stems(etiquetas_ordenadas)
@@ -124,7 +130,10 @@ def judge(
         return Verdict(False, "el material no tiene ninguna etiqueta que comprobar")
 
     cabeza = {tag_stem(head)} - {""} if head else set()
-    if cabeza and not (cabeza & etiquetas):
+    # Los alias cuentan para encontrar la cabeza, pero no son la cabeza: lo que
+    # tiene que estar nombrado en el video sigue siendo lo que tu dices.
+    buscadas = cabeza | (tag_stems(head_aliases) if head_aliases else set())
+    if buscadas and not (buscadas & etiquetas):
         return Verdict(
             False,
             f'no esta etiquetado con "{head}", que es de lo que hablas ahi',
@@ -149,7 +158,7 @@ def judge(
             f'es material de "{original}", y eso no se nombra en todo el video',
         )
 
-    pedidas = cabeza | tag_stems(context.split())
+    pedidas = buscadas | tag_stems(context.split())
     comunes = [
         t for t in etiquetas_ordenadas if tag_stem(t) in pedidas & etiquetas
     ]

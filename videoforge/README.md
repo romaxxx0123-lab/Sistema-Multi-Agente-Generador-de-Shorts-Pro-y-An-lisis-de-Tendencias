@@ -487,9 +487,67 @@ ensenar, y el material de apoyo solo ilustra y puede esperar dos segundos.
 | Proveedor | Necesita | Notas |
 |---|---|---|
 | `self` | nada | Del propio video, eligiendo los planos con mas interes visual. Siempre disponible. |
-| `local` | tu carpeta `assets/broll/` | Etiquetas del nombre del fichero o de un `tags.json`, **la primera es el asunto**. |
-| `pexels` | `PEXELS_API_KEY` (gratuita) | Opcional. |
-| `pixabay` | `PIXABAY_API_KEY` (gratuita) | Opcional. |
+| `local` | tu carpeta `assets/broll/` | Etiquetas de `tags.json`, de **las carpetas** y del nombre del fichero, en ese orden; **la primera es el asunto**. |
+| `pexels` | `PEXELS_API_KEY` (gratuita) | Opcional. Se le pide con `locale`. |
+| `pixabay` | `PIXABAY_API_KEY` (gratuita) | Opcional. Se le pide con `lang`. |
+
+Las carpetas cuentan como etiqueta, y de fuera hacia dentro: en
+`broll/palworld/bases/nocturna.mp4` el material es **de Palworld** y lo demas lo
+describe. Antes no contaban, y eso dejaba invisible la biblioteca de cualquiera
+que ordene por carpetas: `palworld/base-01.mp4` se etiquetaba `["base"]`, sin
+rastro de Palworld, asi que la regla de coherencia lo descartaba justo cuando
+hablabas de Palworld.
+
+### Se mira antes de meterlo
+
+Decidir que material entra era, hasta aqui, una comparacion de palabras y nada
+mas: nadie miraba nunca el fichero. Asi que un clip negro, uno desenfocado, uno
+ampliado desde 160x90 o un "video" que en realidad es un fotograma congelado
+entraban igual de bien con solo llamarse como toca -- y el de un banco entraba
+**sin haberlo visto nadie**.
+
+Ahora se mira (`assets/inspect.py`), en tu biblioteca al elegirlo y en lo
+descargado antes de renderizar:
+
+| Se mide | Se cae si | Umbral |
+|---|---|---|
+| nitidez del mejor trozo de una rejilla 4x4 | no tiene **ni un trozo** enfocado | 120 |
+| brillo medio | esta casi negro o quemado | fuera de 0.05 - 0.93 |
+| contraste | es un tono plano | 0.05 |
+| movimiento entre fotogramas | no se mueve nada: es un congelado | 0.002 |
+| barras negras | no se cae: se **recortan** al pegarlo | mas del 3% del cuadro |
+
+La nitidez se mide por rejilla y quedandose con **el mejor trozo**, no con la
+media, y ese detalle es el que hace que la medida sirva: un plano con el sujeto
+enfocado y el fondo desenfocado tiene la media por el suelo y es material
+perfectamente bueno. Los umbrales estan medidos sobre un juego de casos
+generado con ffmpeg (`tests/test_inspeccion.py`), con un factor de seis entre lo
+peor que se acepta y lo mejor que se rechaza.
+
+Del material de tu biblioteca se apunta ademas lo que **mide de verdad**
+--- tamano, duracion y cuanto del cuadro es imagen ---, porque salia con los tres
+a cero y `fit_asset` esta escrito alrededor de esos numeros: toda la adaptacion
+a "lo que has conseguido" (no durar mas que el material, no ampliar un 480p a
+pantalla completa, pasar a ventanita lo vertical) se aplicaba solo a los bancos
+y con tu propia biblioteca se saltaba entera.
+
+### En que idioma se le habla al banco
+
+A los bancos se les mandaba la consulta en espanol sin decirles el idioma, y
+contestan etiquetando en ingles. Despues la regla de coherencia exigia que
+**"impresora"** estuviera entre esas etiquetas. No esta nunca: la regla que
+evita que salga Minecraft cuando hablas de Palworld habia dejado el camino del
+stock practicamente muerto para quien habla espanol.
+
+Se arregla por los dos lados: se manda el idioma (`lang` en Pixabay, que ademas
+localiza sus etiquetas; `locale` en Pexels) y se busca con el termino que el
+banco tiene indexado, aceptando su etiqueta en ingles como equivalente de lo que
+dices. El puente es un glosario explicito (`assets/language.py`) de lo que se
+nombra en una guia, con su limite dicho: si el termino no esta, la consulta se
+manda tal cual y, si asi no se puede confirmar que el material es de lo que
+hablas, no se pone nada. Ahi es donde encaja un modelo local de traduccion el
+dia que sus pesos se puedan traer y comprobar; el analisis esta en
+[`ANALISIS-INSERCION-MULTIMEDIA.md`](ANALISIS-INSERCION-MULTIMEDIA.md).
 
 Nunca se repite el mismo recurso, y si un banco esta caido o no hay red, el
 montaje sigue con lo que tenga. Los creditos de licencia se emiten aparte.

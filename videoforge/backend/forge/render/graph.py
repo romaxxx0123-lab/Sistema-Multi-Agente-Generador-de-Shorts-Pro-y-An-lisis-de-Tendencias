@@ -219,6 +219,12 @@ def _broll_branch(
         else:
             entrada = ["-stream_loop", "-1", "-t", f"{effect.duration:.4f}", "-i", ruta]
         origen = f"[{input_index}:v]setpts=PTS-STARTPTS"
+        if asset.crop is not None and asset.crop.is_useful():
+            # Fuera las barras negras. Sin esto se escalaban y se pegaban como
+            # parte del material: un clip 2.35:1 dentro de un 16:9 aparecia en
+            # pantalla con dos franjas negras propias encima del video.
+            c = asset.crop
+            origen += f",crop={c.w}:{c.h}:{c.x}:{c.y}"
 
     if effect.mode == "full":
         # Rellena el fotograma sin deformar: amplia y recorta lo que sobra.
