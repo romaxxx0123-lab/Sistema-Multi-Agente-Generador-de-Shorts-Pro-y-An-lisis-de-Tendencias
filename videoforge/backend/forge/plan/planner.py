@@ -370,7 +370,7 @@ def build_edl(
     # Rotulos de seccion: la caja con el nombre de donde estas. No acompanan al
     # cambio de capitulo -- para eso esta la tarjeta -- sino a la seccion, y
     # solo si es larga y tiene un nombre concreto (ver `plan/labels.py`).
-    rotulos = plan_labels(edl, style, pantalla)
+    rotulos = plan_labels(edl, style, pantalla, analysis.transcript)
     efectos += rotulos
     if rotulos:
         edl.notes.append(

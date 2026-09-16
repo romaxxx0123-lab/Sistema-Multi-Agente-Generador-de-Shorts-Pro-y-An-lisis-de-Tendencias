@@ -795,8 +795,34 @@ se trata ahora **antes** de mezclar nada, que es lo unico que tiene sentido.
 ## El rótulo que dice donde estas
 
 Un rectangulo de color con texto, en una esquina, que te situa: *"Expediciones
-Palworld"*. La idea es la de television, y el texto no es una plantilla --- es el
-titulo que el sistema dedujo **de lo que dices** para ese capitulo.
+Palworld"*. La idea es la de television, y el texto no es una plantilla: sale de
+lo que el video **esta tratando** en ese tramo.
+
+Y ahi estuvo el primer fallo. La primera version usaba el titulo del capitulo
+tal cual, que es una **frase**: salian rotulos como *"El siguiente paso es el
+importante"* o *"Importante fijate boton"*, y eso no situa a nadie. Un titulo de
+capitulo puede permitirse ser una frase --- se lee una vez, en una lista, con su
+minuto delante ---; un rotulo se lee de reojo mientras hablas, asi que es un
+**nombre**: el ejemplo a imitar tiene dos palabras, no cinco.
+
+Ahora el texto sale de `understand/topics.py::label`, que contesta "¿de que va
+esto?" con los terminos que ese tramo usa y los demas no, en la forma en que los
+dijiste, y se corta a dos palabras. En la misma guia: *"Abrimos ajustes"*,
+*"Paso importante"*, *"Casilla marcar"*.
+
+Tres reglas mas que salieron de mirar lo que producia:
+
+- **La caja se mide por su texto.** Reservarle a "Firewall" el mismo hueco que a
+  "Expediciones Palworld" hace que la decision de donde ponerlo se tome con un
+  tamano que no es el suyo.
+- **No se repite lo mismo con otras palabras.** Salian *"Seccion terminamos"* y
+  *"Terminamos seccion"* en el mismo video. Se compara con todos los anteriores,
+  no solo con el ultimo.
+- **Con un solo capitulo no hay rotulos.** Un rotulo de seccion contesta *en
+  cual estas*; si solo hay una, no contesta nada. Y encima el nombre salia mal,
+  porque se calcula contrastando lo que se dice ahi con lo que se dice en el
+  resto: sin resto, en una prueba salio *"Chrome base"*, dos palabras de dos
+  temas distintos.
 
 El tipo `LowerThirdEffect` estaba en el esquema desde F2 y **no lo planificaba
 ni lo dibujaba nadie**.

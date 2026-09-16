@@ -32,7 +32,14 @@ from forge.plan.edl import (
     RenderSpec,
     TextCardEffect,
 )
-from forge.plan.labels import _es_concreto, plan_labels
+from forge.analysis.types import Transcript, TranscriptSegment, Word
+from forge.plan.labels import (
+    LABEL_WORDS,
+    _caja,
+    _es_concreto,
+    _se_parecen,
+    plan_labels,
+)
 from forge.plan.placement import ScreenUse
 from forge.plan.planner import build_edl
 from forge.plan.styles import load_style
@@ -54,9 +61,16 @@ def _edl(chapters, duration: float = 600.0) -> EDL:
 # -- cuando SI ---------------------------------------------------------------
 
 
+#: Dos secciones, que es lo minimo para que un rotulo conteste algo.
+DOS = [
+    Chapter(start=0.0, title="Expediciones Palworld"),
+    Chapter(start=300.0, title="Cocina de pociones"),
+]
+
+
 def test_una_seccion_larga_con_nombre_concreto_lleva_rotulo() -> None:
-    edl = _edl([Chapter(start=0.0, title="Expediciones Palworld")])
-    (rotulo,) = plan_labels(edl, load_style("tutorial"))
+    edl = _edl(DOS)
+    rotulo = plan_labels(edl, load_style("tutorial"))[0]
     assert rotulo.title == "Expediciones Palworld"
     assert rotulo.color.startswith("#")
 
@@ -67,12 +81,110 @@ def test_no_sale_encima_de_la_tarjeta_del_capitulo() -> None:
     Decir las dos cosas a la vez no informa el doble, estorba el doble.
     """
     estilo = load_style("tutorial")
-    edl = _edl([Chapter(start=0.0, title="Expediciones Palworld")])
-    (rotulo,) = plan_labels(edl, estilo)
+    rotulo = plan_labels(_edl(DOS), estilo)[0]
     assert rotulo.start > estilo.chapters.card_seconds + 1.0
 
 
+# -- como se llama la seccion -------------------------------------------------
+
+
+def _transcript(frases) -> Transcript:
+    segmentos = []
+    for texto, inicio in frases:
+        t = inicio
+        palabras = []
+        for palabra in texto.split():
+            palabras.append(Word(start=round(t, 2), end=round(t + 0.35, 2), text=palabra))
+            t += 0.45
+        segmentos.append(TranscriptSegment(start=inicio, end=t, text=texto, words=palabras))
+    return Transcript(language="es", segments=segmentos)
+
+
+def test_el_nombre_sale_de_lo_que_dices_ahi_y_no_del_titulo() -> None:
+    """El fallo de la primera version: el titulo de un capitulo es una FRASE.
+
+    Salian rotulos como "El siguiente paso es el importante", y eso no situa a
+    nadie. Un rotulo es un nombre; el ejemplo a imitar tiene dos palabras.
+    """
+    edl = _edl([
+        Chapter(start=0.0, title="Bueno vamos a ver esto que es importante"),
+        Chapter(start=300.0, title="Y ahora lo siguiente que toca"),
+    ])
+    transcript = _transcript([
+        ("configuramos el router wifi de casa", 10.0),
+        ("el router lleva su contrasena wifi", 60.0),
+        ("ahora revisamos el firewall del sistema", 310.0),
+        ("el firewall bloquea las conexiones", 360.0),
+    ])
+    rotulos = plan_labels(edl, load_style("tutorial"), transcript=transcript)
+
+    assert rotulos
+    for r in rotulos:
+        assert len(r.title.split()) <= LABEL_WORDS, r.title
+        assert r.title[0].isupper()
+    nombres = " ".join(r.title.lower() for r in rotulos)
+    assert "router" in nombres or "firewall" in nombres
+
+
+def test_sin_transcripcion_se_cae_al_titulo_recortado() -> None:
+    edl = _edl([
+        Chapter(start=0.0, title="Expediciones Palworld nocturnas"),
+        Chapter(start=300.0, title="Otra seccion distinta"),
+    ])
+    rotulos = plan_labels(edl, load_style("tutorial"))
+    assert rotulos[0].title == "Expediciones Palworld"
+
+
+def test_la_caja_se_mide_por_el_texto() -> None:
+    """Reservarle a "Firewall" el mismo hueco que a "Expediciones Palworld"
+    hace que la decision de donde ponerlo se tome con un tamano que no es."""
+    corto, _ = _caja("Firewall")
+    largo, _ = _caja("Expediciones Palworld")
+    assert corto < largo
+
+
+def test_no_se_repite_lo_mismo_con_otras_palabras() -> None:
+    assert _se_parecen("Seccion terminamos", "Terminamos seccion")
+    assert _se_parecen("Ajustes abrimos", "Abrimos ajustes")
+    assert not _se_parecen("Router wifi", "Firewall sistema")
+
+    edl = _edl([
+        Chapter(start=0.0, title="Primera seccion"),
+        Chapter(start=200.0, title="Segunda seccion"),
+        Chapter(start=400.0, title="Tercera seccion"),
+    ])
+    transcript = _transcript([
+        ("abrimos los ajustes del router", 10.0),
+        ("los ajustes del router otra vez", 210.0),
+        ("ahora el firewall del sistema", 410.0),
+    ])
+    rotulos = plan_labels(edl, load_style("tutorial"), transcript=transcript)
+    titulos = [r.title for r in rotulos]
+    assert len(titulos) == len(set(titulos))
+    for a, b in zip(titulos, titulos[1:]):
+        assert not _se_parecen(a, b)
+
+
 # -- cuando NO ---------------------------------------------------------------
+
+
+def test_con_un_solo_capitulo_no_hay_nada_que_situar() -> None:
+    """Un rotulo de seccion contesta "en cual estas". Si solo hay una, no
+    contesta nada -- y encima el nombre sale mal, porque se calcula
+    contrastando lo que se dice ahi con lo que se dice en el resto, y no hay
+    resto: en una prueba salia "Chrome base", dos palabras de dos temas.
+    """
+    edl = _edl([Chapter(start=0.0, title="Expediciones Palworld")])
+    assert plan_labels(edl, load_style("tutorial")) == []
+
+
+def test_un_capitulo_que_es_casi_todo_el_video_tampoco() -> None:
+    edl = _edl([
+        Chapter(start=0.0, title="Expediciones Palworld"),
+        Chapter(start=560.0, title="Un cierre muy corto"),
+    ])
+    rotulos = plan_labels(edl, load_style("tutorial"))
+    assert all(r.start > 500.0 for r in rotulos) or rotulos == []
 
 
 def test_en_una_seccion_corta_la_tarjeta_ya_basta() -> None:
@@ -91,8 +203,9 @@ def test_un_titulo_que_no_dice_nada_no_merece_rotulo(titulo: str) -> None:
     Un rectangulo azul que ponga "Parte 3" no situa a nadie.
     """
     assert not _es_concreto(titulo)
-    assert plan_labels(_edl([Chapter(start=0.0, title=titulo)]),
-                       load_style("tutorial")) == []
+    edl = _edl([Chapter(start=0.0, title=titulo),
+                Chapter(start=300.0, title="Cocina de pociones")])
+    assert not any(r.start < 300.0 for r in plan_labels(edl, load_style("tutorial")))
 
 
 def test_sin_capitulos_no_hay_rotulos() -> None:
@@ -102,8 +215,7 @@ def test_sin_capitulos_no_hay_rotulos() -> None:
 def test_se_puede_apagar_en_el_estilo() -> None:
     estilo = load_style("tutorial")
     estilo.labels.enabled = False
-    assert plan_labels(_edl([Chapter(start=0.0, title="Expediciones Palworld")]),
-                       estilo) == []
+    assert plan_labels(_edl(DOS), estilo) == []
 
 
 # -- donde -------------------------------------------------------------------
@@ -111,7 +223,7 @@ def test_se_puede_apagar_en_el_estilo() -> None:
 
 def test_se_aparta_de_lo_que_estas_senalando() -> None:
     """Misma regla que la ventanita de material: no tapar lo que ensenas."""
-    edl = _edl([Chapter(start=0.0, title="Expediciones Palworld")])
+    edl = _edl(DOS)
     libre = plan_labels(edl, load_style("tutorial"))[0]
 
     estorbo = [SpeechCue(kind=CueKind.POINT, start=0.0, end=600.0, strength=0.9,
