@@ -30,6 +30,9 @@ from .motion import analyze_motion, rate_for_duration
 from ..understand.segments import detect_segments
 from ..understand.speech_cues import find_all
 from .cursor import CursorSample, CursorTrack, track_cursor
+from dataclasses import asdict
+
+from .changes import ScreenChange, find_changes
 from .ocr import ScreenText, WordBox, engine_name, ocr_available, read_screen_text
 from .saliency import analyze_saliency
 from .shots import detect_shots
@@ -72,6 +75,7 @@ _STAGE_CODE = {
     "transcript": ("forge.analysis.speech",),
     "screen_text": ("forge.analysis.ocr",),
     "cursor": ("forge.analysis.cursor",),
+    "changes": ("forge.analysis.changes",),
 }
 
 #: Version efectiva de cada etapa, calculada una vez al importar.
@@ -91,6 +95,7 @@ STAGE_LABELS = {
     "transcript": "transcribiendo voz",
     "screen_text": "leyendo el texto en pantalla",
     "cursor": "siguiendo el puntero",
+    "changes": "viendo que cambia en pantalla",
 }
 
 ProgressFn = Callable[[str, str], None]
@@ -153,6 +158,25 @@ class AnalysisRun:
         )
         self.cache.write("motion", track.model_dump(mode="json"), v)
         return track
+
+    def _changes(self, bundle: ProxyBundle, shots, force: bool) -> list[ScreenChange]:
+        """Que cambio en la pantalla en cada corte de plano, y donde.
+
+        El detector de planos ya sabia **cuando** pasa algo; esto contesta
+        **que**. Cuesta dos fotogramas por corte, asi que es de las etapas mas
+        baratas del analisis.
+        """
+        v = STAGE_VERSIONS["changes"]
+        if not force and (cached := self.cache.read("changes", v)) is not None:
+            try:
+                return [ScreenChange(**c) for c in cached]
+            except (TypeError, KeyError):
+                self.cache.invalidate("changes")
+
+        self.progress("changes", STAGE_LABELS["changes"])
+        cambios = find_changes(bundle.video, self.settings, shots)
+        self.cache.write("changes", [asdict(c) for c in cambios], v)
+        return cambios
 
     def _cursor(self, bundle: ProxyBundle, force: bool) -> CursorTrack | None:
         """Por donde anduvo el puntero del raton.
@@ -232,19 +256,28 @@ class AnalysisRun:
         # fotogramas es otra cosa, y el cache tiene que saberlo.
         v = f"{STAGE_VERSIONS['screen_text']}+{_fingerprint(instantes)}"
         if not force and (cached := self.cache.read("screen_text", v)) is not None:
-            return [
-                ScreenText(
-                    at=x["at"],
-                    words=x.get("words", []),
-                    boxes=[WordBox(**c) for c in x.get("boxes", [])],
-                )
-                for x in cached
-            ]
+            # Una cache que no se puede releer no es un error: es una cache que
+            # no sirve. Se vuelve a calcular y ya esta. (Las guardadas por
+            # versiones anteriores traen las cajas como texto; ver `cache.py`.)
+            try:
+                return [
+                    ScreenText(
+                        at=x["at"],
+                        words=x.get("words", []),
+                        boxes=[WordBox(**c) for c in x.get("boxes", [])],
+                    )
+                    for x in cached
+                ]
+            except (TypeError, KeyError, AttributeError):
+                self.cache.invalidate("screen_text")
 
         self.progress("screen_text", STAGE_LABELS["screen_text"])
         lecturas = read_screen_text(bundle.video, self.settings, instantes)
+        # `asdict` y no `__dict__`: dentro hay cajas, que son otra dataclass, y
+        # `__dict__` las deja como objetos. Antes se guardaban como su `repr` y
+        # el segundo analisis del mismo video reventaba al leer su propia cache.
         self.cache.write(
-            "screen_text", [x.__dict__ for x in lecturas], v
+            "screen_text", [asdict(x) for x in lecturas], v
         )
         return lecturas
 
@@ -297,6 +330,9 @@ class AnalysisRun:
         # pantalla, que es el caso de uso.
         cursor = self._cursor(bundle, forced("cursor"))
         shots = self._shots(bundle, motion, forced("shots"))
+        # Que cambio en cada corte: en una guia, lo que acaba de aparecer es lo
+        # que se esta mirando, y el foco de atencion por contraste no lo sabe.
+        changes = self._changes(bundle, shots, forced("changes"))
         focus = self._focus(bundle, shots, forced("focus"))
         audio = self._audio(bundle, forced("audio"))
         transcript = (
@@ -319,6 +355,7 @@ class AnalysisRun:
             transcript=transcript,
             screen_text=self.screen_text,
             cursor=cursor,
+            changes=changes,
             # Que es cada parte del video. Sale de lo que se dice, asi que no
             # cuesta una pasada mas: se deduce del transcript que ya tenemos.
             narrative=detect_segments(transcript, info.duration),

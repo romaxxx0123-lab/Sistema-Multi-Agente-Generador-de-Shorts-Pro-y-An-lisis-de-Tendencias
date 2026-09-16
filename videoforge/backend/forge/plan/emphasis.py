@@ -63,6 +63,25 @@ CUE_WINDOW = 1.2
 #: "mira arriba a la derecha" es la senal mas clara que existe de que ahi hay
 #: algo que ver, mucho mas que cualquier medida de la imagen.
 POINTED_SCORE = 0.95
+#: Y la de un zoom colocado sobre **lo que acaba de aparecer** en pantalla. Va
+#: por debajo de lo que dices -- tu palabra manda sobre la imagen -- y por
+#: encima de cualquier candidato por saliencia, que es lo que hay que subrayar
+#: aqui: la saliencia mide **contraste**, y en una interfaz hay contraste en
+#: todas partes, asi que sus candidatos salen todos parecidos y todos tibios.
+#: Que salte un dialogo no es una medida de la imagen, es un suceso.
+#:
+#: El numero sale de mirarlo: en una guia los candidatos por saliencia llegaban
+#: a 0.824 y el zoom sobre el dialogo que acababa de aparecer valia 0.72, asi
+#: que perdia el unico hueco del cupo contra un trozo de pantalla con
+#: contraste. Exactamente al reves de lo que hay que hacer.
+APPEARED_SCORE = 0.88
+#: Margen alrededor del cambio en el que todavia cuenta como "acaba de pasar".
+APPEARED_WINDOW = 1.0
+#: Lo que se espera a que la pantalla se asiente antes de mirar si se mueve.
+SETTLE = 0.5
+#: Marca interna de los zooms que salen de un cambio de pantalla, para poder
+#: explicarlos con sus palabras y no con las de los que salen de lo que dices.
+APPEARED_TARGET = "lo que acaba de aparecer"
 
 
 def _cue_boost(cues, source_time: float) -> float:
@@ -162,6 +181,50 @@ def _pointed_candidates(edl: EDL, analysis: Analysis, rules) -> list:
     return salida
 
 
+def _appeared_candidates(edl: EDL, analysis: Analysis, rules) -> list[_Candidate]:
+    """Zooms sobre lo que acaba de aparecer en la pantalla.
+
+    El foco de atencion se calcula por contraste, y en una interfaz el contraste
+    esta repartido por toda la pantalla: medido sobre una grabacion con un
+    dialogo que salta en el segundo 16, el analisis mandaba mirar al menu de
+    antes, a 0.23 de pantalla del dialogo. Lo que acaba de cambiar no tiene ese
+    problema, porque no se deduce: se ve.
+    """
+    salida: list[_Candidate] = []
+    for cambio in analysis.changes or ():
+        t = edl.source_to_timeline(cambio.at)
+        if t is None or t < rules.punch_seconds:
+            continue
+        if t > edl.duration - rules.punch_seconds:
+            continue
+        # El movimiento se mide **despues** de que la cosa aparezca, no
+        # incluyendo el propio suceso. Un cambio de pantalla es un salto
+        # instantaneo y marca movimiento maximo en ese fotograma: midiendo
+        # desde el mismo instante, la regla de "no hagas zoom si hay
+        # movimiento" tiraba justo los zooms sobre lo que acababa de pasar,
+        # que son los mejores que hay.
+        movimiento = (
+            analysis.motion.peak_between(
+                cambio.at + SETTLE, cambio.at + SETTLE + rules.punch_seconds
+            )
+            if analysis.motion else 0.0
+        )
+        if movimiento > rules.max_motion_for_punch:
+            continue
+        zoom = _framing_zoom(cambio.box, rules)
+        if zoom < MIN_USEFUL_ZOOM:
+            continue
+        salida.append(_Candidate(
+            score=APPEARED_SCORE * _narrative_boost(analysis.narrative, cambio.at),
+            start=t,
+            cx=cambio.cx,
+            cy=cambio.cy,
+            zoom=zoom,
+            target=APPEARED_TARGET,
+        ))
+    return salida
+
+
 def plan_punch_ins(
     edl: EDL, analysis: Analysis, rules: EmphasisRules
 ) -> tuple[list[PunchInEffect], list[PunchInEffect]]:
@@ -212,6 +275,9 @@ def plan_punch_ins(
     # el encuadre lo decide lo que dices, no el mapa de saliencia. La saliencia
     # sabe donde hay contraste; tu sabes donde hay que mirar, y eso gana.
     candidatos += _pointed_candidates(edl, analysis, rules)
+    # Y donde **algo aparece** en la pantalla: un dialogo que salta, un panel
+    # que se abre. Es un suceso, no una medida de la imagen.
+    candidatos += _appeared_candidates(edl, analysis, rules)
 
     # 2. Elegir los mejores respetando la separacion minima.
     cortes = edl.cut_points()
@@ -244,12 +310,18 @@ def plan_punch_ins(
             # Un zoom mas cerrado molesta mas: cuesta en proporcion a lo que se
             # acerca, no un valor fijo para todos.
             coste = min(1.0, (zoom - 1.0) * 2.5)
-            porque = (
-                f'zoom sobre "{nombre}": ahi lo estas senalando'
-                if nombre else
-                f"zoom a ({cx:.0%}, {cy:.0%}): la atencion se concentra ahi "
-                f"y el plano esta quieto"
-            )
+            if nombre == APPEARED_TARGET:
+                porque = (
+                    f"zoom a ({cx:.0%}, {cy:.0%}): ahi acaba de aparecer algo "
+                    "en la pantalla"
+                )
+            elif nombre:
+                porque = f'zoom sobre "{nombre}": ahi lo estas senalando'
+            else:
+                porque = (
+                    f"zoom a ({cx:.0%}, {cy:.0%}): la atencion se concentra ahi "
+                    "y el plano esta quieto"
+                )
             efectos.append(PunchInEffect(
                 id=f"{prefijo}{i:03d}",
                 start=round(inicio, 3),

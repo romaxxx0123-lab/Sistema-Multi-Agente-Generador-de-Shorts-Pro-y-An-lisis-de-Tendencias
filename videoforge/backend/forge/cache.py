@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import asdict, is_dataclass
+from enum import Enum
 import shutil
 from pathlib import Path
 from typing import Any
@@ -52,6 +54,40 @@ def fingerprint_file(path: Path, *, fast: bool = True) -> str:
             fh.seek(offset)
             h.update(fh.read(_SAMPLE_BYTES))
     return h.hexdigest()[:_FINGERPRINT_LEN]
+
+
+def _serializar(objeto):
+    """Como se guarda en JSON lo que JSON no sabe guardar.
+
+    Antes aqui habia `default=str`, y eso es una trampa silenciosa: cualquier
+    objeto que no supiera serializar se guardaba como su `repr` --
+    `"WordBox(text='Ajustes', x=0.08, ...)"` -- y el fichero quedaba
+    perfectamente valido. El fallo no aparecia al escribir sino **al volver a
+    leer**, y ni siquiera siempre.
+
+    Y mordio: las cajas del OCR se guardaban asi, de modo que el **segundo**
+    analisis de un video con texto en pantalla reventaba al leer su propia
+    cache. Nadie lo habia visto porque sin motor de OCR nunca habia cajas que
+    guardar.
+
+    Ahora lo que tiene campos se convierte a diccionario de verdad, y lo que no
+    se sabe guardar **falla**, que es lo que tiene que hacer: un fallo al
+    escribir se arregla en el sitio; una cache corrupta se descubre semanas
+    despues y con suerte.
+    """
+    if isinstance(objeto, Path):
+        return str(objeto)
+    if is_dataclass(objeto) and not isinstance(objeto, type):
+        return asdict(objeto)
+    volcar = getattr(objeto, "model_dump", None)
+    if callable(volcar):
+        return volcar(mode="json")
+    if isinstance(objeto, Enum):
+        return objeto.value
+    raise TypeError(
+        f"El cache no sabe guardar un {type(objeto).__name__}. Conviertelo a "
+        "diccionario en la etapa antes de escribirlo."
+    )
 
 
 class JobCache:
@@ -105,7 +141,7 @@ class JobCache:
                 {"_version": version, "source": str(self.source), "data": data},
                 ensure_ascii=False,
                 indent=2,
-                default=str,
+                default=_serializar,
             )
         )
         tmp.replace(f)

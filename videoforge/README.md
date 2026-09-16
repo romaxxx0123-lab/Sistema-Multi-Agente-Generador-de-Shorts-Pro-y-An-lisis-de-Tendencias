@@ -534,6 +534,47 @@ interfaz y una voz que dice *"pulsa en guardar cambios"*:
 `forge doctor` lo dice en una linea: *"pantalla: OK se lee con rapidocr"*, o te
 manda instalarlo si no hay ninguno.
 
+## Que cambia en la pantalla
+
+El detector de planos ya sabia **cuando** pasa algo: en una grabacion de
+pantalla, que se abra un menu o salte un dialogo cambia bastante imagen como
+para marcar un corte, y eso funcionaba bien. Lo que faltaba era **que**.
+
+A la pregunta "¿a donde hay que mirar?" el analisis contestaba con el centro de
+masas de la **saliencia**, que mide contraste. Y en una interfaz hay contraste
+en todas partes, asi que el centro cae en cualquier sitio. Medido sobre una
+grabacion con un dialogo que aparece en el segundo 16, centrado en (0.46, 0.46):
+
+```
+el analisis mandaba mirar a (0.31, 0.29)   <- el menu de antes
+error: 0.23 de pantalla
+```
+
+El zoom se acercaba al menu viejo justo cuando lo que habia que ver era el
+dialogo nuevo.
+
+Ahora se compara el fotograma de antes con el de despues de cada cambio de
+plano y se guarda **la region que cambio** (`analysis/changes.py`). Sobre los
+cuatro sucesos de esa grabacion, el error baja de 0.23 a menos de 0.08, y el
+zoom **encuadra** lo que acaba de aparecer. Cuesta dos fotogramas por corte:
+es de las etapas mas baratas del analisis.
+
+Dos guardas, porque no todo cambio es un suceso: si cambia una miseria es ruido
+de compresion, y si cambia media pantalla no ha *aparecido algo*, ha cambiado
+todo --- y ahi no hay ninguna region que senalar.
+
+Y una cosa que hubo que corregir al conectarlo: el propio suceso marca
+**movimiento maximo** en ese fotograma, asi que la regla de "no hagas zoom si la
+imagen ya se mueve" tiraba justo los zooms sobre lo que acababa de pasar. El
+movimiento se mide ahora medio segundo despues, cuando la pantalla se ha
+asentado.
+
+Tambien hubo que arreglar el orden de las dos senales, que estaba al reves: los
+candidatos por saliencia llegaban a 0.824 y un zoom sobre el dialogo recien
+aparecido valia 0.72, asi que **perdia el unico hueco del cupo contra un trozo
+de pantalla con contraste**. Ahora un suceso vale 0.88: por encima de cualquier
+medida de la imagen y por debajo de lo que tu digas (0.95), que sigue mandando.
+
 ## Material de apoyo (b-roll)
 
 ```bash
