@@ -359,6 +359,22 @@ RECALL_MAX_WIDTH = 0.34
 RECALL_EDGE = 0.04
 
 
+def _recall_caption(rules, momento) -> str:
+    """El pie de la tarjeta: **de que** es el recuerdo.
+
+    Un pie que solo dice "ANTES" cuenta la mitad: el espectador ve una foto de
+    hace un rato y no sabe de que. Con el tema delante --- "ANTES · Esfera" ---
+    se entiende sin rebobinar.
+    """
+    fijo = (getattr(rules, "title", "") or "").strip()
+    tema = (getattr(momento, "head", "") or "").strip()
+    if tema:
+        tema = tema[:1].upper() + tema[1:]
+    if fijo and tema:
+        return f"{fijo} · {tema}"
+    return fijo or tema
+
+
 def _es_recuerdo(screen, origen: float | None) -> bool:
     """Si en ese momento estas pidiendo volver a algo ya ensenado.
 
@@ -388,7 +404,13 @@ def recall_rect(
     alto = getattr(rules, "height", RECALL_HEIGHT)
     tope = getattr(rules, "max_width", RECALL_MAX_WIDTH)
     borde = getattr(rules, "edge", RECALL_EDGE)
-    forma = asset.aspect or (render_w / max(render_h, 1))
+    # Con `aspect` se fuerza la forma de la tarjeta --- 1.0 la deja cuadrada,
+    # como una foto enmarcada. Sin el, hereda la del material, que en un video
+    # es apaisada y entonces no parece una foto puesta aparte sino un trozo de
+    # otro video pegado en la esquina.
+    forma = getattr(rules, "aspect", 0.0) or asset.aspect or (
+        render_w / max(render_h, 1)
+    )
     ancho = alto * render_h * forma / max(render_w, 1)
     ancho = min(tope, max(0.14, ancho))
     return Rect(
@@ -715,6 +737,8 @@ def plan_broll(
             query=momento.query,
             border_color=getattr(recall, "border_color", "") if recuerdo else "",
             border=getattr(recall, "border", 0.022),
+            bar=getattr(recall, "bar", 0.0) if recuerdo else 0.0,
+            label=_recall_caption(recall, momento) if recuerdo else "",
             # Lo que aporta depende de lo concreto que sea lo que se nombra y de
             # lo bien que encaje el material encontrado.
             value_score=round(

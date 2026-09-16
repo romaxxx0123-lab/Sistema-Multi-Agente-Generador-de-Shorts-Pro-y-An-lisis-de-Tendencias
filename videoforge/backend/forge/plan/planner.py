@@ -305,6 +305,8 @@ def _plan_grade(edl: EDL, style: StylePreset) -> list[GradeEffect]:
 #: el cuerpo de letra (`LABEL_SIZE_RATIO`) mas el relleno que le pone ASS.
 #: Sirve para colocar cosas **encima** de un rotulo sin que se pisen.
 LABEL_BOX_HEIGHT = 0.075
+#: Sangria del pie dentro del marco de la tarjeta.
+RECALL_CAPTION_INSET = 0.012
 
 
 def _callout_labels(marcas, rules) -> list[LowerThirdEffect]:
@@ -350,36 +352,47 @@ def _callout_labels(marcas, rules) -> list[LowerThirdEffect]:
 
 
 def _recall_titles(brolls, rules) -> list[LowerThirdEffect]:
-    """El titulillo que va sobre la tarjeta del recuerdo.
+    """El pie de la tarjeta del recuerdo.
 
-    Sale como rotulo porque es exactamente eso: una caja de color con texto, y
-    ya hay quien la dibuja. Asi el recuerdo se entiende sin verlo dos veces --
-    "ANTES" y ya sabes que lo de la esquina es material de hace un rato -- y de
-    paso cuenta en el medidor de saturacion como lo que es, texto en pantalla.
+    Si la tarjeta lleva banda (`bar`), el texto va **dentro del marco**, sobre
+    ella, y la caja del rotulo se pinta del color del propio marco para que se
+    vea como el pie de una foto y no como otra etiqueta pegada encima. Sin
+    banda, se queda por encima de la tarjeta, que es lo que habia.
     """
-    titulo = (getattr(rules, "title", "") or "").strip()
-    if not titulo:
-        return []
+    fijo = (getattr(rules, "title", "") or "").strip()
+    banda = max(0.0, getattr(rules, "bar", 0.0))
     salida = []
     for i, b in enumerate(brolls):
         if b.mode != "recall":
             continue
-        alto = LABEL_BOX_HEIGHT
+        texto = (b.label or fijo).strip()
+        if not texto:
+            continue
+        if banda > 0.0:
+            alto = round(b.rect.h * banda, 4)
+            y = round(b.rect.y + b.rect.h - alto, 4)
+            color = getattr(rules, "border_color", "") or getattr(
+                rules, "title_color", "#1f4fd8"
+            )
+        else:
+            alto = LABEL_BOX_HEIGHT
+            y = round(max(0.0, b.rect.y - alto), 4)
+            color = getattr(rules, "title_color", "#1f4fd8")
         salida.append(LowerThirdEffect(
             id=f"recallt{i:03d}",
             start=b.start,
             end=b.end,
-            title=titulo,
+            title=texto,
             rect=Rect(
-                x=b.rect.x,
-                y=round(max(0.0, b.rect.y - alto), 4),
-                w=min(b.rect.w, 0.22),
-                h=round(alto, 4),
+                x=round(b.rect.x + RECALL_CAPTION_INSET, 4),
+                y=y,
+                w=b.rect.w,
+                h=alto,
             ),
-            color=getattr(rules, "title_color", "#1f4fd8"),
+            color=color,
             value_score=b.value_score,
             cost_weight=0.12,
-            rationale=f'"{titulo}": dice que esa esquina es material de antes',
+            rationale=f'"{texto}": el pie de la tarjeta, para saber de que es',
         ))
     return salida
 

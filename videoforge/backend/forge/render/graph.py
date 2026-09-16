@@ -255,8 +255,13 @@ def _broll_branch(
             borde = max(2, int(min(ancho, alto) * grosor) // 2 * 2)
             filo = max(2, borde // 3 // 2 * 2)
             color = _ffmpeg_color(effect.border_color) or RECALL_BORDER_COLOR
+            # La banda del pie sale del mismo marco: se pide la tarjeta entera
+            # del alto que toca y la imagen se ancla arriba, asi que lo que
+            # queda abajo es marco. Una foto con su pie, no un recorte con una
+            # etiqueta flotando encima.
+            banda = max(0, int(alto * max(0.0, effect.bar)) // 2 * 2)
             dentro_w = max(2, ancho - borde * 2)
-            dentro_h = max(2, alto - borde * 2)
+            dentro_h = max(2, alto - banda - borde * 2)
             encaje = (
                 f"scale={dentro_w}:{dentro_h}:force_original_aspect_ratio=increase"
                 f":flags=bicubic,crop={dentro_w}:{dentro_h},"

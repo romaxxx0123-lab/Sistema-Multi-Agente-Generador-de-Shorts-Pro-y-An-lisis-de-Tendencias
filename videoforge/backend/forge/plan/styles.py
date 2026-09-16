@@ -305,6 +305,11 @@ class RecallRules(BaseModel):
     enabled: bool = True
     #: Alto de la tarjeta, en fraccion del fotograma.
     height: float = 0.34
+    #: Forma de la tarjeta (ancho/alto en pantalla). 1.0 la deja **cuadrada**,
+    #: que es como se ve una foto enmarcada; 0 la deja con la forma del
+    #: material, que en un video es apaisada y parece un trozo de otro video en
+    #: vez de una foto puesta aparte.
+    aspect: float = 0.0
     #: Y su ancho maximo, para no llegar al centro donde van los subtitulos.
     max_width: float = 0.34
     #: Separacion del borde del fotograma.
@@ -313,9 +318,13 @@ class RecallRules(BaseModel):
     border: float = 0.022
     #: Color del marco.
     border_color: str = "#F2F4F8"
-    #: Titulillo sobre la tarjeta. Vacio = sin titulillo.
+    #: Banda de texto **dentro** del marco, abajo, en fraccion del alto de la
+    #: tarjeta. Es lo que la convierte en una foto con su pie en vez de en un
+    #: recorte con una etiqueta flotando encima. 0 la quita.
+    bar: float = 0.0
+    #: Texto fijo del pie. Si hay ademas un tema que recordar, se juntan.
     title: str = ""
-    #: Y el color de su caja.
+    #: Color de la caja del pie cuando no hay banda (`bar` a 0).
     title_color: str = "#1f4fd8"
 
 

@@ -180,6 +180,10 @@ class BrollEffect(BaseEffect):
     border_color: str = ""
     #: grosor del marco, en fraccion del lado menor de la tarjeta
     border: float = 0.022
+    #: banda de texto dentro del marco, abajo, en fraccion del alto
+    bar: float = 0.0
+    #: lo que dice esa banda
+    label: str = ""
 
 
 class TextCardEffect(BaseEffect):

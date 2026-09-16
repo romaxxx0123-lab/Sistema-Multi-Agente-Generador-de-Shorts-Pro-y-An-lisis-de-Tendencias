@@ -415,7 +415,113 @@ def test_el_titulillo_sale_sobre_la_tarjeta_y_solo_si_el_estilo_lo_pide() -> Non
     assert t.kind is EffectKind.LOWER_THIRD
     assert t.title == "ANTES"
     assert t.start == tarjeta.start and t.end == tarjeta.end
-    assert t.rect.x == tarjeta.rect.x, "alineado con la tarjeta"
+    # Sangrado dentro del marco, no pegado a su borde exterior.
+    from forge.plan.planner import RECALL_CAPTION_INSET
+
+    assert t.rect.x == pytest.approx(tarjeta.rect.x + RECALL_CAPTION_INSET)
     assert t.rect.y < tarjeta.rect.y, "justo encima"
 
     assert _recall_titles([tarjeta], RecallRules(title="")) == []
+
+
+# -- una foto enmarcada, no un recorte apaisado -----------------------------
+
+
+def test_la_tarjeta_puede_ser_cuadrada() -> None:
+    """Con la forma del material sale apaisada y no parece una foto aparte.
+
+    Un recorte 16:9 en la esquina se lee como un trozo de otro video pegado
+    ahi; un cuadrado enmarcado se lee como una foto puesta a proposito.
+    """
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.broll import recall_rect
+    from forge.plan.styles import RecallRules
+
+    apaisado = Asset(id="x", kind=AssetKind.SELF, provider="self",
+                     width=1920, height=1080)
+
+    libre = recall_rect(apaisado, 1920, 1080, RecallRules(height=0.4, max_width=0.9))
+    cuadrada = recall_rect(
+        apaisado, 1920, 1080, RecallRules(height=0.4, aspect=1.0, max_width=0.9)
+    )
+
+    # En pantalla, no en fracciones: 0.4 de alto son 432 px y el cuadrado tiene
+    # que medir lo mismo de ancho.
+    assert cuadrada.w * 1920 == pytest.approx(cuadrada.h * 1080, rel=0.02)
+    assert libre.w > cuadrada.w, "con la forma del material sale mas ancha"
+
+
+def test_el_pie_va_dentro_del_marco() -> None:
+    """La banda es parte de la tarjeta, no una etiqueta flotando encima."""
+    from forge.plan.edl import BrollEffect, Rect
+    from forge.plan.planner import _recall_titles
+    from forge.plan.styles import RecallRules
+
+    tarjeta = BrollEffect(
+        id="b0", start=10.0, end=13.0, asset_id="x", mode="recall",
+        rect=Rect(x=0.04, y=0.56, w=0.225, h=0.40),
+        label="ANTES · Esfera", bar=0.2,
+    )
+    pie = _recall_titles([tarjeta], RecallRules(bar=0.2, border_color="#8A5A2B"))[0]
+
+    arriba, abajo = tarjeta.rect.y, tarjeta.rect.y + tarjeta.rect.h
+    assert arriba < pie.rect.y < abajo, "el pie va dentro de la tarjeta"
+    assert pie.rect.y + pie.rect.h == pytest.approx(abajo, abs=1e-3), "pegado abajo"
+    assert pie.color == "#8A5A2B", "del color del marco, para que sea el pie y no otra caja"
+    assert pie.title == "ANTES · Esfera"
+
+
+def test_sin_banda_el_pie_se_queda_encima() -> None:
+    """El comportamiento de antes sigue disponible."""
+    from forge.plan.edl import BrollEffect, Rect
+    from forge.plan.planner import _recall_titles
+    from forge.plan.styles import RecallRules
+
+    tarjeta = BrollEffect(
+        id="b0", start=10.0, end=13.0, asset_id="x", mode="recall",
+        rect=Rect(x=0.04, y=0.6, w=0.3, h=0.34),
+    )
+    pie = _recall_titles([tarjeta], RecallRules(title="ANTES", bar=0.0))[0]
+    assert pie.rect.y < tarjeta.rect.y
+
+
+def test_el_pie_dice_de_que_es_el_recuerdo() -> None:
+    """"ANTES" a secas cuenta la mitad: se ve una foto de hace un rato y no se
+    sabe de que."""
+    from forge.plan.broll import _recall_caption
+    from forge.plan.styles import RecallRules
+
+    class _M:
+        head = "esfera"
+
+    assert _recall_caption(RecallRules(title="ANTES"), _M()) == "ANTES · Esfera"
+    assert _recall_caption(RecallRules(title=""), _M()) == "Esfera"
+
+    class _SinTema:
+        head = ""
+
+    assert _recall_caption(RecallRules(title="ANTES"), _SinTema()) == "ANTES"
+
+
+def test_la_banda_sale_del_propio_marco_en_el_render() -> None:
+    """La imagen se ancla arriba y lo que queda abajo es marco: una foto con su
+    pie, no un recorte con una pegatina."""
+    import re
+
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.edl import BrollEffect, Rect
+    from forge.render.graph import _broll_branch
+
+    asset = Asset(id="x", kind=AssetKind.SELF, provider="self",
+                  source_start=1.0, source_end=4.0, width=1280, height=720)
+
+    def alto_imagen(bar: float) -> int:
+        cadena, _ = _broll_branch(
+            BrollEffect(id="b", start=1.0, end=4.0, asset_id="x", mode="recall",
+                        rect=Rect(x=0.04, y=0.52, w=0.225, h=0.40),
+                        border_color="#8A5A2B", border=0.03, bar=bar),
+            asset, 0, "[b]", 1280, 720, 30.0,
+        )
+        return int(re.search(r"crop=(\d+):(\d+)", cadena).group(2))
+
+    assert alto_imagen(0.2) < alto_imagen(0.0), "la banda le quita alto a la imagen"

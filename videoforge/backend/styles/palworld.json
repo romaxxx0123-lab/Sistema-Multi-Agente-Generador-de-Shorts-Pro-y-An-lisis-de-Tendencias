@@ -143,11 +143,13 @@
   },
   "recall": {
     "enabled": true,
-    "height": 0.32,
-    "max_width": 0.32,
-    "edge": 0.04,
-    "border": 0.026,
-    "border_color": "#D2B48C",
+    "height": 0.4,
+    "aspect": 1.0,
+    "max_width": 0.3,
+    "edge": 0.045,
+    "border": 0.03,
+    "border_color": "#8A5A2B",
+    "bar": 0.2,
     "title": "ANTES",
     "title_color": "#8A5A2B"
   }
