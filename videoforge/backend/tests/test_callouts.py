@@ -380,3 +380,92 @@ def test_el_estilo_palworld_trae_la_cara_puesta() -> None:
     assert juego.label is True
     assert neutro.corner == 0 and neutro.fill == 0 and not neutro.edge_color
     assert neutro.label is False
+
+
+# -- lo que solo se ve ampliando el fotograma -------------------------------
+
+
+def test_las_esquinas_no_parten_el_trazo() -> None:
+    """Dibujadas encima, se leen como un agujero.
+
+    Un trocito claro justo donde la linea dorada se interrumpe, cuatro veces:
+    el recuadro parece roto por las esquinas en vez de reforzado. Van por fuera,
+    envolviendo.
+    """
+    import re
+
+    from forge.plan.styles import CalloutRules
+    from forge.render.graph import _callout_filters
+
+    filtros = _callout_filters(
+        [_marca()], 1920, 1080,
+        CalloutRules(color="FFD700", corner=0.2, corner_color="F6EFE2"),
+    )
+
+    def caja(f):
+        return {k: int(v) for k, v in re.findall(r"\b([xywh])=(\d+)", f)}
+
+    trazo = caja(next(f for f in filtros if "0xFFD700" in f))
+    # Cada pieza se emite una vez por tramo del fundido; aqui solo interesa la
+    # geometria, asi que se quita el repetido.
+    esquinas = [
+        dict(g) for g in {
+            tuple(sorted(caja(f).items())) for f in filtros if "0xF6EFE2" in f
+        }
+    ]
+    assert len(esquinas) == 8, "dos trazos por esquina"
+
+    # La de arriba a la izquierda tiene que empezar antes que el trazo.
+    arriba_izq = [e for e in esquinas if e["x"] < trazo["x"] and e["y"] < trazo["y"]]
+    assert len(arriba_izq) == 2, esquinas
+
+
+def test_el_brazo_de_la_esquina_no_es_un_cuadradito() -> None:
+    """En un recuadro bajito, una fraccion del lado menor sale tan corta como el
+    propio grosor: 8 px de brazo con 8 px de trazo es un cuadrado, no una L."""
+    import re
+
+    from forge.plan.edl import CalloutEffect, Rect
+    from forge.plan.styles import CalloutRules
+    from forge.render.graph import _callout_filters
+
+    bajito = CalloutEffect(
+        id="c1", start=1.0, end=3.0, label="x",
+        rect=Rect(x=0.3, y=0.4, w=0.25, h=0.035),   # 38 px de alto a 1080
+    )
+    reglas = CalloutRules(color="FFD700", thickness=0.004, corner=0.2,
+                          corner_color="F6EFE2")
+    filtros = _callout_filters([bajito], 1920, 1080, reglas)
+
+    def caja(f):
+        return {k: int(v) for k, v in re.findall(r"\b([xywh])=(\d+)", f)}
+
+    esquinas = [
+        dict(g) for g in {
+            tuple(sorted(caja(f).items())) for f in filtros if "0xF6EFE2" in f
+        }
+    ]
+    brazos = [max(e["w"], e["h"]) for e in esquinas]
+    gordos = [min(e["w"], e["h"]) for e in esquinas]
+    assert min(brazos) >= min(gordos) * 2, (brazos, gordos)
+
+
+def test_la_etiqueta_deja_sitio_a_su_propia_caja() -> None:
+    """La caja de un rotulo la dibuja ASS y se ajusta sola al texto.
+
+    Colocarla con el hueco del alto nominal la dejaba pisando el recuadro, que
+    es tapar justo lo que se esta senalando.
+    """
+    from forge.plan.planner import LABEL_BOX_HEIGHT, _callout_labels
+    from forge.plan.styles import CalloutRules
+    from forge.render.ass import LABEL_SIZE_RATIO
+
+    assert LABEL_BOX_HEIGHT > LABEL_SIZE_RATIO, (
+        "el cuerpo de letra no es el alto de la caja: ASS le anade relleno"
+    )
+
+    marca = _marca()
+    etiqueta = _callout_labels([marca], CalloutRules(label=True))[0]
+    assert etiqueta.rect.y + LABEL_BOX_HEIGHT <= marca.rect.y + 1e-6, (
+        "la etiqueta entera tiene que caber encima del recuadro"
+    )

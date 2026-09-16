@@ -301,6 +301,12 @@ def _plan_grade(edl: EDL, style: StylePreset) -> list[GradeEffect]:
     ]
 
 
+#: Alto real de la caja de un rotulo, en fraccion de la altura del fotograma:
+#: el cuerpo de letra (`LABEL_SIZE_RATIO`) mas el relleno que le pone ASS.
+#: Sirve para colocar cosas **encima** de un rotulo sin que se pisen.
+LABEL_BOX_HEIGHT = 0.075
+
+
 def _callout_labels(marcas, rules) -> list[LowerThirdEffect]:
     """La etiqueta con el nombre de lo que recuadra cada marca.
 
@@ -318,7 +324,12 @@ def _callout_labels(marcas, rules) -> list[LowerThirdEffect]:
         texto = (marca.label or "").strip()
         if not texto:
             continue
-        alto = 0.05
+        # La caja del rotulo la dibuja ASS y se ajusta sola al texto, asi que
+        # de esto solo manda la **esquina de arriba a la izquierda**. Hay que
+        # dejar sitio para el alto real de esa caja (fuente + relleno): con el
+        # hueco justo del alto nominal, la etiqueta caia encima del recuadro y
+        # tapaba justo lo que se estaba senalando.
+        alto = LABEL_BOX_HEIGHT
         salida.append(LowerThirdEffect(
             id=f"calloutl{i:03d}",
             start=marca.start,
@@ -353,7 +364,7 @@ def _recall_titles(brolls, rules) -> list[LowerThirdEffect]:
     for i, b in enumerate(brolls):
         if b.mode != "recall":
             continue
-        alto = min(0.07, b.rect.h * 0.22)
+        alto = LABEL_BOX_HEIGHT
         salida.append(LowerThirdEffect(
             id=f"recallt{i:03d}",
             start=b.start,

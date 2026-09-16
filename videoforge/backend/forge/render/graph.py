@@ -354,7 +354,11 @@ def _callout_filters(
         color_filo = (rules.edge_color or "").lstrip("#")
         esquina = max(0.0, rules.corner)
         color_esquina = (rules.corner_color or rules.color or "FFD200").lstrip("#")
-        largo = int(min(ancho, alto) * esquina) if esquina else 0
+        # El brazo de la L. Con un recuadro bajito, una fraccion del lado menor
+        # sale tan corta como el propio grosor y las esquinas se ven como
+        # cuadraditos sueltos en vez de como una esquina reforzada; de ahi el
+        # minimo relativo al trazo.
+        largo = max(grueso * 5, int(min(ancho, alto) * esquina)) if esquina else 0
 
         def piezas(desde: float, hasta: float, alpha: float) -> list[str]:
             cuando = _q(f"between(t,{desde:.4f},{hasta:.4f})")
@@ -384,11 +388,19 @@ def _callout_filters(
             salida.append(box(x, y, ancho, alto, color, alpha, grueso))
             # 4. Y las esquinas marcadas, que es lo que le da cara de interfaz
             #    de juego. Dos trazos por esquina, en L.
+            #
+            #    Van **por fuera**, envolviendo la esquina. Dibujadas encima del
+            #    trazo parecian un agujero: un trocito claro justo donde la
+            #    linea dorada se interrumpe, y el recuadro se leia como roto en
+            #    las cuatro esquinas en vez de reforzado.
             if largo > grueso:
                 gordo = grueso * 2
+                fuera = grueso
                 for ex, ey, sx, sy in (
-                    (x, y, 1, 1), (x + ancho, y, -1, 1),
-                    (x, y + alto, 1, -1), (x + ancho, y + alto, -1, -1),
+                    (x - fuera, y - fuera, 1, 1),
+                    (x + ancho + fuera, y - fuera, -1, 1),
+                    (x - fuera, y + alto + fuera, 1, -1),
+                    (x + ancho + fuera, y + alto + fuera, -1, -1),
                 ):
                     bx = ex if sx > 0 else ex - largo
                     by = ey if sy > 0 else ey - gordo

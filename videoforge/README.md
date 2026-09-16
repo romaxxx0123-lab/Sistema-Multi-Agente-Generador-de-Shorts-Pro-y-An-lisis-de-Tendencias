@@ -1953,9 +1953,24 @@ cuatro piezas, y las cuatro salen del JSON del estilo:
 | `label` | el nombre de lo que hay dentro, encima de la caja | si (`false`) |
 
 Todas apagadas de serie, asi que ningun estilo cambia de aspecto sin pedirlo:
-`tutorial` sigue siendo un trazo dorado y ya. El filo va **por fuera** a
-proposito --- por dentro taparia justo lo que se quiere resaltar --- y la
-etiqueta va **encima** por lo mismo.
+`tutorial` sigue siendo un trazo dorado y ya.
+
+Tres detalles salieron de **mirar el fotograma ampliado**, y a tamano real no se
+veia ninguno:
+
+- El filo va **por fuera** del trazo. Por dentro tapa justo lo que se quiere
+  resaltar.
+- Las esquinas tambien van por fuera, envolviendo. Dibujadas encima del trazo
+  parecian un **agujero**: un trocito claro justo donde la linea dorada se
+  interrumpe, y el recuadro se leia como roto por las cuatro esquinas.
+- Y el brazo de la L tiene un minimo relativo al grosor. Una fraccion del lado
+  menor sale, en un recuadro bajito, tan corta como el propio trazo --- 8 px de
+  brazo con 8 px de grosor --- y las esquinas se ven como cuadraditos sueltos.
+
+La etiqueta va **encima** de la caja, y hay que reservarle su alto de verdad: la
+caja de un rotulo la dibuja ASS y se ajusta sola al texto, asi que colocarla con
+el hueco del alto nominal la dejaba pisando el recuadro y tapando lo que se
+estaba senalando.
 
 El recuadro dice **donde** mirar y la etiqueta dice **que** es: un cuadro dorado
 sobre un numero no explica que ese numero son los fragmentos que te faltan.
