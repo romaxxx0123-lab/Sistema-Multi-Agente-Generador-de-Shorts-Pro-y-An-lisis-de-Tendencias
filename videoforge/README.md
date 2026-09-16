@@ -553,11 +553,27 @@ error: 0.23 de pantalla
 El zoom se acercaba al menu viejo justo cuando lo que habia que ver era el
 dialogo nuevo.
 
-Ahora se compara el fotograma de antes con el de despues de cada cambio de
-plano y se guarda **la region que cambio** (`analysis/changes.py`). Sobre los
-cuatro sucesos de esa grabacion, el error baja de 0.23 a menos de 0.08, y el
-zoom **encuadra** lo que acaba de aparecer. Cuesta dos fotogramas por corte:
-es de las etapas mas baratas del analisis.
+Ahora se comparan fotogramas seguidos y se guarda **la region que cambio**
+(`analysis/changes.py`). Sobre los cuatro sucesos de esa grabacion, el error
+baja de 0.23 a menos de 0.08, y el zoom **encuadra** lo que acaba de aparecer.
+
+La primera version solo miraba **en los cortes de plano**, y eso dejaba fuera la
+mayoria de los sucesos de una interfaz. Se vio al examinar una guia sintetica
+con cinco sucesos apuntados: el panel del router que se sustituye por el de la
+impresora en el segundo 31 cambia el **0.78% del cuadro**, muy poco para que
+haya corte de plano --- y sin embargo es un suceso de manual, con su region
+perfectamente localizable. En una interfaz casi todo es asi: un panel que cambia
+de contenido, un valor que se actualiza, una opcion que se marca.
+
+Ahora se barre el video entero a dos fotogramas por segundo y los avistamientos
+seguidos que se pisan en pantalla se funden en uno, que es donde empezo. Sobre
+esa misma guia:
+
+```
+5 sucesos de 5 encontrados, error 0.04-0.10 de pantalla
+sucesos inventados: ninguno
+1.2s de calculo para 130s de video
+```
 
 Dos guardas, porque no todo cambio es un suceso: si cambia una miseria es ruido
 de compresion, y si cambia media pantalla no ha *aparecido algo*, ha cambiado
@@ -574,6 +590,32 @@ candidatos por saliencia llegaban a 0.824 y un zoom sobre el dialogo recien
 aparecido valia 0.72, asi que **perdia el unico hueco del cupo contra un trozo
 de pantalla con contraste**. Ahora un suceso vale 0.88: por encima de cualquier
 medida de la imagen y por debajo de lo que tu digas (0.95), que sigue mandando.
+
+### Y los refuerzos no pueden romper ese orden
+
+Ese arreglo se quedaba corto, y tambien lo destapo el examen de la guia. Sobre
+la puntuacion base se aplican **refuerzos** que multiplican --- que la parte sea
+un aviso, que ahi enfatices, que sea un paso ---, y multiplicar un candidato
+**ciego** lo pone por encima de uno **informado**:
+
+| candidato a zoom | sabe a donde mira | valor |
+|---|---|---|
+| por contraste (saliencia) | no | **1.559** |
+| ahi acaba de aparecer algo | si | 1.41 |
+| ahi estas senalando | si | 0.95 |
+
+Ganaba el unico que no sabia a donde estaba mirando, y ademas se llevaba el
+unico hueco del cupo. Ahora cada tipo tiene su **techo**, que ningun refuerzo
+puede rebasar:
+
+```
+lo que dices          1.00
+lo que pasa en pantalla 0.94
+donde hay contraste    0.85
+```
+
+Los refuerzos siguen sirviendo para elegir **entre candidatos del mismo tipo**,
+que es para lo que valen. El orden entre tipos ya no depende de ellos.
 
 ## Material de apoyo (b-roll)
 
@@ -1793,6 +1835,75 @@ habia que subir a mano. Se reescribieron los detectores de silencio y de planos
 y nadie lo subio, asi que un video ya analizado seguia dando el montaje de
 antes: 6 clips donde tocaban 10, sin ningun aviso. Ahora la version **se calcula
 sola** hasheando el fuente de esa etapa.
+
+## El examen: una guia entera con la verdad apuntada
+
+Cada pieza del analisis tenia su banco de pruebas hecho a su medida, y eso
+esconde justo lo que mas importa: si el conjunto **acierta sobre un video que no
+se hizo para el**.
+
+`forge/screenguide.py` genera una guia de pantalla de 130 segundos con la
+estructura de una de verdad --- tres temas distintos, cosas que aparecen y
+desaparecen, una espera larga anunciada, un aviso, muletillas, elementos de
+interfaz que se nombran al hablar --- y sobre todo **apunta la verdad**: en que
+segundo pasa cada cosa y en que parte de la pantalla. Con eso se puede preguntar
+lo unico que importa: *¿el analisis encuentra lo que hay?*
+
+Lo que contesta hoy (`tests/test_examen_guia.py`):
+
+| lo que hay | lo que encuentra |
+|---|---|
+| 5 sucesos de pantalla | los 5, con 0.04-0.10 de error de posicion |
+| 0 sucesos donde no pasa nada | 0 inventados |
+| 8 terminos de interfaz | los 8 leidos por OCR |
+| espera de 44s en el segundo 50 | la encuentra a 3s de sus dos extremos |
+| 3 temas, uno de ellos un aviso | los 3 tramos, con el aviso marcado como tal |
+| 130s de video | montaje de 53.5s en 15 clips |
+| la espera ocupa 44s | ocupa **5.2s** (acelerada y marcada, no cortada) |
+| 0 cortes anunciados | 0 marcados (antes 2, los dos inventados) |
+
+Dos de los tres fallos que salieron de este examen estan contados arriba: el
+detector de sucesos que solo miraba en los cortes de plano (seccion *Que cambia
+en la pantalla*) y los refuerzos sin techo que ponian un zoom ciego por encima
+de uno informado. Ninguno lo veia ninguna de las pruebas a medida, porque cada
+una daba por bueno lo que su propio fixture le ponia delante.
+
+La espera merece una nota: **no se corta**, se acelera. La anunciaste ("esto
+tarda un buen rato asi que espera"), asi que cortarla dejaria tu propia frase
+sin sentido. Se acelera x24, se marca en pantalla, y de 44 segundos pasan a
+ocupar 5.
+
+### El tercero: palabras que son dos palabras
+
+De las catorce frases del guion, **dos se marcaban como "aqui se corta"** y
+ninguna lo pedia:
+
+```
+"ojo con esto si la contrasena es CORTA no protege nada"   raiz de "cortar"
+"ya esta la impresora LISTA otra vez"                      raiz de "listo"
+```
+
+La primera es el **aviso** de la guia, la linea mas importante del video, y el
+montaje tenia permiso para tirarla porque un adjetivo comparte raiz con un
+verbo. Sobre doce frases trampa escritas a proposito se colaban **siete**.
+
+Lo que separa al verbo del adjetivo es lo que va delante: una copula o un
+adverbio de grado ("es corta", "muy corta"), o el nombre al que califica detras
+de su determinante ("una ruta corta"). En "esto **lo** corto" ese "lo" es
+pronombre, no articulo, y por eso no cuenta --- contarlo se comia el corte de
+verdad. Y "listo" sale del campo entero: como palabra suelta es "preparado",
+"espabilado" o el sustantivo "lista", y solo suprime como remate de frase, "y
+listo", que es una formula fija y se reconoce como tal.
+
+```
+antes:  7 de 12 frases trampa se colaban
+ahora:  0 de 12, sin perder ninguno de los 6 cortes de verdad
+```
+
+Se filtra al **leer**, no al decidir, para que la confusion no llegue a ninguna
+de las senales --- ni a los cortes, ni a los papeles de cada parte, ni al
+medidor.
+
 
 ## Como queda un montaje
 

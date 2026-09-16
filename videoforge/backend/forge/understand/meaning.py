@@ -40,6 +40,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Callable
 
 from .text import (
     has_present_anchor,
@@ -204,7 +205,11 @@ SUPRESION = _raices(
     "saltar", "cortar", "resumir", "ahorrar", "sobrar", "editar",
     "rollo", "tostonazo", "toston", "aburrido", "aburrir", "pesado", "repetir",
     "sufrir", "molestar", "grano", "acortar", "recortar", "obviar", "omitir",
-    "quitar", "edicion", "volando", "listo",
+    "quitar", "edicion", "volando",
+    # "listo" NO esta aqui a proposito: como palabra suelta es "preparado"
+    # ("ya esta la impresora lista"), "espabilado" o el sustantivo "lista". Solo
+    # suprime como remate de frase --- "y listo" ---, y de eso ya se encarga la
+    # locucion de abajo, que exige el final de la frase.
 )
 
 #: Lo que puede salir mal.
@@ -272,7 +277,9 @@ _LOCUCIONES: dict[str, tuple[str, ...]] = {
         # contaba como suprimir.
         r"\bfuera\s*$",
         r"\bmas de lo mismo\b", r"\b(os|te) lo cuento\b",
-        r"\b(y|,)? ?listo\b\s*$", r"\bni (os|te) aburro\b",
+        # El conector es obligatorio: "y listo" remata un paso, pero "el backup
+        # ya esta listo" dice que algo esta preparado y no pide nada.
+        r"\b(y|,) ?listo\b\s*$", r"\bni (os|te) aburro\b",
     ),
     "peligro": (
         r"\bal traste\b", r"\bde cero\b", r"\bse (va|viene) abajo\b",
@@ -392,6 +399,71 @@ class Evidence:
         return valores[0] if valores else ""
 
 
+# ---------------------------------------------------------------------------
+# Palabras que son dos palabras
+#
+# Hay palabras que caen en un campo por su raiz y ahi significan otra cosa.
+# Medido sobre doce frases trampa escritas a proposito, **siete se colaban**
+# como "aqui corta" --- entre ellas el aviso de una guia de verdad, "si la
+# contrasena es corta no protege nada", que pedia cortar justo la linea mas
+# importante del video.
+#
+# Se filtran al **leer**, no al decidir, para que la confusion no llegue a
+# ninguna de las senales: ni a los cortes, ni a los papeles de cada parte, ni
+# al medidor de saturacion.
+# ---------------------------------------------------------------------------
+
+#: Articulos y determinantes que abren un sintagma. "lo" no esta: en "esto LO
+#: corto" es pronombre, no articulo, y contarlo se comia el corte de verdad.
+_DETERMINANTES = frozenset((
+    "el", "la", "los", "las", "un", "una", "unos", "unas",
+    "mi", "tu", "su", "mis", "tus", "sus", "este", "esta", "estos", "estas",
+    "ese", "esa", "esos", "esas", "aquel", "aquella",
+))
+
+#: Lo que delante convierte en adjetivo lo que detras seria verbo.
+_COPULA = frozenset((
+    "es", "son", "era", "eran", "fue", "fueron", "sea", "sean",
+    "esta", "estan", "estaba", "estaban", "queda", "quedan", "quedo",
+    "parece", "parecen", "resulta", "resultan", "sigue", "siguen",
+    "muy", "bastante", "demasiado", "tan", "mas", "menos", "poco", "algo",
+    "bien", "ya",
+))
+
+
+def _es_adjetivo(palabras: list[str], i: int) -> bool:
+    """Si la palabra en `i` esta usada como adjetivo y no como verbo.
+
+    "la contrasena ES CORTA" describe la contrasena; "esto LO CORTO" anuncia un
+    corte del montaje. Misma raiz, y lo que las separa es lo que va delante:
+    una copula o un adverbio de grado ("es corta", "muy corta"), o el nombre al
+    que califica detras de su determinante ("una ruta corta").
+    """
+    if i == 0:
+        return False
+    if palabras[i - 1] in _COPULA:
+        return True
+    # postnominal: <determinante> <nombre> <adjetivo>
+    return i >= 2 and palabras[i - 2] in _DETERMINANTES
+
+
+#: campo -> (formas ambiguas, prueba de que aqui significa otra cosa).
+#: Se amplia anadiendo una fila, no tocando `read`.
+_HOMOGRAFOS: tuple[
+    tuple[str, frozenset[str], Callable[[list[str], int], bool]], ...
+] = (
+    ("supresion", frozenset(("corto", "corta", "cortos", "cortas")), _es_adjetivo),
+)
+
+
+def _otro_significado(campo: str, palabras: list[str], i: int) -> bool:
+    """Si esa palabra, ahi, es la otra palabra y no la de este campo."""
+    return any(
+        campo == nombre and palabras[i] in formas and prueba(palabras, i)
+        for nombre, formas, prueba in _HOMOGRAFOS
+    )
+
+
 def read(texto: str) -> Evidence:
     """Lee una frase y devuelve de que habla, sin decidir nada todavia."""
     limpio = normalize(texto)
@@ -400,7 +472,10 @@ def read(texto: str) -> Evidence:
 
     campos: dict[str, list[str]] = {}
     for nombre, campo in CAMPOS.items():
-        vistas = [p for p, r in zip(palabras, raices) if r in campo]
+        vistas = [
+            p for i, (p, r) in enumerate(zip(palabras, raices))
+            if r in campo and not _otro_significado(nombre, palabras, i)
+        ]
         if vistas:
             campos[nombre] = vistas
     for nombre, locuciones in _LOCUCIONES.items():
@@ -555,8 +630,13 @@ def infer(texto: str) -> list[Sense]:
             for p in (r"\bno (merece|vale) la pena\b", r"\bno hace falta que\b",
                       r"\ben vez de\b", r"\bal grano\b")
         )
+        remate = re.search(r"\b(y|,) ?listo\b\s*$", limpio)
         if "fuera" in e.construcciones:
             anadir("salto", 0.9, e.construcciones["fuera"])
+        elif remate:
+            # "y listo" cierra el paso: lo que venga detras ya no es el paso.
+            # No necesita ancla al presente, porque la formula ya es el ancla.
+            anadir("salto", 0.85, f'rematas con "{remate.group(0).strip()}"')
         elif locucion and ("supresion" in e.campos or "proceso" not in e.campos):
             anadir("salto", 0.85, "dices que no hace falta verlo")
         elif (

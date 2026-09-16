@@ -143,4 +143,12 @@ def test_lo_que_de_verdad_dice_algo_se_queda(guia) -> None:
     assert EffectKind.TEXT_CARD in tipos, "los rotulos de capitulo se quedan"
     assert EffectKind.PUNCH_IN in tipos, "los zooms que valian se quedan"
     zooms = [e for e in _visibles(edl) if e.kind is EffectKind.PUNCH_IN]
-    assert max(e.value_score for e in zooms) > 0.9
+
+    # En esta guia no hay video detras, asi que no hay sucesos de pantalla y
+    # todos los zooms se colocan por saliencia. El techo de ese tipo es 0.85
+    # (ver `CEILING_SALIENCY`), asi que el que sobrevive es el mejor que puede
+    # haber: lo que se comprueba es que el recorte se queda con ese y no con
+    # uno cualquiera.
+    from forge.plan.emphasis import CEILING_SALIENCY
+
+    assert max(e.value_score for e in zooms) >= CEILING_SALIENCY

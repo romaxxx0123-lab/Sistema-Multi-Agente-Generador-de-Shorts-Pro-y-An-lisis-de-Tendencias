@@ -75,6 +75,23 @@ POINTED_SCORE = 0.95
 #: que perdia el unico hueco del cupo contra un trozo de pantalla con
 #: contraste. Exactamente al reves de lo que hay que hacer.
 APPEARED_SCORE = 0.88
+
+#: Techo de cada tipo de candidato. Esto ordena las tres senales y **no lo
+#: pueden romper los refuerzos**, que es el fallo que habia.
+#:
+#: Los refuerzos (parte del video, senales del habla) multiplican, y multiplicar
+#: un candidato ciego lo pone por encima de uno informado: medido en una guia
+#: real, un zoom colocado por contraste llegaba a **1.559** mientras el zoom
+#: sobre el dialogo que acababa de aparecer valia 1.41 y el colocado sobre lo
+#: que estabas senalando, 0.95. Ganaba el que no sabia a donde miraba.
+#:
+#: El orden correcto es siempre el mismo: lo que **dices** manda sobre lo que
+#: **pasa en pantalla**, y lo que pasa en pantalla manda sobre donde hay mas
+#: **contraste**. Los refuerzos siguen sirviendo para distinguir entre
+#: candidatos del mismo tipo, que es para lo que valen.
+CEILING_POINTED = 1.00
+CEILING_APPEARED = 0.94
+CEILING_SALIENCY = 0.85
 #: Margen alrededor del cambio en el que todavia cuenta como "acaba de pasar".
 APPEARED_WINDOW = 1.0
 #: Lo que se espera a que la pantalla se asiente antes de mirar si se mueve.
@@ -171,7 +188,7 @@ def _pointed_candidates(edl: EDL, analysis: Analysis, rules) -> list:
             # ocupa sitio en el cupo y suma en el medidor de saturacion.
             continue
         salida.append(_Candidate(
-            score=POINTED_SCORE * c.strength,
+            score=min(CEILING_POINTED, POINTED_SCORE * c.strength),
             start=t,
             cx=c.region[0],
             cy=c.region[1],
@@ -215,7 +232,10 @@ def _appeared_candidates(edl: EDL, analysis: Analysis, rules) -> list[_Candidate
         if zoom < MIN_USEFUL_ZOOM:
             continue
         salida.append(_Candidate(
-            score=APPEARED_SCORE * _narrative_boost(analysis.narrative, cambio.at),
+            score=min(
+                CEILING_APPEARED,
+                APPEARED_SCORE * _narrative_boost(analysis.narrative, cambio.at),
+            ),
             start=t,
             cx=cambio.cx,
             cy=cambio.cy,
@@ -268,7 +288,9 @@ def plan_punch_ins(
             # cualquier sitio.
             puntos *= _narrative_boost(analysis.narrative, origen)
             puntos *= _cue_boost(analysis.cues, origen)
-            candidatos.append(_Candidate(puntos, t, foco.cx, foco.cy, rules.punch_zoom))
+            candidatos.append(_Candidate(
+                min(puntos, CEILING_SALIENCY), t, foco.cx, foco.cy, rules.punch_zoom
+            ))
         t += CANDIDATE_STEP
 
     # Donde dices **donde** hay que mirar ("este boton de arriba a la derecha"),

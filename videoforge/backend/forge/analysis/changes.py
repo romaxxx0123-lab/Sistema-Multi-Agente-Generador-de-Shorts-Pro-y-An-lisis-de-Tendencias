@@ -17,8 +17,18 @@ O sea que el zoom se acercaba al menu viejo justo cuando lo que habia que ver
 era el dialogo nuevo. Y en una guia **lo que acaba de aparecer es lo que se esta
 mirando**: no hay senal de atencion mas fuerte que esa.
 
-Aqui se calcula comparando el fotograma de antes con el de despues de cada
-cambio de plano y quedandose con la **region que cambio**. Dos guardas:
+Aqui se calcula comparando fotogramas seguidos y quedandose con la **region que
+cambio**.
+
+La primera version solo miraba los **cortes de plano**, y eso dejaba fuera la
+mayoria: medido sobre una guia sintetica de cinco sucesos, el panel del router
+que se sustituye por el de la impresora cambia el **0.78%** del cuadro, muy poco
+para que el detector de planos lo llame corte -- y sin embargo es un suceso de
+manual, con su region perfectamente localizable. En una interfaz casi todo es
+asi: un panel que cambia de contenido, un valor que se actualiza, una opcion que
+se marca. Por eso se barre el video entero.
+
+Dos guardas:
 
 - si lo que cambia es una miseria, no es un suceso, es ruido de compresion;
 - si cambia media pantalla, no ha "aparecido algo", ha cambiado todo, y ahi no
@@ -33,14 +43,18 @@ from pathlib import Path
 import numpy as np
 
 from ..config import Settings
-from .frames import extract_frames_at
+from .frames import iter_gray_frames
 
 #: Resolucion a la que se comparan los fotogramas. Con esto sobra para saber
 #: **donde** esta el cambio, y es instantaneo.
 DIFF_WIDTH = 320
 DIFF_HEIGHT = 180
-#: Cuanto se mira antes y despues del corte.
-GAP = 0.35
+#: Cada cuanto se mira. Dos veces por segundo basta para que un suceso no se
+#: escape y es mas barato que la pasada de movimiento, que va a cuatro.
+RATE = 2.0
+#: Dos sucesos mas juntos que esto en el tiempo, y que se pisen en pantalla, son
+#: el mismo suceso visto dos veces.
+MERGE_SECONDS = 1.5
 #: Diferencia de gris a partir de la cual un pixel ha cambiado de verdad.
 THRESHOLD = 22
 #: Por debajo de esta fraccion del fotograma no es un suceso, es ruido.
@@ -113,44 +127,55 @@ def _region(antes: np.ndarray, despues: np.ndarray) -> tuple[float, float, float
     )
 
 
+def _se_pisan(a: ScreenChange, b: tuple[float, float, float, float]) -> bool:
+    """Si dos regiones se solapan de verdad."""
+    x, y, w, h = b
+    ancho = max(0.0, min(a.x + a.w, x + w) - max(a.x, x))
+    alto = max(0.0, min(a.y + a.h, y + h) - max(a.y, y))
+    comun = ancho * alto
+    return comun > 0.4 * min(a.w * a.h, w * h)
+
+
 def find_changes(
     proxy_video: Path,
     settings: Settings,
-    shots,
+    shots=None,
     *,
-    gap: float = GAP,
+    rate: float = RATE,
 ) -> list[ScreenChange]:
-    """Que cambio en cada corte de plano, y donde."""
-    if not shots:
-        return []
+    """Que cambia en la pantalla a lo largo del video, y donde.
 
+    `shots` ya no hace falta y se acepta para no romper a quien la llamara con
+    el orden viejo: lo que se barre es el video entero.
+    """
     import cv2
 
-    instantes: list[float] = []
-    for shot in shots:
-        if shot.start <= gap:
-            continue
-        instantes += [shot.start - gap, shot.start + gap]
-    if not instantes:
-        return []
-
-    frames = extract_frames_at(
-        proxy_video, settings, instantes, width=DIFF_WIDTH, height=DIFF_HEIGHT
+    frames = list(
+        iter_gray_frames(
+            proxy_video, settings, rate=rate, width=DIFF_WIDTH, height=DIFF_HEIGHT
+        )
     )
-    if len(frames) < len(instantes):
+    if len(frames) < 2:
         return []
 
     salida: list[ScreenChange] = []
-    for i in range(0, len(instantes), 2):
-        antes = cv2.cvtColor(frames[i], cv2.COLOR_RGB2GRAY)
-        despues = cv2.cvtColor(frames[i + 1], cv2.COLOR_RGB2GRAY)
-        region = _region(antes, despues)
+    for i in range(1, len(frames)):
+        region = _region(frames[i - 1], frames[i])
         if region is None:
             continue
         x, y, w, h, area = region
+        at = round(i / rate, 3)
+
+        # Un suceso que dura mas de un fotograma sale varias veces seguidas: es
+        # el mismo. Se queda el primero, que es cuando empezo a pasar.
+        if salida and at - salida[-1].at <= MERGE_SECONDS and _se_pisan(
+            salida[-1], (x, y, w, h)
+        ):
+            continue
+
         salida.append(
             ScreenChange(
-                at=round(instantes[i] + gap, 3),
+                at=at,
                 x=round(float(x), 4), y=round(float(y), 4),
                 w=round(float(w), 4), h=round(float(h), 4),
                 area=float(area),

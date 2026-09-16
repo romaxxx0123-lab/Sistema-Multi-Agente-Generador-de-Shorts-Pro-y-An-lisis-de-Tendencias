@@ -201,3 +201,75 @@ def test_estaba_si_es_imperfecto() -> None:
 
     assert is_habitual("antes esto estaba en otro sitio")
     assert is_habitual("estabamos probando otra cosa")
+
+
+# -- palabras que son dos palabras -------------------------------------------
+#
+# Lo destapo el examen de la guia sintetica: de catorce frases del guion, dos se
+# marcaban como "aqui se corta" y ninguna lo pedia.
+#
+#     "si la contrasena es CORTA no protege nada"   -> raiz de "cortar"
+#     "ya esta la impresora LISTA otra vez"         -> raiz de "listo"
+#
+# La primera es el **aviso** de la guia, la linea mas importante del video, y el
+# montaje tenia permiso para tirarla. Sobre doce frases trampa escritas a
+# proposito se colaban siete.
+
+TRAMPAS_DE_CORTE = [
+    "ojo con esto si la contrasena es corta no protege nada",
+    "ya esta la impresora lista otra vez",
+    "la lista de reglas del firewall",
+    "una contrasena corta es mala idea",
+    "esto es una ruta muy corta",
+    "la pausa fue muy corta",
+    "aqui ya tenemos la maquina lista para arrancar",
+    "abre la lista desplegable de arriba",
+    "la respuesta corta es que si",
+    "cuando este listo el instalador seguimos",
+    "esta lista esta ordenada por fecha",
+    "el cable es corto para esta mesa",
+]
+
+CORTES_DE_VERDAD = [
+    "esto lo corto que no aporta nada",
+    "aqui me salto toda esta parte",
+    "voy a recortar este trozo que es un rollo",
+    "esto no merece la pena verlo",
+    "le damos a guardar y listo",
+    "esta parte la quito que es un toston",
+]
+
+
+def _pide_corte(texto: str):
+    from forge.understand.meaning import infer
+
+    return next((s for s in infer(texto) if s.intent == "salto"), None)
+
+
+@pytest.mark.parametrize("frase", TRAMPAS_DE_CORTE)
+def test_no_pide_corte_donde_solo_es_un_adjetivo(frase: str) -> None:
+    senal = _pide_corte(frase)
+    assert senal is None, (frase, senal)
+
+
+@pytest.mark.parametrize("frase", CORTES_DE_VERDAD)
+def test_y_los_cortes_de_verdad_siguen_saliendo(frase: str) -> None:
+    """La otra mitad de la medida: cerrar la puerta sin cerrar la buena."""
+    assert _pide_corte(frase) is not None, frase
+
+
+def test_listo_solo_suprime_como_remate() -> None:
+    """"Y listo" cierra un paso; "esta listo" dice que algo esta preparado."""
+    assert _pide_corte("pulsas aceptar y listo") is not None
+    assert _pide_corte("el backup ya esta listo") is None
+
+
+def test_lo_que_separa_al_verbo_del_adjetivo_es_lo_que_va_delante() -> None:
+    from forge.understand.meaning import _es_adjetivo
+
+    assert _es_adjetivo("la contrasena es corta".split(), 3)
+    assert _es_adjetivo("una ruta muy corta".split(), 3)
+    assert _es_adjetivo("una ruta corta".split(), 2)
+    # "lo" no es articulo aqui, es pronombre: esto si es un corte.
+    assert not _es_adjetivo("esto lo corto".split(), 2)
+    assert not _es_adjetivo("aqui corto y sigo".split(), 1)

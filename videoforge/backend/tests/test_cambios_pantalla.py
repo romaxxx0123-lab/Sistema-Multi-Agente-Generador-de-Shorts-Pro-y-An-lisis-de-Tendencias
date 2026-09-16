@@ -128,8 +128,33 @@ def test_un_video_quieto_no_tiene_sucesos(sample_video, settings: Settings) -> N
         assert cambio.area > 0.0
 
 
-def test_sin_planos_no_hay_nada_que_comparar(grabacion, settings: Settings) -> None:
-    assert find_changes(grabacion, settings, []) == []
+def test_ya_no_depende_de_los_cortes_de_plano(grabacion, settings: Settings) -> None:
+    """Lo que cambio esta vez: antes solo se miraba en los cortes de plano.
+
+    Eso dejaba fuera la mayoria de los sucesos de una interfaz, que cambian muy
+    poca imagen -- un panel que se sustituye por otro, un valor que se
+    actualiza -- y por poca imagen no hay corte de plano. Ahora se barre el
+    video entero y `shots` sobra: dar la lista o no darla da lo mismo.
+    """
+    con = find_changes(grabacion, settings)
+    sin = find_changes(grabacion, settings, [])
+    assert [c.at for c in con] == [c.at for c in sin]
+    assert con, "el barrido encuentra sucesos sin que nadie le diga donde mirar"
+
+
+def test_un_suceso_largo_se_cuenta_una_vez(analisis) -> None:
+    """Un dialogo que tarda en dibujarse sale en varios fotogramas seguidos.
+
+    Es el mismo suceso, no cuatro. Se fusionan los que caen juntos en el tiempo
+    y se pisan en pantalla, y se queda el primero, que es cuando empezo.
+    """
+    for a, b in zip(analisis.changes, analisis.changes[1:]):
+        if b.at - a.at > 1.5:
+            continue
+        ancho = max(0.0, min(a.x + a.w, b.x + b.w) - max(a.x, b.x))
+        alto = max(0.0, min(a.y + a.h, b.y + b.h) - max(a.y, b.y))
+        comun = ancho * alto
+        assert comun <= 0.4 * min(a.w * a.h, b.w * b.h), (a, b)
 
 
 # -- y que hace el montaje con ello -----------------------------------------
