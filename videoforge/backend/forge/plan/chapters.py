@@ -276,27 +276,73 @@ def plan_chapters(
     bloques.append(bloque)
 
     titulos = _titles_for(bloques)
+    # Y el nombre corto de cada uno, que es lo que va al cartel de pantalla.
+    temas = [
+        _topic_title(bloque, [b for j, b in enumerate(bloques) if j != i])
+        for i, bloque in enumerate(bloques)
+    ]
     # El primer capitulo siempre arranca en cero, aunque la voz entre despues.
     inicios[0] = 0.0
     return [
-        Chapter(start=inicio, title=titulo)
-        for inicio, titulo in zip(inicios, titulos)
+        Chapter(start=inicio, title=titulo, topic=tema)
+        for inicio, titulo, tema in zip(inicios, titulos, temas)
     ]
+
+
+#: Palabras como mucho en un cartel de pantalla. Un cartel se lee de un vistazo
+#: o no se lee: con la frase entera del capitulo --- "Hola en este video
+#: montamos la base de cero" --- no da tiempo, y encima tapa el video. Lo que se
+#: quiere ver ahi es de que va esto: "Expediciones".
+#:
+#: Y **una**, no tres. Varios terminos distintivos seguidos no son un nombre,
+#: son una lista: medido sobre una guia de Palworld, el capitulo de las
+#: expediciones se titulaba "Rutas tarda afinidad" y el de capturar, "Capturar
+#: sube probabilidad". Con uno quedan "Rutas" y "Capturar", que es lo que se
+#: espera de un cartel de seccion: de que va esto, no un resumen.
+#:
+#: (Se sigue tirando primero de los verbos, asi que el que queda es el nombre
+#: cuando hay alguno.)
+CARD_MAX_WORDS = 1
+
+
+def card_text(chapter: Chapter) -> str:
+    """Lo que dice el cartel de un capitulo: su nombre corto.
+
+    Se quitan las acciones y se deja lo que **nombra** algo: un cartel dice
+    donde estas, y para eso valen los nombres, no los verbos. Si al quitarlas no
+    queda nada se devuelve lo que habia, porque hay secciones que de verdad van
+    de hacer algo.
+    """
+    from .labels import _solo_nombres
+
+    texto = (chapter.topic or "").strip()
+    if not texto:
+        return ""
+    palabras = _solo_nombres(texto).split()[:CARD_MAX_WORDS]
+    return " ".join(palabras)
 
 
 def chapter_cards(chapters: list[Chapter], rules: ChapterRules) -> list[TextCardEffect]:
-    """Rotulos en pantalla al empezar cada capitulo."""
+    """Carteles en pantalla al empezar cada capitulo.
+
+    Solo los que tienen un nombre corto. Un capitulo del que no se saca un
+    nombre claro sigue estando en la lista de YouTube --- ahi una frase se lee
+    bien --- pero no pone cartel: mas vale ninguno que uno que no dice nada.
+    """
     if not rules.show_cards:
         return []
-    return [
-        TextCardEffect(
+    salida = []
+    for i, c in enumerate(chapters):
+        texto = card_text(c)
+        if not texto:
+            continue
+        salida.append(TextCardEffect(
             id=f"card{i:03d}",
             start=round(c.start, 3),
             end=round(c.start + rules.card_seconds, 3),
-            text=c.title,
+            text=texto,
             value_score=0.6,
             cost_weight=0.35,
-            rationale=f"rotulo de capitulo en {c.timestamp()}",
-        )
-        for i, c in enumerate(chapters)
-    ]
+            rationale=f'cartel "{texto}" en {c.timestamp()}: de eso va el capitulo',
+        ))
+    return salida

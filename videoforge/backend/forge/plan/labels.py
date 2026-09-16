@@ -60,7 +60,7 @@ import re
 from ..understand.meaning import stem as _stem
 from ..understand.topics import label as topic_label
 from .edl import EDL, LowerThirdEffect, Rect
-from .placement import ScreenUse, place
+from .placement import ScreenUse, corners, place
 
 #: Verbos de accion que en una guia se dicen constantemente. Como **titulo de
 #: capitulo** un verbo informa ("Guardamos los cambios"); como **rotulo** no:
@@ -230,6 +230,22 @@ def _se_parecen(a: str, b: str) -> bool:
     return len(uno & otro) / min(len(uno), len(otro)) >= MAX_PARECIDO
 
 
+def _esquina_fija(nombre: str, ancho: float, alto: float) -> Rect | None:
+    """La esquina que pide el estilo, si pide alguna.
+
+    Cuando el estilo la fija, el rotulo **no se mueve**: que salga cada vez en
+    un rincon distinto es lo que impide reconocerlo sin leerlo. Se pierde la
+    posibilidad de esquivar lo que haya debajo, y esa es la decision.
+    """
+    nombre = (nombre or "").strip().lower()
+    if not nombre:
+        return None
+    for etiqueta, rect in corners(ancho, alto):
+        if etiqueta == nombre:
+            return rect
+    return None
+
+
 def plan_labels(
     edl: EDL, style, screen: ScreenUse | None = None, transcript=None
 ) -> list[LowerThirdEffect]:
@@ -268,9 +284,10 @@ def plan_labels(
             continue
 
         ancho, alto = _caja(nombre)
-        base = Rect(x=0.05, y=0.08, w=ancho, h=alto)
+        fija = _esquina_fija(getattr(rules, "corner", ""), ancho, alto)
+        base = fija or Rect(x=0.05, y=0.08, w=ancho, h=alto)
         movida = ""
-        if screen is not None:
+        if fija is None and screen is not None:
             origen_inicio = edl.timeline_to_source(inicio)
             origen_fin = edl.timeline_to_source(fin)
             # Lo que senalas no suprime el rotulo, lo aparta: en una guia

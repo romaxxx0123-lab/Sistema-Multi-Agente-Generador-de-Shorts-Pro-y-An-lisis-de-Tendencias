@@ -1939,6 +1939,34 @@ styles/palworld.json
                            marcadas y etiqueta
 ```
 
+### Un cartel dice de que va, no cuenta el video
+
+El cartel de capitulo llevaba el titulo entero --- *"Hola en este video montamos
+la base de cero"* --- y eso no es un cartel: no da tiempo a leerlo y encima tapa
+el video. Un cartel se lee de un vistazo o no se lee.
+
+Asi que el capitulo lleva **dos nombres**: el titulo, que es una frase y va a la
+lista de capitulos de YouTube, donde una frase se lee bien; y el **tema**, de
+una palabra, que es lo que sale en pantalla. Y varios terminos seguidos tampoco
+son un nombre, son una lista:
+
+```
+titulo   "La estacion de expediciones que es lo que nadie explica"
+tema     "Rutas tarda afinidad"   <- tres terminos distintivos: una lista
+cartel   "Rutas"                  <- de esto va la seccion
+```
+
+Se tiran primero los verbos, asi que el que queda es el nombre cuando hay
+alguno. Y un capitulo del que no sale un nombre claro **no pone cartel**: sigue
+en la lista de YouTube, pero mas vale ninguno que uno que no dice nada.
+
+**Y va abajo a la izquierda.** El estilo puede clavar la esquina
+(`labels.corner`): un rotulo que sale cada vez en un sitio distinto no se
+reconoce sin leerlo, y en un gameplay --- HUD arriba, subtitulos centrados
+abajo --- la esquina que queda es esa. Se pierde la posibilidad de esquivar lo
+que haya debajo, y esa es la decision. Sin nombre de esquina sigue colocandose
+donde no estorbe, que es lo de siempre.
+
 ### La placa: un rotulo con una imagen detras
 
 Un rotulo era una caja de color con texto. Con esto la caja pasa a ser **una

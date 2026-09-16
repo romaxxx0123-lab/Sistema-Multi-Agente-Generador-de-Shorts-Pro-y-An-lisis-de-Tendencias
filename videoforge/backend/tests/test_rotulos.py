@@ -571,3 +571,75 @@ def test_un_cambio_de_ritmo_pequeno_tampoco() -> None:
         timeline=[Clip(id="c0", source_start=0.0, source_end=40.0, speed=1.2)],
     )
     assert plan_speed_tags(edl, load_style("tutorial")) == []
+
+
+# -- el cartel dice de que va, no cuenta el video ---------------------------
+#
+# El cartel de capitulo llevaba el titulo entero --- "Hola en este video
+# montamos la base de cero" --- y eso no es un cartel: no da tiempo a leerlo y
+# encima tapa el video. Un cartel se lee de un vistazo o no se lee.
+
+
+def test_el_cartel_lleva_una_palabra_no_la_frase() -> None:
+    from forge.plan.chapters import chapter_cards, card_text
+    from forge.plan.edl import Chapter
+    from forge.plan.styles import ChapterRules
+
+    capitulo = Chapter(
+        start=0.0,
+        title="Hola en este video montamos la base de cero",
+        topic="Rutas tarda afinidad",
+    )
+    assert card_text(capitulo) == "Rutas", "ni la frase ni la lista de terminos"
+
+    cartel = chapter_cards([capitulo], ChapterRules())[0]
+    assert cartel.text == "Rutas"
+    assert len(cartel.text.split()) <= 3, "un cartel se lee de un vistazo"
+
+
+def test_sin_nombre_corto_no_hay_cartel() -> None:
+    """Mas vale ninguno que uno que no dice nada.
+
+    El capitulo sigue en la lista de YouTube --- ahi una frase se lee bien ---
+    pero no pone cartel.
+    """
+    from forge.plan.chapters import chapter_cards
+    from forge.plan.edl import Chapter
+    from forge.plan.styles import ChapterRules
+
+    sin_tema = Chapter(start=0.0, title="Bueno vamos a ver esto", topic="")
+    assert chapter_cards([sin_tema], ChapterRules()) == []
+
+
+def test_el_cartel_prefiere_lo_que_nombra_algo() -> None:
+    """Un cartel dice donde estas, y para eso valen los nombres."""
+    from forge.plan.chapters import card_text
+    from forge.plan.edl import Chapter
+
+    assert card_text(Chapter(start=0, title="x", topic="abrimos expediciones")) == (
+        "expediciones"
+    )
+
+
+def test_el_estilo_puede_clavar_el_rotulo_en_una_esquina() -> None:
+    """Un rotulo que sale cada vez en un sitio distinto no se reconoce.
+
+    Con la esquina fija se pierde la posibilidad de esquivar lo que haya debajo,
+    y esa es la decision.
+    """
+    from forge.plan.labels import _esquina_fija
+
+    abajo_izq = _esquina_fija("abajo a la izquierda", 0.3, 0.08)
+    assert abajo_izq is not None
+    assert abajo_izq.x < 0.1, "a la izquierda"
+    assert abajo_izq.y + abajo_izq.h > 0.9, "abajo"
+
+    assert _esquina_fija("", 0.3, 0.08) is None, "sin pedir nada, donde no estorbe"
+    assert _esquina_fija("en el techo", 0.3, 0.08) is None, "un nombre que no existe"
+
+
+def test_el_estilo_palworld_los_pone_abajo_a_la_izquierda() -> None:
+    from forge.plan.styles import load_style
+
+    assert load_style("palworld").labels.corner == "abajo a la izquierda"
+    assert load_style("tutorial").labels.corner == "", "el neutro sigue decidiendo"

@@ -246,6 +246,12 @@ class LabelRules(BaseModel):
     #: cuanto espera desde que acaba la tarjeta de capitulo, para no decir dos
     #: veces lo mismo a la vez
     after_card: float = 8.0
+    #: En que esquina va. Vacio la deja donde no estorbe, que es lo de siempre;
+    #: con un nombre se queda **ahi fijo**. Un rotulo que sale cada vez en un
+    #: sitio distinto no se reconoce de un vistazo, y en un gameplay --- HUD
+    #: arriba, subtitulos centrados abajo --- la esquina que queda es la de
+    #: abajo a la izquierda.
+    corner: str = ""
 
 
 class TransitionRules(BaseModel):

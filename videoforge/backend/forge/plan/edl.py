@@ -281,7 +281,12 @@ class Chapter(BaseModel):
     """Un capitulo del montaje, para rotulos y para la descripcion de YouTube."""
 
     start: float
+    #: Para la descripcion de YouTube: una frase se lee bien en una lista.
     title: str
+    #: Y para el cartel en pantalla: **dos o tres palabras**. Un cartel no es
+    #: una lista; con una frase entera no da tiempo a leerlo y ademas tapa el
+    #: video. Vacio si el tramo no da un nombre claro, y entonces no hay cartel.
+    topic: str = ""
 
     def timestamp(self) -> str:
         m, s = divmod(int(self.start), 60)

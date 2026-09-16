@@ -139,7 +139,8 @@
   },
   "labels": {
     "enabled": true,
-    "color": "#2E6FB7"
+    "color": "#2E6FB7",
+    "corner": "abajo a la izquierda"
   },
   "recall": {
     "enabled": true,

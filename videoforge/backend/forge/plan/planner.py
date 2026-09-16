@@ -309,9 +309,10 @@ LABEL_BOX_HEIGHT = 0.075
 RECALL_CAPTION_INSET = 0.012
 
 
-#: Sitio de la placa de una tarjeta de capitulo: banda ancha arriba a la
-#: izquierda, que es donde ya va su texto.
-CARD_PLATE = Rect(x=0.05, y=0.06, w=0.56, h=0.21)
+#: Sitio del cartel de capitulo: **abajo a la izquierda**. Es la esquina que
+#: queda libre --- el HUD de un juego vive arriba y los subtitulos van centrados
+#: abajo --- y es donde se espera un cartel de seccion.
+CARD_PLATE = Rect(x=0.04, y=0.60, w=0.34, h=0.16)
 
 
 def _put_plates(efectos, rules) -> None:
