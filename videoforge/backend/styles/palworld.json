@@ -143,9 +143,9 @@
   },
   "recall": {
     "enabled": true,
-    "height": 0.4,
+    "height": 0.44,
     "aspect": 1.0,
-    "max_width": 0.3,
+    "max_width": 0.34,
     "edge": 0.045,
     "border": 0.03,
     "border_color": "#8A5A2B",
@@ -162,7 +162,9 @@
     "outline_color": "#18222E",
     "outline": 0.17,
     "spacing": 3.5,
-    "size": 0.042,
-    "upper": true
+    "size": 0.045,
+    "upper": true,
+    "crop_y": 0.0,
+    "font": ""
   }
 }

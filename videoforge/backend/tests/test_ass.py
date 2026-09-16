@@ -324,3 +324,42 @@ def test_el_texto_no_se_sale_de_la_placa() -> None:
     for linea in texto.split("\\N"):
         ancho = len(linea) * (cuerpo * PLATE_CHAR_W + espaciado)
         assert ancho <= ancho_placa, (linea, round(ancho), round(ancho_placa))
+
+
+def test_la_placa_puede_pedir_su_propia_fuente() -> None:
+    """Una placa quiere letra de cartel, que no es la de un subtitulo.
+
+    Cual es depende de lo que tengas instalado, asi que se nombra en el estilo
+    y no se adivina. Si no esta, se usa la general en vez de dejar que libass
+    caiga en su ultimo recurso.
+    """
+    from forge.plan.edl import LowerThirdEffect, Rect
+    from forge.plan.styles import PlateRules
+    from forge.render.ass import build_ass, resolve_font
+
+    general = resolve_font()
+    otra = next(
+        (f for f in ("Liberation Sans", "FreeSans", "DejaVu Serif")
+         if resolve_font(f) and f != general),
+        None,
+    )
+
+    label = LowerThirdEffect(
+        id="l0", start=1.0, end=4.0, title="Expediciones",
+        rect=Rect(x=0.05, y=0.8, w=0.3, h=0.09), background="portada.webp",
+    )
+
+    def familia_de_placa(pedida: str) -> str:
+        salida = build_ass(
+            [], 1280, 720, labels=[label],
+            plates=PlateRules(background="portada.webp", font=pedida),
+        )
+        estilo = next(l for l in salida.splitlines() if l.startswith("Style: Plate"))
+        return estilo.split(",")[1]
+
+    assert familia_de_placa("") == general, "sin pedir nada, la de siempre"
+    assert familia_de_placa("Fuente Que No Existe 123") == general, (
+        "una fuente que no esta no puede dejar la placa sin fuente"
+    )
+    if otra:
+        assert familia_de_placa(otra) == otra

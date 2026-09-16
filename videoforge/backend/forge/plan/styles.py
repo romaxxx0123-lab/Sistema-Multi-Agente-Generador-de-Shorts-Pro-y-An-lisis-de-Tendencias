@@ -311,6 +311,17 @@ class PlateRules(BaseModel):
     #: Cuanto se oscurece la imagen, 0..1. Sin esto el texto se pierde sobre un
     #: arte de portada, que es justo lo que tiene: mucho color y mucho detalle.
     darken: float = 0.35
+    #: De donde se saca el recorte, 0 = arriba, 0.5 = centro, 1 = abajo.
+    #:
+    #: Hace falta porque un arte de portada **lleva el titulo del juego en
+    #: medio**, y un recorte centrado cae justo encima: el rotulo salia con el
+    #: logo del juego debajo de su propio texto, dos textos superpuestos. Aqui
+    #: no hay forma de saber donde esta ese titulo, asi que lo dice el estilo.
+    crop_y: float = 0.5
+    #: Fuente de las placas, si se quiere otra que la de los subtitulos. Vacio
+    #: usa la misma. Una placa quiere una letra de cartel y esa depende de lo
+    #: que tengas instalado, asi que se nombra aqui y no se adivina.
+    font: str = ""
     #: Marco de la placa y su grosor en fraccion del lado menor.
     border_color: str = ""
     border: float = 0.02

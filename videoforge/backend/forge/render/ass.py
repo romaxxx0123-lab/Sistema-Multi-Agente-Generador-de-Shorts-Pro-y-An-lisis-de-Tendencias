@@ -148,18 +148,22 @@ PLATE_SIZE_RATIO = 0.040
 LABEL_FADE_MS = 240
 
 
-def resolve_font() -> str:
+def resolve_font(preferida: str | None = None) -> str:
     """Elige una familia disponible en el sistema.
 
     Preguntamos a fontconfig en vez de dar por hecho que existe una fuente
     concreta: si no, libass cae a su ultimo recurso y el subtitulo sale con otra
     cara distinta en cada maquina.
+
+    Con `preferida` se pregunta **solo por esa**: sirve para que un estilo pueda
+    pedir su letra de cartel y saber si la tiene o no, en vez de llevarse la
+    primera de la lista general.
     """
     fc_match = shutil.which("fc-match")
     if not fc_match:
-        return "DejaVu Sans"
+        return "" if preferida else "DejaVu Sans"
 
-    for familia in FONT_CANDIDATES:
+    for familia in ((preferida,) if preferida else FONT_CANDIDATES):
         try:
             proc = subprocess.run(
                 [fc_match, "--format=%{family}", familia],
@@ -172,7 +176,7 @@ def resolve_font() -> str:
         if encontrada and familia.lower() in encontrada.lower():
             return familia
 
-    return "DejaVu Sans"
+    return "" if preferida else "DejaVu Sans"
 
 
 def _timestamp(seconds: float) -> str:
@@ -356,6 +360,13 @@ def build_ass(
     # caja la taparia. Anclado al centro (5) para que caiga en medio de la
     # placa sin tener que medir el texto.
     plate_size = max(14, int(round(height * getattr(plates, "size", PLATE_SIZE_RATIO))))
+    # Una placa quiere letra de cartel, que no es la de un subtitulo. Si el
+    # estilo nombra una y esta instalada, se usa; si no, la misma que el resto,
+    # que es mejor que caer en la de ultimo recurso de libass.
+    plate_font = familia
+    pedida = (getattr(plates, "font", "") or "").strip()
+    if pedida:
+        plate_font = resolve_font(pedida) or familia
     plate_fill = _ass_color(*parse_hex(getattr(plates, "text_color", "#F6EFE2")))
     plate_outline = _ass_color(*parse_hex(getattr(plates, "outline_color", "#18222E")))
     plate_bordes = max(2.0, plate_size * getattr(plates, "outline", 0.16))
@@ -375,7 +386,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,{familia},{size},{primary},{secondary},{outline},{back},{-1 if theme.bold else 0},0,0,0,100,100,0,0,{border_style},{theme.outline_width},{theme.shadow},{alineacion},{margen_lateral},{margen_lateral},{margen},1
 Style: Label,{familia},{label_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{_ass_color(31, 79, 216)},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(6.0, label_size * 0.35):.1f},0,7,0,0,0,1
 Style: Card,{familia},{card_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{outline},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(2.0, theme.outline_width * 0.8):.1f},0,7,{card_margen},{card_margen},{card_margen},1
-Style: Plate,{familia},{plate_size},{plate_fill},{plate_fill},{plate_outline},{_ass_color(0, 0, 0, 0x40)},-1,0,0,0,100,100,{plate_spacing:.1f},0,1,{plate_bordes:.1f},{plate_sombra:.1f},5,0,0,0,1
+Style: Plate,{plate_font},{plate_size},{plate_fill},{plate_fill},{plate_outline},{_ass_color(0, 0, 0, 0x40)},-1,0,0,0,100,100,{plate_spacing:.1f},0,1,{plate_bordes:.1f},{plate_sombra:.1f},5,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

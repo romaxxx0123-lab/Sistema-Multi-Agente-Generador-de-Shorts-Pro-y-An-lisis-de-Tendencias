@@ -475,10 +475,14 @@ def _plate_branch(
     dentro_w = max(2, ancho - borde * 2)
     dentro_h = max(2, alto - borde * 2)
 
+    # De donde se saca el recorte. Un arte de portada lleva el titulo del juego
+    # en medio, y el recorte centrado cae justo ahi: el rotulo salia con el logo
+    # del juego debajo de su propio texto.
+    donde = max(0.0, min(1.0, getattr(rules, "crop_y", 0.5)))
     cadena = [
         f"[{input_index}:v]setpts=PTS-STARTPTS",
         f"scale={dentro_w}:{dentro_h}:force_original_aspect_ratio=increase:flags=bicubic",
-        f"crop={dentro_w}:{dentro_h}",
+        f"crop={dentro_w}:{dentro_h}:(in_w-out_w)/2:(in_h-out_h)*{donde:.3f}",
     ]
     if oscurecer > 0.01:
         cadena.append(f"eq=brightness=-{oscurecer:.3f}:saturation={1.0 - oscurecer * 0.4:.3f}")

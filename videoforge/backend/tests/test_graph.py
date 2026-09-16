@@ -377,3 +377,25 @@ def test_un_rotulo_sin_sitio_no_lleva_placa() -> None:
                        background="portada.webp")   # rect=None
     )
     assert _plates_of(edl) == []
+
+
+def test_el_estilo_elige_de_donde_se_recorta_el_arte() -> None:
+    """Un arte de portada lleva el titulo del juego **en medio**.
+
+    Con el recorte centrado, el rotulo salia con el logo del juego debajo de su
+    propio texto: dos textos superpuestos. Aqui no hay forma de saber donde esta
+    ese titulo, asi que lo dice el estilo.
+    """
+    from forge.plan.styles import PlateRules
+    from forge.render.graph import _plate_branch
+
+    def recorte(crop_y: float) -> str:
+        cadena, _ = _plate_branch(
+            _con_placa(), "/tmp/portada.webp", 1, "[pl0]", 1920, 1080, 30.0,
+            PlateRules(background="portada.webp", crop_y=crop_y),
+        )
+        return next(p for p in cadena.split(",") if p.startswith("crop="))
+
+    assert "(in_h-out_h)*0.000" in recorte(0.0), "de arriba"
+    assert "(in_h-out_h)*0.500" in recorte(0.5), "del centro"
+    assert "(in_h-out_h)*1.000" in recorte(1.0), "de abajo"

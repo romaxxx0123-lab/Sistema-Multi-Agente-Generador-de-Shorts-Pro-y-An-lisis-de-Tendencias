@@ -1964,7 +1964,19 @@ styles/palworld.json → plates
   upper        true
 ```
 
-Tres cosas salieron de mirar el render:
+**Y de donde se recorta el arte lo dice el estilo.** Un arte de portada lleva el
+titulo del juego **en medio**, asi que el recorte centrado caia justo encima: el
+rotulo salia con el logo del juego debajo de su propio texto, dos textos
+superpuestos. Aqui no hay forma de saber donde esta ese titulo --- eso es mirar
+una imagen --- asi que `crop_y` dice de que franja tirar: 0 arriba, 0.5 centro,
+1 abajo. En `palworld` es 0, que es cielo y criaturas, sin una letra.
+
+La fuente tambien: `plates.font` nombra la letra de cartel que quieras, y si no
+esta instalada se usa la general en vez de dejar que libass caiga en su ultimo
+recurso. Ninguna de las que hay en este entorno se parece al logo del juego, asi
+que ahi va vacio.
+
+Tres cosas mas salieron de mirar el render:
 
 - La **tarjeta de capitulo** seguia pintando su caja negra encima del arte:
   usaba su propio estilo de ASS. Con fondo, usa el de placa.
