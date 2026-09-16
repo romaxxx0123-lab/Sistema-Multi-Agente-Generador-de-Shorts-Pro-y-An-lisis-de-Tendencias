@@ -1,9 +1,12 @@
 # Lo siguiente que toca
 
-Cuando me digas **"mejóralo"** estando en este proyecto y la tarea anterior ya
-esté cerrada, lo que hay que hacer es esto, sin volver a preguntar.
+*(Vacío ahora mismo. Lo de abajo, los rótulos, está hecho: `plan/labels.py`,
+dibujado en `render/ass.py` y con el rectángulo comprobado en píxeles sobre un
+render real en `tests/test_rotulos.py`.)*
 
-## Rótulos: cuadros con texto, en distintos sitios
+---
+
+## ~~Rótulos: cuadros con texto, en distintos sitios~~ — HECHO
 
 Poder poner **cuadros de color con texto** sobre el vídeo, colocados en
 distintas posiciones según lo que convenga. El ejemplo que diste:

@@ -792,6 +792,43 @@ de-esser, compresor) se aplicaba a la **mezcla ya hecha**, asi que le quitaba
 los graves a un golpe y el de-esser bombeaba con el ruido de un whoosh. La voz
 se trata ahora **antes** de mezclar nada, que es lo unico que tiene sentido.
 
+## El rótulo que dice donde estas
+
+Un rectangulo de color con texto, en una esquina, que te situa: *"Expediciones
+Palworld"*. La idea es la de television, y el texto no es una plantilla --- es el
+titulo que el sistema dedujo **de lo que dices** para ese capitulo.
+
+El tipo `LowerThirdEffect` estaba en el esquema desde F2 y **no lo planificaba
+ni lo dibujaba nadie**.
+
+Lo dificil de esto no es dibujarlo, es **no ponerlo**. Un rotulo mal puesto es
+peor que ninguno, y hay tres formas facilisimas de ponerlo mal:
+
+1. **Decir dos veces lo mismo.** Al empezar un capitulo ya sale su tarjeta con
+   el titulo. Por eso el rotulo **no acompana al cambio, acompana a la
+   seccion**: sale despues, cuando la tarjeta ya se fue, para quien llega a
+   mitad y no sabe de que se esta hablando.
+2. **Ponerlo donde no hace falta.** En una seccion de cuarenta segundos la
+   tarjeta del principio basta: nadie se ha perdido todavia. Solo en secciones
+   largas.
+3. **Ponerlo encima de lo que estas ensenando.** La posicion no es fija: se
+   elige igual que la de la ventanita de material, apartandose de lo que
+   senalas, del puntero, de los subtitulos y de la zona llena de la pantalla.
+
+Y ademas tiene que **justificarse** como todo lo demas: un capitulo largo con
+titulo concreto lo justifica; uno que `chapters.py` tuvo que numerar ("Parte 3")
+no, porque un rectangulo azul que ponga "Parte 3" no situa a nadie.
+
+El color sale del estilo y no del rotulo --- dos colores distintos en el mismo
+video se leen como un error --- y `cinematic` no lleva ninguno: una pieza de cine
+no se rotula. `gaming-hype` tampoco saca: no crea capitulos, asi que no hay
+secciones que nombrar.
+
+Se dibuja en el mismo `.ass` que los subtitulos y las tarjetas (misma fuente,
+mismo contorno, mismos fundidos), con `BorderStyle: 3` para la caja. Y se
+comprueba mirando los pixeles de un render de verdad, porque este proyecto ya
+tuvo rotulos de capitulo que se planificaban y no se dibujaban nunca.
+
 ## Cuando dos efectos se estorban
 
 Cada planner decide bien lo suyo y ninguno miraba lo que habian decidido los

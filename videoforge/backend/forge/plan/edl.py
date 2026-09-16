@@ -195,9 +195,24 @@ class CalloutEffect(BaseEffect):
 
 
 class LowerThirdEffect(BaseEffect):
+    """Un rotulo: caja de color con texto, en una esquina o banda.
+
+    Es el nombre de television de esto ("lower third"), aunque aqui puede ir en
+    cualquiera de las cuatro esquinas: lo que decide donde va es que no tape lo
+    que estas ensenando (ver `plan/placement.py`).
+
+    Existia en el esquema desde F2 y no lo planificaba ni lo dibujaba nadie.
+    """
+
     kind: Literal[EffectKind.LOWER_THIRD] = EffectKind.LOWER_THIRD
     title: str = ""
     subtitle: str = ""
+    #: donde se ancla, en fracciones del fotograma
+    rect: Rect = Field(default_factory=Rect)
+    #: color de la caja, en hexadecimal (`#1f4fd8`). Sale del estilo, no del
+    #: rotulo: dos rotulos de colores distintos en el mismo video se leen como
+    #: un error, no como una decision.
+    color: str = "#1f4fd8"
 
 
 class SfxEffect(BaseEffect):

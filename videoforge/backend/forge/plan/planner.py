@@ -32,6 +32,7 @@ from .edl import (
     RenderSpec,
     TransitionEffect,
 )
+from .labels import plan_labels
 from .placement import ScreenUse
 from .restraint import apply_restraint
 from .emphasis import plan_ken_burns, plan_punch_ins
@@ -359,6 +360,23 @@ def build_edl(
             f"Senalados {len(marcas)} elementos de la pantalla justo cuando los nombras."
         )
 
+    pantalla = ScreenUse(
+        cues=list(analysis.cues),
+        cursor=analysis.cursor,
+        captions=[e for e in efectos if e.kind is EffectKind.CAPTION],
+        focus_at=analysis.focus_at,
+    )
+
+    # Rotulos de seccion: la caja con el nombre de donde estas. No acompanan al
+    # cambio de capitulo -- para eso esta la tarjeta -- sino a la seccion, y
+    # solo si es larga y tiene un nombre concreto (ver `plan/labels.py`).
+    rotulos = plan_labels(edl, style, pantalla)
+    efectos += rotulos
+    if rotulos:
+        edl.notes.append(
+            f"{len(rotulos)} rotulos de seccion en los capitulos largos."
+        )
+
     if providers:
         bundle = assets if assets is not None else AssetBundle()
         brolls, brolls_reserva = plan_broll(
@@ -371,17 +389,10 @@ def build_edl(
             narrative=analysis.narrative,
             pacing=style.pacing,
             # Lo que ya se sabe de la pantalla: donde senalas, donde tienes el
-            # puntero y donde van los subtitulos. Sirve para no plantar la
+            # puntero y donde van los subtitulos (**ya planificados**, con su
+            # posicion real: no siempre van abajo). Sirve para no plantar la
             # ventanita encima de lo que estas ensenando.
-            screen=ScreenUse(
-                cues=list(analysis.cues),
-                cursor=analysis.cursor,
-                # Los subtitulos **ya planificados**, con su posicion real: no
-                # siempre van abajo, y darlo por hecho ponia la ventanita
-                # encima de ellos en los planos donde se suben.
-                captions=[e for e in efectos if e.kind is EffectKind.CAPTION],
-                focus_at=analysis.focus_at,
-            ),
+            screen=pantalla,
         )
         efectos += brolls
         reservas += brolls_reserva

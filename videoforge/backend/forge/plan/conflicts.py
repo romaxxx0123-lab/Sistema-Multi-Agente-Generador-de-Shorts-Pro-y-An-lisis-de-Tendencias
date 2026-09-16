@@ -29,9 +29,15 @@ from .edl import EDL, BaseEffect, BrollEffect, EffectKind
 #: un b-roll a pantalla completa. **El recuadro no esta aqui**: cuando chocan,
 #: el que sobra es el b-roll. Senalar el boton que estas nombrando es ensenar;
 #: un material de apoyo solo ilustra, y puede esperar dos segundos.
-UNDER_BROLL = (EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
+#: Un rotulo de seccion tambien queda debajo: es una caja pequena en una
+#: esquina, y un b-roll a pantalla completa la tapa entera.
+UNDER_BROLL = (EffectKind.PUNCH_IN, EffectKind.KEN_BURNS, EffectKind.LOWER_THIRD)
 #: Los que son movimiento de camara: dos a la vez es uno de mas.
 MOVIMIENTO = (EffectKind.PUNCH_IN, EffectKind.KEN_BURNS)
+#: Y dos textos a la vez diciendo cosas distintas no se leen: si un rotulo de
+#: seccion cae sobre la tarjeta de un capitulo, sobra el rotulo (la tarjeta
+#: esta anunciando el cambio, que es mas urgente).
+TEXTO_A_LA_VEZ = (EffectKind.TEXT_CARD,)
 #: Lo que puede acompanar un sonido. Sin uno de estos delante, el sonido suena
 #: solo y no acompana nada.
 ANCLAS_DE_SONIDO = (EffectKind.TRANSITION, EffectKind.TEXT_CARD, EffectKind.PUNCH_IN)
@@ -84,6 +90,16 @@ def find_conflicts(edl: EDL) -> list[tuple[BaseEffect, str]]:
             marcar(choca, f"queda debajo del b-roll de {efecto.start:.0f}s")
         else:
             marcar(efecto, "taparia un recuadro, que es lo que estas ensenando")
+
+    # Dos textos a la vez no se leen. El rotulo de seccion no deberia caer
+    # nunca sobre una tarjeta de capitulo -- se coloca a proposito despues --,
+    # pero si el montaje se recorta puede acabar pasando.
+    tarjetas = [e for e in edl.effects if e.kind in TEXTO_A_LA_VEZ]
+    for efecto in edl.effects:
+        if efecto.kind is EffectKind.LOWER_THIRD:
+            choca = next((c for c in tarjetas if _solapan(c, efecto)), None)
+            if choca is not None:
+                marcar(efecto, "coincide con el rotulo de un capitulo")
 
     # Los que quedan tapan de verdad, y lo que este debajo no se ve.
     brolls = [b for b in _full_brolls(edl) if b.id not in ya]

@@ -361,7 +361,9 @@ def render(
     ass_path: str | None = None
     captions = [e for e in edl_render.effects if e.kind is EffectKind.CAPTION]
     cards = [e for e in edl_render.effects if e.kind is EffectKind.TEXT_CARD]
-    if captions or cards:
+    # Y los rotulos de seccion, que son caja de color y texto: mismo motor.
+    labels = [e for e in edl_render.effects if e.kind is EffectKind.LOWER_THIRD]
+    if captions or cards or labels:
         tema = captions[0].style if captions else "clean"
         destino = work / f"{out.stem}.ass"
         write_ass(
@@ -371,6 +373,7 @@ def render(
             edl_render.render.height,
             theme_name=tema,
             cards=cards,
+            labels=labels,
         )
         ass_path = str(destino.resolve())
 

@@ -129,5 +129,9 @@
     "seconds": 1.8,
     "thickness": 0.004,
     "color": "FFD200"
+  },
+  "labels": {
+    "enabled": true,
+    "color": "#0f4c81"
   }
 }

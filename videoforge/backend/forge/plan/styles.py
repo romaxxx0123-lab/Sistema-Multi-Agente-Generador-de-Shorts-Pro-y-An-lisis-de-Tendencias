@@ -201,6 +201,27 @@ class ChapterRules(BaseModel):
     show_cards: bool = True
 
 
+class LabelRules(BaseModel):
+    """Rotulos de seccion: la caja de color que dice donde estas.
+
+    No es la tarjeta de capitulo. La tarjeta **anuncia el cambio** al empezar;
+    el rotulo es un **recordatorio** para quien llega a mitad de seccion y no
+    sabe de que se esta hablando. Por eso sale despues, y solo si la seccion es
+    lo bastante larga como para que haga falta recordarlo.
+    """
+
+    enabled: bool = True
+    #: color de la caja
+    color: str = "#1f4fd8"
+    #: por debajo de esto, la tarjeta del principio ya basta
+    min_chapter_seconds: float = 90.0
+    #: cuanto se queda en pantalla
+    seconds: float = 3.2
+    #: cuanto espera desde que acaba la tarjeta de capitulo, para no decir dos
+    #: veces lo mismo a la vez
+    after_card: float = 8.0
+
+
 class TransitionRules(BaseModel):
     enabled: bool = True
     default: str = "fade"
@@ -265,6 +286,7 @@ class StylePreset(BaseModel):
     broll: BrollRules = Field(default_factory=BrollRules)
     callouts: CalloutRules = Field(default_factory=CalloutRules)
     chapters: ChapterRules = Field(default_factory=ChapterRules)
+    labels: LabelRules = Field(default_factory=LabelRules)
     transitions: TransitionRules = Field(default_factory=TransitionRules)
     grade: GradeRules = Field(default_factory=GradeRules)
     music: MusicRules = Field(default_factory=MusicRules)
@@ -285,8 +307,8 @@ def _styles_dirs(extra: Path | None = None) -> list[Path]:
 
 
 @lru_cache(maxsize=32)
-def load_style(name: str, extra_dir: Path | None = None) -> StylePreset:
-    """Carga un estilo por nombre."""
+def _load_style_cached(name: str, extra_dir: Path | None = None) -> StylePreset:
+    """Lee y valida el JSON del estilo. **No devolver esto tal cual**: ver abajo."""
     for directory in _styles_dirs(extra_dir):
         path = directory / f"{name}.json"
         if path.is_file():
@@ -302,6 +324,22 @@ def load_style(name: str, extra_dir: Path | None = None) -> StylePreset:
         f"No existe el estilo '{name}'.",
         hint=f"Estilos disponibles: {disponibles}",
     )
+
+
+def load_style(name: str, extra_dir: Path | None = None) -> StylePreset:
+    """Carga un estilo por nombre, **en copia**.
+
+    La cache guarda el fichero ya leido y validado, que es lo que cuesta; pero
+    lo que sale de aqui es una copia, porque si no todo el mundo comparte el
+    mismo objeto. Y eso ya mordio: un test apago los rotulos en "su" estilo y
+    los apago en los demas.
+
+    En un test es molesto; en el servidor de la API es un fallo de verdad, donde
+    varios montajes se planifican en el mismo proceso: cualquier ajuste que un
+    trabajo le hiciera a su estilo se lo encontraria el siguiente, y el sintoma
+    seria un montaje raro de vez en cuando, sin forma de reproducirlo.
+    """
+    return _load_style_cached(name, extra_dir).model_copy(deep=True)
 
 
 def list_styles(extra_dir: Path | None = None) -> list[str]:

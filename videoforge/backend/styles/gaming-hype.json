@@ -129,5 +129,10 @@
     "seconds": 1.8,
     "thickness": 0.004,
     "color": "FFD200"
+  },
+  "labels": {
+    "enabled": true,
+    "color": "#ff3b1f",
+    "min_chapter_seconds": 60.0
   }
 }

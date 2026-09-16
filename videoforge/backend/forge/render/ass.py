@@ -44,6 +44,17 @@ _ALIGNMENT = {"bottom": 2, "center": 5, "top": 8}
 WRAP_CHARS = 30
 
 
+def parse_hex(color: str) -> tuple[int, int, int]:
+    """`#1f4fd8` -> (31, 79, 216). Lo que no se entienda sale azul."""
+    limpio = str(color).strip().lstrip("#")
+    if len(limpio) == 3:
+        limpio = "".join(c * 2 for c in limpio)
+    try:
+        return tuple(int(limpio[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    except (ValueError, IndexError):
+        return (31, 79, 216)
+
+
 def _ass_color(r: int, g: int, b: int, alpha: int = 0) -> str:
     """Color en el formato de ASS: alfa + BGR, con 0 = totalmente opaco."""
     return f"&H{alpha:02X}{b:02X}{g:02X}{r:02X}"
@@ -126,6 +137,13 @@ CARD_MARGIN_RATIO = 0.115
 #: Milisegundos de entrada y salida del rotulo. ASS lo hace nativo con \fad,
 #: asi que no hace falta tocar el grafo de filtros.
 CARD_FADE_MS = 260
+
+#: Tamano del texto de un rotulo de seccion, respecto al alto del fotograma.
+#: Mas pequeno que una tarjeta de capitulo a proposito: la tarjeta anuncia, el
+#: rotulo acompana.
+LABEL_SIZE_RATIO = 0.030
+#: Entra y sale con un fundido corto, como las tarjetas.
+LABEL_FADE_MS = 240
 
 
 def resolve_font() -> str:
@@ -233,6 +251,7 @@ def build_ass(
     font: str | None = None,
     karaoke: bool = True,
     cards: list | None = None,
+    labels: list | None = None,
 ) -> str:
     """Devuelve el contenido completo de un fichero .ass.
 
@@ -261,6 +280,7 @@ def build_ass(
 
     card_size = max(14, int(round(height * CARD_SIZE_RATIO)))
     card_margen = max(16, int(round(height * CARD_MARGIN_RATIO)))
+    label_size = max(12, int(round(height * LABEL_SIZE_RATIO)))
 
     cabecera = f"""[Script Info]
 ScriptType: v4.00+
@@ -273,6 +293,7 @@ YCbCr Matrix: TV.709
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,{familia},{size},{primary},{secondary},{outline},{back},{-1 if theme.bold else 0},0,0,0,100,100,0,0,{border_style},{theme.outline_width},{theme.shadow},{alineacion},{margen_lateral},{margen_lateral},{margen},1
+Style: Label,{familia},{label_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{_ass_color(31, 79, 216)},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(6.0, label_size * 0.35):.1f},0,7,0,0,0,1
 Style: Card,{familia},{card_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{outline},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(2.0, theme.outline_width * 0.8):.1f},0,7,{card_margen},{card_margen},{card_margen},1
 
 [Events]
@@ -302,6 +323,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         lineas.append(
             f"Dialogue: 1,{_timestamp(card.start)},{_timestamp(card.end)},Card,,0,0,0,,"
             f"{{\\fad({CARD_FADE_MS},{CARD_FADE_MS})}}{texto}"
+        )
+
+    for label in labels or []:
+        texto = _escape(getattr(label, "title", "") or "")
+        if not texto:
+            continue
+        rect = getattr(label, "rect", None)
+        x = int(round(width * (getattr(rect, "x", 0.05) if rect else 0.05)))
+        y = int(round(height * (getattr(rect, "y", 0.08) if rect else 0.08)))
+        r, g, b = parse_hex(getattr(label, "color", "#1f4fd8"))
+        # `BorderStyle: 3` pinta la caja con el color de contorno, asi que el
+        # color del rotulo va ahi. Se manda por linea y no por estilo para que
+        # el estilo pueda cambiarlo sin tocar la cabecera.
+        lineas.append(
+            f"Dialogue: 1,{_timestamp(label.start)},{_timestamp(label.end)},Label,,0,0,0,,"
+            f"{{\\an7\\pos({x},{y})\\3c{_ass_color(r, g, b)}"
+            f"\\fad({LABEL_FADE_MS},{LABEL_FADE_MS})}}{texto}"
         )
 
     # Los dialogos tienen que ir ordenados por tiempo de inicio.
