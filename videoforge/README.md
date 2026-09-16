@@ -810,14 +810,41 @@ esto?" con los terminos que ese tramo usa y los demas no, en la forma en que los
 dijiste, y se corta a dos palabras. En la misma guia: *"Abrimos ajustes"*,
 *"Paso importante"*, *"Casilla marcar"*.
 
-Tres reglas mas que salieron de mirar lo que producia:
+En una guia de router, impresora y firewall salen exactamente tres:
+*"Router wifi"*, *"Impresora bandeja"*, *"Reglas firewall"*. Uno por seccion.
+
+Y un fallo de los dos relojes, que en este proyecto ya es un clasico: los
+capitulos van en tiempo de **montaje** y las palabras de la transcripcion en
+tiempo del **original**. Compararlos directamente parece funcionar --- el primer
+capitulo empieza en cero en los dos --- y se estropea segun avanza el video,
+porque el montaje ha quitado por el camino un tercio del original. El sintoma
+era un rotulo con palabras de otra seccion: el capitulo de la impresora se
+titulaba *"Imprime bloquea"*, y "bloquea" es del firewall.
+
+Cinco reglas mas que salieron de mirar lo que producia:
+
+- **Un rotulo dice un sitio, no una accion.** Salian *"Abrimos ajustes"* y
+  *"Casilla marcar"*, cuando lo que situa es *"Ajustes"* y *"Casilla"*. Un
+  titulo de capitulo puede permitirse el verbo; un rotulo no. La lista de verbos
+  esta escrita a mano a proposito: por la terminacion no se puede distinguir en
+  castellano sin equivocarse mucho ("ajustes" y "abrimos" acaban las dos en
+  -es/-os, y "lugar" acaba en -ar sin ser verbo).
+- **Se juzga el nombre que se ve, no el titulo del capitulo.** El capitulo *"De
+  la impresora"* no pasaba el filtro --- una sola palabra de mas de tres letras
+  --- y su rotulo habria sido *"Impresora"*, que esta perfectamente bien. Se
+  estaba juzgando un texto y ensenando otro.
+- **Una ventanita de material no se pone encima de un rotulo.** Las dos cosas
+  eligen esquina con el mismo criterio y las dos prefieren la misma, asi que sin
+  decirselo acaban una sobre otra. Ahora lo ya colocado cuenta como ocupado.
 
 - **La caja se mide por su texto.** Reservarle a "Firewall" el mismo hueco que a
   "Expediciones Palworld" hace que la decision de donde ponerlo se tome con un
   tamano que no es el suyo.
 - **No se repite lo mismo con otras palabras.** Salian *"Seccion terminamos"* y
   *"Terminamos seccion"* en el mismo video. Se compara con todos los anteriores,
-  no solo con el ultimo.
+  no solo con el ultimo, y con dos palabras por rotulo compartir una ya es
+  compartir la mitad: *"Paso importante"* y *"Siguiente paso"* no anuncian dos
+  cosas distintas.
 - **Con un solo capitulo no hay rotulos.** Un rotulo de seccion contesta *en
   cual estas*; si solo hay una, no contesta nada. Y encima el nombre salia mal,
   porque se calcula contrastando lo que se dice ahi con lo que se dice en el

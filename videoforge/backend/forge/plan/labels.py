@@ -40,9 +40,35 @@ from __future__ import annotations
 
 import re
 
+from ..understand.meaning import stem as _stem
 from ..understand.topics import label as topic_label
 from .edl import EDL, LowerThirdEffect, Rect
 from .placement import ScreenUse, place
+
+#: Verbos de accion que en una guia se dicen constantemente. Como **titulo de
+#: capitulo** un verbo informa ("Guardamos los cambios"); como **rotulo** no:
+#: un rotulo contesta "donde estas", y donde estas es un sitio, no algo que se
+#: hace. Salian rotulos como "Abrimos ajustes" y "Casilla marcar", cuando lo
+#: que situa es "Ajustes" y "Casilla".
+#:
+#: Es una lista escrita a mano a proposito: distinguir verbo de sustantivo por
+#: la terminacion no se puede en castellano sin equivocarse mucho ("ajustes" y
+#: "abrimos" acaban las dos en -es/-os, y "lugar" acaba en -ar sin ser verbo).
+_ACCIONES = frozenset({
+    "abre", "abrimos", "abrir", "abro", "activa", "activamos", "activar",
+    "anade", "anadimos", "anadir", "busca", "buscamos", "buscar", "cambia",
+    "cambiamos", "cambiar", "cierra", "cerramos", "cerrar", "comprueba",
+    "comprobamos", "comprobar", "configura", "configuramos", "configurar",
+    "copia", "copiamos", "copiar", "crea", "creamos", "crear", "dale", "damos",
+    "elige", "elegimos", "elegir", "empezamos", "empezar", "escribe",
+    "escribimos", "escribir", "guarda", "guardamos", "guardar", "hace",
+    "hacemos", "hacer", "instala", "instalamos", "instalar", "marca",
+    "marcamos", "marcar", "mira", "miramos", "mirar", "pon", "ponemos",
+    "poner", "pulsa", "pulsamos", "pulsar", "quita", "quitamos", "quitar",
+    "revisa", "revisamos", "revisar", "selecciona", "seleccionamos",
+    "seleccionar", "termina", "terminamos", "terminar", "usa", "usamos",
+    "usar", "vamos", "veamos", "vemos", "ver", "volvemos", "volver",
+})
 
 #: Cuantas palabras puede tener un rotulo. Es un nombre, no una frase: con dos
 #: se lee de reojo, con cinco hay que pararse a leerlo y entonces ya no estas
@@ -69,8 +95,11 @@ MAX_PARTE_DEL_VIDEO = 0.7
 #: Un titulo que es un numero de parte no orienta a nadie, y es lo que
 #: `chapters.py` pone cuando no consigue sacar un nombre de lo que dices.
 _NUMERADO = re.compile(r"\(\d+\)\s*$")
-#: Ni uno de una sola palabra corta ("bien", "vale").
-MIN_TITULO = 2
+#: Una palabra de dos letras o menos no nombra nada ("de", "la", "ok").
+MIN_LETRAS = 3
+#: Con dos palabras por rotulo, compartir una es compartir la mitad, y dos
+#: rotulos como "Paso importante" y "Siguiente paso" no anuncian dos cosas
+#: distintas. Por eso el limite es "la mitad o mas", no "mas de la mitad".
 #: Dos rotulos que comparten esta fraccion de palabras estan diciendo lo mismo
 #: con otras palabras ("Seccion terminamos" y "Terminamos seccion"), y el
 #: segundo no informa de ningun cambio. Se compara con **todos** los anteriores
@@ -79,13 +108,31 @@ MIN_TITULO = 2
 MAX_PARECIDO = 0.5
 
 
-def _es_concreto(titulo: str) -> bool:
-    """Si ese titulo dice de que va la seccion o es un relleno."""
-    limpio = titulo.strip()
+def _es_concreto(texto: str) -> bool:
+    """Si eso nombra algo o es relleno.
+
+    Se aplica al **nombre que se va a ver**, no al titulo del capitulo, y esa
+    distincion importaba: el capitulo "De la impresora" no pasaba el filtro
+    (una sola palabra de mas de dos letras) y su rotulo habria sido "Impresora
+    bandeja", que esta perfectamente bien. Se estaba juzgando un texto y
+    ensenando otro.
+    """
+    limpio = texto.strip()
     if not limpio or _NUMERADO.search(limpio):
         return False
-    palabras = [p for p in limpio.split() if len(p) > 2]
-    return len(palabras) >= MIN_TITULO
+    fuera = _muletillas_forma()
+    return any(
+        len(p) > MIN_LETRAS and _stem(p) not in fuera for p in limpio.split()
+    )
+
+
+def _muletillas_forma() -> frozenset[str]:
+    """Las muletillas, en raiz. `topics.label` ya las quita por su cuenta; el
+    respaldo por titulo tambien tiene que hacerlo o salen rotulos que ponen
+    "Vale" o "Bueno"."""
+    from ..understand.topics import _muletillas
+
+    return _muletillas()
 
 
 def _caja(texto: str) -> tuple[float, float]:
@@ -94,24 +141,66 @@ def _caja(texto: str) -> tuple[float, float]:
     return round(ancho, 4), LABEL_HEIGHT
 
 
-def _nombre(capitulo, inicio: float, fin: float, transcript) -> str:
+def _nombre(capitulo, inicio: float, fin: float, transcript, edl=None) -> str:
     """Como se llama esa seccion, en dos palabras.
 
     De lo que se dice **ahi** frente a lo que se dice en el resto del video: la
     palabra que solo sale aqui es el asunto de aqui. Si no se puede sacar (sin
     transcripcion, o un tramo sin nada distintivo), se cae al titulo del
     capitulo, que es lo que habia antes.
+
+    Ojo con los dos relojes, que aqui ya mordio: los capitulos van en tiempo de
+    **montaje** y las palabras de la transcripcion en tiempo del **original**.
+    Compararlos directamente parece que funciona -- el primer capitulo empieza
+    en cero en los dos -- y se estropea segun avanza el video, porque el
+    montaje ha quitado por el camino un tercio del original. El sintoma era un
+    rotulo con palabras de otra seccion: en una prueba, el capitulo de la
+    impresora se titulaba "Imprime bloquea", y "bloquea" es del firewall.
     """
     if transcript is not None:
-        propias = [w.text for w in transcript.words if inicio <= w.start < fin]
-        ajenas = [w.text for w in transcript.words if not (inicio <= w.start < fin)]
+        def dentro(w) -> bool:
+            t = edl.source_to_timeline(w.start) if edl is not None else w.start
+            return t is not None and inicio <= t < fin
+
+        propias = [w.text for w in transcript.words if dentro(w)]
+        ajenas = [w.text for w in transcript.words if not dentro(w)]
         if propias:
-            nombre = topic_label([" ".join(propias)], [" ".join(ajenas)], LABEL_WORDS)
+            # Se piden mas de las que caben para poder tirar las acciones y que
+            # aun queden nombres con los que titular.
+            nombre = topic_label(
+                [" ".join(propias)], [" ".join(ajenas)], LABEL_WORDS + 2
+            )
+            nombre = _solo_nombres(nombre)
             if nombre:
                 return nombre[:1].upper() + nombre[1:]
 
-    corto = " ".join(capitulo.title.split()[:LABEL_WORDS])
+    # Respaldo: el titulo del capitulo, recortado. Con dos guardas, porque
+    # recortar pierde justo lo que delata un titulo malo: "Parte 3 (2)" se
+    # queda en "Parte 3" y el marcador de repetido desaparece.
+    if _NUMERADO.search(capitulo.title):
+        return ""
+    # Y se tiran las palabras que no nombran nada -- las muletillas y las de
+    # tres letras o menos -- **antes** de recortar, o "De la impresora" se
+    # queda en "De la".
+    fuera = _muletillas_forma()
+    palabras = [
+        p for p in capitulo.title.split()
+        if len(p) > MIN_LETRAS and _stem(p) not in fuera
+    ]
+    corto = " ".join(palabras[:LABEL_WORDS])
     return corto[:1].upper() + corto[1:] if corto else ""
+
+
+def _solo_nombres(nombre: str) -> str:
+    """Quita las acciones y deja lo que nombra algo.
+
+    Si al quitarlas no queda nada, se devuelve lo que habia: mas vale un rotulo
+    con un verbo que ningun rotulo, y hay secciones que de verdad van de hacer
+    algo.
+    """
+    palabras = nombre.split()
+    limpias = [p for p in palabras if p.lower() not in _ACCIONES][:LABEL_WORDS]
+    return " ".join(limpias or palabras[:LABEL_WORDS])
 
 
 def _se_parecen(a: str, b: str) -> bool:
@@ -121,7 +210,7 @@ def _se_parecen(a: str, b: str) -> bool:
     uno, otro = tag_stems(a.split()), tag_stems(b.split())
     if not uno or not otro:
         return False
-    return len(uno & otro) / min(len(uno), len(otro)) > MAX_PARECIDO
+    return len(uno & otro) / min(len(uno), len(otro)) >= MAX_PARECIDO
 
 
 def plan_labels(
@@ -144,12 +233,10 @@ def plan_labels(
             continue
         if largo > edl.duration * MAX_PARTE_DEL_VIDEO:
             continue
-        if not _es_concreto(capitulo.title):
-            continue
-
-        # El nombre sale de lo que se dice ahi, no del titulo del capitulo.
-        nombre = _nombre(capitulo, capitulo.start, inicios[i + 1], transcript)
-        if not nombre or not _es_concreto(nombre + " x"):
+        # El nombre sale de lo que se dice ahi, no del titulo del capitulo, y
+        # es **el nombre** lo que tiene que nombrar algo: es lo que se ve.
+        nombre = _nombre(capitulo, capitulo.start, inicios[i + 1], transcript, edl)
+        if not _es_concreto(nombre):
             continue
         # Y no se repite nada de lo ya dicho, ni con otras palabras ni en otro
         # orden: un rotulo que no anuncia un cambio no hace falta.
@@ -169,6 +256,9 @@ def plan_labels(
         if screen is not None:
             origen_inicio = edl.timeline_to_source(inicio)
             origen_fin = edl.timeline_to_source(fin)
+            # Lo que senalas no suprime el rotulo, lo aparta: en una guia
+            # senalas constantemente, y el rotulo cabe en otra esquina. `busy`
+            # ya trae esa caja, asi que `place` la esquiva sola.
             if origen_inicio is not None:
                 base, movida = place(
                     base,

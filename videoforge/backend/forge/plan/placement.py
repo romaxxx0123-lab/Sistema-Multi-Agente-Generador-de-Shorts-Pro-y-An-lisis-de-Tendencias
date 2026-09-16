@@ -72,6 +72,10 @@ class ScreenUse:
     cursor: object | None = None
     #: los subtitulos ya planificados, con su posicion real
     captions: list = field(default_factory=list)
+    #: y lo demas que ya se ha colocado en una esquina (los rotulos de
+    #: seccion). Sin esto, cada cosa elige esquina sin saber de las otras, y
+    #: como todas prefieren la misma por defecto, acaban una encima de otra.
+    overlays: list = field(default_factory=list)
     #: rejilla de ocupacion del video de debajo, si el analisis la trae
     focus_at: object | None = None
 
@@ -142,6 +146,13 @@ class ScreenUse:
 
         if timeline is not None:
             zonas += self.caption_bands(*timeline)
+            inicio_tl, fin_tl = timeline
+            for puesto in self.overlays:
+                if puesto.end < inicio_tl or puesto.start > fin_tl:
+                    continue
+                rect = getattr(puesto, "rect", None)
+                if rect is not None and rect.w > 0 and rect.h > 0:
+                    zonas.append(rect)
 
         return zonas
 

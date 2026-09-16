@@ -372,6 +372,10 @@ def build_edl(
     # solo si es larga y tiene un nombre concreto (ver `plan/labels.py`).
     rotulos = plan_labels(edl, style, pantalla, analysis.transcript)
     efectos += rotulos
+    # Lo que ya ocupa una esquina lo tiene que saber quien coloque despues: si
+    # no, el material en ventanita se planta encima del rotulo, porque los dos
+    # prefieren la misma esquina.
+    pantalla.overlays = list(rotulos)
     if rotulos:
         edl.notes.append(
             f"{len(rotulos)} rotulos de seccion en los capitulos largos."

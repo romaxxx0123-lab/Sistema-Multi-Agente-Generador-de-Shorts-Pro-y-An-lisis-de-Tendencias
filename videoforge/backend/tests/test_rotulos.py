@@ -338,3 +338,128 @@ def test_el_color_sale_del_estilo() -> None:
     texto = build_ass([], 1920, 1080, labels=[rotulo])
     assert "Style: Label" in texto
     assert "\\3c&H000022CC" in texto      # BGR, que es como los quiere ASS
+
+
+# -- lo que se aprendio mirando la salida -----------------------------------
+
+
+def test_el_nombre_se_saca_del_tramo_correcto_del_video() -> None:
+    """Los dos relojes, que aqui mordieron.
+
+    Los capitulos van en tiempo de **montaje** y las palabras de la
+    transcripcion en tiempo del **original**. Compararlos directamente parece
+    funcionar -- el primer capitulo empieza en cero en los dos -- y se estropea
+    segun avanza el video, porque el montaje ha quitado por el camino un tercio
+    del original. El sintoma era un rotulo con palabras de otra seccion.
+    """
+    from forge.plan.labels import _nombre
+
+    transcript = _transcript([
+        ("el router wifi de la casa pide contrasena", 0.0),
+        ("la impresora tiene papel atascado dentro", 100.0),
+    ])
+
+    class _Edl:
+        """Un montaje que ha quitado 50 s por el camino."""
+
+        @staticmethod
+        def source_to_timeline(t: float) -> float:
+            return t if t < 50.0 else t - 50.0
+
+    capitulo = Chapter(start=50.0, title="lo siguiente")
+    # En tiempo de montaje, 50-100 es la impresora (en el original, 100-150).
+    nombre = _nombre(capitulo, 50.0, 100.0, transcript, _Edl())
+    assert "mpresora" in nombre or "apel" in nombre, nombre
+    assert "outer" not in nombre and "ifi" not in nombre, nombre
+
+
+def test_un_rotulo_no_se_llama_con_un_verbo() -> None:
+    """Un titulo de capitulo puede ser una accion; un rotulo dice un sitio."""
+    from forge.plan.labels import _solo_nombres
+
+    assert _solo_nombres("abrimos ajustes") == "ajustes"
+    assert _solo_nombres("casilla marcar") == "casilla"
+    # Si al quitar las acciones no queda nada, mas vale eso que ningun rotulo.
+    assert _solo_nombres("vamos configurar") == "vamos configurar"
+
+
+def test_se_juzga_el_nombre_que_se_ve_y_no_el_titulo() -> None:
+    """El capitulo "De la impresora" no pasaba el filtro por tener una sola
+    palabra larga, y su rotulo habria sido "Impresora", que esta bien."""
+    from forge.plan.labels import _nombre
+
+    class _Cap:
+        title = "De la impresora"
+
+    assert _nombre(_Cap(), 0.0, 10.0, None) == "Impresora"
+    assert _es_concreto("Impresora")
+
+
+def test_una_ventanita_no_se_pone_encima_de_un_rotulo() -> None:
+    """Las dos cosas prefieren la misma esquina, asi que sin decirselo acaban
+    una encima de la otra."""
+    from forge.plan.placement import ScreenUse, corners, place
+
+    rotulo = LowerThirdEffect(
+        id="l0", start=10.0, end=14.0, title="Router wifi",
+        rect=Rect(x=0.65, y=0.05, w=0.3, h=0.08),
+    )
+    base = corners(0.3, 0.4)[0][1]
+    pantalla = ScreenUse(overlays=[rotulo])
+
+    ocupado = pantalla.busy(5.0, 9.0, timeline=(11.0, 13.0))
+    assert rotulo.rect in ocupado
+    colocado, movida = place(base, ocupado)
+    assert movida and colocado != base
+
+    # Y fuera de su tramo, el rotulo no estorba a nadie.
+    assert pantalla.busy(5.0, 9.0, timeline=(20.0, 22.0)) == []
+
+
+def test_en_una_guia_con_temas_sale_uno_por_tema() -> None:
+    """La prueba de fuego: una guia de router, impresora y firewall."""
+    from forge.analysis.types import Transcript
+    from forge.plan.planner import build_edl
+
+    guion = (
+        ["vamos a configurar el router wifi de la casa",
+         "abrimos la pagina del router en el navegador",
+         "el router pide una contrasena wifi nueva",
+         "escribimos la contrasena wifi larga y segura",
+         "el router guarda la contrasena y reinicia",
+         "la wifi del router ya funciona con la contrasena"]
+        + ["ahora vamos con la impresora de la oficina",
+           "la impresora tiene papel atascado dentro",
+           "sacamos el papel atascado de la impresora",
+           "la bandeja de papel de la impresora va floja",
+           "ponemos papel nuevo en la bandeja de la impresora",
+           "la impresora ya imprime el papel sin atascarse"]
+        + ["por ultimo el firewall del sistema operativo",
+           "el firewall bloquea las conexiones raras de fuera",
+           "abrimos las reglas del firewall del sistema",
+           "cada regla del firewall deja pasar un puerto",
+           "creamos una regla de firewall para ese puerto",
+           "el firewall queda con sus reglas puestas"]
+    )
+    segmentos = []
+    t = 0.0
+    for texto in guion:
+        palabras = []
+        for palabra in texto.split():
+            palabras.append(Word(start=round(t, 2), end=round(t + 0.38, 2), text=palabra))
+            t += 0.48
+        segmentos.append(
+            TranscriptSegment(start=palabras[0].start, end=t, text=texto, words=palabras)
+        )
+        t += 22.0
+
+    analisis = synthetic_guide_analysis(t + 30.0)
+    analisis.transcript = Transcript(language="es", segments=segmentos)
+    edl = build_edl(analisis, "tutorial")
+
+    titulos = [e.title.lower() for e in edl.effects
+               if e.kind is EffectKind.LOWER_THIRD]
+    assert len(titulos) == 3, titulos
+    assert any("router" in t for t in titulos)
+    assert any("impresora" in t for t in titulos)
+    assert any("firewall" in t for t in titulos)
