@@ -311,7 +311,7 @@ RECALL_CAPTION_INSET = 0.012
 
 #: Sitio de la placa de una tarjeta de capitulo: banda ancha arriba a la
 #: izquierda, que es donde ya va su texto.
-CARD_PLATE = Rect(x=0.05, y=0.06, w=0.48, h=0.17)
+CARD_PLATE = Rect(x=0.05, y=0.06, w=0.56, h=0.21)
 
 
 def _put_plates(efectos, rules) -> None:

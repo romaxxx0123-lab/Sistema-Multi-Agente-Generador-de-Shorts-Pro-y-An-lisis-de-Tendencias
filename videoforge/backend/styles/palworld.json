@@ -143,28 +143,29 @@
   },
   "recall": {
     "enabled": true,
-    "height": 0.44,
+    "height": 0.5,
     "aspect": 1.0,
-    "max_width": 0.34,
+    "max_width": 0.4,
     "edge": 0.045,
     "border": 0.03,
     "border_color": "#8A5A2B",
-    "bar": 0.2,
+    "bar": 0.22,
     "title": "ANTES",
     "title_color": "#8A5A2B"
   },
   "plates": {
     "background": "palworld-portada.webp",
-    "darken": 0.42,
+    "darken": 0.4,
     "border_color": "#F6EFE2",
     "border": 0.035,
     "text_color": "#F6EFE2",
     "outline_color": "#18222E",
     "outline": 0.17,
     "spacing": 3.5,
-    "size": 0.045,
+    "size": 0.052,
     "upper": true,
-    "crop_y": 0.0,
-    "font": ""
+    "crop_y": 0.5,
+    "font": "Fredoka One",
+    "strip_title": true
   }
 }

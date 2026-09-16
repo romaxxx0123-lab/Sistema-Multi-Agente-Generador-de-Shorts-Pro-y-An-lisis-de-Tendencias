@@ -911,6 +911,45 @@ def demo(
     console.print(f"\n[dim]Abre los dos ficheros y comparalos.[/dim]")
 
 
+@app.command()
+def fonts() -> None:
+    """Copia a `assets/fonts/` las fuentes libres instaladas con pip.
+
+    Vienen en paquetes de PyPI (`pip install -e ".[fonts]"`), asi que no hay
+    nada que bajar de ninguna web ni licencia que mirar: son OFL. Se copian aqui
+    porque es la carpeta que el render le pasa a libass, y asi el video sale
+    igual en cualquier maquina aunque el sistema no tenga esa fuente instalada.
+    """
+    destino = ASSETS_DIR / "fonts"
+    destino.mkdir(parents=True, exist_ok=True)
+
+    import importlib.util
+
+    copiadas: list[str] = []
+    for paquete in ("font_fredoka_one", "font_source_sans_pro"):
+        spec = importlib.util.find_spec(paquete)
+        if spec is None or not spec.submodule_search_locations:
+            console.print(f"  {WARN} falta {paquete.replace('_', '-')}")
+            continue
+        carpeta = Path(list(spec.submodule_search_locations)[0]) / "files"
+        for fichero in sorted(carpeta.glob("*.ttf")):
+            # Solo los cortes que se usan: el paquete trae doce y pesan.
+            if "Black" in fichero.name or "FredokaOne" in fichero.name:
+                (destino / fichero.name).write_bytes(fichero.read_bytes())
+                copiadas.append(fichero.name)
+
+    if not copiadas:
+        console.print(
+            f"{WARN} no se copio ninguna. Instalalas con "
+            "[bold]pip install -e \".[fonts]\"[/bold]."
+        )
+        raise typer.Exit(code=1)
+
+    for nombre in copiadas:
+        console.print(f"  {OK} {nombre}")
+    console.print(f"\nEn [bold]{destino}[/bold]. Nombralas en el estilo, en `plates.font`.")
+
+
 @app.command("make-fixture")
 def make_fixture_cmd(
     out: Path = typer.Argument(Path("fixture.mp4"), help="Fichero de salida."),

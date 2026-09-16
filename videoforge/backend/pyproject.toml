@@ -34,6 +34,11 @@ ocr = ["rapidocr-onnxruntime>=1.4"]
 # con `pytesseract` dentro, que el proyecto no importa en ningun sitio, asi que
 # instalarlo no daba OCR a nadie. Se deja vacio y documentado.
 ocr-tesseract = []
+# Fuentes libres (OFL) que viajan en paquetes de PyPI, asi que no hay nada que
+# descargar de ninguna web ni licencia que mirar. `Fredoka One` es la letra de
+# cartel de los rotulos: redonda y con cuerpo, que es lo que pide un rotulo
+# sobre gameplay. Se copian a `assets/fonts/` con `forge fonts`.
+fonts = ["font-fredoka-one>=0.0.4", "font-source-sans-pro>=0.0.1"]
 api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
 dev = ["pytest>=8", "pytest-timeout>=2"]
 

@@ -311,6 +311,10 @@ class PlateRules(BaseModel):
     #: Cuanto se oscurece la imagen, 0..1. Sin esto el texto se pierde sobre un
     #: arte de portada, que es justo lo que tiene: mucho color y mucho detalle.
     darken: float = 0.35
+    #: Quitarle a la imagen el titulo del juego antes de usarla. Un arte de
+    #: portada lo lleva pintado en medio y detras de un rotulo quedan dos
+    #: textos superpuestos (ver `render/plates.py`).
+    strip_title: bool = False
     #: De donde se saca el recorte, 0 = arriba, 0.5 = centro, 1 = abajo.
     #:
     #: Hace falta porque un arte de portada **lleva el titulo del juego en

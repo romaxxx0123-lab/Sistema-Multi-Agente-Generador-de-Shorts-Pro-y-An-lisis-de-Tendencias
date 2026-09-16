@@ -148,7 +148,33 @@ PLATE_SIZE_RATIO = 0.040
 LABEL_FADE_MS = 240
 
 
-def resolve_font(preferida: str | None = None) -> str:
+def _font_in_dir(familia: str, fonts_dir) -> bool:
+    """Si esa familia esta en la carpeta de fuentes del proyecto.
+
+    Hace falta porque fontconfig solo conoce las del sistema, y las del
+    proyecto viven en `assets/fonts/` --- que es de donde las lee libass al
+    renderizar. Sin esto, pedir una fuente propia caia siempre en la general.
+    """
+    fc_scan = shutil.which("fc-scan")
+    if not fc_scan or not fonts_dir or not Path(fonts_dir).is_dir():
+        return False
+    for fichero in Path(fonts_dir).iterdir():
+        if fichero.suffix.lower() not in (".ttf", ".otf", ".ttc"):
+            continue
+        try:
+            proc = subprocess.run(
+                [fc_scan, "--format=%{family}", str(fichero)],
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception:
+            continue
+        familias = (proc.stdout or "").lower()
+        if familia.lower() in familias:
+            return True
+    return False
+
+
+def resolve_font(preferida: str | None = None, fonts_dir=None) -> str:
     """Elige una familia disponible en el sistema.
 
     Preguntamos a fontconfig en vez de dar por hecho que existe una fuente
@@ -159,6 +185,9 @@ def resolve_font(preferida: str | None = None) -> str:
     pedir su letra de cartel y saber si la tiene o no, en vez de llevarse la
     primera de la lista general.
     """
+    if preferida and _font_in_dir(preferida, fonts_dir):
+        return preferida
+
     fc_match = shutil.which("fc-match")
     if not fc_match:
         return "" if preferida else "DejaVu Sans"
@@ -324,6 +353,7 @@ def build_ass(
     cards: list | None = None,
     labels: list | None = None,
     plates=None,
+    fonts_dir=None,
 ) -> str:
     """Devuelve el contenido completo de un fichero .ass.
 
@@ -366,7 +396,7 @@ def build_ass(
     plate_font = familia
     pedida = (getattr(plates, "font", "") or "").strip()
     if pedida:
-        plate_font = resolve_font(pedida) or familia
+        plate_font = resolve_font(pedida, fonts_dir) or familia
     plate_fill = _ass_color(*parse_hex(getattr(plates, "text_color", "#F6EFE2")))
     plate_outline = _ass_color(*parse_hex(getattr(plates, "outline_color", "#18222E")))
     plate_bordes = max(2.0, plate_size * getattr(plates, "outline", 0.16))

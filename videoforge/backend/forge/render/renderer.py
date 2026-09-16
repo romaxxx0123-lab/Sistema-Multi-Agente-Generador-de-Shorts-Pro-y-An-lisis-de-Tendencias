@@ -299,7 +299,9 @@ def _check_output(path: Path, expected: float, settings: Settings) -> None:
 MUSIC_EXTS = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus")
 
 
-def _find_plates(edl, plates_dir: Path | None) -> dict[str, str]:
+def _find_plates(
+    edl, plates_dir: Path | None, rules=None, cache_dir: Path | None = None
+) -> dict[str, str]:
     """Los ficheros de fondo que piden los rotulos, si estan en disco.
 
     Devuelve solo los que existen: un fondo que falta deja el rotulo con su
@@ -316,8 +318,18 @@ def _find_plates(edl, plates_dir: Path | None) -> dict[str, str]:
         # Solo el nombre del fichero: un estilo no puede sacar al render de su
         # carpeta de placas.
         ruta = Path(plates_dir) / Path(nombre).name
-        if ruta.is_file():
-            salida[nombre] = str(ruta.resolve())
+        if not ruta.is_file():
+            continue
+        if getattr(rules, "strip_title", False) and cache_dir is not None:
+            from .plates import strip_title
+
+            try:
+                ruta = strip_title(ruta, cache_dir)
+            except Exception:
+                # Limpiar la imagen es una mejora, no un requisito: si algo
+                # falla se usa la original en vez de quedarse sin fondo.
+                pass
+        salida[nombre] = str(Path(ruta).resolve())
     return salida
 
 
@@ -414,6 +426,7 @@ def render(
             cards=cards,
             labels=labels,
             plates=plate_rules,
+            fonts_dir=fonts_dir,
         )
         ass_path = str(destino.resolve())
 
@@ -481,7 +494,9 @@ def render(
 
     quiere_musica = any(e.kind is EffectKind.MUSIC for e in edl_render.effects)
     music_path = _find_music(music_dir) if quiere_musica else None
-    plate_paths = _find_plates(edl_render, plates_dir)
+    plate_paths = _find_plates(
+        edl_render, plates_dir, plate_rules, settings.cache_dir
+    )
     aviso_musica = (
         "Este estilo lleva musica y no hay ninguna en assets/music/: "
         "se monta sin ella."

@@ -1964,17 +1964,49 @@ styles/palworld.json → plates
   upper        true
 ```
 
-**Y de donde se recorta el arte lo dice el estilo.** Un arte de portada lleva el
-titulo del juego **en medio**, asi que el recorte centrado caia justo encima: el
-rotulo salia con el logo del juego debajo de su propio texto, dos textos
-superpuestos. Aqui no hay forma de saber donde esta ese titulo --- eso es mirar
-una imagen --- asi que `crop_y` dice de que franja tirar: 0 arriba, 0.5 centro,
-1 abajo. En `palworld` es 0, que es cielo y criaturas, sin una letra.
+#### El titulo del juego se quita, no se esquiva
 
-La fuente tambien: `plates.font` nombra la letra de cartel que quieras, y si no
-esta instalada se usa la general en vez de dejar que libass caiga en su ultimo
-recurso. Ninguna de las que hay en este entorno se parece al logo del juego, asi
-que ahi va vacio.
+Un arte de portada trae **el titulo del juego pintado en medio**, y ese titulo
+es justo lo que no puede salir detras del texto de un rotulo: quedan dos textos
+superpuestos y no se lee ninguno. Esconderlo recortando otra franja es un apano
+--- se pierde media imagen --- asi que se quita (`render/plates.py`).
+
+No con `inpaint`: relleno sobre una zona grande y un fondo tan detallado deja un
+manchurron, medido sobre esta misma portada una banda borrosa de lado a lado. Lo
+que funciona es **quitar la franja y coser**: la composicion de un arte de
+portada es horizontal --- cielo arriba, personajes y suelo abajo --- asi que
+juntar lo de arriba con lo de abajo sigue pareciendo la misma imagen, y un
+degradado de veinte filas hace la costura invisible.
+
+```
+portada 616x353  ->  franja del titulo: filas 93..218  ->  616x208 sin titulo
+```
+
+El titulo se encuentra solo: es lo unico **blanco puro** --- muy claro y sin
+nada de color --- de la franja de en medio. El cielo tambien es claro, pero es
+azul. Con dos guardas, porque no todo lo blanco es un titulo: sus filas tienen
+que ser **el triple de blancas** que una fila cualquiera (si no, una imagen
+clara entera se comeria un trozo por nada) y la franja no puede llevarse mas de
+la mitad de la imagen. Se cachea por contenido: limpiar cuesta, hacerlo en cada
+render no hace falta.
+
+#### Y la letra
+
+`plates.font` nombra la letra de cartel. Se busca primero en `assets/fonts/`
+--- que es de donde libass lee al renderizar --- y despues en el sistema; si no
+esta en ninguno, se usa la general en vez de dejar que libass caiga en su ultimo
+recurso.
+
+Las que trae el proyecto son **OFL y vienen en paquetes de PyPI**, asi que no
+hay nada que bajar de ninguna web ni licencia que mirar:
+
+```bash
+pip install -e ".[fonts]"
+forge fonts              # las copia a assets/fonts/
+```
+
+`Fredoka One` es la de los rotulos de `palworld`: redonda y con cuerpo, que es
+lo que pide un rotulo sobre gameplay.
 
 Tres cosas mas salieron de mirar el render:
 
