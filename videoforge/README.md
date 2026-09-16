@@ -1905,6 +1905,80 @@ de las senales --- ni a los cortes, ni a los papeles de cada parte, ni al
 medidor.
 
 
+## Una guia de Palworld, y los recuerdos
+
+Todo lo anterior se probaba sobre una **grabacion de pantalla de una
+aplicacion**: fondo oscuro y quieto, menu lateral, texto plano, un cursor. Una
+captura de gameplay no se parece en nada a eso, asi que `forge/palworld.py`
+genera una guia con la forma de una de verdad: la camara no para de moverse, no
+hay cursor sino reticula, el texto es un HUD con contorno sobre fondo cambiante,
+y el guion sale de **guias publicadas del juego** --- los nombres de los
+objetos, los edificios, los materiales, las rutas y los numeros son los del
+juego, no inventados. Eso importa porque lo que se mide es si el analisis
+reconoce de que se habla, y un vocabulario inventado no prueba nada.
+
+Tres temas (montar la base, las expediciones, capturar), con muletillas, un
+aviso, una espera anunciada --- una expedicion tarda media hora y eso en el
+video es tiempo muerto --- y un "como vimos antes".
+
+### El recuerdo, que era lo peor del montaje
+
+Un "como vimos antes" se resolvia con `mode="full"` y `rect=(0,0,1,1)`: **el
+video se iba entero a otro momento**, sin marco ni marca de ninguna clase. Eso
+no se lee como un recuerdo, se lee como un salto de montaje o como un fallo de
+reproduccion. Ahora es una tarjeta con marco **abajo a la izquierda**, encima de
+lo que estas contando, y no se mueve de ahi: que salga cada vez en un rincon
+distinto es justo lo que impide reconocerla de un vistazo.
+
+Pero al mirarlo de cerca no aparecia **ninguno**, y detras habia tres fallos
+encadenados:
+
+**1. Dos listas de palabras vacias.** Hay una buena en `understand/topics.py`
+con ciento y pico palabras, y el material de apoyo usaba otra suya de
+veintitres. La palabra concreta por la que se busca --- la "cabeza" de la
+consulta --- salia de esa lista corta. Medido sobre la guia de Palworld, de
+dieciseis momentos con material, **siete** buscaban por una palabra vacia:
+
+```
+'como fragmentos'  ·  'aqui base'  ·  'cuesta ojo'  ·  'pals ojo'
+'guia nos'  ·  'capturar como'  ·  'aqui esfera'
+```
+
+El unico "como vimos antes" del video buscaba material de **"como"**. Ahora hay
+una sola lista, la buena.
+
+**2. Los dos relojes, otra vez.** `AssetQuery` llevaba solo `at_timeline`, el
+tiempo del **montaje**, y el proveedor lo comparaba contra las palabras del
+transcript, las lecturas de pantalla y las senales del habla, que van todas en
+tiempo del **original**. En cuanto el montaje recorta un segundo --- y recorta
+siempre --- esas comparaciones dan cualquier cosa: el recuerdo caia en el
+segundo 125,7 del original y en el 81,1 del montaje, y con 81,1 la ventana de
+±3 s no lo alcanzaba ni de lejos. "Vuelves a algo de antes" no se cumplia
+**nunca**. Ahora la consulta lleva los dos relojes.
+
+**3. Lo que esta siempre en pantalla no dice cuando.** En un juego la barra de
+objetos no se quita nunca, asi que "Esfera de Pal" se ve en el 100% de las
+lecturas. Preguntar "¿donde se vio esto?" devolvia un rato cualquiera, y el
+recuerdo acababa ensenando la pantalla de espera de una expedicion en vez del
+momento en el que se explicaba la esfera. Ahora una palabra que sale en mas del
+60% de las lecturas no localiza nada, y se usa el momento en el que la
+**dijiste**, que si es un instante concreto.
+
+Con los tres arreglados, sobre la frase *"como vimos antes, las esferas se
+fabrican con fragmentos de paldium"*:
+
+```
+recuerdo abajo a la izquierda en 87s porque ahi vuelves a algo de antes
+  · de tu propio video: vuelves a lo de antes, y de "esfera" hablabas en el 30s
+  · ensena el origen 29.0 -> 32.0
+  · y ahi se decia: "con el banco desbloqueas la esfera de pal en el menu de tecnologia"
+```
+
+Y un recuerdo va **primero** en el reparto: no compite con el material de apoyo
+genérico, porque ahi has pedido tu ver algo otra vez. Antes el cupo se lo
+llevaban momentos anteriores con mas peso de termino y el unico sitio del video
+donde se pedia un recuerdo se quedaba sin nada.
+
 ## Montar un video entero, con los seis estilos
 
 Toda la suite en verde y ninguna prueba habia montado un video de punta a punta

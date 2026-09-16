@@ -48,12 +48,20 @@ VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 #: Palabras demasiado comunes para servir de etiqueta.
-_STOPWORDS = frozenset(
-    {
-        "el", "la", "los", "las", "un", "una", "de", "del", "y", "o", "que",
-        "en", "con", "por", "para", "a", "al", "es", "se", "su", "lo", "the",
-        "of", "and", "to", "in", "for", "a", "an", "is", "on", "with",
-    }
+#: Las palabras que no son tema. Hay **una sola** lista, la de `topics.py`, y
+#: aqui habia otra de veintitres palabras que se quedaba corta por todos lados.
+#:
+#: Eso no era cosmetico: la palabra concreta que se busca --- la "cabeza" de la
+#: consulta --- salia de esta lista. Medido sobre una guia de Palworld, de los
+#: dieciseis momentos con material de apoyo, **siete** buscaban por una palabra
+#: vacia: "como fragmentos", "aqui base", "cuesta ojo", "pals ojo", "guia nos",
+#: "capturar como", "aqui esfera". Y en particular el unico "como vimos antes"
+#: del video buscaba material de **"como"**, no encontraba nada, y el recuerdo
+#: no salia.
+from ..understand.topics import STOPWORDS as _TOPIC_STOPWORDS
+
+_STOPWORDS = _TOPIC_STOPWORDS | frozenset(
+    {"the", "of", "and", "to", "in", "for", "an", "is", "on", "with"}
 )
 
 
@@ -87,6 +95,12 @@ MIN_SELF_DISTANCE = 8.0
 #: Margen alrededor de un "como vimos antes" dentro del cual todavia se
 #: considera que estas pidiendo volver atras.
 RECALL_WINDOW = 3.0
+#: A partir de esta fraccion de las lecturas de pantalla, una palabra deja de
+#: senalar un momento: esta siempre, asi que no distingue ninguno.
+UBIQUITOUS_SHARE = 0.6
+#: Y hacen falta al menos estas lecturas para poder decir eso. Con dos lecturas
+#: y la palabra en las dos no se sabe si esta siempre o si dio la casualidad.
+UBIQUITOUS_MIN_READINGS = 8
 
 
 class SelfProvider:
@@ -155,9 +169,28 @@ class SelfProvider:
         raiz = tag_stem(cabeza)
         if not raiz:
             return []
+        lecturas = self.analysis.screen_text
+        con_el_termino = [
+            l for l in lecturas if any(tag_stem(w) == raiz for w in l.words)
+        ]
+        # Lo que esta en pantalla **siempre** no dice cuando. En un juego la
+        # barra de objetos no se quita nunca, asi que "Esfera de Pal" se ve en
+        # todos los fotogramas: preguntar "¿donde se vio esto?" devuelve el
+        # ultimo rato cualquiera, y el recuerdo acaba ensenando un momento que
+        # no tiene nada que ver. Medido en la guia de Palworld: "esfera" salia
+        # en el 100% de las lecturas y el recuerdo se iba a la pantalla de
+        # espera de una expedicion.
+        #
+        # Cuando pasa eso se deja vacio a proposito, y quien llama se queda con
+        # el momento en el que lo **dijiste**, que si es un instante concreto.
+        if (
+            len(lecturas) >= UBIQUITOUS_MIN_READINGS
+            and len(con_el_termino) / len(lecturas) > UBIQUITOUS_SHARE
+        ):
+            return []
         vistos = [
             (lectura.at, texto)
-            for lectura in self.analysis.screen_text
+            for lectura in con_el_termino
             for texto in lectura.words
             if tag_stem(texto) == raiz
         ]
@@ -178,7 +211,11 @@ class SelfProvider:
         """
         media = self.analysis.media
         cabeza = query.head or _first_word(query.text)
-        ahora = query.at_timeline
+        # En tiempo del **original**, que es el reloj en el que estan las
+        # palabras, las lecturas de pantalla y las senales del habla. Con el
+        # del montaje --- que es lo que habia --- nada de esto cuadraba en
+        # cuanto se recortaba un segundo.
+        ahora = query.at_source if query.at_source is not None else query.at_timeline
         candidatos: list[Asset] = []
 
         vistos = self._donde_se_vio(cabeza, ahora)

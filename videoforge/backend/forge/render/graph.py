@@ -240,6 +240,19 @@ def _broll_branch(
             f"scale={ancho}:{alto}:force_original_aspect_ratio=increase:flags=bicubic,"
             f"crop={ancho}:{alto}"
         )
+        if effect.mode == "recall":
+            # Un recuerdo lleva marco. Sin el, una imagen pegada encima del
+            # video se lee como un fallo de reproduccion; con marco se lee como
+            # lo que es, material de antes puesto aparte. El contenido se
+            # encoge y el marco lo devuelve al tamano pedido, asi que la
+            # posicion no cambia.
+            borde = max(2, int(min(ancho, alto) * RECALL_BORDER) // 2 * 2)
+            dentro_w, dentro_h = max(2, ancho - borde * 2), max(2, alto - borde * 2)
+            encaje = (
+                f"scale={dentro_w}:{dentro_h}:force_original_aspect_ratio=increase"
+                f":flags=bicubic,crop={dentro_w}:{dentro_h},"
+                f"pad={ancho}:{alto}:{borde}:{borde}:color={RECALL_BORDER_COLOR}"
+            )
 
     # Entra y sale con un fundido corto. Un material que aparece de golpe a
     # pantalla completa se lee como un fallo de reproduccion; dos decimas
@@ -365,6 +378,12 @@ def _overlay_position(effect: BrollEffect, w: int, h: int) -> tuple[str, str]:
     rect = effect.rect.clamped()
     return f"{int(w * rect.x)}", f"{int(h * rect.y)}"
 
+
+#: Grosor del marco del recuerdo, en fraccion del lado menor de la tarjeta.
+RECALL_BORDER = 0.022
+#: Y su color. Claro y opaco: tiene que separarse del video de debajo pase lo
+#: que pase, y el video de debajo puede ser de cualquier color.
+RECALL_BORDER_COLOR = "0xF2F4F8"
 
 #: Techo de pico real del master, en dBFS. -1.5 es el margen que piden las
 #: plataformas para que la recodificacion a AAC no sature.

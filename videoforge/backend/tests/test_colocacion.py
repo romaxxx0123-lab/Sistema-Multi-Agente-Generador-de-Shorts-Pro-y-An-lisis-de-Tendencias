@@ -391,9 +391,14 @@ def test_entrar_en_la_palabra_casi_no_cuesta_inserciones() -> None:
 
     Colocar el material en la palabra (que cae tarde en la ventana) dejaba 2 de
     31 momentos sin hueco suficiente y acortaba la media un 13%. Dejar que siga
-    mientras no nombres otra cosa devuelve uno de los dos y casi toda la
-    duracion; el que queda se pierde a proposito, porque ahi ya estas nombrando
-    otra cosa y el material sobraba.
+    mientras no nombres otra cosa devuelve casi toda la duracion; los que se
+    pierden se pierden a proposito, porque ahi ya estas nombrando otra cosa y el
+    material sobraba.
+
+    Lo que se protege es **la duracion**, que es donde esta el efecto: con los
+    momentos actuales las dos politicas colocan los mismos 28 de 30 y la media
+    pasa de 2,59s a 2,88s, un 11% mas de material en pantalla. El numero de
+    momentos cambia al afinar la deteccion de temas y no es lo que mide esto.
     """
     from forge.plan.styles import load_style
 
@@ -422,6 +427,6 @@ def test_entrar_en_la_palabra_casi_no_cuesta_inserciones() -> None:
 
     cortando, media_cortando = caben(lambda m: m.end)
     ahora, media_ahora = caben(lambda m: m.room_until)
-    assert ahora > cortando
-    assert ahora >= len(momentos) - 1
-    assert media_ahora > media_cortando
+    assert ahora >= cortando, "dejar sitio no puede perder inserciones"
+    assert ahora >= len(momentos) - 2
+    assert media_ahora > media_cortando * 1.05

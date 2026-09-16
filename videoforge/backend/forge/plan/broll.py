@@ -340,6 +340,60 @@ PIP_RIGHT = 0.95
 PIP_MAX_WIDTH = 0.46
 
 
+#: El recuerdo: una tarjeta **abajo a la izquierda**, no una ventanita mas.
+#:
+#: Hasta aqui un "como vimos antes" se resolvia con el material del propio
+#: video a **pantalla completa**: `mode=full`, `rect=(0,0,1,1)`. Es decir, el
+#: video se iba entero a otro momento sin ninguna marca, y eso no se lee como
+#: un recuerdo --- se lee como un salto de montaje o como un fallo. Un recuerdo
+#: tiene que verse **encima** de lo que estas contando, en su sitio de siempre y
+#: con marco, para que se entienda de un vistazo que es material de antes.
+#:
+#: Va a la izquierda y no a la derecha porque los subtitulos van centrados y el
+#: HUD de un juego vive arriba: abajo a la izquierda es la esquina que queda.
+RECALL_HEIGHT = 0.34
+#: Y no pasa de aqui de ancho, para no llegar al centro donde van los
+#: subtitulos por muy apaisado que sea el material.
+RECALL_MAX_WIDTH = 0.34
+#: Separacion del borde del fotograma.
+RECALL_EDGE = 0.04
+
+
+def _es_recuerdo(screen, origen: float | None) -> bool:
+    """Si en ese momento estas pidiendo volver a algo ya ensenado.
+
+    Es la misma senal que usa `SelfProvider` para buscar el recorte; aqui
+    decide **como se ensena**, que es lo que faltaba.
+    """
+    if screen is None or origen is None:
+        return False
+    from ..understand.speech_cues import CueKind
+
+    return any(
+        c.kind is CueKind.RECALL
+        and c.start - RECALL_MARGIN <= origen <= c.end + RECALL_MARGIN
+        for c in getattr(screen, "cues", ())
+    )
+
+
+#: Margen alrededor de un "como vimos antes" dentro del cual el material que se
+#: coloque sigue siendo el recuerdo de eso. El mismo que usa el proveedor.
+RECALL_MARGIN = 3.0
+
+
+def recall_rect(asset: Asset, render_w: int, render_h: int) -> Rect:
+    """La tarjeta del recuerdo: abajo a la izquierda, con la forma del material."""
+    forma = asset.aspect or (render_w / max(render_h, 1))
+    ancho = RECALL_HEIGHT * render_h * forma / max(render_w, 1)
+    ancho = min(RECALL_MAX_WIDTH, max(0.14, ancho))
+    return Rect(
+        x=RECALL_EDGE,
+        y=round(1.0 - RECALL_EDGE - RECALL_HEIGHT, 4),
+        w=round(ancho, 4),
+        h=RECALL_HEIGHT,
+    )
+
+
 def pip_rect(asset: Asset, render_w: int, render_h: int) -> Rect:
     """La ventanita, con **la forma del material** y no con una fija.
 
@@ -492,6 +546,18 @@ def plan_broll(
         if t is not None
     ]
 
+    # Un "como vimos antes" va **primero**. No compite: ahi has pedido tu ver
+    # algo otra vez, y eso vale mas que cualquier ilustracion que se le ocurra
+    # al planner. Medido sobre la guia de Palworld: el cupo de material era de
+    # dos, los dos se los llevaban momentos anteriores con mas peso de termino,
+    # y el unico sitio del video donde se pedia un recuerdo se quedaba sin nada.
+    momentos = sorted(
+        momentos,
+        key=lambda m: (
+            not _es_recuerdo(screen, edl.timeline_to_source(m.head_at or m.start)),
+        ),
+    )
+
     for i, momento in enumerate(momentos):
         duracion = min(rules.default_seconds, momento.room_until - momento.start)
         if duracion < 1.0:
@@ -536,6 +602,7 @@ def plan_broll(
             seconds=duracion,
             orientation="portrait" if edl.render.aspect < 1 else "landscape",
             at_timeline=inicio,
+            at_source=origen,
             context=momento.context,
             # La cabeza es lo concreto que se nombra ahi; lo demas es contexto
             # y no basta para elegir material (ver assets/coherence.py).
@@ -596,6 +663,14 @@ def plan_broll(
         # si conviene esquivarlos. Se mira el modo **real**, que lo decide el
         # material y no el estilo: un clip vertical acaba en ventanita aunque
         # el estilo pidiera pantalla completa.
+        # Un **recuerdo** no es material de apoyo: es lo de antes ensenado
+        # encima de lo de ahora. Nunca a pantalla completa --- irse entero a
+        # otro momento sin ninguna marca se lee como un salto de montaje --- y
+        # siempre en el mismo sitio, para que se reconozca sin pensarlo.
+        recuerdo = _es_recuerdo(screen, origen_inicio)
+        if recuerdo:
+            modo = "recall"
+
         if modo != "full" and any(inicio < c < fin for c in cortes):
             continue
 
@@ -605,7 +680,12 @@ def plan_broll(
         # Y la esquina: la de siempre, salvo que ahi tape lo que senalas, lo
         # que nombras o donde tienes el puntero (ver `plan/placement.py`).
         rect, movida = Rect(), ""
-        if modo != "full":
+        if recuerdo:
+            # El recuerdo NO se mueve: su sitio es abajo a la izquierda y ahi se
+            # queda. Que salga cada vez en un rincon distinto es justo lo que
+            # impide reconocerlo de un vistazo.
+            rect = recall_rect(asset, edl.render.width, edl.render.height)
+        elif modo != "full":
             rect = pip_rect(asset, edl.render.width, edl.render.height)
             if screen is not None and origen_inicio is not None:
                 rect, movida = place(
@@ -633,11 +713,16 @@ def plan_broll(
             ),
             cost_weight=0.65 if modo == "full" else 0.45,
             rationale=(
-                f"material de apoyo en {inicio:.0f}s porque ahi hablas de "
-                f"'{momento.query}'{f' ({papel})' if papel else ''}"
-                f"{'' if modo == 'full' else (' (en ventanita: no te tapo lo que senalas)' if senalando else ' (en ventanita: no da para mas)')}"
-                f"{f' · movido {movida} para no taparlo' if movida else ''}"
-                f" · {asset.reason}"
+                (f"recuerdo abajo a la izquierda en {inicio:.0f}s porque ahi "
+                 f"vuelves a algo de antes" if recuerdo else
+                 f"material de apoyo en {inicio:.0f}s porque ahi hablas de "
+                 f"'{momento.query}'")
+                + f"{f' ({papel})' if papel else ''}"
+                + ("" if modo in ("full", "recall") else
+                   (" (en ventanita: no te tapo lo que senalas)" if senalando
+                    else " (en ventanita: no da para mas)"))
+                + (f" · movido {movida} para no taparlo" if movida else "")
+                + f" · {asset.reason}"
             ),
         )
 

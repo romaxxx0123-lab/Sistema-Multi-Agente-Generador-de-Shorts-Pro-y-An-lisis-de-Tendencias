@@ -92,9 +92,17 @@ class AssetQuery(BaseModel):
     seconds: float = 3.0
     orientation: str = "landscape"  # landscape | portrait | any
     limit: int = 8
-    #: momento del montaje para el que se busca, por si el proveedor lo
+    #: momento del **montaje** para el que se busca, por si el proveedor lo
     #: necesita (el proveedor `self` lo usa para no repetir lo que ya se ve)
     at_timeline: float = 0.0
+    #: y el mismo momento en el **video original**. Hacen falta los dos, y
+    #: confundirlos dejo el proveedor `self` roto sin que se notara: comparaba
+    #: el reloj del montaje contra tiempos del original --- las palabras del
+    #: transcript, las lecturas de pantalla y las senales del habla van todas
+    #: en tiempo de origen --- asi que en cuanto el montaje recortaba algo, y
+    #: recorta siempre, las comparaciones daban cualquier cosa. En particular
+    #: "vuelves a algo de antes" no se cumplia **nunca**.
+    at_source: float | None = None
     #: contexto adicional (lo que se dice alrededor), para desempatar
     context: str = ""
     #: la palabra concreta que se esta nombrando. El resto de `text` es

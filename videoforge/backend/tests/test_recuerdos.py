@@ -198,3 +198,147 @@ def test_sin_dato_de_confianza_todo_sigue_igual() -> None:
 def test_el_umbral_es_prudente() -> None:
     """Un suelo alto apartaria palabras bien oidas."""
     assert 0.3 <= MIN_HEAD_CONFIDENCE <= 0.6
+
+
+# -- y como se ensena, que era lo peor --------------------------------------
+#
+# Un recuerdo se resolvia con `mode="full"` y `rect=(0,0,1,1)`: el video se iba
+# entero a otro momento, sin marco ni marca de ninguna clase. Eso no se lee como
+# un recuerdo --- se lee como un salto de montaje o como un fallo. Ahora es una
+# tarjeta con marco **abajo a la izquierda**, encima de lo que estas contando.
+
+
+def test_un_recuerdo_es_una_tarjeta_abajo_a_la_izquierda() -> None:
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.broll import RECALL_EDGE, RECALL_HEIGHT, recall_rect
+
+    asset = Asset(id="x", kind=AssetKind.SELF, provider="self", width=1920, height=1080)
+    rect = recall_rect(asset, 1920, 1080)
+
+    assert rect.x == pytest.approx(RECALL_EDGE), "pegada a la izquierda"
+    assert rect.y + rect.h == pytest.approx(1.0 - RECALL_EDGE), "pegada abajo"
+    assert rect.w < 0.5 and rect.h < 0.5, "no puede taparlo todo"
+
+
+def test_el_recuerdo_no_se_mueve_de_su_esquina() -> None:
+    """Que salga cada vez en un rincon distinto impide reconocerlo."""
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.broll import recall_rect
+
+    formas = [(1920, 1080), (1080, 1920), (1440, 1080)]
+    sitios = {
+        (recall_rect(Asset(id="x", kind=AssetKind.SELF, provider="self",
+                           width=w, height=h), 1920, 1080).x,
+         recall_rect(Asset(id="x", kind=AssetKind.SELF, provider="self",
+                           width=w, height=h), 1920, 1080).y)
+        for w, h in formas
+    }
+    assert len(sitios) == 1, sitios
+
+
+def test_el_recuerdo_lleva_marco() -> None:
+    """Sin marco, una imagen pegada encima se lee como un fallo de reproduccion."""
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.edl import BrollEffect, Rect
+    from forge.render.graph import RECALL_BORDER_COLOR, _broll_branch
+
+    asset = Asset(id="x", kind=AssetKind.SELF, provider="self",
+                  source_start=10.0, source_end=13.0, width=1920, height=1080)
+    rect = Rect(x=0.04, y=0.62, w=0.3, h=0.34)
+
+    tarjeta, _ = _broll_branch(
+        BrollEffect(id="b0", start=1.0, end=4.0, asset_id="x", mode="recall",
+                    rect=rect),
+        asset, 0, "[bx]", 1920, 1080, 30.0,
+    )
+    assert "pad=" in tarjeta, tarjeta
+    assert RECALL_BORDER_COLOR in tarjeta, tarjeta
+
+    # Y una ventanita normal no lleva marco: el marco es lo que dice "esto es
+    # material de antes".
+    ventanita, _ = _broll_branch(
+        BrollEffect(id="b1", start=1.0, end=4.0, asset_id="x", mode="pip",
+                    rect=rect),
+        asset, 0, "[bx]", 1920, 1080, 30.0,
+    )
+    assert "pad=" not in ventanita, ventanita
+
+
+# -- los dos relojes, que es lo que lo tenia roto de raiz --------------------
+
+
+def test_el_proveedor_compara_en_el_reloj_del_original() -> None:
+    """`at_timeline` es del montaje y las palabras son del original.
+
+    Comparar uno con otro dejaba "vuelves a algo de antes" sin cumplirse
+    **nunca** en cuanto el montaje recortaba un segundo, que es siempre. Con la
+    guia sintetica: el recuerdo cae en el segundo 125,7 del original y en el
+    81,1 del montaje, y con 81,1 la ventana de +-3s no lo alcanza ni de lejos.
+    """
+    from forge.analysis.types import Transcript, TranscriptSegment, Word
+    from forge.assets.providers import SelfProvider
+    from forge.understand.speech_cues import SpeechCue
+
+    guia = synthetic_guide_analysis(120.0)
+    guia.transcript = Transcript(language="es", segments=[
+        TranscriptSegment(start=10.0, end=12.0, text="abrimos el inventario", words=[
+            Word(start=10.0, end=10.6, text="abrimos"),
+            Word(start=10.7, end=11.2, text="el"),
+            Word(start=11.3, end=12.0, text="inventario"),
+        ]),
+        TranscriptSegment(start=100.0, end=102.0, text="como vimos el inventario", words=[
+            Word(start=100.0, end=100.5, text="como"),
+            Word(start=100.6, end=101.0, text="vimos"),
+            Word(start=101.1, end=101.4, text="el"),
+            Word(start=101.5, end=102.0, text="inventario"),
+        ]),
+    ])
+    guia.screen_text = []
+    guia.cues = [SpeechCue(kind=CueKind.RECALL, start=100.0, end=101.0,
+                           phrase="como vimos", strength=0.9)]
+
+    proveedor = SelfProvider(guia)
+    # El reloj del montaje dice 60; el del original, 100. Solo el segundo vale.
+    query = AssetQuery(text="inventario", head="inventario", seconds=2.0,
+                       at_timeline=60.0, at_source=100.0)
+    assert proveedor.search(query), "con el reloj bueno encuentra lo de antes"
+
+    sin_origen = AssetQuery(text="inventario", head="inventario", seconds=2.0,
+                            at_timeline=60.0)
+    assert not proveedor.search(sin_origen), "y sin el, no: 60 no cae en la senal"
+
+
+def test_lo_que_esta_siempre_en_pantalla_no_senala_ningun_momento() -> None:
+    """La barra de objetos de un juego no se quita nunca.
+
+    Preguntar "¿donde se vio 'Esfera de Pal'?" devolvia un rato cualquiera, y el
+    recuerdo acababa ensenando un momento que no tenia nada que ver: medido en
+    la guia de Palworld, se iba a la pantalla de espera de una expedicion en vez
+    de a donde se explicaba la esfera.
+    """
+    from forge.analysis.ocr import ScreenText, WordBox
+    from forge.assets.providers import UBIQUITOUS_SHARE, SelfProvider
+
+    guia = synthetic_guide_analysis(120.0)
+    siempre = [
+        ScreenText(at=float(t), words=["Esfera", "Pico"], boxes=[
+            WordBox(text="Esfera", x=0.1, y=0.9, w=0.1, h=0.03),
+            WordBox(text="Pico", x=0.25, y=0.9, w=0.06, h=0.03),
+        ])
+        for t in range(0, 120, 3)
+    ]
+    guia.screen_text = siempre
+    proveedor = SelfProvider(guia)
+
+    assert UBIQUITOUS_SHARE < 1.0
+    assert proveedor._donde_se_vio("esfera", 100.0) == [], (
+        "una palabra que sale en todas las lecturas no distingue ningun momento"
+    )
+
+    # Y una que sale en un momento concreto, si.
+    guia.screen_text = siempre[:3] + [
+        ScreenText(at=30.0, words=["Paldium"], boxes=[
+            WordBox(text="Paldium", x=0.3, y=0.4, w=0.1, h=0.03),
+        ])
+    ]
+    assert proveedor._donde_se_vio("paldium", 100.0), "esta si senala un momento"
