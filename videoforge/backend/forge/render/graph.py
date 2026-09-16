@@ -443,6 +443,74 @@ def _callout_filters(
     return filtros
 
 
+def _plate_branch(
+    effect,
+    path: str,
+    input_index: int,
+    label: str,
+    w: int,
+    h: int,
+    fps: float,
+    rules,
+) -> tuple[str, list[str]]:
+    """La imagen que va **detras** de un rotulo.
+
+    Un rotulo es una caja de color con texto. Con esto la caja pasa a ser el
+    arte que quieras: se pone la imagen recortada al sitio del rotulo y el
+    texto lo pinta ASS encima, que va al final del grafo.
+
+    La imagen se **oscurece**: un arte de portada tiene mucho color y mucho
+    detalle, y encima de eso un texto claro no se lee. Y lleva marco, que es lo
+    que separa la placa del video de debajo.
+    """
+    rect = effect.rect.clamped()
+    ancho = max(2, int(w * rect.w) // 2 * 2)
+    alto = max(2, int(h * rect.h) // 2 * 2)
+
+    oscurecer = max(0.0, min(0.9, getattr(rules, "darken", 0.35)))
+    marco = _ffmpeg_color(getattr(rules, "border_color", ""))
+    grosor = max(0.0, getattr(rules, "border", 0.0))
+    borde = max(2, int(min(ancho, alto) * grosor) // 2 * 2) if marco and grosor else 0
+
+    dentro_w = max(2, ancho - borde * 2)
+    dentro_h = max(2, alto - borde * 2)
+
+    cadena = [
+        f"[{input_index}:v]setpts=PTS-STARTPTS",
+        f"scale={dentro_w}:{dentro_h}:force_original_aspect_ratio=increase:flags=bicubic",
+        f"crop={dentro_w}:{dentro_h}",
+    ]
+    if oscurecer > 0.01:
+        cadena.append(f"eq=brightness=-{oscurecer:.3f}:saturation={1.0 - oscurecer * 0.4:.3f}")
+    if borde:
+        cadena.append(f"pad={ancho}:{alto}:{borde}:{borde}:color={marco}")
+    cadena += ["format=yuva420p", "setsar=1", f"fps={fps:.6f}"]
+
+    fundido = min(BROLL_FADE, max(0.0, effect.duration / 4))
+    if fundido > 0.02:
+        cadena.append(f"fade=t=in:st=0:d={fundido:.3f}:alpha=1")
+        cadena.append(
+            f"fade=t=out:st={max(0.0, effect.duration - fundido):.3f}"
+            f":d={fundido:.3f}:alpha=1"
+        )
+    cadena.append(f"setpts=PTS+{effect.start:.4f}/TB")
+
+    entrada = ["-loop", "1", "-t", f"{effect.duration:.4f}", "-i", path]
+    return ",".join(cadena) + label, entrada
+
+
+def _plates_of(edl) -> list:
+    """Los rotulos y tarjetas que llevan imagen de fondo, con su sitio."""
+    salida = []
+    for e in edl.effects:
+        if not getattr(e, "background", ""):
+            continue
+        if getattr(e, "rect", None) is None:
+            continue
+        salida.append(e)
+    return salida
+
+
 def _overlay_position(effect: BrollEffect, w: int, h: int) -> tuple[str, str]:
     """Donde se coloca el overlay dentro del fotograma."""
     if effect.mode == "full":
@@ -665,6 +733,8 @@ def build_graph(
     voice_rules=None,
     master_gain_db: float | None = None,
     callout_rules=None,
+    plate_rules=None,
+    plate_paths: dict[str, str] | None = None,
 ) -> BuiltGraph:
     """Compila el EDL en un grafo de filtros.
 
@@ -829,6 +899,46 @@ def build_graph(
 
         if colocados:
             aplicado.append(f"{colocados} b-roll")
+
+    # Las placas: la imagen que va detras de un rotulo. Van despues del b-roll
+    # y antes del `ass`, que es el ultimo: asi el texto cae siempre encima de su
+    # propio fondo.
+    if not audio_only and plate_paths:
+        placas = _plates_of(edl)
+        # `siguiente_entrada` la lleva el bloque del b-roll; si no hubo b-roll
+        # todavia no existe, y la primera entrada libre es la 1 (la 0 es el
+        # video de origen).
+        try:
+            siguiente_entrada
+        except NameError:
+            siguiente_entrada = 1
+        puestas = 0
+        for i, efecto in enumerate(placas):
+            ruta = plate_paths.get(getattr(efecto, "background", ""))
+            if not ruta:
+                # El fondo no esta en disco: el rotulo sale con su caja de
+                # color, que es lo que hacia antes. Un fondo que falta no puede
+                # tumbar un render.
+                continue
+            etiqueta = f"[pl{i}]"
+            cadena, entrada = _plate_branch(
+                efecto, ruta, siguiente_entrada, etiqueta, w, h, fps, plate_rules
+            )
+            input_args.append(entrada)
+            siguiente_entrada += 1
+            partes.append(cadena)
+
+            rect = efecto.rect.clamped()
+            salida = f"[vpl{i}]"
+            partes.append(
+                f"{v_label}{etiqueta}overlay=x={int(w * rect.x)}:y={int(h * rect.y)}"
+                f":eof_action=pass"
+                f":enable={_q(f'between(t,{efecto.start:.4f},{efecto.end:.4f})')}{salida}"
+            )
+            v_label = salida
+            puestas += 1
+        if puestas:
+            aplicado.append(f"{puestas} placas")
 
     # Los recuadros ya se dibujaron dentro de cada clip, antes del zoom. Aqui
     # solo se cuentan para el resumen.

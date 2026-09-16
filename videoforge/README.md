@@ -1939,6 +1939,46 @@ styles/palworld.json
                            marcadas y etiqueta
 ```
 
+### La placa: un rotulo con una imagen detras
+
+Un rotulo era una caja de color con texto. Con esto la caja pasa a ser **una
+imagen** --- el arte del juego, por ejemplo --- y el texto se pinta encima con la
+letra que se quiera. Vale para los cuatro sitios donde hay texto en caja: la
+tarjeta de capitulo, los rotulos de seccion, el pie del recuerdo y la etiqueta
+del recuadro. **Un solo fondo para todos**, porque que cada rotulo tenga su
+propia cara se lee como un error, no como una decision --- igual que pasaba con
+los colores.
+
+La letra de una placa es la de un logo: cuerpo grande, **contorno gordo** (17%
+del cuerpo), sombra, **espaciada** y en mayusculas. Y `BorderStyle: 1` en vez de
+3 --- contorno y sombra, **sin caja** --- porque la caja taparia el arte.
+
+```
+styles/palworld.json → plates
+  background   palworld-portada.webp
+  darken       0.42    un arte de portada tiene mucho color y mucho detalle;
+                       encima de eso un texto claro no se lee
+  border_color #F6EFE2 marco crema
+  outline      0.17    el contorno gordo es lo que le da el peso de logo
+  spacing      3.5     un logo va espaciado
+  upper        true
+```
+
+Tres cosas salieron de mirar el render:
+
+- La **tarjeta de capitulo** seguia pintando su caja negra encima del arte:
+  usaba su propio estilo de ASS. Con fondo, usa el de placa.
+- El **texto se salia de la placa** por los dos lados. Un titulo de capitulo es
+  una frase entera, asi que se parte en las lineas que caben y, si aun asi no
+  cabe de alto, se baja el cuerpo de letra.
+- Y en esa cuenta **faltaba el espaciado**: con 27 caracteres son 54 px mas, que
+  era exactamente lo que se salia.
+
+El fichero va en `assets/plates/` y el estilo lo nombra. Esa carpeta esta en el
+`.gitignore`, como las de b-roll, musica y fuentes: el arte de un juego es del
+juego y no se sube aqui. Si el fondo falta, el rotulo sale con su caja de color
+de siempre y el render no se cae.
+
 ### Y el recuadro, con la cara del juego
 
 Un trazo de un color se pierde sobre una imagen que se mueve y esta llena de

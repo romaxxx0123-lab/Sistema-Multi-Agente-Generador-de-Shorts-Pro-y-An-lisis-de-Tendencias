@@ -193,6 +193,11 @@ class TextCardEffect(BaseEffect):
     text: str = ""
     subtitle: str = ""
     style: str = "default"
+    #: fichero de `assets/plates/` que hace de fondo. Vacio = caja de color.
+    background: str = ""
+    #: donde va la placa, si la lleva. La caja de texto de ASS se ajusta sola
+    #: al texto y la imagen no, asi que la placa necesita su propio sitio.
+    rect: Rect | None = None
 
 
 class CalloutEffect(BaseEffect):
@@ -223,6 +228,8 @@ class LowerThirdEffect(BaseEffect):
     #: rotulo: dos rotulos de colores distintos en el mismo video se leen como
     #: un error, no como una decision.
     color: str = "#1f4fd8"
+    #: fichero de `assets/plates/` que hace de fondo en vez de la caja de color.
+    background: str = ""
 
 
 class SfxEffect(BaseEffect):

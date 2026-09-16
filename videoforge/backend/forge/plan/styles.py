@@ -294,6 +294,40 @@ class VoiceRules(BaseModel):
     compress_threshold: float = 0.12
 
 
+class PlateRules(BaseModel):
+    """El fondo y la letra de los rotulos: la "placa".
+
+    Un rotulo es una caja de color con texto. Con esto la caja pasa a ser una
+    **imagen** --- el arte del juego, por ejemplo --- y el texto se pinta encima
+    con la letra que se quiera. Vale para todos: los rotulos de seccion, la
+    tarjeta de capitulo, el pie del recuerdo y la etiqueta de los recuadros.
+
+    Si no hay `background`, o el fichero no esta, todo sigue como antes: caja de
+    color plana. Un fondo que falta no puede tumbar un render.
+    """
+
+    #: Nombre del fichero dentro de `assets/plates/`. Vacio = caja de color.
+    background: str = ""
+    #: Cuanto se oscurece la imagen, 0..1. Sin esto el texto se pierde sobre un
+    #: arte de portada, que es justo lo que tiene: mucho color y mucho detalle.
+    darken: float = 0.35
+    #: Marco de la placa y su grosor en fraccion del lado menor.
+    border_color: str = ""
+    border: float = 0.02
+    #: Color de la letra y de su contorno.
+    text_color: str = "#F6EFE2"
+    outline_color: str = "#18222E"
+    #: Grosor del contorno en fraccion del cuerpo de letra. El de un logo es
+    #: gordo: es lo que le da el peso.
+    outline: float = 0.16
+    #: Separacion entre letras, en pixeles a 1080p. Un logo va espaciado.
+    spacing: float = 3.0
+    #: Cuerpo de letra en fraccion de la altura del fotograma.
+    size: float = 0.040
+    #: Todo en mayusculas, como el logo.
+    upper: bool = True
+
+
 class RecallRules(BaseModel):
     """La tarjeta de "como vimos antes".
 
@@ -352,6 +386,7 @@ class StylePreset(BaseModel):
     music: MusicRules = Field(default_factory=MusicRules)
     sfx: SfxRules = Field(default_factory=SfxRules)
     recall: RecallRules = Field(default_factory=RecallRules)
+    plates: PlateRules = Field(default_factory=PlateRules)
     voice: VoiceRules = Field(default_factory=VoiceRules)
     #: metrica -> banda objetivo; las consume el motor de saturacion
     saturation: dict[str, Band] = Field(default_factory=dict)

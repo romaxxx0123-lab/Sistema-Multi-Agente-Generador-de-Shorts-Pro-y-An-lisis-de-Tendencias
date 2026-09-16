@@ -152,5 +152,17 @@
     "bar": 0.2,
     "title": "ANTES",
     "title_color": "#8A5A2B"
+  },
+  "plates": {
+    "background": "palworld-portada.webp",
+    "darken": 0.42,
+    "border_color": "#F6EFE2",
+    "border": 0.035,
+    "text_color": "#F6EFE2",
+    "outline_color": "#18222E",
+    "outline": 0.17,
+    "spacing": 3.5,
+    "size": 0.042,
+    "upper": true
   }
 }

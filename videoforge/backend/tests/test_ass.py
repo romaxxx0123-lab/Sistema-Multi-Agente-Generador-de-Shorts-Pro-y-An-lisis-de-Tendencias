@@ -221,3 +221,106 @@ def test_los_dialogos_salen_ordenados_en_el_tiempo() -> None:
     ]
     tiempos = [l.split(",")[1] for l in lineas]
     assert tiempos == sorted(tiempos)
+
+
+# -- placas: el rotulo con una imagen detras --------------------------------
+#
+# Un rotulo era una caja de color con texto. Con una imagen detras --- el arte
+# del juego --- el texto tiene que ir **sin caja** (la caja taparia la imagen),
+# centrado en la placa y con la letra de un logo: cuerpo grande, contorno gordo
+# y espaciado.
+
+
+def _placa_card(texto: str, **kw):
+    from forge.plan.edl import Rect, TextCardEffect
+
+    return TextCardEffect(
+        id="c0", start=1.0, end=4.0, text=texto,
+        background="portada.webp",
+        rect=Rect(x=0.05, y=0.07, w=0.42, h=0.13),
+        **kw,
+    )
+
+
+def test_un_rotulo_sin_fondo_sigue_siendo_una_caja_de_color() -> None:
+    from forge.plan.edl import LowerThirdEffect, Rect
+    from forge.plan.styles import PlateRules
+    from forge.render.ass import build_ass
+
+    label = LowerThirdEffect(
+        id="l0", start=1.0, end=4.0, title="Expediciones",
+        rect=Rect(x=0.05, y=0.8, w=0.3, h=0.09),
+    )
+    salida = build_ass([], 1280, 720, labels=[label], plates=PlateRules())
+    dialogo = next(l for l in salida.splitlines() if "Dialogue" in l)
+    assert ",Label," in dialogo, dialogo
+    assert "Expediciones" in dialogo, "ni mayusculas ni centrado"
+
+
+def test_con_fondo_el_texto_va_sin_caja_y_centrado() -> None:
+    from forge.plan.edl import LowerThirdEffect, Rect
+    from forge.plan.styles import PlateRules
+    from forge.render.ass import build_ass
+
+    label = LowerThirdEffect(
+        id="l0", start=1.0, end=4.0, title="Expediciones",
+        rect=Rect(x=0.05, y=0.8, w=0.3, h=0.09), background="portada.webp",
+    )
+    salida = build_ass(
+        [], 1280, 720, labels=[label], plates=PlateRules(background="portada.webp")
+    )
+    dialogo = next(l for l in salida.splitlines() if "Dialogue" in l)
+    estilo = next(l for l in salida.splitlines() if l.startswith("Style: Plate"))
+
+    assert ",Plate," in dialogo
+    assert "EXPEDICIONES" in dialogo, "en mayusculas, como un logo"
+    assert "\\an5" in dialogo, "centrado en la placa"
+    # `BorderStyle` 1 = contorno y sombra, sin caja. Con 3 la caja taparia la
+    # imagen. El indice se saca de la linea `Format:`, no a mano.
+    formato = next(
+        l for l in salida.splitlines() if l.startswith("Format: Name,")
+    )
+    nombres = [c.strip() for c in formato.split(":", 1)[1].split(",")]
+    campos = [c.strip() for c in estilo.split(":", 1)[1].split(",")]
+    assert campos[nombres.index("BorderStyle")] == "1", dict(zip(nombres, campos))
+
+
+def test_la_tarjeta_de_capitulo_tambien() -> None:
+    from forge.plan.styles import PlateRules
+    from forge.render.ass import build_ass
+
+    salida = build_ass(
+        [], 1280, 720, cards=[_placa_card("Las expediciones")],
+        plates=PlateRules(background="portada.webp"),
+    )
+    dialogo = next(l for l in salida.splitlines() if "Dialogue" in l)
+    assert ",Plate," in dialogo, "con la caja del estilo Card se taparia el arte"
+    assert "LAS EXPEDICIONES" in dialogo
+
+
+def test_el_texto_no_se_sale_de_la_placa() -> None:
+    """Un titulo de capitulo es una frase entera.
+
+    Sin ajustar se sale por los dos lados y queda peor que sin placa. Y el
+    espaciado cuenta: con 27 caracteres son 54 px mas, que era justo lo que se
+    salia.
+    """
+    from forge.plan.styles import PlateRules
+    from forge.render.ass import PLATE_CHAR_W, build_ass
+
+    ancho_placa = 1280 * 0.42
+    reglas = PlateRules(background="portada.webp", size=0.040, spacing=3.5)
+    salida = build_ass(
+        [], 1280, 720,
+        cards=[_placa_card("Hola en este video montamos la base de cero")],
+        plates=reglas,
+    )
+    dialogo = next(l for l in salida.splitlines() if "Dialogue" in l)
+    cuerpo = int(round(720 * reglas.size))
+    espaciado = reglas.spacing * 720 / 1080.0
+
+    texto = dialogo.split("}", 1)[1]
+    assert "\\N" in texto, "una frase entera tiene que partirse"
+    for linea in texto.split("\\N"):
+        ancho = len(linea) * (cuerpo * PLATE_CHAR_W + espaciado)
+        assert ancho <= ancho_placa, (linea, round(ancho), round(ancho_placa))

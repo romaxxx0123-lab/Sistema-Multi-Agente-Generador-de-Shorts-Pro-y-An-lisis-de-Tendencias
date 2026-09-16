@@ -309,6 +309,33 @@ LABEL_BOX_HEIGHT = 0.075
 RECALL_CAPTION_INSET = 0.012
 
 
+#: Sitio de la placa de una tarjeta de capitulo: banda ancha arriba a la
+#: izquierda, que es donde ya va su texto.
+CARD_PLATE = Rect(x=0.05, y=0.07, w=0.42, h=0.13)
+
+
+def _put_plates(efectos, rules) -> None:
+    """Le pone a cada rotulo la imagen de fondo del estilo.
+
+    Va aqui y no en cada planner porque el fondo es **uno para todos**: que
+    cada rotulo tenga su propia cara se lee como un error, no como una
+    decision, igual que pasaba con los colores.
+
+    La tarjeta de capitulo no tenia sitio propio --- su texto lo coloca ASS con
+    su margen --- asi que se le da uno: la imagen no se ajusta sola al texto.
+    """
+    fondo = (getattr(rules, "background", "") or "").strip()
+    if not fondo:
+        return
+    for e in efectos:
+        if e.kind is EffectKind.LOWER_THIRD:
+            e.background = fondo
+        elif e.kind is EffectKind.TEXT_CARD:
+            e.background = fondo
+            if e.rect is None:
+                e.rect = CARD_PLATE.model_copy()
+
+
 def _callout_labels(marcas, rules) -> list[LowerThirdEffect]:
     """La etiqueta con el nombre de lo que recuadra cada marca.
 
@@ -369,14 +396,19 @@ def _recall_titles(brolls, rules) -> list[LowerThirdEffect]:
         if not texto:
             continue
         if banda > 0.0:
-            alto = round(b.rect.h * banda, 4)
-            y = round(b.rect.y + b.rect.h - alto, 4)
+            # El pie ocupa la banda de la tarjeta, sangrado por los cuatro
+            # lados: con el ancho entero se salia por la derecha justo lo que
+            # se le habia sangrado por la izquierda.
+            alto = round(b.rect.h * banda - RECALL_CAPTION_INSET, 4)
+            y = round(b.rect.y + b.rect.h - b.rect.h * banda, 4)
+            ancho = round(max(0.05, b.rect.w - RECALL_CAPTION_INSET * 2), 4)
             color = getattr(rules, "border_color", "") or getattr(
                 rules, "title_color", "#1f4fd8"
             )
         else:
             alto = LABEL_BOX_HEIGHT
             y = round(max(0.0, b.rect.y - alto), 4)
+            ancho = b.rect.w
             color = getattr(rules, "title_color", "#1f4fd8")
         salida.append(LowerThirdEffect(
             id=f"recallt{i:03d}",
@@ -386,7 +418,7 @@ def _recall_titles(brolls, rules) -> list[LowerThirdEffect]:
             rect=Rect(
                 x=round(b.rect.x + RECALL_CAPTION_INSET, 4),
                 y=y,
-                w=b.rect.w,
+                w=ancho,
                 h=alto,
             ),
             color=color,
@@ -557,6 +589,10 @@ def build_edl(
     # El cupo de un estilo dice cuantos, no dice como: sin esto salian rachas de
     # once zooms seguidos sin saltarse ninguna regla (ver `plan/restraint.py`).
     _, notas_fatiga = apply_restraint(edl, style)
+
+    # Lo ultimo: la cara de los rotulos. Despues del recorte y del reparto, asi
+    # que solo se la lleva lo que de verdad se queda en el montaje.
+    _put_plates(edl.effects, style.plates)
     edl.notes += notas_fatiga
 
     edl.notes.append(

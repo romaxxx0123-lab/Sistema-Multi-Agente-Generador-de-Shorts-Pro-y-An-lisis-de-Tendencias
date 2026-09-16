@@ -8,6 +8,7 @@ models/
 assets/broll/*
 assets/music/*
 assets/fonts/*
+assets/plates/*
 !assets/**/.gitkeep
 frontend/node_modules/
 frontend/dist/

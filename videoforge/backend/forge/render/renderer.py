@@ -299,6 +299,28 @@ def _check_output(path: Path, expected: float, settings: Settings) -> None:
 MUSIC_EXTS = (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus")
 
 
+def _find_plates(edl, plates_dir: Path | None) -> dict[str, str]:
+    """Los ficheros de fondo que piden los rotulos, si estan en disco.
+
+    Devuelve solo los que existen: un fondo que falta deja el rotulo con su
+    caja de color, que es lo que hacia antes, en vez de tumbar el render.
+    """
+    pedidos = {
+        getattr(e, "background", "") for e in edl.effects
+        if getattr(e, "background", "")
+    }
+    if not pedidos or plates_dir is None or not Path(plates_dir).is_dir():
+        return {}
+    salida: dict[str, str] = {}
+    for nombre in pedidos:
+        # Solo el nombre del fichero: un estilo no puede sacar al render de su
+        # carpeta de placas.
+        ruta = Path(plates_dir) / Path(nombre).name
+        if ruta.is_file():
+            salida[nombre] = str(ruta.resolve())
+    return salida
+
+
 def _find_music(music_dir: Path | None) -> str | None:
     """El primer fichero de musica de tu carpeta, por orden alfabetico."""
     if music_dir is None or not Path(music_dir).is_dir():
@@ -319,6 +341,7 @@ def render(
     two_pass_audio: bool = True,
     fonts_dir: Path | None = None,
     music_dir: Path | None = None,
+    plates_dir: Path | None = None,
     work_dir: Path | None = None,
     assets: AssetBundle | None = None,
     progress: ProgressFn | None = None,
@@ -358,6 +381,22 @@ def render(
     # motor de texto, misma fuente, mismo contorno. Antes se planificaban y no
     # se dibujaba ninguno, asi que el EDL prometia capitulos en pantalla que no
     # existian en el video (y el medidor de saturacion los contaba como texto).
+    # El estilo, que lo necesitan el .ass (la letra de las placas), el grafo
+    # (los recuadros y los fondos) y la cadena de voz. Si el estilo ya no existe
+    # --- un EDL guardado hace tiempo --- se sigue sin el en vez de fallar.
+    voice_rules = None
+    callout_rules = None
+    plate_rules = None
+    try:
+        from ..plan.styles import load_style
+
+        estilo = load_style(edl_render.style)
+        voice_rules = estilo.voice
+        callout_rules = estilo.callouts
+        plate_rules = estilo.plates
+    except ForgeError:
+        pass
+
     ass_path: str | None = None
     captions = [e for e in edl_render.effects if e.kind is EffectKind.CAPTION]
     cards = [e for e in edl_render.effects if e.kind is EffectKind.TEXT_CARD]
@@ -374,24 +413,12 @@ def render(
             theme_name=tema,
             cards=cards,
             labels=labels,
+            plates=plate_rules,
         )
         ass_path = str(destino.resolve())
 
     fonts = str(fonts_dir.resolve()) if fonts_dir and fonts_dir.is_dir() else None
     target_lufs = edl_render.render.target_lufs
-
-    # El tratamiento de voz lo define el estilo. Si el estilo ya no existe (un
-    # EDL guardado hace tiempo), se sigue sin el en vez de fallar.
-    voice_rules = None
-    callout_rules = None
-    try:
-        from ..plan.styles import load_style
-
-        estilo = load_style(edl_render.style)
-        voice_rules = estilo.voice
-        callout_rules = estilo.callouts
-    except ForgeError:
-        pass
 
     # -- efectos de sonido --------------------------------------------------
     # Se sintetizan al vuelo la primera vez y quedan cacheados. No se
@@ -454,6 +481,7 @@ def render(
 
     quiere_musica = any(e.kind is EffectKind.MUSIC for e in edl_render.effects)
     music_path = _find_music(music_dir) if quiere_musica else None
+    plate_paths = _find_plates(edl_render, plates_dir)
     aviso_musica = (
         "Este estilo lleva musica y no hay ninguna en assets/music/: "
         "se monta sin ella."
@@ -471,6 +499,8 @@ def render(
         target_lufs=target_lufs if not two_pass_audio else None,
         assets=assets, sfx_paths=sfx_paths, voice_rules=voice_rules,
         callout_rules=callout_rules,
+        plate_rules=plate_rules,
+        plate_paths=plate_paths,
     )
     _dry_run(ffmpeg, source, graph_seco, settings)
 
@@ -525,6 +555,8 @@ def render(
         voice_rules=voice_rules,
         master_gain_db=master_gain,
         callout_rules=callout_rules,
+        plate_rules=plate_rules,
+        plate_paths=plate_paths,
     )
     codec_args, nombre_encoder = _video_codec_args(caps, edl_render, preview=preview, use_gpu=use_gpu)
 

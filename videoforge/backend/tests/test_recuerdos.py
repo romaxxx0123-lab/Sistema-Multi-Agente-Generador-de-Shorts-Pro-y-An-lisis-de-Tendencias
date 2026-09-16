@@ -464,9 +464,18 @@ def test_el_pie_va_dentro_del_marco() -> None:
     )
     pie = _recall_titles([tarjeta], RecallRules(bar=0.2, border_color="#8A5A2B"))[0]
 
+    from forge.plan.planner import RECALL_CAPTION_INSET
+
     arriba, abajo = tarjeta.rect.y, tarjeta.rect.y + tarjeta.rect.h
     assert arriba < pie.rect.y < abajo, "el pie va dentro de la tarjeta"
-    assert pie.rect.y + pie.rect.h == pytest.approx(abajo, abs=1e-3), "pegado abajo"
+    # Sangrado por los cuatro lados: con el ancho y el alto enteros se salia
+    # por la derecha y por abajo justo lo sangrado por la izquierda.
+    assert pie.rect.y + pie.rect.h == pytest.approx(
+        abajo - RECALL_CAPTION_INSET, abs=1e-3
+    )
+    assert pie.rect.x + pie.rect.w == pytest.approx(
+        tarjeta.rect.x + tarjeta.rect.w - RECALL_CAPTION_INSET, abs=1e-3
+    )
     assert pie.color == "#8A5A2B", "del color del marco, para que sea el pie y no otra caja"
     assert pie.title == "ANTES · Esfera"
 

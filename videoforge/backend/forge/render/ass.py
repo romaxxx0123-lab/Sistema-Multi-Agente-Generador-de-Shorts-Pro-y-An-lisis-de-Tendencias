@@ -142,6 +142,8 @@ CARD_FADE_MS = 260
 #: Mas pequeno que una tarjeta de capitulo a proposito: la tarjeta anuncia, el
 #: rotulo acompana.
 LABEL_SIZE_RATIO = 0.030
+#: Cuerpo de letra de una placa, por defecto.
+PLATE_SIZE_RATIO = 0.040
 #: Entra y sale con un fundido corto, como las tarjetas.
 LABEL_FADE_MS = 240
 
@@ -242,6 +244,71 @@ def _karaoke_text(caption: CaptionEffect) -> str:
     return "".join(partes).rstrip()
 
 
+#: Ancho medio de un caracter en fraccion del cuerpo de letra, con la fuente en
+#: negrita que usan las placas. Es una estimacion --- aqui no hay forma de medir
+#: el texto, eso lo hace libass al dibujar --- pero basta para lo unico que se
+#: necesita: que el texto no se salga de su placa.
+PLATE_CHAR_W = 0.62
+#: Y lo que ocupa una linea de alto, contando el interlineado.
+PLATE_LINE_H = 1.30
+
+
+def _plate_lines(texto: str, ancho_px: float, size: int, spacing: float = 0.0) -> list[str]:
+    """Parte el texto en las lineas que caben a lo ancho de la placa.
+
+    El `spacing` cuenta: una placa va espaciada --- es lo que le da el aire de
+    logo --- y con 27 caracteres son 54 px mas, que es justo lo que hacia que el
+    texto se saliera por los dos lados.
+    """
+    avance = size * PLATE_CHAR_W + max(0.0, spacing)
+    caben = max(6, int(ancho_px * 0.92 / avance))
+    palabras = texto.split()
+    lineas: list[str] = []
+    actual: list[str] = []
+    for palabra in palabras:
+        prueba = " ".join(actual + [palabra])
+        if actual and len(prueba) > caben:
+            lineas.append(" ".join(actual))
+            actual = [palabra]
+        else:
+            actual.append(palabra)
+    if actual:
+        lineas.append(" ".join(actual))
+    return lineas or [texto]
+
+
+def _plate_text(rect, width: int, height: int, texto: str, plates, size: int) -> str:
+    """El texto de una placa: centrado, en mayusculas y **ajustado a su sitio**.
+
+    Un titulo de capitulo es una frase entera. Sin ajustar, se sale de la placa
+    por los dos lados y queda peor que sin placa: se parte en las lineas que
+    caben y, si aun asi no cabe de alto, se baja el cuerpo de letra.
+    """
+    if getattr(plates, "upper", True):
+        texto = texto.upper()
+
+    ancho_px = width * rect.w
+    alto_px = height * rect.h
+
+    espaciado = getattr(plates, "spacing", 3.0) * height / 1080.0
+    lineas = _plate_lines(texto, ancho_px, size, espaciado)
+    # Si con ese cuerpo de letra no cabe de alto, se baja hasta que quepa. Dos
+    # lineas en una banda estrecha es lo normal en una tarjeta de capitulo.
+    cuerpo = size
+    while cuerpo > 10 and len(lineas) * cuerpo * PLATE_LINE_H > alto_px * 0.9:
+        cuerpo = int(cuerpo * 0.9)
+        lineas = _plate_lines(texto, ancho_px, cuerpo, espaciado)
+
+    cx = int(round(width * (rect.x + rect.w / 2)))
+    cy = int(round(height * (rect.y + rect.h / 2)))
+    tamano = "" if cuerpo == size else f"\\fs{cuerpo}"
+    return (
+        f"{{\\an5\\pos({cx},{cy}){tamano}"
+        f"\\fad({LABEL_FADE_MS},{LABEL_FADE_MS})}}"
+        + "\\N".join(lineas)
+    )
+
+
 def build_ass(
     captions: list[CaptionEffect],
     width: int,
@@ -252,6 +319,7 @@ def build_ass(
     karaoke: bool = True,
     cards: list | None = None,
     labels: list | None = None,
+    plates=None,
 ) -> str:
     """Devuelve el contenido completo de un fichero .ass.
 
@@ -282,6 +350,18 @@ def build_ass(
     card_margen = max(16, int(round(height * CARD_MARGIN_RATIO)))
     label_size = max(12, int(round(height * LABEL_SIZE_RATIO)))
 
+    # La letra de una placa: cuerpo grande, contorno gordo y espaciada, que es
+    # lo que hace que un texto parezca un logo y no un subtitulo. `BorderStyle:
+    # 1` --- contorno y sombra, sin caja --- porque detras va una imagen y la
+    # caja la taparia. Anclado al centro (5) para que caiga en medio de la
+    # placa sin tener que medir el texto.
+    plate_size = max(14, int(round(height * getattr(plates, "size", PLATE_SIZE_RATIO))))
+    plate_fill = _ass_color(*parse_hex(getattr(plates, "text_color", "#F6EFE2")))
+    plate_outline = _ass_color(*parse_hex(getattr(plates, "outline_color", "#18222E")))
+    plate_bordes = max(2.0, plate_size * getattr(plates, "outline", 0.16))
+    plate_sombra = max(1.0, plate_bordes * 0.4)
+    plate_spacing = getattr(plates, "spacing", 3.0) * height / 1080.0
+
     cabecera = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -295,6 +375,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Default,{familia},{size},{primary},{secondary},{outline},{back},{-1 if theme.bold else 0},0,0,0,100,100,0,0,{border_style},{theme.outline_width},{theme.shadow},{alineacion},{margen_lateral},{margen_lateral},{margen},1
 Style: Label,{familia},{label_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{_ass_color(31, 79, 216)},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(6.0, label_size * 0.35):.1f},0,7,0,0,0,1
 Style: Card,{familia},{card_size},{_ass_color(255, 255, 255)},{_ass_color(255, 255, 255)},{outline},{_ass_color(0, 0, 0, 0x30)},-1,0,0,0,100,100,0,0,3,{max(2.0, theme.outline_width * 0.8):.1f},0,7,{card_margen},{card_margen},{card_margen},1
+Style: Plate,{familia},{plate_size},{plate_fill},{plate_fill},{plate_outline},{_ass_color(0, 0, 0, 0x40)},-1,0,0,0,100,100,{plate_spacing:.1f},0,1,{plate_bordes:.1f},{plate_sombra:.1f},5,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -317,6 +398,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         texto = _escape(getattr(card, "text", "") or "")
         if not texto:
             continue
+
+        if getattr(card, "background", "") and getattr(card, "rect", None):
+            # Igual que un rotulo con fondo: sin caja, centrado en la placa y
+            # con la letra de placa. La caja del estilo `Card` taparia el arte.
+            lineas.append(
+                f"Dialogue: 1,{_timestamp(card.start)},{_timestamp(card.end)},Plate,,0,0,0,,"
+                + _plate_text(card.rect, width, height, texto, plates, plate_size)
+            )
+            continue
+
         subtitulo = _escape(getattr(card, "subtitle", "") or "")
         if subtitulo:
             texto = f"{texto}\\N{{\\fs{int(card_size * 0.62)}}}{subtitulo}"
@@ -330,6 +421,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if not texto:
             continue
         rect = getattr(label, "rect", None)
+
+        if getattr(label, "background", "") and rect is not None:
+            lineas.append(
+                f"Dialogue: 1,{_timestamp(label.start)},{_timestamp(label.end)},Plate,,0,0,0,,"
+                + _plate_text(rect, width, height, texto, plates, plate_size)
+            )
+            continue
+
         x = int(round(width * (getattr(rect, "x", 0.05) if rect else 0.05)))
         y = int(round(height * (getattr(rect, "y", 0.08) if rect else 0.08)))
         r, g, b = parse_hex(getattr(label, "color", "#1f4fd8"))

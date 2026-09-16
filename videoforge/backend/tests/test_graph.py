@@ -300,3 +300,80 @@ def test_sin_barras_no_se_recorta_nada(tmp_path) -> None:
     )
     g = _con_broll(asset, tmp_path)
     assert "crop=1920:1080:0:0" not in g.filter_complex
+
+
+# -- placas: la imagen que va detras de un rotulo ---------------------------
+
+
+def _con_placa(**kw):
+    from forge.plan.edl import LowerThirdEffect, Rect
+
+    return LowerThirdEffect(
+        id="l0", start=2.0, end=5.0, title="Expediciones",
+        rect=Rect(x=0.05, y=0.78, w=0.3, h=0.09),
+        background="portada.webp", **kw,
+    )
+
+
+def test_la_placa_pone_la_imagen_detras_del_rotulo() -> None:
+    from forge.plan.styles import PlateRules
+    from forge.render.graph import _plate_branch
+
+    cadena, entrada = _plate_branch(
+        _con_placa(), "/tmp/portada.webp", 1, "[pl0]", 1920, 1080, 30.0,
+        PlateRules(background="portada.webp", darken=0.4,
+                   border_color="#F6EFE2", border=0.035),
+    )
+    assert entrada[:2] == ["-loop", "1"], "una imagen fija hay que hacerla video"
+    assert "/tmp/portada.webp" in entrada
+    assert "eq=brightness=-0.400" in cadena, (
+        "sin oscurecer, un texto claro sobre un arte de portada no se lee"
+    )
+    assert "pad=" in cadena and "0xF6EFE2" in cadena, "falta el marco"
+    assert "setpts=PTS+2.0000/TB" in cadena, "tiene que empezar cuando toca"
+
+
+def test_un_fondo_que_falta_no_tumba_el_render() -> None:
+    """El rotulo sale con su caja de color, como antes."""
+    from forge.plan.styles import PlateRules
+    from forge.render.graph import build_graph
+
+    edl = _edl()
+    edl.effects.append(_con_placa())
+
+    g = build_graph(
+        edl, has_audio=True, plate_rules=PlateRules(background="portada.webp"),
+        plate_paths={},   # nada en disco
+    )
+    assert "portada.webp" not in g.filter_complex
+    assert not any("placa" in a for a in g.applied)
+
+
+def test_con_el_fondo_en_disco_se_compone() -> None:
+    from forge.plan.styles import PlateRules
+    from forge.render.graph import build_graph
+
+    edl = _edl()
+    edl.effects.append(_con_placa())
+
+    g = build_graph(
+        edl, has_audio=True,
+        plate_rules=PlateRules(background="portada.webp"),
+        plate_paths={"portada.webp": "/tmp/portada.webp"},
+    )
+    assert "/tmp/portada.webp" in " ".join(" ".join(a) for a in g.input_args)
+    assert "[pl0]overlay=" in g.filter_complex
+    assert any("placa" in a for a in g.applied), g.applied
+
+
+def test_un_rotulo_sin_sitio_no_lleva_placa() -> None:
+    """La imagen no se ajusta sola al texto: sin `rect` no hay donde ponerla."""
+    from forge.plan.edl import TextCardEffect
+    from forge.render.graph import _plates_of
+
+    edl = _edl()
+    edl.effects.append(
+        TextCardEffect(id="c0", start=1.0, end=3.0, text="Hola",
+                       background="portada.webp")   # rect=None
+    )
+    assert _plates_of(edl) == []
