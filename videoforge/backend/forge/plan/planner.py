@@ -225,16 +225,26 @@ def _plan_transitions(
         return []
 
     capitulos = [c.start for c in edl.chapters]
-    motivos: list[tuple[float, str]] = []
+    # El motivo no es un adorno del informe: decide **cuanto vale** esa
+    # transicion. Empezar un capitulo es un cambio de verdad -- se pasa a otra
+    # cosa -- y marcarlo ayuda a seguir el video. Que cambie el plano es solo
+    # que la imagen ya cambiaba sola, y ahi un fundido decora, no informa.
+    #
+    # Cuanto vale decorar no lo decido yo, lo dice el estilo: `fraction` es su
+    # apetito declarado de transiciones. Con 0.12 (una guia) una transicion
+    # decorativa no se sostiene sola; con 0.50 (cine) es parte del lenguaje del
+    # estilo y se queda.
+    decorativa = round(0.18 + 0.45 * rules.fraction, 3)
+    motivos: list[tuple[float, str, float]] = []
     for t in cortes:
         titulo = next(
             (c.title for c in edl.chapters if abs(c.start - t) <= TRANSITION_SNAP),
             None,
         )
         if titulo is not None and t > 0.01:
-            motivos.append((t, f'ahi empieza el capitulo "{titulo}"'))
+            motivos.append((t, f'ahi empieza el capitulo "{titulo}"', 0.60))
         elif analysis is not None and _cambia_el_plano(edl, analysis, t):
-            motivos.append((t, "ahi cambia el plano"))
+            motivos.append((t, "ahi cambia el plano", decorativa))
 
     if not motivos:
         if analysis is not None or capitulos:
@@ -244,7 +254,10 @@ def _plan_transitions(
         # Sin analisis no hay forma de saberlo; se cae al reparto de antes.
         cuantas = max(1, int(len(cortes) * rules.fraction))
         paso = max(1, len(cortes) // cuantas)
-        motivos = [(t, "corte repartido") for t in cortes[::paso][:cuantas]]
+        # Sin saber que corte es, la transicion no informa de nada: vale lo
+        # justo para que el suelo de justificacion la deje fuera salvo que el
+        # estilo pida mucha carga.
+        motivos = [(t, "corte repartido", 0.18) for t in cortes[::paso][:cuantas]]
 
     # El tope del estilo se sigue respetando: si cambia de plano cada dos
     # segundos, tampoco se pone una transicion en cada uno.
@@ -257,11 +270,11 @@ def _plan_transitions(
             start=round(max(0.0, t - rules.duration / 2), 3),
             end=round(min(edl.duration, t + rules.duration / 2), 3),
             transition=rules.default,
-            value_score=0.35,
+            value_score=valor,
             cost_weight=0.30,
             rationale=f"transicion {rules.default} en {t:.1f}s: {motivo}",
         )
-        for i, (t, motivo) in enumerate(elegidos)
+        for i, (t, motivo, valor) in enumerate(elegidos)
     ]
 
 

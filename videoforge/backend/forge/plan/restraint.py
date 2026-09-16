@@ -1,4 +1,21 @@
-"""Que el quinto no valga lo que valia el primero.
+"""Que cada efecto se justifique, y que el quinto no valga lo que el primero.
+
+Dos frenos, y el primero es el que de verdad evita la sobreedicion: **un efecto
+tiene que justificarse, no ocupar un cupo**.
+
+Cada planner elige los mejores N candidatos que le permite su cupo, y ahi esta
+el fallo de fondo: si el cupo da para trece zooms, salen trece zooms, aunque el
+decimotercero valga 0.14 sobre 1. Medido en una guia de 20 minutos con
+`tutorial`: los zooms iban de 0.97 a **0.14**, y cuatro de los trece estaban por
+debajo de 0.25. Nadie los pidio; estaban ahi porque quedaba sitio.
+
+Peor todavia: habia efectos cuyo valor era **una constante**. Las veintidos
+transiciones valian 0.35 **todas**, y sin embargo el planner sabia
+perfectamente cuales marcaban el principio de un capitulo y cuales solo caian
+donde la imagen ya cambiaba sola. Sabia la diferencia y la tiraba. Ahora una
+transicion de capitulo vale 0.60 y una decorativa 0.28, y el suelo se lleva las
+segundas: a veces la edicion no hace falta, y no hacerla es la decision.
+
 
 Cada planner tiene un cupo: "hasta doce zooms por minuto", "hasta diez efectos
 de sonido por minuto". Y cumpliendolo al pie de la letra sale esto, medido
@@ -51,6 +68,25 @@ FATIGUE_WEIGHT = 0.7
 #: Por debajo de este valor efectivo, el efecto pasa a reservas. Es el mismo
 #: orden de magnitud que el valor de un efecto de relleno.
 VALUE_FLOOR = 0.42
+
+#: Lo que tiene que valer un efecto para entrar en el montaje, con el
+#: deslizador de intensidad en el medio. No es un tope de cuantos: es un suelo
+#: de **por que**. Un efecto que no llega aqui no es que sobre por carga, es que
+#: no tiene nada que decir.
+MIN_JUSTIFIED = 0.30
+
+
+def justification_bar(intensity: int) -> float:
+    """Cuanto hay que justificar un efecto, segun la intensidad que pidas.
+
+    Es lo que el deslizador deberia haber significado siempre: no "pon mas
+    cosas", sino **cuanto te tengo que convencer para ponerlas**. A 0 hay que
+    convencer mucho (0.45) y el montaje queda limpio; a 100 casi nada (0.15) y
+    entra hasta lo decorativo.
+    """
+    i = max(0, min(100, intensity))
+    return round(MIN_JUSTIFIED * (1.5 - i / 100.0), 4)
+
 
 #: Los subtitulos y el color no cansan: van de principio a fin por definicion.
 NEVER_TIRED = (EffectKind.CAPTION, EffectKind.GRADE, EffectKind.MUSIC)
@@ -146,6 +182,20 @@ def apply_restraint(edl: EDL, style) -> tuple[list[Tired], list[str]]:
     usados: dict[EffectKind, list[float]] = {}
     cansados: list[Tired] = []
 
+    # 0. Lo que no se justifica no entra, aunque quedara cupo de sobra. Este es
+    #    el freno que evita la sobreedicion: los demas solo reparten.
+    suelo = justification_bar(edl.intensity)
+    injustificados: set[str] = set()
+    for efecto in visibles:
+        if efecto.value_score < suelo:
+            injustificados.add(efecto.id)
+            cansados.append(Tired(
+                effect_id=efecto.id, kind=efecto.kind.value,
+                start=round(efecto.start, 3), fatigue=0.0,
+                value=round(efecto.value_score, 3),
+            ))
+    visibles = [e for e in visibles if e.id not in injustificados]
+
     # 1. Las rachas: se adelgazan quedandose con lo que mas aporta.
     en_bucle: set[str] = set()
     for grupo in runs(visibles):
@@ -193,10 +243,16 @@ def apply_restraint(edl: EDL, style) -> tuple[list[Tired], list[str]]:
         for t in cansados:
             por_tipo[t.kind] = por_tipo.get(t.kind, 0) + 1
         detalle = ", ".join(f"{n} {k}" for k, n in sorted(por_tipo.items()))
-        bucles = len(en_bucle)
+        partes: list[str] = []
+        if injustificados:
+            partes.append(f"{len(injustificados)} por no justificarse")
+        if en_bucle:
+            partes.append(f"{len(en_bucle)} por venir en racha")
+        resto = len(cansados) - len(injustificados) - len(en_bucle)
+        if resto > 0:
+            partes.append(f"{resto} por repetirse de mas")
         notas.append(
-            f"{len(cansados)} efectos pasan a reserva por repetirse ({detalle})"
-            + (f", {bucles} de ellos por venir en racha" if bucles else "")
-            + ": el cuarto seguido ya no subraya nada."
+            f"{len(cansados)} efectos se quedan fuera ({', '.join(partes)}): "
+            f"{detalle}. A veces no editar es la decision."
         )
     return cansados, notas

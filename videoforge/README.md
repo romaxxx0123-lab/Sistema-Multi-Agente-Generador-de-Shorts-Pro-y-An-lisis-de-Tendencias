@@ -383,6 +383,49 @@ Hay una distincion que importa: las metricas cuya banda empieza en cero son
 carencia, asi que solo pueden empujar hacia la saturacion, nunca hacia la
 carencia, y si no son problema ni siquiera puntuan.
 
+### Un efecto tiene que justificarse, no ocupar un cupo
+
+Este es el freno que de verdad evita la sobreedicion, y el fallo era de raiz.
+Cada planner elige los mejores N candidatos que le permite su cupo, asi que **si
+el cupo da para trece zooms, salen trece zooms**. Medido en una guia de 20
+minutos con `tutorial`: los zooms iban de 0.97 a **0.14** sobre 1, y cuatro de
+los trece estaban por debajo de 0.25. Nadie los pidio; estaban ahi porque
+quedaba sitio.
+
+Y habia algo peor: efectos cuyo valor era **una constante**. Las veintidos
+transiciones valian 0.35 **todas** --- y sin embargo el planner sabia
+perfectamente cuales marcaban el principio de un capitulo y cuales caian donde
+la imagen ya cambiaba sola. Sabia la diferencia y la tiraba a la basura.
+
+Tres cambios:
+
+1. **Los valores dicen la verdad.** Una transicion que abre capitulo vale 0.60;
+   una que solo cae donde el plano cambiaba ya, 0.18 + 0.45 x lo que el estilo
+   declara que le gustan las transiciones. Eso ultimo no lo decido yo: con 0.12
+   (una guia) una transicion decorativa no se sostiene sola, con 0.50 (cine) es
+   parte del lenguaje del estilo y se queda.
+2. **Un suelo de justificacion.** Por debajo de el, el efecto no entra --- se
+   queda en reservas. A veces no editar es la decision.
+3. **El medidor deja de obligar a rellenar.** Sin esto, un montaje limpio que el
+   medidor leia como "sub-editado" se rellenaba con los efectos que el planner
+   acababa de descartar *por no justificarse*: la app se sobreeditaba sola para
+   contentar a su propio medidor.
+
+Resultado en esa guia de 20 minutos: **42 efectos visibles pasan a 22**. Se van
+los cuatro zooms de relleno y las dieciseis transiciones decorativas; se quedan
+los siete rotulos de capitulo, las seis transiciones que abren capitulo y los
+nueve zooms que valian algo. El medidor sigue diciendo "en el punto".
+
+Y el deslizador de intensidad por fin significa algo concreto: **no es "pon mas
+cosas", es cuanto me tienes que convencer**.
+
+| intensidad | suelo | efectos en la guia |
+|---|---|---|
+| 0 | 0.45 | 20 |
+| 50 | 0.30 | 22 |
+| 75 | 0.23 | 38 |
+| 100 | 0.15 | 41 |
+
 ### Repetirse tambien es sobresaturar
 
 Un cupo dice **cuantos** y no dice **como**. Con `gaming-hype` en una guia de 20

@@ -27,6 +27,7 @@ import numpy as np
 from ..analysis.types import Analysis
 from ..plan.conflicts import conflicts_with
 from ..plan.edl import EDL, BaseEffect, EffectKind
+from ..plan.restraint import justification_bar
 from ..plan.styles import StylePreset, load_style
 from .density import RATE, density_curve
 from .score import BUSY, UNDER_EDITED, SaturationReport, evaluate
@@ -177,10 +178,17 @@ def _best_candidate(
     Con `start`/`end` se busca **dentro de ese tramo**, que es como se pone algo
     donde de verdad hace falta en vez de donde ya habia.
     """
+    # El suelo de justificacion tambien vale aqui, y esto importa mas de lo que
+    # parece: sin ello, un montaje limpio que el medidor lee como "sub-editado"
+    # se rellenaba con los efectos que el planner acababa de descartar **por no
+    # justificarse**. Es decir, la app se sobreeditaba sola para contentar a su
+    # propio medidor.
+    suelo = justification_bar(edl.intensity)
     disponibles = [
         c
         for c in edl.candidates
-        if not any(
+        if c.value_score >= suelo
+        and not any(
             e.kind is c.kind and e.overlaps(c.start, c.end) for e in edl.effects
         )
         and not conflicts_with(edl, c)
