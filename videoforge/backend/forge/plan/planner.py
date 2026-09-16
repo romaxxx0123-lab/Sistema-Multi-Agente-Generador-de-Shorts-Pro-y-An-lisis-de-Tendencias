@@ -301,6 +301,43 @@ def _plan_grade(edl: EDL, style: StylePreset) -> list[GradeEffect]:
     ]
 
 
+def _callout_labels(marcas, rules) -> list[LowerThirdEffect]:
+    """La etiqueta con el nombre de lo que recuadra cada marca.
+
+    El recuadro dice **donde** mirar y la etiqueta dice **que** es, que en una
+    guia de un juego es la mitad del trabajo: un cuadro dorado sobre un numero
+    no explica que ese numero son los fragmentos que te faltan.
+
+    Sale como rotulo porque es una caja de color con texto, igual que el
+    titulillo del recuerdo, y asi cuenta en el medidor como texto en pantalla.
+    """
+    if not getattr(rules, "label", False):
+        return []
+    salida = []
+    for i, marca in enumerate(marcas):
+        texto = (marca.label or "").strip()
+        if not texto:
+            continue
+        alto = 0.05
+        salida.append(LowerThirdEffect(
+            id=f"calloutl{i:03d}",
+            start=marca.start,
+            end=marca.end,
+            title=texto,
+            rect=Rect(
+                x=round(marca.rect.x, 4),
+                y=round(max(0.0, marca.rect.y - alto), 4),
+                w=min(max(marca.rect.w, 0.1), 0.3),
+                h=alto,
+            ),
+            color=getattr(rules, "label_color", "#1f4fd8"),
+            value_score=marca.value_score,
+            cost_weight=0.12,
+            rationale=f'"{texto}": dice que es lo que hay dentro del recuadro',
+        ))
+    return salida
+
+
 def _recall_titles(brolls, rules) -> list[LowerThirdEffect]:
     """El titulillo que va sobre la tarjeta del recuerdo.
 
@@ -391,6 +428,7 @@ def build_edl(
         edl, analysis.transcript, analysis.screen_text, style.callouts, analysis.cues
     )
     efectos += marcas
+    efectos += _callout_labels(marcas, style.callouts)
     reservas += marcas_reserva
     if marcas:
         edl.notes.append(

@@ -280,3 +280,103 @@ def test_el_recuadro_se_acerca_con_la_imagen(
     assert abs(visto - esperado) < 0.05, f"se ve en {visto:.2f} y toca en {esperado:.2f}"
     # Y desde luego ya no donde se pintaba antes.
     assert abs(visto - rect.x) > 0.03, "sigue pintandose en el fotograma de salida"
+
+
+# -- y la cara del recuadro, que tambien es del estilo -----------------------
+#
+# Un trazo de un color se pierde sobre una imagen movida y llena de colores, que
+# es exactamente lo que es un gameplay. Con esto un estilo le da la cara de su
+# juego sin tocar una linea de codigo.
+
+
+def _marca():
+    from forge.plan.edl import CalloutEffect, Rect
+
+    return CalloutEffect(
+        id="c0", start=1.0, end=3.0, label="paldium 5",
+        rect=Rect(x=0.3, y=0.4, w=0.2, h=0.1),
+    )
+
+
+def test_el_recuadro_de_siempre_sigue_siendo_un_trazo() -> None:
+    """Lo nuevo esta apagado por defecto: nadie cambia de aspecto sin pedirlo."""
+    from forge.plan.styles import CalloutRules
+    from forge.render.graph import _callout_filters
+
+    filtros = _callout_filters([_marca()], 1920, 1080, CalloutRules())
+    assert filtros
+    assert all("t=fill" not in f for f in filtros), "sin relleno ni esquinas"
+
+
+def test_el_estilo_puede_darle_cara_de_interfaz_de_juego() -> None:
+    from forge.plan.styles import CalloutRules
+    from forge.render.graph import _callout_filters
+
+    reglas = CalloutRules(
+        color="FFD700", edge_color="#14171C",
+        fill=0.2, fill_color="#1E2126",
+        corner=0.2, corner_color="#F6EFE2",
+    )
+    filtros = _callout_filters([_marca()], 1920, 1080, reglas)
+    juntos = " ".join(filtros)
+
+    assert "0x1E2126" in juntos, "falta el relleno"
+    assert "0x14171C" in juntos, "falta el filo oscuro"
+    assert "0xFFD700" in juntos, "falta el trazo"
+    assert juntos.count("0xF6EFE2") >= 8, "ocho trazos: dos por esquina"
+    assert "#" not in juntos, "ffmpeg no entiende la almohadilla"
+
+
+def test_el_filo_va_por_fuera_del_trazo() -> None:
+    """Si va por dentro tapa lo que se quiere resaltar."""
+    import re
+
+    from forge.plan.styles import CalloutRules
+    from forge.render.graph import _callout_filters
+
+    filtros = _callout_filters(
+        [_marca()], 1920, 1080,
+        CalloutRules(color="FFD700", edge_color="#14171C", thickness=0.004),
+    )
+    trazo = next(f for f in filtros if "0xFFD700" in f)
+    filo = next(f for f in filtros if "0x14171C" in f)
+
+    def caja(f):
+        return {k: int(v) for k, v in re.findall(r"\b([xywh])=(\d+)", f)}
+
+    t, e = caja(trazo), caja(filo)
+    assert e["x"] < t["x"] and e["y"] < t["y"]
+    assert e["w"] > t["w"] and e["h"] > t["h"]
+
+
+def test_la_etiqueta_dice_que_hay_dentro_del_recuadro() -> None:
+    """El recuadro dice donde mirar; la etiqueta dice que es."""
+    from forge.plan.edl import EffectKind
+    from forge.plan.planner import _callout_labels
+    from forge.plan.styles import CalloutRules
+
+    marca = _marca()
+
+    assert _callout_labels([marca], CalloutRules()) == [], "apagada por defecto"
+
+    etiquetas = _callout_labels([marca], CalloutRules(label=True, label_color="#8A5A2B"))
+    assert len(etiquetas) == 1
+    e = etiquetas[0]
+    assert e.kind is EffectKind.LOWER_THIRD
+    assert e.title == "paldium 5"
+    assert e.color == "#8A5A2B"
+    assert e.start == marca.start and e.end == marca.end
+    assert e.rect.y < marca.rect.y, "encima del recuadro, no dentro"
+    assert e.rect.x == pytest.approx(marca.rect.x), "alineada con el"
+
+
+def test_el_estilo_palworld_trae_la_cara_puesta() -> None:
+    from forge.plan.styles import load_style
+
+    juego = load_style("palworld").callouts
+    neutro = load_style("tutorial").callouts
+
+    assert juego.corner > 0 and juego.fill > 0 and juego.edge_color
+    assert juego.label is True
+    assert neutro.corner == 0 and neutro.fill == 0 and not neutro.edge_color
+    assert neutro.label is False

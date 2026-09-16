@@ -1931,12 +1931,34 @@ colores y ya hay otro.
 styles/palworld.json
   captions  bold           subtitulos con cuerpo: sobre gameplay el 'clean'
                            de una guia de app se pierde
-  callouts  #FFD700        el dorado del juego para lo que senalas
   labels    #2E6FB7        el azul de la esfera Pal para los rotulos de
                            seccion --- el rectangulo azul que pediste
   grade     warm 0.22      un gameplay ya viene saturado; sube poco
   recall    marco #D2B48C  madera, con el titulillo "ANTES"
+  callouts  #FFD700        dorado, con filo oscuro, relleno, esquinas
+                           marcadas y etiqueta
 ```
+
+### Y el recuadro, con la cara del juego
+
+Un trazo de un color se pierde sobre una imagen que se mueve y esta llena de
+colores, que es exactamente lo que es un gameplay. El recuadro pasa a tener
+cuatro piezas, y las cuatro salen del JSON del estilo:
+
+| pieza | para que | apagada por defecto |
+|---|---|---|
+| `fill` | oscurece lo que resalta, como un panel del juego | si (`0.0`) |
+| `edge_color` | filo oscuro **por fuera** del trazo, para que se vea igual sobre cielo claro que sobre suelo oscuro | si (vacio) |
+| `corner` | esquinas marcadas, dos trazos en L por esquina: es lo que mas cara de interfaz de juego da | si (`0.0`) |
+| `label` | el nombre de lo que hay dentro, encima de la caja | si (`false`) |
+
+Todas apagadas de serie, asi que ningun estilo cambia de aspecto sin pedirlo:
+`tutorial` sigue siendo un trazo dorado y ya. El filo va **por fuera** a
+proposito --- por dentro taparia justo lo que se quiere resaltar --- y la
+etiqueta va **encima** por lo mismo.
+
+El recuadro dice **donde** mirar y la etiqueta dice **que** es: un cuadro dorado
+sobre un numero no explica que ese numero son los fragmentos que te faltan.
 
 Los colores salen de las referencias publicadas del juego (azul de esfera,
 marron de madera, dorado), no de mi cabeza. El montaje que hay debajo es el de

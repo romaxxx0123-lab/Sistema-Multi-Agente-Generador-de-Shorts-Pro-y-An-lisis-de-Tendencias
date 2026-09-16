@@ -347,12 +347,56 @@ def _callout_filters(
         ancho = max(grueso * 3, int(rect.w * w))
         alto = max(grueso * 3, int(rect.h * h))
 
-        def caja(desde: float, hasta: float, alpha: float) -> str:
-            return (
-                f"drawbox=x={x}:y={y}:w={ancho}:h={alto}"
-                f":color=0x{color}@{alpha:.2f}:t={grueso}"
-                f":enable={_q(f'between(t,{desde:.4f},{hasta:.4f})')}"
-            )
+        # Las piezas del recuadro, de dentro a fuera. Todas comparten el mismo
+        # fundido, asi que se generan juntas por cada tramo de opacidad.
+        relleno = max(0.0, min(1.0, rules.fill))
+        color_relleno = (rules.fill_color or rules.color or "FFD200").lstrip("#")
+        color_filo = (rules.edge_color or "").lstrip("#")
+        esquina = max(0.0, rules.corner)
+        color_esquina = (rules.corner_color or rules.color or "FFD200").lstrip("#")
+        largo = int(min(ancho, alto) * esquina) if esquina else 0
+
+        def piezas(desde: float, hasta: float, alpha: float) -> list[str]:
+            cuando = _q(f"between(t,{desde:.4f},{hasta:.4f})")
+
+            def box(bx, by, bw, bh, col, a, grosor) -> str:
+                return (
+                    f"drawbox=x={int(bx)}:y={int(by)}:w={max(1, int(bw))}"
+                    f":h={max(1, int(bh))}:color=0x{col}@{a:.2f}:t={grosor}"
+                    f":enable={cuando}"
+                )
+
+            salida: list[str] = []
+            # 1. El relleno, que oscurece lo resaltado como un panel del juego.
+            if relleno > 0.01:
+                salida.append(
+                    box(x, y, ancho, alto, color_relleno, alpha * relleno, "fill")
+                )
+            # 2. El filo oscuro por fuera, para que el trazo se vea sobre
+            #    cualquier fondo. Sin el, un recuadro dorado sobre arena no
+            #    existe.
+            if color_filo:
+                salida.append(box(
+                    x - grueso, y - grueso, ancho + grueso * 2, alto + grueso * 2,
+                    color_filo, alpha, max(1, grueso // 2),
+                ))
+            # 3. El trazo de siempre.
+            salida.append(box(x, y, ancho, alto, color, alpha, grueso))
+            # 4. Y las esquinas marcadas, que es lo que le da cara de interfaz
+            #    de juego. Dos trazos por esquina, en L.
+            if largo > grueso:
+                gordo = grueso * 2
+                for ex, ey, sx, sy in (
+                    (x, y, 1, 1), (x + ancho, y, -1, 1),
+                    (x, y + alto, 1, -1), (x + ancho, y + alto, -1, -1),
+                ):
+                    bx = ex if sx > 0 else ex - largo
+                    by = ey if sy > 0 else ey - gordo
+                    salida.append(box(bx, by, largo, gordo, color_esquina, alpha, "fill"))
+                    bx = ex if sx > 0 else ex - gordo
+                    by = ey if sy > 0 else ey - largo
+                    salida.append(box(bx, by, gordo, largo, color_esquina, alpha, "fill"))
+            return salida
 
         duracion = efecto.end - efecto.start
         # Con un recuadro muy corto no hay sitio para el fundido: se deja seco.
@@ -378,7 +422,7 @@ def _callout_filters(
                 desde = max(desde, 0.0)
                 hasta = min(hasta, window[1] - window[0])
             if hasta - desde > 1e-3 and alpha > 0.01:
-                filtros.append(caja(desde, hasta, alpha))
+                filtros += piezas(desde, hasta, alpha)
     return filtros
 
 

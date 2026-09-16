@@ -191,6 +191,32 @@ class CalloutRules(BaseModel):
     #: color del recuadro en hexadecimal RGB
     color: str = "FFD200"
 
+    # -- y como se ve, que es cosa del estilo ---------------------------------
+    #
+    # Un recuadro de un trazo y un color se pierde sobre una imagen movida y con
+    # muchos colores, que es exactamente lo que es un gameplay. Con esto un
+    # estilo puede darle la cara de su juego sin tocar una linea de codigo.
+
+    #: Filo oscuro pegado por fuera del trazo. Es lo que hace que el recuadro se
+    #: vea igual sobre un cielo claro que sobre un suelo oscuro. Vacio lo quita.
+    edge_color: str = ""
+    #: Relleno translucido dentro del recuadro, 0..1. Un panel de juego oscurece
+    #: lo que resalta en vez de solo rodearlo. 0 lo quita.
+    fill: float = 0.0
+    #: Y el color de ese relleno; vacio usa el del recuadro.
+    fill_color: str = ""
+    #: Esquinas marcadas, en fraccion del lado menor del recuadro. Es lo que mas
+    #: "interfaz de juego" hace de todo. 0 las quita.
+    corner: float = 0.0
+    #: Color de las esquinas; vacio usa el del recuadro.
+    corner_color: str = ""
+    #: Etiqueta con el nombre de lo que se recuadra, pegada encima. En una guia
+    #: de un juego ayuda: el recuadro dice **donde** y la etiqueta dice **que**,
+    #: y asi se entiende sin rebobinar.
+    label: bool = False
+    #: Color de la caja de esa etiqueta.
+    label_color: str = "#1f4fd8"
+
 
 class ChapterRules(BaseModel):
     enabled: bool = True
