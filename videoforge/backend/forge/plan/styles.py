@@ -268,6 +268,31 @@ class VoiceRules(BaseModel):
     compress_threshold: float = 0.12
 
 
+class RecallRules(BaseModel):
+    """La tarjeta de "como vimos antes".
+
+    Va en el estilo y no en el codigo porque su sitio y su color son una
+    decision de look, no de montaje: un video de un juego quiere el marco de ese
+    juego, y una guia de una app quiere uno neutro.
+    """
+
+    enabled: bool = True
+    #: Alto de la tarjeta, en fraccion del fotograma.
+    height: float = 0.34
+    #: Y su ancho maximo, para no llegar al centro donde van los subtitulos.
+    max_width: float = 0.34
+    #: Separacion del borde del fotograma.
+    edge: float = 0.04
+    #: Grosor del marco, en fraccion del lado menor de la tarjeta.
+    border: float = 0.022
+    #: Color del marco.
+    border_color: str = "#F2F4F8"
+    #: Titulillo sobre la tarjeta. Vacio = sin titulillo.
+    title: str = ""
+    #: Y el color de su caja.
+    title_color: str = "#1f4fd8"
+
+
 class SfxRules(BaseModel):
     enabled: bool = False
     max_per_minute: float = 3.0
@@ -291,6 +316,7 @@ class StylePreset(BaseModel):
     grade: GradeRules = Field(default_factory=GradeRules)
     music: MusicRules = Field(default_factory=MusicRules)
     sfx: SfxRules = Field(default_factory=SfxRules)
+    recall: RecallRules = Field(default_factory=RecallRules)
     voice: VoiceRules = Field(default_factory=VoiceRules)
     #: metrica -> banda objetivo; las consume el motor de saturacion
     saturation: dict[str, Band] = Field(default_factory=dict)

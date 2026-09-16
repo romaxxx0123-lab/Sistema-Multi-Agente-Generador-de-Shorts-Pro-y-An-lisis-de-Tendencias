@@ -246,12 +246,23 @@ def _broll_branch(
             # lo que es, material de antes puesto aparte. El contenido se
             # encoge y el marco lo devuelve al tamano pedido, asi que la
             # posicion no cambia.
-            borde = max(2, int(min(ancho, alto) * RECALL_BORDER) // 2 * 2)
-            dentro_w, dentro_h = max(2, ancho - borde * 2), max(2, alto - borde * 2)
+            #
+            # El marco es de dos tonos: uno oscuro pegado a la imagen y el del
+            # estilo por fuera. Con un solo tono claro, sobre un fondo claro el
+            # marco desaparece y la tarjeta vuelve a parecer un fallo; el filo
+            # oscuro la separa del video pase lo que pase debajo.
+            grosor = effect.border or RECALL_BORDER
+            borde = max(2, int(min(ancho, alto) * grosor) // 2 * 2)
+            filo = max(2, borde // 3 // 2 * 2)
+            color = _ffmpeg_color(effect.border_color) or RECALL_BORDER_COLOR
+            dentro_w = max(2, ancho - borde * 2)
+            dentro_h = max(2, alto - borde * 2)
             encaje = (
                 f"scale={dentro_w}:{dentro_h}:force_original_aspect_ratio=increase"
                 f":flags=bicubic,crop={dentro_w}:{dentro_h},"
-                f"pad={ancho}:{alto}:{borde}:{borde}:color={RECALL_BORDER_COLOR}"
+                f"pad={dentro_w + filo * 2}:{dentro_h + filo * 2}:{filo}:{filo}"
+                f":color={RECALL_INNER_COLOR},"
+                f"pad={ancho}:{alto}:{borde - filo}:{borde - filo}:color={color}"
             )
 
     # Entra y sale con un fundido corto. Un material que aparece de golpe a
@@ -384,6 +395,19 @@ RECALL_BORDER = 0.022
 #: Y su color. Claro y opaco: tiene que separarse del video de debajo pase lo
 #: que pase, y el video de debajo puede ser de cualquier color.
 RECALL_BORDER_COLOR = "0xF2F4F8"
+#: Y el filo oscuro pegado a la imagen, que la separa del video de debajo aunque
+#: el marco y el fondo sean del mismo tono.
+RECALL_INNER_COLOR = "0x14171C"
+
+
+def _ffmpeg_color(color: str) -> str:
+    """`#RRGGBB` es como se escribe un color en los estilos; ffmpeg quiere
+    `0xRRGGBB`. Sin esto el filtro se queda sin color y el render falla entero
+    por un `#`."""
+    color = (color or "").strip()
+    if not color:
+        return ""
+    return "0x" + color[1:] if color.startswith("#") else color
 
 #: Techo de pico real del master, en dBFS. -1.5 es el margen que piden las
 #: plataformas para que la recodificacion a AAC no sature.

@@ -28,7 +28,9 @@ from .edl import (
     Clip,
     EffectKind,
     GradeEffect,
+    LowerThirdEffect,
     MusicEffect,
+    Rect,
     RenderSpec,
     TransitionEffect,
 )
@@ -299,6 +301,41 @@ def _plan_grade(edl: EDL, style: StylePreset) -> list[GradeEffect]:
     ]
 
 
+def _recall_titles(brolls, rules) -> list[LowerThirdEffect]:
+    """El titulillo que va sobre la tarjeta del recuerdo.
+
+    Sale como rotulo porque es exactamente eso: una caja de color con texto, y
+    ya hay quien la dibuja. Asi el recuerdo se entiende sin verlo dos veces --
+    "ANTES" y ya sabes que lo de la esquina es material de hace un rato -- y de
+    paso cuenta en el medidor de saturacion como lo que es, texto en pantalla.
+    """
+    titulo = (getattr(rules, "title", "") or "").strip()
+    if not titulo:
+        return []
+    salida = []
+    for i, b in enumerate(brolls):
+        if b.mode != "recall":
+            continue
+        alto = min(0.07, b.rect.h * 0.22)
+        salida.append(LowerThirdEffect(
+            id=f"recallt{i:03d}",
+            start=b.start,
+            end=b.end,
+            title=titulo,
+            rect=Rect(
+                x=b.rect.x,
+                y=round(max(0.0, b.rect.y - alto), 4),
+                w=min(b.rect.w, 0.22),
+                h=round(alto, 4),
+            ),
+            color=getattr(rules, "title_color", "#1f4fd8"),
+            value_score=b.value_score,
+            cost_weight=0.12,
+            rationale=f'"{titulo}": dice que esa esquina es material de antes',
+        ))
+    return salida
+
+
 def build_edl(
     analysis: Analysis,
     style_name: str = "tutorial",
@@ -402,6 +439,7 @@ def build_edl(
             screen_terms=[t for t, _ in recurring_terms(analysis.screen_text)],
             narrative=analysis.narrative,
             pacing=style.pacing,
+            recall=style.recall,
             # Lo que ya se sabe de la pantalla: donde senalas, donde tienes el
             # puntero y donde van los subtitulos (**ya planificados**, con su
             # posicion real: no siempre van abajo). Sirve para no plantar la
@@ -409,6 +447,7 @@ def build_edl(
             screen=pantalla,
         )
         efectos += brolls
+        efectos += _recall_titles(brolls, style.recall)
         reservas += brolls_reserva
         if brolls:
             edl.notes.append(

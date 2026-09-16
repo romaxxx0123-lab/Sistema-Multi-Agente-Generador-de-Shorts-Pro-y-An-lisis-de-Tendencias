@@ -381,16 +381,21 @@ def _es_recuerdo(screen, origen: float | None) -> bool:
 RECALL_MARGIN = 3.0
 
 
-def recall_rect(asset: Asset, render_w: int, render_h: int) -> Rect:
+def recall_rect(
+    asset: Asset, render_w: int, render_h: int, rules=None
+) -> Rect:
     """La tarjeta del recuerdo: abajo a la izquierda, con la forma del material."""
+    alto = getattr(rules, "height", RECALL_HEIGHT)
+    tope = getattr(rules, "max_width", RECALL_MAX_WIDTH)
+    borde = getattr(rules, "edge", RECALL_EDGE)
     forma = asset.aspect or (render_w / max(render_h, 1))
-    ancho = RECALL_HEIGHT * render_h * forma / max(render_w, 1)
-    ancho = min(RECALL_MAX_WIDTH, max(0.14, ancho))
+    ancho = alto * render_h * forma / max(render_w, 1)
+    ancho = min(tope, max(0.14, ancho))
     return Rect(
-        x=RECALL_EDGE,
-        y=round(1.0 - RECALL_EDGE - RECALL_HEIGHT, 4),
+        x=round(borde, 4),
+        y=round(1.0 - borde - alto, 4),
         w=round(ancho, 4),
-        h=RECALL_HEIGHT,
+        h=round(alto, 4),
     )
 
 
@@ -507,6 +512,7 @@ def plan_broll(
     narrative=None,
     pacing=None,
     screen: ScreenUse | None = None,
+    recall=None,
 ) -> tuple[list[BrollEffect], list[BrollEffect]]:
     """Coloca material de apoyo donde se nombra algo concreto.
 
@@ -667,7 +673,9 @@ def plan_broll(
         # encima de lo de ahora. Nunca a pantalla completa --- irse entero a
         # otro momento sin ninguna marca se lee como un salto de montaje --- y
         # siempre en el mismo sitio, para que se reconozca sin pensarlo.
-        recuerdo = _es_recuerdo(screen, origen_inicio)
+        recuerdo = _es_recuerdo(screen, origen_inicio) and getattr(
+            recall, "enabled", True
+        )
         if recuerdo:
             modo = "recall"
 
@@ -684,7 +692,7 @@ def plan_broll(
             # El recuerdo NO se mueve: su sitio es abajo a la izquierda y ahi se
             # queda. Que salga cada vez en un rincon distinto es justo lo que
             # impide reconocerlo de un vistazo.
-            rect = recall_rect(asset, edl.render.width, edl.render.height)
+            rect = recall_rect(asset, edl.render.width, edl.render.height, recall)
         elif modo != "full":
             rect = pip_rect(asset, edl.render.width, edl.render.height)
             if screen is not None and origen_inicio is not None:
@@ -705,6 +713,8 @@ def plan_broll(
             mode=modo,
             rect=rect,
             query=momento.query,
+            border_color=getattr(recall, "border_color", "") if recuerdo else "",
+            border=getattr(recall, "border", 0.022),
             # Lo que aporta depende de lo concreto que sea lo que se nombra y de
             # lo bien que encaje el material encontrado.
             value_score=round(

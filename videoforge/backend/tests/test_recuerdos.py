@@ -342,3 +342,80 @@ def test_lo_que_esta_siempre_en_pantalla_no_senala_ningun_momento() -> None:
         ])
     ]
     assert proveedor._donde_se_vio("paldium", 100.0), "esta si senala un momento"
+
+
+# -- y que el look sea del estilo, no del codigo ----------------------------
+
+
+def test_la_tarjeta_la_viste_el_estilo() -> None:
+    """Como se ve el recuerdo es una decision de look, no de montaje.
+
+    Un video de un juego quiere el marco de ese juego y una guia de una app
+    quiere uno neutro, asi que va en el JSON del estilo y no en el codigo.
+    """
+    from forge.plan.styles import load_style
+
+    neutro = load_style("tutorial").recall
+    juego = load_style("palworld").recall
+
+    assert neutro.title == "", "el estilo neutro no pone titulillo"
+    assert juego.title == "ANTES"
+    assert juego.border_color != neutro.border_color
+
+
+def test_el_estilo_decide_el_tamano_de_la_tarjeta() -> None:
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.broll import recall_rect
+    from forge.plan.styles import RecallRules
+
+    asset = Asset(id="x", kind=AssetKind.SELF, provider="self", width=1920, height=1080)
+    pequena = recall_rect(asset, 1920, 1080, RecallRules(height=0.2, edge=0.02))
+
+    assert pequena.h == pytest.approx(0.2)
+    assert pequena.x == pytest.approx(0.02)
+    assert pequena.y + pequena.h == pytest.approx(1.0 - 0.02)
+
+
+def test_el_color_del_estilo_llega_al_render() -> None:
+    """Un `#RRGGBB` del JSON tiene que salir como `0xRRGGBB` en el filtro.
+
+    ffmpeg no entiende la almohadilla: con ella el filtro se queda sin color y
+    el render falla entero.
+    """
+    from forge.assets.types import Asset, AssetKind
+    from forge.plan.edl import BrollEffect, Rect
+    from forge.render.graph import _broll_branch
+
+    asset = Asset(id="x", kind=AssetKind.SELF, provider="self",
+                  source_start=1.0, source_end=4.0, width=1920, height=1080)
+    cadena, _ = _broll_branch(
+        BrollEffect(id="b", start=1.0, end=4.0, asset_id="x", mode="recall",
+                    rect=Rect(x=0.04, y=0.62, w=0.3, h=0.32),
+                    border_color="#D2B48C", border=0.026),
+        asset, 0, "[b]", 1920, 1080, 30.0,
+    )
+    assert "color=0xD2B48C" in cadena, cadena
+    assert "#" not in cadena, "ffmpeg no entiende la almohadilla"
+
+
+def test_el_titulillo_sale_sobre_la_tarjeta_y_solo_si_el_estilo_lo_pide() -> None:
+    from forge.plan.edl import BrollEffect, EffectKind, Rect
+    from forge.plan.planner import _recall_titles
+    from forge.plan.styles import RecallRules
+
+    tarjeta = BrollEffect(
+        id="b0", start=10.0, end=13.0, asset_id="x", mode="recall",
+        rect=Rect(x=0.04, y=0.64, w=0.3, h=0.32),
+    )
+    otro = BrollEffect(id="b1", start=20.0, end=23.0, asset_id="y", mode="full")
+
+    titulos = _recall_titles([tarjeta, otro], RecallRules(title="ANTES"))
+    assert len(titulos) == 1, "solo la tarjeta lleva titulillo"
+    t = titulos[0]
+    assert t.kind is EffectKind.LOWER_THIRD
+    assert t.title == "ANTES"
+    assert t.start == tarjeta.start and t.end == tarjeta.end
+    assert t.rect.x == tarjeta.rect.x, "alineado con la tarjeta"
+    assert t.rect.y < tarjeta.rect.y, "justo encima"
+
+    assert _recall_titles([tarjeta], RecallRules(title="")) == []

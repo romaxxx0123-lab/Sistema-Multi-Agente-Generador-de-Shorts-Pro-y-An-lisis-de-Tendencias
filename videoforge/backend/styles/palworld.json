@@ -1,0 +1,147 @@
+{
+  "name": "palworld",
+  "label": "Palworld",
+  "description": "Guia de Palworld. El montaje es el de tutorial --- que es el que sirve para explicar --- con la paleta del juego: azul de esfera, madera y dorado. Los colores salen de las referencias publicadas del juego.",
+  "pacing": {
+    "remove_silence": true,
+    "silence_min": 0.55,
+    "silence_keep": 0.14,
+    "speech_pad": 0.14,
+    "remove_fillers": true,
+    "min_clip": 0.8,
+    "cuts_per_minute": {
+      "lo": 3.0,
+      "hi": 24.0
+    }
+  },
+  "captions": {
+    "enabled": true,
+    "max_chars": 38,
+    "max_words": 7,
+    "max_duration": 3.4,
+    "split_gap": 0.45,
+    "style": "bold",
+    "position": "bottom"
+  },
+  "emphasis": {
+    "punch_in": true,
+    "punch_zoom": 1.16,
+    "punch_seconds": 1.8,
+    "punch_min_gap": 18.0,
+    "max_punch_per_minute": 1.4,
+    "max_motion_for_punch": 0.4,
+    "ken_burns": false,
+    "ken_burns_zoom": 1.05,
+    "punch_drift": 0.04
+  },
+  "broll": {
+    "enabled": true,
+    "max_per_minute": 1.2,
+    "min_gap": 20.0,
+    "default_seconds": 3.0,
+    "mode": "full",
+    "max_coverage": 0.18
+  },
+  "chapters": {
+    "enabled": true,
+    "min_seconds": 45.0,
+    "card_seconds": 2.4,
+    "show_cards": true
+  },
+  "transitions": {
+    "enabled": true,
+    "default": "fade",
+    "duration": 0.22,
+    "fraction": 0.12
+  },
+  "grade": {
+    "preset": "warm",
+    "intensity": 0.22
+  },
+  "music": {
+    "enabled": false,
+    "gain_db": -24.0,
+    "duck": true
+  },
+  "sfx": {
+    "enabled": false,
+    "max_per_minute": 1.0,
+    "gain_db": -12.0
+  },
+  "saturation": {
+    "cuts_per_minute": {
+      "lo": 3.0,
+      "hi": 24.0
+    },
+    "effect_density_mean": {
+      "lo": 0.12,
+      "hi": 0.42
+    },
+    "effect_density_peak": {
+      "lo": 0.0,
+      "hi": 0.72
+    },
+    "overlay_coverage": {
+      "lo": 0.0,
+      "hi": 0.2
+    },
+    "text_coverage": {
+      "lo": 0.35,
+      "hi": 0.98
+    },
+    "max_layers": {
+      "lo": 0.0,
+      "hi": 3.0
+    },
+    "sfx_per_minute": {
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "transitions_per_minute": {
+      "lo": 0.0,
+      "hi": 5.0
+    },
+    "caption_wpm": {
+      "lo": 90.0,
+      "hi": 210.0
+    },
+    "motion_conflicts_per_minute": {
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "callouts_per_minute": {
+      "lo": 0.0,
+      "hi": 2.5
+    },
+    "zooms_per_minute": {
+      "lo": 0.0,
+      "hi": 2.2
+    },
+    "repeated_share": {
+      "lo": 0.0,
+      "hi": 0.25
+    }
+  },
+  "callouts": {
+    "enabled": true,
+    "max_per_minute": 1.5,
+    "min_gap": 12.0,
+    "seconds": 1.8,
+    "thickness": 0.004,
+    "color": "FFD700"
+  },
+  "labels": {
+    "enabled": true,
+    "color": "#2E6FB7"
+  },
+  "recall": {
+    "enabled": true,
+    "height": 0.32,
+    "max_width": 0.32,
+    "edge": 0.04,
+    "border": 0.026,
+    "border_color": "#D2B48C",
+    "title": "ANTES",
+    "title_color": "#8A5A2B"
+  }
+}

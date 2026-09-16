@@ -174,6 +174,12 @@ class BrollEffect(BaseEffect):
     opacity: float = 1.0
     #: consulta con la que se busco, para poder explicarlo y re-buscar
     query: str = ""
+    #: color del marco cuando `mode` es "recall". Va en el EDL y no en el
+    #: renderer porque es una decision del estilo, y el EDL es lo que el
+    #: renderer lee.
+    border_color: str = ""
+    #: grosor del marco, en fraccion del lado menor de la tarjeta
+    border: float = 0.022
 
 
 class TextCardEffect(BaseEffect):

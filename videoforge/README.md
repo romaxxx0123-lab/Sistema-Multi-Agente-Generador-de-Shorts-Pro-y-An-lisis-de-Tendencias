@@ -1921,6 +1921,27 @@ Tres temas (montar la base, las expediciones, capturar), con muletillas, un
 aviso, una espera anunciada --- una expedicion tarda media hora y eso en el
 video es tiempo muerto --- y un "como vimos antes".
 
+### El estilo `palworld`
+
+Como los videos van a ser de un solo juego, hay un preset con su cara. Y como
+los estilos son **datos**, esto es un JSON y no codigo: se copia, se cambian los
+colores y ya hay otro.
+
+```
+styles/palworld.json
+  captions  bold           subtitulos con cuerpo: sobre gameplay el 'clean'
+                           de una guia de app se pierde
+  callouts  #FFD700        el dorado del juego para lo que senalas
+  labels    #2E6FB7        el azul de la esfera Pal para los rotulos de
+                           seccion --- el rectangulo azul que pediste
+  grade     warm 0.22      un gameplay ya viene saturado; sube poco
+  recall    marco #D2B48C  madera, con el titulillo "ANTES"
+```
+
+Los colores salen de las referencias publicadas del juego (azul de esfera,
+marron de madera, dorado), no de mi cabeza. El montaje que hay debajo es el de
+`tutorial`, que es el que sirve para explicar.
+
 ### El recuerdo, que era lo peor del montaje
 
 Un "como vimos antes" se resolvia con `mode="full"` y `rect=(0,0,1,1)`: **el
@@ -1928,7 +1949,11 @@ video se iba entero a otro momento**, sin marco ni marca de ninguna clase. Eso
 no se lee como un recuerdo, se lee como un salto de montaje o como un fallo de
 reproduccion. Ahora es una tarjeta con marco **abajo a la izquierda**, encima de
 lo que estas contando, y no se mueve de ahi: que salga cada vez en un rincon
-distinto es justo lo que impide reconocerla de un vistazo.
+distinto es justo lo que impide reconocerla de un vistazo. El marco es de **dos
+tonos** --- un filo oscuro pegado a la imagen y el color del estilo por fuera ---
+porque con un solo tono claro, sobre un fondo claro el marco desaparece y la
+tarjeta vuelve a parecer un fallo. Y encima lleva un titulillo ("ANTES") para
+que se entienda sin verlo dos veces.
 
 Pero al mirarlo de cerca no aparecia **ninguno**, y detras habia tres fallos
 encadenados:
@@ -1979,7 +2004,7 @@ genérico, porque ahi has pedido tu ver algo otra vez. Antes el cupo se lo
 llevaban momentos anteriores con mas peso de termino y el unico sitio del video
 donde se pedia un recuerdo se quedaba sin nada.
 
-## Montar un video entero, con los seis estilos
+## Montar un video entero, con todos los estilos
 
 Toda la suite en verde y ninguna prueba habia montado un video de punta a punta
 con todos los estilos. Al hacerlo salieron tres cosas, y las tres estaban en
