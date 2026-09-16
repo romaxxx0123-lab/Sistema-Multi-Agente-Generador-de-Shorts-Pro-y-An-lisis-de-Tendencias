@@ -1984,13 +1984,30 @@ marron de madera, dorado), no de mi cabeza. El montaje que hay debajo es el de
 Un "como vimos antes" se resolvia con `mode="full"` y `rect=(0,0,1,1)`: **el
 video se iba entero a otro momento**, sin marco ni marca de ninguna clase. Eso
 no se lee como un recuerdo, se lee como un salto de montaje o como un fallo de
-reproduccion. Ahora es una tarjeta con marco **abajo a la izquierda**, encima de
-lo que estas contando, y no se mueve de ahi: que salga cada vez en un rincon
-distinto es justo lo que impide reconocerla de un vistazo. El marco es de **dos
-tonos** --- un filo oscuro pegado a la imagen y el color del estilo por fuera ---
-porque con un solo tono claro, sobre un fondo claro el marco desaparece y la
-tarjeta vuelve a parecer un fallo. Y encima lleva un titulillo ("ANTES") para
-que se entienda sin verlo dos veces.
+reproduccion. Ahora es una **foto enmarcada en cuadrado** abajo a la izquierda,
+de tamano medio, con su **pie dentro del marco**. Y no se mueve de ahi: que
+salga cada vez en un rincon distinto es justo lo que impide reconocerla de un
+vistazo.
+
+La primera version era una ventanita apaisada con una etiqueta flotando encima,
+y eso se lee como un trozo de otro video pegado en la esquina. Tres cosas la
+convierten en una foto, y las tres son del estilo:
+
+- **`aspect: 1.0`** fuerza la tarjeta cuadrada en vez de heredar la forma del
+  material, que en un video es 16:9.
+- **`bar`** saca la banda del pie **del propio marco**: se pide la tarjeta del
+  alto completo y la imagen se ancla arriba, asi que lo que queda abajo es
+  marco. Una foto con su pie, no un recorte con una pegatina.
+- Y el marco es de **dos tonos**, un filo oscuro pegado a la imagen y el color
+  del estilo por fuera, porque con un solo tono claro, sobre un fondo claro el
+  marco desaparece y la tarjeta vuelve a parecer un fallo.
+
+El pie dice **de que** es el recuerdo: `ANTES · Esfera`. "ANTES" a secas cuenta
+la mitad --- se ve una foto de hace un rato y no se sabe de que.
+
+La foto es un fotograma **de tu propio video**, del momento que se recuerda. Si
+quieres imagenes de fuera (arte del juego, un render), van en `assets/broll/` y
+las coge el proveedor local.
 
 Pero al mirarlo de cerca no aparecia **ninguno**, y detras habia tres fallos
 encadenados:
