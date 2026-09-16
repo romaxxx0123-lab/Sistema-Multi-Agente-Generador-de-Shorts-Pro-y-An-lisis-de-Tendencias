@@ -174,19 +174,50 @@ def _depths(curva: list[float]) -> list[tuple[int, float]]:
     return salida
 
 
-def topic_terms(propios: list[str], ajenos: list[str], n: int = 3) -> tuple[str, ...]:
+#: Cuanto vale decir algo **al empezar** el tramo. Un tema se anuncia --- "vamos
+#: con la estacion de expediciones" --- y despues se habla de sus detalles, asi
+#: que el nombre de la seccion casi siempre se dice una vez, la primera, y lo
+#: que se repite despues son sus piezas.
+#:
+#: Solo con frecuencia esto sale al reves. Medido sobre la seccion de
+#: expediciones de una guia de Palworld:
+#:
+#:     tard   7 veces      <- se repite, pero no es el tema
+#:     rut    6 veces
+#:     expedicion  2 veces <- es el tema, y se dice al anunciarlo
+#:
+#: y el capitulo se titulaba "Rutas". Con este peso, quien abre el tramo sube a
+#: donde le toca sin dejar de competir: si de verdad no se vuelve a nombrar en
+#: todo el tramo, sigue perdiendo contra lo que si vertebra la seccion.
+OPENING_BOOST = 3.0
+
+
+def topic_terms(
+    propios: list[str],
+    ajenos: list[str],
+    n: int = 3,
+    opening: set[str] | None = None,
+) -> tuple[str, ...]:
     """Los terminos que este tramo usa y los demas no.
 
     Es lo que responde a "¿de que va esto?" sin ningun modelo: la palabra que
-    solo aparece aqui es el asunto de aqui.
+    solo aparece aqui es el asunto de aqui. Con `opening` --- las raices de la
+    primera frase --- se tiene ademas en cuenta **donde** se dijo, porque un
+    tema se anuncia al principio y se detalla despues.
     """
     mios = Counter(propios)
     if not mios:
         return ()
     otros = Counter(ajenos)
+    apertura = opening or set()
+
+    def puntos(raiz: str, veces: int) -> float:
+        propio = veces / (1 + otros.get(raiz, 0))
+        return propio * (OPENING_BOOST if raiz in apertura else 1.0)
+
     puntuados = sorted(
         mios.items(),
-        key=lambda kv: (-(kv[1] / (1 + otros.get(kv[0], 0))), -kv[1], kv[0]),
+        key=lambda kv: (-puntos(*kv), -kv[1], kv[0]),
     )
     return tuple(t for t, _ in puntuados[:n])
 
@@ -345,20 +376,27 @@ def _muletillas() -> frozenset[str]:
     )
 
 
-def label(propios: list[str], ajenos: list[str], n: int = 3) -> str:
+def label(
+    propios: list[str], ajenos: list[str], n: int = 3, opening: str = ""
+) -> str:
     """De que va un tramo, en palabras que se puedan leer.
 
     `topic_terms` devuelve raices ("instal", "driv"), que sirven para comparar
     y no para titular nada. Aqui se elige la raiz y se devuelve **la forma en
     que se dijo**, que es la que entiende quien lee el capitulo.
+
+    Con `opening` --- la primera frase del tramo --- pesa mas lo que se dice al
+    anunciar el tema que lo que se repite luego al explicarlo.
     """
     formas = _surface_forms(propios)
     fuera = _muletillas()
+    apertura = {s for s in content_stems(opening)} if opening else set()
     raices = [
         r for r in topic_terms(
             [s for t in propios for s in content_stems(t)],
             [s for t in ajenos for s in content_stems(t)],
             n + len(fuera),
+            apertura,
         )
         if r not in fuera
     ][:n]

@@ -201,3 +201,81 @@ def test_el_titulo_sale_en_palabras_que_se_puedan_leer() -> None:
 def test_sin_material_suficiente_no_se_inventa_nada(frases) -> None:
     transcript, _ = _montar([frases] if frases else [], set())
     assert find_boundaries(transcript) == []
+
+
+# -- lo que anuncias pesa mas que lo que repites ----------------------------
+#
+# Un tema se anuncia --- "vamos con la estacion de expediciones" --- y despues
+# se habla de sus detalles. Asi que el nombre de la seccion se dice casi siempre
+# una vez, la primera, y lo que se repite luego son sus piezas. Con solo
+# frecuencia el titulo sale al reves.
+
+
+def test_el_nombre_de_la_seccion_se_dice_al_anunciarla() -> None:
+    """Sobre el guion de Palworld de verdad, no sobre uno hecho a medida.
+
+    En la seccion de expediciones se dice "tarda" 7 veces, "rutas" 6 y
+    "expediciones"/"estacion" 2 --- se anuncia una vez y despues se habla de sus
+    piezas --- asi que solo con frecuencia el capitulo se titulaba:
+
+        "Rutas tarda afinidad"   ->  cartel "Rutas"
+
+    El peso por apertura mete el termino con el que **anuncias** el tema entre
+    los que compiten; de ahi, el titulo los ordena por cuando se dicen, y el
+    cartel se queda con el primero:
+
+        "Estacion rutas tarda"   ->  cartel "Estacion"
+    """
+    from forge.demo import long_guide_script
+    from forge.palworld import PALWORLD_GUIDE
+    from forge.plan.chapters import TOPIC_TITLE_WORDS, card_text
+    from forge.plan.edl import Chapter
+    from forge.understand.topics import label
+
+    secciones: dict[str, list[str]] = {}
+    for beat in long_guide_script(8, PALWORLD_GUIDE):
+        secciones.setdefault(beat.section, []).append(beat.text)
+
+    propias = secciones["expediciones"]
+    ajenas = [t for s, ts in secciones.items() if s != "expediciones" for t in ts]
+    texto, fuera = " ".join(propias), " ".join(ajenas)
+
+    antes = label([texto], [fuera], TOPIC_TITLE_WORDS)
+    ahora = label([texto], [fuera], TOPIC_TITLE_WORDS, opening=propias[0])
+
+    def cartel(tema: str) -> str:
+        return card_text(Chapter(start=0.0, title="x", topic=tema))
+
+    assert cartel(antes) == "Rutas", antes
+    assert cartel(ahora).lower() in ("estacion", "expediciones"), ahora
+
+
+def test_lo_que_solo_se_dice_al_principio_no_gana_por_decirse_una_vez() -> None:
+    """El peso sube al que abre, no lo corona.
+
+    Si una palabra sale en la primera frase y nunca mas, no es el tema del
+    tramo: es como empezo. Lo que vertebra la seccion tiene que poder ganarle.
+    """
+    from forge.understand.topics import label
+
+    propios = [
+        "bueno chorizo empezamos "
+        "el firewall bloquea las conexiones raras "
+        "el firewall tiene reglas activas "
+        "y el firewall se configura por puertos "
+        "abre el firewall otra vez"
+    ]
+    ajenos = ["la impresora tiene el papel atascado en la bandeja"]
+
+    nombre = label(propios, ajenos, 1, opening="bueno chorizo empezamos")
+    assert nombre.lower() == "firewall", nombre
+
+
+def test_sin_apertura_todo_sigue_igual() -> None:
+    """Quien no pase la primera frase obtiene lo de antes, no algo distinto."""
+    from forge.understand.topics import label
+
+    propios = ["instalamos el driver de la tarjeta y actualizamos el driver"]
+    ajenos = ["configuramos el microfono y su ganancia"]
+
+    assert label(propios, ajenos, 2) == label(propios, ajenos, 2, opening="")

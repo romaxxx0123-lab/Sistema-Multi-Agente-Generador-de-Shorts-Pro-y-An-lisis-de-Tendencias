@@ -86,17 +86,27 @@ def _clean_title(words) -> str:
     return texto[:1].upper() + texto[1:] if texto else "Capitulo"
 
 
+#: Palabras del arranque de un tramo que cuentan como "lo que anuncias". Una
+#: frase hablada de una guia ronda las diez o doce.
+OPENING_WORDS = 12
+
+
 def _topic_title(bloque, resto) -> str:
     """Titula por los terminos propios del capitulo, no por como empieza.
 
     Se usa cuando quitar el arranque deja la frase en nada ("bueno, vamos a
     ver"). El criterio es el mismo que separa los temas: la palabra que este
     capitulo usa y los demas no es de lo que va este capitulo.
+
+    Y **donde** se dice cuenta: un tema se anuncia al empezar y se detalla
+    despues, asi que lo que se dice en la primera frase pesa mas que lo que se
+    repite luego (ver `OPENING_BOOST` en `understand/topics.py`).
     """
     return label(
         [" ".join(w.text for w in bloque)],
         [" ".join(w.text for b in resto for w in b)],
         TOPIC_TITLE_WORDS,
+        opening=" ".join(w.text for w in bloque[:OPENING_WORDS]),
     )
 
 
