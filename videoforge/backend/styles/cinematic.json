@@ -3,7 +3,7 @@
   "label": "Cinematico",
   "description": "Pocos cortes, respiracion larga, casi sin texto. El movimiento lo pone la deriva lenta de camara, no el montaje.",
   "pacing": {
-    "remove_silence": false,
+    "remove_silence": true,
     "silence_min": 1.6,
     "silence_keep": 0.5,
     "speech_pad": 0.25,

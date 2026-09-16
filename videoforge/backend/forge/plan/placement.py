@@ -138,7 +138,12 @@ class ScreenUse:
                 punto = self.cursor.at(t)
                 if punto is None:
                     continue
-                cx, cy = punto
+                # `CursorTrack.at` devuelve la **muestra**, no un par de
+                # numeros. Desempaquetarla como tupla reventaba el montaje
+                # entero de cualquier estilo que ponga rotulos de seccion, y no
+                # se veia porque las pruebas usaban un puntero de mentira que
+                # si devolvia tupla. El de verdad nunca paso por aqui.
+                cx, cy = punto.x, punto.y
                 zonas.append(Rect(
                     x=max(0.0, cx - CURSOR_HALO), y=max(0.0, cy - CURSOR_HALO),
                     w=CURSOR_HALO * 2, h=CURSOR_HALO * 2,

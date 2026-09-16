@@ -1,43 +1,47 @@
 # Lo siguiente que toca
 
-*(Vacío ahora mismo. Lo de abajo, los rótulos, está hecho: `plan/labels.py`,
-dibujado en `render/ass.py` y con el rectángulo comprobado en píxeles sobre un
-render real en `tests/test_rotulos.py`.)*
+## Mezclar las pistas de audio cuando hay más de una
 
----
+Lo encontró la prueba de montar un vídeo entero. Una captura de juego con OBS
+suele traer **dos pistas**: el juego en una y el micrófono en otra. Todo el
+pipeline usa una sola —la primera que elige ffmpeg— y la otra se pierde.
 
-## ~~Rótulos: cuadros con texto, en distintos sitios~~ — HECHO
+Medido sobre un fichero con el juego delante y la voz detrás:
 
-Poder poner **cuadros de color con texto** sobre el vídeo, colocados en
-distintas posiciones según lo que convenga. El ejemplo que diste:
+```
+silencios encontrados: []      <- el juego suena todo el rato
+recorte: 0%
+la voz no llega ni al análisis ni al vídeo exportado
+avisos: ninguno
+```
 
-> un rectángulo azul que diga **"Expediciones Palworld"** cuando dedico un
-> capítulo a eso
-
-Es decir: el rótulo sale de lo que el vídeo **está tratando** en ese tramo (el
-capítulo, el tema detectado, lo que se nombra), no de un adorno colocado cada
-tantos segundos.
+Sin un solo error por ningún lado. Ahora **avisa** (`_warn_multitrack`), que es
+lo mínimo, pero avisar no lo arregla.
 
 Lo que hace falta:
 
-- un efecto de rótulo con **caja, color, posición y texto**, en varias
-  ubicaciones (esquinas, banda inferior tipo *lower third*, centro);
-- que el **texto salga del análisis** — el título del capítulo, el tema, el
-  término que se está explicando — y no de una plantilla;
-- que la **posición** se decida con lo que ya hay montado: no tapar lo que
-  señalas, ni el puntero, ni los subtítulos, ni la zona llena de la pantalla
-  (`plan/placement.py` ya hace exactamente esto para la ventanita de material);
-- que el **color** sea del estilo, no inventado por rótulo.
+- que `MediaInfo` ya trae todas las pistas (`audio_streams`) —hecho—, y que el
+  análisis **elija la de voz midiendo**, no por posición: una pista de voz tiene
+  silencios y un rango de nivel amplio; la del juego suena continua;
+- que el análisis (el WAV de 16 kHz) salga de **esa** pista;
+- que el render **mezcle todas**, con el juego agachado bajo la voz —la cadena
+  de *sidechain* ya existe para la música, en `render/graph.py`— para no perder
+  el sonido del juego, que en un gameplay es la mitad del vídeo;
+- y que el EDL lleve qué pista es cuál, para poder enseñarlo y cambiarlo.
 
-## Y lo que de verdad importa de esa petición
+Ojo con un detalle del grafo: `[0:a]` se puede referenciar varias veces porque
+ffmpeg parte solo las entradas de fichero, pero la salida de un `amix` no: hace
+falta un `asplit` con tantas salidas como clips.
 
-> "que de verdad sea inteligente cuando usar este tipo de herramientas"
+## Y lo que se reportó pero no se tocó
 
-Un rótulo mal puesto es peor que ninguno. La regla es la misma que rige el
-resto del montaje: **tiene que justificarse**. Un capítulo que empieza y se
-llama algo concreto justifica un rótulo; un tramo cualquiera, no. Y nunca dos
-seguidos, ni encima de un rótulo de capítulo que ya está diciendo lo mismo.
-
-Antes de dar esto por hecho hay que medirlo, como todo lo demás: cuántos
-rótulos salen en una guía de 20 minutos, cuántos caen sobre algo que tapan, y
-qué dice el medidor de repetición.
+- **`gaming-hype` (18–48 cortes/min) y `vlog` (8–30)** no alcanzan su banda sobre
+  una guía hablada: dan 6,5 y 5,8, porque el único sitio donde se puede cortar
+  son las pausas. O esas bandas asumen material de montaje (gameplay sin voz
+  continua) y hay que decirlo, o el planner necesita una segunda fuente de
+  cortes (planos, beats). Hoy el medidor ya lo dice en vez de callárselo.
+- **`documentary`** pide entre 15% y 45% de metraje con material de apoyo y aquí
+  no hay banco de b-roll instalado: el proveedor `self` da uno como mucho.
+- **El master sale a −17 LUFS** con el objetivo en −14. Es la decisión escrita en
+  `_plan_master` (no aplastar la voz para cuadrar un número) y lo reporta en
+  `measured_lufs`. Con una voz más comprimida de origen llegará más cerca.

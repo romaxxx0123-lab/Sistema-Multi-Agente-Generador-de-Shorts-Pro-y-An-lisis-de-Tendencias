@@ -1905,6 +1905,122 @@ de las senales --- ni a los cortes, ni a los papeles de cada parte, ni al
 medidor.
 
 
+## Montar un video entero, con los seis estilos
+
+Toda la suite en verde y ninguna prueba habia montado un video de punta a punta
+con todos los estilos. Al hacerlo salieron tres cosas, y las tres estaban en
+sitios donde cada pieza por separado decia que iba bien.
+
+**1. `documentary` reventaba.** Uno de los seis estilos estaba muerto:
+
+```
+TypeError: cannot unpack non-iterable CursorSample object
+```
+
+`ScreenUse.busy` desempaquetaba el puntero como una tupla y `CursorTrack.at`
+devuelve una **muestra**. Lo tapaba la propia prueba: las de colocacion usaban
+un puntero de mentira que si devolvia tupla, asi que el de verdad no habia
+pasado nunca por ahi. Y el unico camino que lo llama son los rotulos de seccion,
+que piden capitulos de 90 segundos y solo salen en formato largo --- justo lo
+que ninguna prueba montaba. Ahora las pruebas usan el `CursorTrack` de verdad y
+hay un montaje de veinte minutos **con el puntero puesto** para cada estilo.
+
+**2. `cinematic` devolvia el video sin tocar.** Un clip, 241 segundos, cero
+cortes, cero subtitulos: el original con un color encima. Su estilo tenia el
+umbral de silencio afinado en 1,6 segundos y el interruptor **apagado**, y el
+recorte de silencios es lo unico que genera cortes --- mientras su propia banda
+pedia de 3 a 11 cortes por minuto. No podia cumplirla nunca. Encendido el
+interruptor, con el umbral que ya tenia puesto:
+
+```
+antes:  1 clip    0.00 cortes/min   0% recortado
+ahora: 15 clips   3.94 cortes/min  12% recortado
+```
+
+**3. Y el medidor decia "en el punto" de los seis**, incluido el que no habia
+cortado nada. La nota es una media ponderada y **la media tapa un cero**: el
+hueco de los cortes lo compensaba la densidad de efectos, que si estaba dentro
+de banda. Ahora una metrica que vota y se queda por debajo de su banda es una
+**carencia**, y una carencia manda sobre la media: el medidor existe para avisar
+de lo que falta y de lo que sobra, y avisar solo de lo que sobra es media faena.
+
+De paso, un estilo ya no paga por apagar una herramienta. A `cinematic`, que no
+quiere subtitulos, se le puntuaba la velocidad de lectura: 0 palabras por minuto
+contra una banda de [70, 180], hundiendole la nota por obedecer a su propio
+estilo.
+
+### Como queda cada estilo sobre la misma guia
+
+Cuatro minutos de guia hablada, el mismo analisis para los seis:
+
+| estilo | cortes/min | su banda | recorte | clips | efectos | veredicto |
+|---|---|---|---|---|---|---|
+| cinematic | 3.94 | 3 – 11 | 12% | 15 | 12 | en el punto |
+| clean-corporate | 5.80 | 3 – 14 | 14% | 21 | 79 | en el punto |
+| tutorial | 5.53 | 3 – 24 | 14% | 20 | 95 | en el punto |
+| documentary | 8.40 | 4 – 15 | 14% | 30 | 96 | falta material de apoyo |
+| vlog | 5.85 | 8 – 30 | 15% | 21 | 138 | falta ritmo |
+| gaming-hype | 6.46 | 18 – 48 | 15% | 23 | 216 | falta ritmo y material |
+
+Las dos ultimas filas **no son un fallo, son el medidor haciendo su trabajo**.
+`gaming-hype` pide de 18 a 48 cortes por minuto y `vlog` de 8 a 30, y sobre una
+guia hablada el unico sitio donde se puede cortar son las pausas: dan 6,5 y 5,8.
+Eso significa que ese estilo no le va a este material, y antes el medidor se lo
+callaba. Lo mismo con el material de apoyo: `documentary` quiere entre un 15% y
+un 45% de metraje con overlay y aqui no hay banco de b-roll instalado.
+
+### El fichero que traes tu
+
+El contenido no es lo que rompe un pipeline de video: es el **envoltorio**. Una
+captura de juego llega a 1440p o 4K, a 60 fps, en HEVC, de veinte minutos y a
+veces con dos pistas de audio. Generados esos ficheros de verdad y pasado el
+pipeline entero por ellos:
+
+| fichero | analisis | render | sale |
+|---|---|---|---|
+| 1080p60 h264 | 28s | 49s | 1920x1080 |
+| 1440p60 h264 | 32s | 86s | 2560x1440 |
+| 4K30 h264 | 25s | 55s | 3840x2160 |
+| 4K60 HEVC | 44s | 128s | 3840x2160 (sale en h264) |
+| 1080p60, dos pistas | 21s | 33s | 1920x1080 |
+| 1080p con fps variable | 19s | 33s | 1920x1080 |
+
+Los seis pasan. La resolucion se respeta siempre; el codec de salida es h264
+aunque entres en HEVC. Los tiempos son de **CPU sin GPU** y sobre 20-30 segundos
+de video: con NVENC el render baja muchisimo, y el analisis escala con la
+duracion (una guia de veinte minutos son decenas de minutos de analisis en CPU).
+
+#### Y una pista de audio que se pierde sin avisar
+
+Aqui salio el fallo mas serio para una captura de juego. Si grabas con OBS, lo
+normal es que el juego vaya en una pista y el microfono en otra. **Todo el
+pipeline usa una sola** --- la primera que elige ffmpeg --- y la otra se pierde.
+Medido sobre un fichero con el juego delante y la voz detras:
+
+```
+silencios encontrados: []      <- el juego suena todo el rato
+recorte: 0%
+la voz no llega ni al analisis ni al video exportado
+avisos: ninguno
+```
+
+Sin un solo error. El montaje salia "bien" y sin voz. Ahora **avisa**, diciendo
+cuantas pistas hay y cual se esta usando; mezclarlas de verdad --- eligiendo la
+de voz por como suena y agachando el juego por debajo --- esta en `PENDIENTE.md`
+con el plan escrito.
+
+### Lo que sale fuera del objetivo de sonoridad, y por que
+
+Los seis montajes salen a **-17 LUFS** con el pico en -1,5 dBTP, y el objetivo
+es -14. No es un fallo: es la decision que esta escrita en `_plan_master`. La
+guia de origen esta a -27,6 LUFS con picos a -3,0, asi que llegar a -14 pide
++13,6 dB y eso deja el pico 10 dB por encima del techo. El master busca la
+ganancia mas alta cuya perdida en el limitador no pase de 1 dB, encuentra +9,5 y
+se queda ahi antes que aplastar la voz para cuadrar un numero. Y lo dice:
+`measured_lufs` sale en el resultado del render.
+
+Si tu grabacion tiene la voz mas comprimida de origen, llegara mas cerca.
+
 ## Como queda un montaje
 
 Sobre la guia de ejemplo, con el estilo `tutorial`:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class VideoStream(BaseModel):
@@ -44,6 +44,9 @@ class AudioStream(BaseModel):
     channels: int | None = None
     channel_layout: str | None = None
     bit_rate: int | None = None
+    #: Nombre de la pista, si el fichero lo trae. OBS lo escribe cuando grabas
+    #: el juego y el microfono por separado.
+    title: str | None = None
 
 
 class MediaInfo(BaseModel):
@@ -55,7 +58,12 @@ class MediaInfo(BaseModel):
     format_name: str | None = None
     bit_rate: int | None = None
     video: VideoStream | None = None
+    #: La pista de audio que se usa. Hoy es siempre la primera.
     audio: AudioStream | None = None
+    #: **Todas** las pistas de audio del fichero. Una captura de juego suele
+    #: traer dos --- el juego y el microfono en pistas separadas --- y de eso
+    #: hay que enterarse, porque el pipeline entero usa una sola.
+    audio_streams: list[AudioStream] = Field(default_factory=list)
 
     @property
     def has_video(self) -> bool:

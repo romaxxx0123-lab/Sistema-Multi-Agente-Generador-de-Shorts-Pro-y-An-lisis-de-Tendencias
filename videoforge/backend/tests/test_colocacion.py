@@ -31,6 +31,7 @@ from forge.fixtures import synthetic_guide_analysis
 from forge.plan.broll import _pauses, _snap, _when_said, find_topic_moments, plan_broll
 from forge.plan.edl import Rect
 from forge.plan.edl import CaptionEffect
+from forge.analysis.cursor import CursorSample, CursorTrack
 from forge.plan.placement import CAPTION_BAND, ScreenUse, corners, place
 from forge.plan.planner import build_edl
 from forge.plan.styles import load_style
@@ -172,11 +173,16 @@ def test_fuera_del_tramo_los_subtitulos_no_cuentan() -> None:
 def test_el_puntero_se_mira_a_lo_largo_de_la_insercion() -> None:
     """No solo al principio y al final: puede cruzar por medio."""
 
-    class _Cruza:
-        def at(self, t):
-            return (0.85, 0.12) if 11.0 < t < 11.6 else (0.1, 0.9)
+    # El puntero **de verdad**, no uno de mentira: un doble que devolvia una
+    # tupla donde el real devuelve una muestra dejo pasar un fallo que reventaba
+    # el montaje de cualquier estilo con rotulos de seccion.
+    cruza = CursorTrack(rate=4.0, samples=[
+        CursorSample(at=t / 4, x=0.85 if 11.0 < t / 4 < 11.6 else 0.1,
+                     y=0.12 if 11.0 < t / 4 < 11.6 else 0.9)
+        for t in range(40, 53)
+    ])
 
-    pantalla = ScreenUse(cursor=_Cruza())
+    pantalla = ScreenUse(cursor=cruza)
     zonas = pantalla.busy(10.0, 13.0)
     assert any(z.x > 0.5 and z.y < 0.4 for z in zonas), "se perdio el paso del puntero"
 
@@ -229,11 +235,11 @@ def test_tapar_lo_que_senalas_pesa_mas_que_una_zona_con_cosas() -> None:
 def test_el_puntero_tambien_cuenta() -> None:
     """Donde esta el puntero es donde estas mirando: ahi no se tapa."""
 
-    class _Puntero:
-        def at(self, t):
-            return (0.88, 0.10)   # arriba a la derecha
+    puntero = CursorTrack(rate=4.0, samples=[   # arriba a la derecha
+        CursorSample(at=t / 4, x=0.88, y=0.10) for t in range(36, 53)
+    ])
 
-    pantalla = ScreenUse(cues=[], cursor=_Puntero())
+    pantalla = ScreenUse(cues=[], cursor=puntero)
     zonas = pantalla.busy(10.0, 12.0)
     assert zonas
     colocado, movida = place(BASE, zonas)

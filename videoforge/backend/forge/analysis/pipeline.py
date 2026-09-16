@@ -218,6 +218,33 @@ class AnalysisRun:
         self.cache.write("focus", [f.model_dump(mode="json") for f in focus], v)
         return focus
 
+    def _warn_multitrack(self, info) -> None:
+        """Avisa si el fichero trae mas de una pista de audio.
+
+        Una captura de juego con OBS suele traer dos: el juego en una y el
+        microfono en otra. Todo el pipeline usa **una sola** --- la primera que
+        elige ffmpeg --- y la otra se pierde sin decir nada. Medido sobre un
+        fichero con el juego delante y la voz detras: el analisis encontro
+        **cero silencios** (el juego suena todo el rato), no recorto nada, y la
+        voz no llegaba ni al analisis ni al video exportado. Sin un solo error.
+
+        Avisar no lo arregla, pero deja de ser invisible: mezclar las pistas
+        esta pendiente (ver PENDIENTE.md).
+        """
+        pistas = getattr(info, "audio_streams", None) or []
+        if len(pistas) < 2:
+            return
+        nombres = ", ".join(
+            f"{i}: {p.title or p.codec}" for i, p in enumerate(pistas)
+        )
+        elegida = pistas[0]
+        self.warnings.append(
+            f"El fichero trae {len(pistas)} pistas de audio ({nombres}) y solo se "
+            f"usa la primera ({elegida.title or elegida.codec}); las demas se "
+            f"pierden. Si grabas el juego y el microfono por separado, junta las "
+            f"pistas antes de subir el video o tu voz no entrara en el montaje."
+        )
+
     def _audio(self, bundle: ProxyBundle, force: bool) -> AudioAnalysis | None:
         if not bundle.has_audio:
             self.warnings.append("El video no tiene audio: sin silencios ni sonoridad.")
@@ -323,6 +350,7 @@ class AnalysisRun:
             return everything or stage in force
 
         info = self._probe(forced("probe"))
+        self._warn_multitrack(info)
         bundle = self._proxy(info, forced("proxy"))
         motion = self._motion(bundle, forced("motion"))
         # El puntero: barato (una pasada a 4/s sobre el proxy, mas ligera que la

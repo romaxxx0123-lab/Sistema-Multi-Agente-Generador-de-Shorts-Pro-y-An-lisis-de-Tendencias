@@ -330,16 +330,19 @@ def _probe_with_ffprobe(path: Path, ffprobe: Path) -> MediaInfo:
             rotation=_rotation_from(video),
         )
 
-    aus = None
-    if audio:
-        aus = AudioStream(
-            index=_int_or_none(audio.get("index")) or 0,
-            codec=audio.get("codec_name") or "desconocido",
-            sample_rate=_int_or_none(audio.get("sample_rate")),
-            channels=_int_or_none(audio.get("channels")),
-            channel_layout=audio.get("channel_layout"),
-            bit_rate=_int_or_none(audio.get("bit_rate")),
+    def _audio_stream(s: dict) -> AudioStream:
+        return AudioStream(
+            index=_int_or_none(s.get("index")) or 0,
+            codec=s.get("codec_name") or "desconocido",
+            sample_rate=_int_or_none(s.get("sample_rate")),
+            channels=_int_or_none(s.get("channels")),
+            channel_layout=s.get("channel_layout"),
+            bit_rate=_int_or_none(s.get("bit_rate")),
+            title=((s.get("tags") or {}).get("title")),
         )
+
+    todas = [_audio_stream(s) for s in streams if s.get("codec_type") == "audio"]
+    aus = todas[0] if todas else None
 
     duration = _float_or_none(fmt.get("duration"))
     if duration is None and video:
@@ -361,6 +364,7 @@ def _probe_with_ffprobe(path: Path, ffprobe: Path) -> MediaInfo:
         bit_rate=_int_or_none(fmt.get("bit_rate")),
         video=vs,
         audio=aus,
+        audio_streams=todas,
     )
 
 
@@ -420,6 +424,9 @@ def _probe_with_ffmpeg(path: Path, ffmpeg: Path) -> MediaInfo:
         duration=duration,
         video=vs,
         audio=aus,
+        # El sondeo de respaldo lee la salida de texto de ffmpeg y ahi solo se
+        # reconoce una pista: si hay mas, no las ve. Con ffprobe salen todas.
+        audio_streams=[aus] if aus else [],
     )
 
 

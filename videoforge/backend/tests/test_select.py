@@ -81,7 +81,17 @@ def test_no_recorta_una_pausa_corta() -> None:
 
 
 def test_un_estilo_puede_no_recortar_nada() -> None:
-    sel = plan_selection(_analysis(silences=[(10.0, 20.0)]), load_style("cinematic").pacing)
+    """La capacidad existe, aunque ya no la use ningun estilo de serie.
+
+    Se probaba con `cinematic`, que era el unico con el recorte apagado --- y
+    por eso devolvia el video entero en un solo clip mientras su propia banda
+    pedia de 3 a 11 cortes por minuto. Ahora lo tiene encendido, asi que la
+    regla se construye aqui en vez de tomarla prestada de un estilo.
+    """
+    pacing = load_style("tutorial").pacing.model_copy(deep=True)
+    pacing.remove_silence = False
+
+    sel = plan_selection(_analysis(silences=[(10.0, 20.0)]), pacing)
     assert sel.keeps == [(0.0, 30.0)]
 
 

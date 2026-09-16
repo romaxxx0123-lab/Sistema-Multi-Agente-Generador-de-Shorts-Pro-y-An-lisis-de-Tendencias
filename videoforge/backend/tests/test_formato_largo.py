@@ -34,7 +34,7 @@ from forge.plan.edl import EffectKind
 from forge.plan.planner import build_edl
 from forge.plan.styles import load_style
 from forge.saturation.balance import NEVER_PRUNE, rebalance
-from forge.saturation.score import evaluate
+from forge.saturation.score import BUSY, evaluate
 
 #: Veinte minutos.
 LARGO = 1200.0
@@ -164,9 +164,18 @@ def test_la_banda_de_texto_admite_una_guia_hablada(montaje_largo, guia_larga) ->
 
 
 def test_el_montaje_de_veinte_minutos_sigue_siendo_sobrio(montaje_largo, guia_larga) -> None:
+    """Sobrio quiere decir **que no se pasa**, que es lo que aguanta mal el
+    formato largo: un ritmo agradable un minuto, sostenido veinte, cansa.
+
+    Aqui se pedia `in_the_pocket`, que ahora ademas exige que no falte nada, y
+    este fixture tiene poquisimo tiempo muerto: su montaje sale a 1,3 cortes por
+    minuto --- uno cada 45 segundos --- contra una banda que empieza en 3. El
+    medidor tiene razon al marcarlo, asi que lo que se comprueba aqui vuelve a
+    ser lo que el nombre dice.
+    """
     reporte = evaluate(montaje_largo, guia_larga)
-    assert reporte.in_the_pocket, f"{reporte.score}/100 {reporte.verdict}"
-    assert not reporte.is_oversaturated
+    assert not reporte.is_oversaturated, f"{reporte.score}/100 {reporte.verdict}"
+    assert reporte.score <= BUSY, f"{reporte.score}/100 {reporte.verdict}"
 
 
 def test_no_se_pasa_recortando_en_formato_largo(montaje_largo) -> None:

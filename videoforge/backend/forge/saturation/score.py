@@ -14,6 +14,7 @@ No es una escala absoluta: la misma carga es "en el punto" en `gaming-hype` y
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ..analysis.types import Analysis
 from ..plan.edl import EDL
@@ -119,12 +120,21 @@ class SaturationReport:
         return self.score > BUSY
 
     @property
+    def shortfalls(self) -> list[MetricReading]:
+        """Lo que el montaje **no** tiene y su estilo pedia.
+
+        Solo cuentan las metricas que votan: una banda de techo a cero no pide
+        nada, y una herramienta que el estilo tiene apagada tampoco.
+        """
+        return [r for r in self.readings if r.counts and r.status == "bajo"]
+
+    @property
     def is_under_edited(self) -> bool:
-        return self.score < UNDER_EDITED
+        return self.score < UNDER_EDITED or bool(self.shortfalls)
 
     @property
     def in_the_pocket(self) -> bool:
-        return UNDER_EDITED <= self.score <= BUSY
+        return not self.shortfalls and UNDER_EDITED <= self.score <= BUSY
 
     def problems(self) -> list[MetricReading]:
         """Metricas fuera de banda, las peores primero."""
@@ -138,6 +148,18 @@ class SaturationReport:
 #: Puntuacion minima de una metrica de techo. Que no baje de aqui es lo que
 #: impide que "no hay ningun problema" se confunda con "falta contenido".
 CEILING_FLOOR = 40.0
+
+
+#: Metricas que solo existen si el estilo tiene esa herramienta encendida.
+#: Puntuar a `cinematic` por no tener subtitulos, cuando el propio estilo dice
+#: que no los quiere, es cobrarle por obedecer: su velocidad de lectura salia
+#: 0 palabras por minuto contra una banda de [70, 180] y le hundia la nota.
+DEPENDS_ON: dict[str, Callable[[StylePreset], bool]] = {
+    "caption_wpm": lambda p: p.captions.enabled,
+    "callouts_per_minute": lambda p: p.callouts.enabled,
+    "sfx_per_minute": lambda p: p.sfx.enabled,
+    "transitions_per_minute": lambda p: p.transitions.enabled,
+}
 
 
 def _is_ceiling(band: Band) -> bool:
@@ -178,7 +200,24 @@ def _score_metric(value: float, band: Band) -> tuple[float, float, str]:
     return 33.0 + 34.0 * posicion, posicion, "dentro"
 
 
-def verdict_for(score: float) -> str:
+def verdict_for(score: float, readings: list[MetricReading] | None = None) -> str:
+    """El veredicto, que no es solo la media.
+
+    La media esconde un cero. Medido sobre una guia de cuatro minutos montada
+    con los seis estilos: `cinematic` devolvia el video **sin un solo corte** ---
+    un clip, 241 segundos, el original tal cual --- y la nota salia 30.6, "en el
+    punto", porque el hueco de los cortes (0 contra una banda de 3 a 11) lo
+    tapaba la densidad de efectos, que si estaba dentro. Tres de los seis
+    estilos se quedaban por debajo de su propia banda de ritmo y el medidor no
+    decia nada de ninguno.
+
+    Asi que una metrica que **vota** y se queda por debajo de su banda es un
+    hueco, y un hueco no es "en el punto" por mucho que la media salga. El
+    medidor existe para avisar de lo que falta y de lo que sobra; avisar solo
+    de lo que sobra es hacer media faena.
+    """
+    if readings and any(r.counts and r.status == "bajo" for r in readings):
+        return "sub-editado"
     if score < UNDER_EDITED:
         return "sub-editado"
     if score <= BUSY:
@@ -219,7 +258,12 @@ def evaluate(
         # si falta o sobra montaje: solo sabe decir "aqui no hay problema". Se
         # sigue mostrando, pero no vota, para que no sostenga artificialmente la
         # puntuacion de un montaje que en realidad esta vacio.
-        peso_efectivo = 0.0 if (_is_ceiling(banda_base) and estado != "alto") else peso
+        apagada = not DEPENDS_ON.get(nombre, lambda _p: True)(preset)
+        peso_efectivo = (
+            0.0
+            if apagada or (_is_ceiling(banda_base) and estado != "alto")
+            else peso
+        )
 
         lecturas.append(
             MetricReading(
@@ -246,7 +290,7 @@ def evaluate(
 
     return SaturationReport(
         score=round(score, 1),
-        verdict=verdict_for(score),
+        verdict=verdict_for(score, lecturas),
         style=preset.name,
         intensity=intens,
         metrics=metrics,
