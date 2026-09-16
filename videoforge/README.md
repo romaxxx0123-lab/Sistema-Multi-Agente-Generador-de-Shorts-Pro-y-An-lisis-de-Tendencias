@@ -882,6 +882,29 @@ mismo contorno, mismos fundidos), con `BorderStyle: 3` para la caja. Y se
 comprueba mirando los pixeles de un render de verdad, porque este proyecto ya
 tuvo rotulos de capitulo que se planificaban y no se dibujaban nunca.
 
+### El "x24" mientras el video corre
+
+El montaje ya aceleraba las esperas que tu mismo anuncias: dices *"esto tarda un
+rato"* y el minuto y medio de instalacion pasa a 24x, cuatro segundos en los que
+se ve la barra avanzar. Buena decision, tomada hace tiempo.
+
+Y **no lo decia en ninguna parte**. Un video que de pronto corre a veinticuatro
+veces la velocidad, sin avisar, no se lee como una decision de montaje: se lee
+como un fallo de reproduccion.
+
+Ahora sale un marcador mientras dura, y con dos detalles que importan:
+
+- **Va fijado**: no compite por el presupuesto del montaje ni lo puede podar el
+  balanceador. No es un adorno, es la explicacion de algo que el montaje ya
+  hizo; quitarlo dejaria el video acelerandose en silencio otra vez.
+- **No sale por cualquier cosa**: por debajo de 1.5x no es un avance rapido sino
+  un ajuste de ritmo, y un acelerado que dura menos de ocho decimas no se
+  percibe como aceleracion, es un corte.
+
+Las demas herramientas que se consideraron --- y por que casi todas se quedan
+fuera --- estan en
+[`ANALISIS-HERRAMIENTAS.md`](ANALISIS-HERRAMIENTAS.md).
+
 ## Cuando dos efectos se estorban
 
 Cada planner decide bien lo suyo y ninguno miraba lo que habian decidido los

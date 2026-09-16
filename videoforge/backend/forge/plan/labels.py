@@ -1,4 +1,21 @@
-"""El rotulo que dice donde estas: caja de color con el nombre de la seccion.
+"""Cajas de color con texto: las dos que el montaje necesita decir.
+
+Aqui viven dos cosas de la misma familia -- una caja con texto colocada donde no
+estorbe -- pero que contestan preguntas distintas:
+
+- **el rotulo de seccion**, que dice *donde estas*;
+- **el marcador de velocidad**, que dice *por que el video va de pronto a ocho
+  veces la velocidad*.
+
+El segundo no lo pidio nadie, y es el que mas falta hacia. El montaje acelera
+las esperas que tu mismo anuncias -- dices "esto tarda un rato" y el minuto de
+instalacion pasa a 8x, para que se vea la barra avanzar -- y **no lo decia en
+ninguna parte**. Un video que se acelera sin avisar no se lee como una decision
+de montaje, se lee como un fallo de reproduccion.
+
+---
+
+El rotulo que dice donde estas: caja de color con el nombre de la seccion.
 
 La idea es la de television: un rectangulo con texto que te situa. Aqui el
 texto no es una plantilla ni lo escribe nadie a mano -- sale de lo que el video
@@ -292,4 +309,77 @@ def plan_labels(
             )
         )
 
+    return salida
+
+
+# ---------------------------------------------------------------------------
+# El marcador de velocidad
+# ---------------------------------------------------------------------------
+
+#: Tamano del marcador. Es una etiqueta de dos o tres caracteres ("x8"), asi
+#: que no necesita mas.
+SPEED_WIDTH = 0.09
+SPEED_HEIGHT = 0.065
+#: Por debajo de esto no es un avance rapido, es un ajuste de ritmo que no hay
+#: que explicarle a nadie.
+MIN_SPEED = 1.5
+#: Y un tramo acelerado que dura un parpadeo tampoco necesita cartel.
+MIN_SPEED_SECONDS = 0.8
+
+
+def fast_ranges(edl: EDL) -> list[tuple[float, float, float]]:
+    """Tramos del **montaje** que van acelerados, con su velocidad."""
+    salida: list[tuple[float, float, float]] = []
+    cursor = 0.0
+    for clip in edl.timeline:
+        if clip.speed >= MIN_SPEED and clip.duration >= MIN_SPEED_SECONDS:
+            salida.append((cursor, cursor + clip.duration, clip.speed))
+        cursor += clip.duration
+    return salida
+
+
+def plan_speed_tags(
+    edl: EDL, style, screen: ScreenUse | None = None
+) -> list[LowerThirdEffect]:
+    """Un "x8" mientras el video va acelerado, y nada mas.
+
+    Va **fijado** (`locked`) a proposito: no es un adorno que compita con los
+    demas por el presupuesto del montaje, es la explicacion de algo que el
+    montaje ya ha hecho. Quitarlo por carga dejaria el video acelerandose en
+    silencio otra vez, que es justo el fallo que arregla.
+    """
+    salida: list[LowerThirdEffect] = []
+    for i, (inicio, fin, velocidad) in enumerate(fast_ranges(edl)):
+        # "x24.5" no dice nada que no diga "x24", y el decimal solo estorba.
+        # Por debajo de 3x si distingue: 1.5x y 2x no se ven igual.
+        texto = f"x{velocidad:.0f}" if velocidad >= 3 else f"x{velocidad:.1f}".rstrip("0").rstrip(".")
+
+        base = Rect(x=0.86, y=0.08, w=SPEED_WIDTH, h=SPEED_HEIGHT)
+        movida = ""
+        if screen is not None:
+            origen = edl.timeline_to_source(inicio)
+            if origen is not None:
+                base, movida = place(
+                    base,
+                    screen.busy(origen, origen + (fin - inicio), timeline=(inicio, fin)),
+                    screen.grid(origen),
+                )
+
+        salida.append(
+            LowerThirdEffect(
+                id=f"speed{i:03d}",
+                start=round(inicio, 3),
+                end=round(fin, 3),
+                title=texto,
+                rect=base,
+                color=style.labels.color,
+                locked=True,
+                value_score=0.9,
+                cost_weight=0.15,
+                rationale=(
+                    f"marcador {texto}: ese tramo va acelerado porque anunciaste "
+                    "la espera" + (f" · movido {movida}" if movida else "")
+                ),
+            )
+        )
     return salida

@@ -463,3 +463,111 @@ def test_en_una_guia_con_temas_sale_uno_por_tema() -> None:
     assert any("router" in t for t in titulos)
     assert any("impresora" in t for t in titulos)
     assert any("firewall" in t for t in titulos)
+
+
+# -- el marcador de velocidad ------------------------------------------------
+
+
+def _con_espera(duracion_espera: float = 98.0):
+    """Una guia donde anuncias una espera larga y el montaje la acelera."""
+    from forge.analysis.types import SilenceRange, Transcript
+    from forge.understand.speech_cues import find_all
+
+    guion = [
+        ("vamos a instalar el programa en el ordenador", 0.0),
+        ("esto tarda un buen rato asi que espera", 12.0),
+        ("ya esta instalado el programa del ordenador", 20.0 + duracion_espera),
+        ("ahora configuramos las opciones del programa", 40.0 + duracion_espera),
+    ]
+    segmentos = []
+    for texto, inicio in guion:
+        t = inicio
+        palabras = []
+        for palabra in texto.split():
+            palabras.append(Word(start=round(t, 2), end=round(t + 0.38, 2), text=palabra))
+            t += 0.48
+        segmentos.append(TranscriptSegment(start=inicio, end=t, text=texto, words=palabras))
+
+    a = synthetic_guide_analysis(80.0 + duracion_espera)
+    a.transcript = Transcript(language="es", segments=segmentos)
+    a.cues = find_all(a.transcript, a.audio)
+    a.audio.silences = [SilenceRange(start=20.0, end=20.0 + duracion_espera)]
+    return a
+
+
+def test_el_video_ya_no_se_acelera_en_silencio() -> None:
+    """El fallo: el montaje pasaba una espera a 24x y no lo decia en ninguna
+    parte. Eso no se lee como una decision de montaje, se lee como un fallo de
+    reproduccion."""
+    from forge.plan.planner import build_edl
+
+    edl = build_edl(_con_espera(), "tutorial")
+
+    acelerados = [c for c in edl.timeline if c.speed > 1.5]
+    assert acelerados, "hace falta un tramo acelerado para que haya algo que decir"
+
+    marcadores = [
+        e for e in edl.effects
+        if e.kind is EffectKind.LOWER_THIRD and e.title.startswith("x")
+    ]
+    assert len(marcadores) == len(acelerados)
+    assert marcadores[0].title == "x24"        # 98s a 4s en pantalla
+    assert any("velocidad" in n for n in edl.notes)
+
+
+def test_el_marcador_dura_lo_que_dura_el_acelerado() -> None:
+    from forge.plan.labels import fast_ranges
+    from forge.plan.planner import build_edl
+
+    edl = build_edl(_con_espera(), "tutorial")
+    (tramo,) = fast_ranges(edl)
+    marcador = next(e for e in edl.effects
+                    if e.kind is EffectKind.LOWER_THIRD and e.title.startswith("x"))
+    assert (marcador.start, marcador.end) == (round(tramo[0], 3), round(tramo[1], 3))
+
+
+def test_el_marcador_no_se_puede_podar() -> None:
+    """No compite por el presupuesto: explica algo que el montaje ya hizo.
+
+    Si el balanceador se lo llevara, el video volveria a acelerarse en silencio.
+    """
+    from forge.plan.planner import build_edl
+    from forge.saturation.balance import rebalance
+
+    analisis = _con_espera()
+    edl = build_edl(analisis, "tutorial")
+    marcador = next(e for e in edl.effects
+                    if e.kind is EffectKind.LOWER_THIRD and e.title.startswith("x"))
+    assert marcador.locked
+
+    rebalance(edl, analisis, intensity=0)      # la intensidad mas exigente
+    assert any(e.id == marcador.id for e in edl.effects)
+
+
+def test_un_acelerado_de_un_parpadeo_no_lleva_cartel() -> None:
+    """Medio segundo a 8x no se percibe como una aceleracion, es un corte."""
+    from forge.plan.edl import EDL, RenderSpec
+    from forge.plan.labels import plan_speed_tags
+
+    edl = EDL(
+        source="a.mp4", source_duration=100.0, style="tutorial",
+        render=RenderSpec(width=1920, height=1080, fps=30.0),
+        timeline=[
+            Clip(id="c0", source_start=0.0, source_end=10.0),
+            Clip(id="c1", source_start=10.0, source_end=13.5, speed=8.0),  # 0.44s
+            Clip(id="c2", source_start=20.0, source_end=30.0),
+        ],
+    )
+    assert plan_speed_tags(edl, load_style("tutorial")) == []
+
+
+def test_un_cambio_de_ritmo_pequeno_tampoco() -> None:
+    from forge.plan.edl import EDL, RenderSpec
+    from forge.plan.labels import plan_speed_tags
+
+    edl = EDL(
+        source="a.mp4", source_duration=100.0, style="tutorial",
+        render=RenderSpec(width=1920, height=1080, fps=30.0),
+        timeline=[Clip(id="c0", source_start=0.0, source_end=40.0, speed=1.2)],
+    )
+    assert plan_speed_tags(edl, load_style("tutorial")) == []

@@ -32,7 +32,7 @@ from .edl import (
     RenderSpec,
     TransitionEffect,
 )
-from .labels import plan_labels
+from .labels import plan_labels, plan_speed_tags
 from .placement import ScreenUse
 from .restraint import apply_restraint
 from .emphasis import plan_ken_burns, plan_punch_ins
@@ -375,7 +375,17 @@ def build_edl(
     # Lo que ya ocupa una esquina lo tiene que saber quien coloque despues: si
     # no, el material en ventanita se planta encima del rotulo, porque los dos
     # prefieren la misma esquina.
-    pantalla.overlays = list(rotulos)
+    # Y el "x8" mientras el video va acelerado. Va aparte de los rotulos
+    # porque no compite con nada: explica algo que el montaje ya hizo.
+    marcas_velocidad = plan_speed_tags(edl, style, pantalla)
+    efectos += marcas_velocidad
+    if marcas_velocidad:
+        edl.notes.append(
+            f"{len(marcas_velocidad)} marcador(es) de velocidad: el video se "
+            "acelera ahi y ahora lo dice."
+        )
+
+    pantalla.overlays = list(rotulos) + list(marcas_velocidad)
     if rotulos:
         edl.notes.append(
             f"{len(rotulos)} rotulos de seccion en los capitulos largos."
