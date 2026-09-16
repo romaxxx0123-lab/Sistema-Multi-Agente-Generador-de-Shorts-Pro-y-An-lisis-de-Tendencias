@@ -23,6 +23,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -63,6 +64,10 @@ class Beat:
     #: la mas alta quedaba 0,6 dB sobre la media) y no habia forma de comprobar
     #: que la deteccion de enfasis sirviera para nada.
     stress: str = ""
+    #: A que parte de la guia pertenece. Es lo que permite **alargar por dentro**
+    #: en vez de por la cola: un guion largo tiene que seguir teniendo tres
+    #: temas de diez minutos, no un tema de dos y otro de dieciocho.
+    section: str = ""
 
 
 #: Guion de la guia. Las pausas son deliberadamente variadas: las cortas son el
@@ -113,26 +118,77 @@ _VARIANTES: tuple[tuple[str, float, str, int | None, tuple[float, float]], ...] 
 )
 
 
-def long_guide_script(minutes: float) -> tuple[Beat, ...]:
+def long_guide_script(minutes: float, guide: "Guide | None" = None) -> tuple[Beat, ...]:
     """Un guion de la duracion que se pida, con la misma forma que el corto.
 
     Sirve para probar el caso de uso real (guias de ~20 minutos) en vez de
     extrapolar desde un minuto. Mantiene la proporcion de pausas cortas y
     largas, los cambios de pantalla y las muletillas, y va rotando las frases
     para que el contenido no sea identico cada vuelta.
+
+    Si el guion tiene **secciones**, se alarga **por dentro**: cada tema crece
+    con sus propias frases y en su sitio. Alargar por la cola, que es lo que se
+    hacia antes, convierte una guia de tres temas de veinte minutos en una de
+    dos minutos y un tema de dieciocho --- y entonces los capitulos, los rotulos
+    de seccion y los temas se prueban sobre algo que no se parece a una guia.
     """
+    guide = guide or APP_GUIDE
     objetivo = minutes * 60.0
-    guion: list[Beat] = list(GUIDE_SCRIPT)
+    base = list(guide.script)
+    if not any(b.section for b in base):
+        return _alargar_por_la_cola(base, guide.variants, objetivo)
+    return _alargar_por_dentro(base, guide.variants, objetivo)
+
+
+def _alargar_por_la_cola(base: list[Beat], variantes, objetivo: float) -> tuple[Beat, ...]:
+    """El guion sin secciones: las frases extra van detras, como siempre."""
+    guion = list(base)
     i = 0
-    while build_timing(tuple(guion)).duration < objetivo:
-        texto, pausa, pantalla, resalte, cursor = _VARIANTES[i % len(_VARIANTES)]
+    while build_timing(tuple(guion)).duration < objetivo and variantes:
+        texto, pausa, pantalla, resalte, cursor = variantes[i % len(variantes)]
         # Cada vuelta cambia un poco el numero para que no salgan dos frases
         # exactamente iguales en todo el video.
-        vuelta = i // len(_VARIANTES)
+        vuelta = i // len(variantes)
         if vuelta:
             texto = f"{texto} del apartado {vuelta + 1}"
         guion.append(Beat(texto, pausa, pantalla, resalte, cursor))
         i += 1
+    return tuple(guion)
+
+
+def _alargar_por_dentro(base: list[Beat], variantes, objetivo: float) -> tuple[Beat, ...]:
+    """Cada seccion crece con sus propias frases, en su sitio."""
+    extras: dict[str, list] = {}
+    for v in variantes:
+        extras.setdefault(v[5] if len(v) > 5 else "", []).append(v)
+
+    guion = list(base)
+    vuelta = 0
+    while build_timing(tuple(guion)).duration < objetivo:
+        crecio = False
+        for seccion, frases in extras.items():
+            if not frases:
+                continue
+            # Se inserta detras de la ultima frase de esa seccion, que es donde
+            # iria si el que graba se hubiera enrollado un poco mas.
+            ultimo = max(
+                (i for i, b in enumerate(guion) if b.section == seccion), default=None
+            )
+            if ultimo is None:
+                continue
+            texto, pausa, pantalla, resalte, cursor, _ = frases[vuelta % len(frases)]
+            if vuelta:
+                texto = f"{texto}, esto es el punto {vuelta + 1}"
+            guion.insert(
+                ultimo + 1,
+                Beat(texto, pausa, pantalla, resalte, cursor, section=seccion),
+            )
+            crecio = True
+            if build_timing(tuple(guion)).duration >= objetivo:
+                break
+        if not crecio:
+            break
+        vuelta += 1
     return tuple(guion)
 
 
@@ -518,7 +574,11 @@ def _draw_frame(canvas, beat: Beat, cursor: tuple[float, float], t: float) -> No
         cv2.putText(canvas, "Guardar", (bx + 34, by + 31),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 24, 28), 1, cv2.LINE_AA)
 
-    # Cursor: puntero con sombra, para que se distinga del fondo.
+
+def draw_pointer(canvas, cursor: tuple[float, float]) -> None:
+    """Puntero con sombra, para que se distinga del fondo."""
+    import cv2
+
     cx, cy = int(cursor[0] * WIDTH), int(cursor[1] * HEIGHT)
     puntero = np.array([[cx, cy], [cx, cy + 20], [cx + 6, cy + 15],
                         [cx + 11, cy + 24], [cx + 15, cy + 22],
@@ -527,11 +587,65 @@ def _draw_frame(canvas, beat: Beat, cursor: tuple[float, float], t: float) -> No
     cv2.fillPoly(canvas, [puntero], (250, 250, 250))
 
 
+def app_hud(beat: Beat) -> list:
+    """Lo que un OCR leeria en el menu lateral de la app falsa, con su sitio.
+
+    Es la verdad conocida del generador, no una lectura: aqui sabemos
+    exactamente que texto se dibujo y donde. Las cajas salen de las mismas
+    constantes con las que se pinta el menu, asi que si se mueve el menu, se
+    mueven con el.
+    """
+    from .analysis.ocr import WordBox
+
+    cajas: list[WordBox] = []
+    for i, etiqueta in enumerate(MENU):
+        base_y = 110 + i * 46
+        x = 30.0
+        for palabra in etiqueta[:22].split():
+            ancho = len(palabra) * _MENU_CHAR_WIDTH
+            cajas.append(WordBox(
+                text=palabra,
+                x=round(x / WIDTH, 4),
+                y=round((base_y - _MENU_LINE_HEIGHT + 4) / HEIGHT, 4),
+                w=round(ancho / WIDTH, 4),
+                h=round(_MENU_LINE_HEIGHT / HEIGHT, 4),
+            ))
+            x += ancho + _MENU_CHAR_WIDTH
+    return cajas
+
+
+@dataclass(frozen=True)
+class Guide:
+    """Un tipo de material: su guion, sus frases de relleno y como se pinta.
+
+    Con esto el generador deja de saber **solo** dibujar una aplicacion. Lo que
+    cambia entre una guia de una app y una de un juego no es la mecanica --- el
+    habla, las pausas, los tiempos por palabra y el montaje son los mismos ---
+    sino el guion y lo que se ve.
+    """
+
+    name: str
+    script: tuple[Beat, ...]
+    #: (texto, pausa, pantalla, resalte, cursor[, seccion]) para alargar
+    variants: tuple
+    #: pinta un fotograma: (canvas, beat, cursor, t)
+    paint: Callable[..., None]
+    #: el texto que hay en pantalla en ese momento, con su caja
+    hud: Callable[[Beat], list]
+    #: si se dibuja el puntero del raton encima
+    pointer: bool = True
+
+
 def render_screen_recording(
-    timing: Timing, out: Path, settings: Settings, *, fps: int = FPS
+    timing: Timing,
+    out: Path,
+    settings: Settings,
+    *,
+    fps: int = FPS,
+    guide: "Guide | None" = None,
 ) -> Path:
-    """Genera el video de la aplicacion falsa, sin audio."""
-    import cv2
+    """Genera el video del material, sin audio."""
+    guide = guide or APP_GUIDE
 
     out.parent.mkdir(parents=True, exist_ok=True)
     total = int(timing.duration * fps)
@@ -557,7 +671,9 @@ def render_screen_recording(
             # sin saltos, que es lo que distingue una grabacion de una diapositiva.
             cursor[0] = _ease(cursor[0], beat.cursor[0], 0.06)
             cursor[1] = _ease(cursor[1], beat.cursor[1], 0.06)
-            _draw_frame(canvas, beat, (cursor[0], cursor[1]), t)
+            guide.paint(canvas, beat, (cursor[0], cursor[1]), t)
+            if guide.pointer:
+                draw_pointer(canvas, (cursor[0], cursor[1]))
             proceso.stdin.write(canvas.tobytes())
     finally:
         proceso.stdin.close()
@@ -567,22 +683,32 @@ def render_screen_recording(
 
 
 def build_demo_video(
-    out: Path, settings: Settings | None = None, *, minutes: float | None = None
+    out: Path,
+    settings: Settings | None = None,
+    *,
+    minutes: float | None = None,
+    guide: "Guide | None" = None,
 ) -> tuple[Path, Timing]:
     """Genera la guia completa con imagen y sonido.
 
     Con `minutes` produce una guia de esa duracion, para probar el formato largo
-    de verdad en vez de extrapolar desde un minuto.
+    de verdad en vez de extrapolar desde un minuto. Con `guide` se elige el tipo
+    de material: la aplicacion falsa por defecto, o cualquier otra.
     """
     settings = settings or Settings.load()
+    guide = guide or APP_GUIDE
     out = Path(out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    timing = build_timing(long_guide_script(minutes) if minutes else GUIDE_SCRIPT)
+    timing = build_timing(
+        long_guide_script(minutes, guide) if minutes else guide.script
+    )
     temporal = out.parent / f".{out.stem}-tmp"
     temporal.mkdir(exist_ok=True)
 
-    video = render_screen_recording(timing, temporal / "video.mp4", settings)
+    video = render_screen_recording(
+        timing, temporal / "video.mp4", settings, guide=guide
+    )
     audio = write_wav(synth_speech(timing), temporal / "audio.wav")
 
     run([
@@ -629,42 +755,33 @@ _MENU_LINE_HEIGHT = 18
 _MENU_CHAR_WIDTH = 9.2
 
 
-def demo_screen_text(timing: Timing):
-    """Lo que un OCR leeria en el menu lateral, con su posicion.
+def demo_screen_text(timing: Timing, guide: "Guide | None" = None):
+    """Lo que un OCR leeria en pantalla en cada momento, con su posicion.
 
-    Es la verdad conocida del generador, no una lectura: aqui sabemos
-    exactamente que texto se dibujo y donde. Sirve para ejercitar de punta a
-    punta lo que depende del OCR (los recuadros que senalan lo que se nombra)
-    sin necesidad de tener Tesseract instalado, y para que al comparar con una
+    Es la verdad conocida del generador, no una lectura. Sirve para ejercitar de
+    punta a punta lo que depende del OCR (los recuadros que senalan lo que se
+    nombra) sin necesidad de tenerlo instalado, y para que al comparar con una
     lectura real se vea cuanto pierde el OCR y no cuanto pierde el montaje.
-
-    Las cajas salen de las mismas constantes con las que `_draw_frame` pinta el
-    menu, asi que si se mueve el menu, se mueven con el.
     """
-    from .analysis.ocr import ScreenText, WordBox
+    from .analysis.ocr import ScreenText
 
+    guide = guide or APP_GUIDE
     lecturas = []
     t = OCR_SAMPLE_SECONDS / 2
     while t < timing.duration:
-        cajas: list[WordBox] = []
-        for i, etiqueta in enumerate(MENU):
-            linea = etiqueta[:22]
-            base_y = 110 + i * 46
-            x = 30.0
-            for palabra in linea.split():
-                ancho = len(palabra) * _MENU_CHAR_WIDTH
-                cajas.append(
-                    WordBox(
-                        text=palabra,
-                        x=round(x / WIDTH, 4),
-                        y=round((base_y - _MENU_LINE_HEIGHT + 4) / HEIGHT, 4),
-                        w=round(ancho / WIDTH, 4),
-                        h=round(_MENU_LINE_HEIGHT / HEIGHT, 4),
-                    )
-                )
-                x += ancho + _MENU_CHAR_WIDTH
+        cajas = guide.hud(_beat_at(timing, t))
         lecturas.append(
             ScreenText(at=round(t, 3), words=[c.text for c in cajas], boxes=cajas)
         )
         t += OCR_SAMPLE_SECONDS
     return lecturas
+
+
+#: La guia de la aplicacion falsa: la que sale por defecto en `forge demo`.
+APP_GUIDE = Guide(
+    name="app",
+    script=GUIDE_SCRIPT,
+    variants=_VARIANTES,
+    paint=_draw_frame,
+    hud=app_hud,
+)
