@@ -57,6 +57,12 @@ pip install -e ".[speech,audio,vision-gpu]"   # con aceleracion NVIDIA
 pip install -e ".[dev]"                       # tests
 ```
 
+El extra `ocr` es el que hace que la app **lea la pantalla**, y en una guia eso
+no es un adorno: sin el se caen los recuadros sobre lo que nombras, senalar por
+nombre y el material sacado de tu propio video. Trae sus propios modelos, asi
+que no hay nada mas que instalar. (`ocr-tesseract` es la alternativa, y ademas
+del paquete necesita el `tesseract` del sistema.)
+
 ## Uso
 
 ```bash
@@ -492,6 +498,41 @@ retirada se explica:
 El deslizador `--intensity` reescala las bandas: a 0 pide un montaje sobrio (y
 el balanceador poda mas), a 100 admite mucha mas carga.
 
+
+## Leer la pantalla
+
+En una guia grabada de pantalla, **la pantalla es donde esta el contenido**: los
+menus, los botones y los titulos dicen literalmente como se llama cada cosa.
+Ninguna red neuronal lo hace mejor que leerlo.
+
+Hasta aqui el unico motor era **Tesseract**, un programa del sistema que hay que
+instalar aparte. Sin el, el texto de pantalla se quedaba **vacio** --- y con el
+vacio se caen de golpe cuatro cosas que ya estaban escritas y probadas: los
+recuadros sobre lo que nombras, senalar por nombre en vez de por zona, el
+material sacado del propio video por lo que se vio en pantalla, y la lectura
+dirigida a los momentos en los que hablas de ella. Es decir: **en la instalacion
+por defecto la app estaba ciega**.
+
+Ahora hay un segundo motor y es el preferido: **RapidOCR** (PP-OCRv4 en ONNX).
+Se instala con `pip install rapidocr-onnxruntime` y **los modelos viajan dentro
+del paquete** (16 MB), asi que no hay nada que descargar despues ni ningun
+programa del sistema que poner.
+
+Medido sobre una captura de interfaz en espanol: lee los cinco bloques con
+**0.95-1.00 de confianza** y su posicion, a **0.44 s por fotograma**. Se come los
+acentos (*"Configuracion"* por *"Configuración"*) y da exactamente igual, porque
+aqui todo se compara sin acentos.
+
+Y lo que cambia en el montaje, medido de punta a punta sobre una grabacion con
+interfaz y una voz que dice *"pulsa en guardar cambios"*:
+
+| | sin leer la pantalla | leyendola |
+|---|---|---|
+| senal de senalar | "pulsa en", sin objetivo | **"Guardar cambios"**, caja (0.53, 0.54) |
+| recuadros en el montaje | 0 | 1, sobre el boton exacto |
+
+`forge doctor` lo dice en una linea: *"pantalla: OK se lee con rapidocr"*, o te
+manda instalarlo si no hay ninguno.
 
 ## Material de apoyo (b-roll)
 

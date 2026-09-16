@@ -92,6 +92,18 @@ def doctor() -> None:
     else:
         table.add_row("GPU", "[dim]sin GPU NVIDIA detectada; todo en CPU[/dim]")
 
+    # Leer la pantalla no es un extra: en una guia es donde esta el contenido,
+    # y sin motor se caen los recuadros, senalar por nombre y el material
+    # sacado del propio video.
+    from .analysis.ocr import engine_name as _ocr_engine
+
+    motor_ocr = _ocr_engine()
+    table.add_row(
+        "pantalla",
+        f"{OK} se lee con {motor_ocr}" if motor_ocr else
+        f"{WARN} nadie lee la pantalla: pip install rapidocr-onnxruntime",
+    )
+
     device = tools.effective_device(settings)
     plan = resolve_model_plan(settings.tier, device)
     table.add_row("dispositivo", f"[bold]{device.value}[/bold]")

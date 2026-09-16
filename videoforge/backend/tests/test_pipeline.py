@@ -37,24 +37,39 @@ def test_analisis_completo_del_fixture(sample_video: Path, settings: Settings) -
     assert [a for a in avisos if "Tesseract" not in a] == []
 
 
-def test_sin_tesseract_el_analisis_sigue_entero(
+def test_sin_ningun_motor_de_ocr_el_analisis_sigue_entero(
     sample_video: Path, settings: Settings
 ) -> None:
-    """El OCR no es obligatorio: sin el se avisa, pero no falta nada mas."""
-    from forge.analysis.ocr import tesseract_available
+    """El OCR no es obligatorio: sin el se avisa, pero no falta nada mas.
+
+    "Sin el" quiere decir sin **ninguno** de los dos motores: ni RapidOCR (que
+    se instala con pip y trae sus modelos) ni Tesseract (del sistema).
+    """
+    from forge.analysis.ocr import ocr_available
 
     resultado, avisos = analyze(sample_video, settings, skip_speech=True, force={"all"})
-    if tesseract_available():
-        pytest.skip("con Tesseract instalado este caso no se puede provocar")
+    if ocr_available():
+        pytest.skip("con un motor de OCR instalado este caso no se puede provocar")
 
-    assert any("Tesseract" in a for a in avisos)
+    assert any("lectura de texto en pantalla" in a for a in avisos)
     assert resultado.screen_text == []
     assert resultado.shots and resultado.audio is not None
 
 
+def test_con_motor_de_ocr_no_se_avisa_de_nada(
+    sample_video: Path, settings: Settings
+) -> None:
+    from forge.analysis.ocr import ocr_available
+
+    if not ocr_available():
+        pytest.skip("hace falta un motor de OCR instalado")
+    _, avisos = analyze(sample_video, settings, skip_speech=True, force={"all"})
+    assert [a for a in avisos if "lectura de texto en pantalla" in a] == []
+
+
 def test_con_skip_ocr_ni_siquiera_avisa(sample_video: Path, settings: Settings) -> None:
     _, avisos = analyze(sample_video, settings, skip_speech=True, skip_ocr=True)
-    assert [a for a in avisos if "Tesseract" in a] == []
+    assert [a for a in avisos if "lectura de texto en pantalla" in a] == []
 
 
 def test_los_planos_cubren_todo_el_video(sample_video: Path, settings: Settings) -> None:

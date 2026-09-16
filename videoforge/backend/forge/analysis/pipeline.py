@@ -30,7 +30,7 @@ from .motion import analyze_motion, rate_for_duration
 from ..understand.segments import detect_segments
 from ..understand.speech_cues import find_all
 from .cursor import CursorSample, CursorTrack, track_cursor
-from .ocr import ScreenText, WordBox, read_screen_text, tesseract_available
+from .ocr import ScreenText, WordBox, engine_name, ocr_available, read_screen_text
 from .saliency import analyze_saliency
 from .shots import detect_shots
 from .types import (
@@ -212,13 +212,18 @@ class AnalysisRun:
     ) -> list[ScreenText]:
         """Lee el texto en pantalla, y lo lee **donde hablas de ella**.
 
-        Es opcional: sin Tesseract el resto del analisis no cambia, solo se
-        pierde la senal mas literal para identificar el video.
+        Es opcional, pero se pierde mucho: sin leer la pantalla se caen los
+        recuadros sobre lo que nombras, senalar por nombre y el material sacado
+        del propio video por lo que se vio. En una guia, la pantalla es donde
+        esta el contenido.
         """
-        if not tesseract_available():
+        if not ocr_available():
             self.warnings.append(
-                "Sin lectura de texto en pantalla: Tesseract no esta instalado "
-                "(CachyOS/Arch: sudo pacman -S tesseract tesseract-data-spa)."
+                "Sin lectura de texto en pantalla: no hay motor de OCR. "
+                "Lo mas facil es `pip install rapidocr-onnxruntime` (trae sus "
+                "propios modelos, no hay nada mas que instalar); la otra opcion "
+                "es Tesseract del sistema (Arch: sudo pacman -S tesseract "
+                "tesseract-data-spa)."
             )
             return []
 

@@ -26,7 +26,14 @@ speech = ["faster-whisper>=1.1"]
 audio = ["librosa>=0.10"]
 vision = ["onnxruntime>=1.18"]
 vision-gpu = ["onnxruntime-gpu>=1.18"]
-ocr = ["pytesseract>=0.3"]
+# El OCR recomendado: los modelos viajan dentro del paquete, asi que no hay
+# nada que descargar despues ni ningun programa del sistema que instalar.
+ocr = ["rapidocr-onnxruntime>=1.4"]
+# El otro motor es el binario `tesseract` del sistema, y no hay nada que
+# instalar con pip: el codigo lo llama por linea de comandos. Este extra existia
+# con `pytesseract` dentro, que el proyecto no importa en ningun sitio, asi que
+# instalarlo no daba OCR a nadie. Se deja vacio y documentado.
+ocr-tesseract = []
 api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
 dev = ["pytest>=8", "pytest-timeout>=2"]
 
