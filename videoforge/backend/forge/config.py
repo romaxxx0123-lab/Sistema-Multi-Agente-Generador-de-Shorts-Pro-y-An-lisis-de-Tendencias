@@ -115,6 +115,15 @@ class Settings(BaseModel):
     #: ficheros de varios GB, donde hashear entero cuesta mas que analizar.
     fast_fingerprint: bool = True
 
+    #: Modelo de lenguaje local, para las decisiones de **juicio** sobre lo que
+    #: dices --- hoy, como se llama cada seccion. Vacio = apagado, y entonces
+    #: todo sale de la cuenta, exactamente como antes. Se habla por HTTP contra
+    #: un servidor local (Ollama, o el `server` de llama.cpp), asi que no hay
+    #: nada que compilar y el modelo lo eliges tu.
+    model_endpoint: str = ""
+    model_name: str = "qwen2.5:7b"
+    model_timeout: float = 20.0
+
     @classmethod
     def load(cls) -> "Settings":
         """Construye los ajustes desde variables de entorno FORGE_*."""
@@ -135,7 +144,29 @@ class Settings(BaseModel):
             data["threads"] = int(v)
         if v := os.environ.get("FORGE_FULL_HASH"):
             data["fast_fingerprint"] = v.lower() not in ("1", "true", "yes")
+        if v := os.environ.get("FORGE_MODEL_ENDPOINT"):
+            data["model_endpoint"] = v.strip()
+        if v := os.environ.get("FORGE_MODEL"):
+            data["model_name"] = v.strip()
+        if v := os.environ.get("FORGE_MODEL_TIMEOUT"):
+            data["model_timeout"] = float(v)
         return cls(**data)
+
+    def local_model(self):
+        """El modelo local si esta configurado, y `None` si no.
+
+        Devolverlo apagado por defecto es la decision: sin endpoint no se llama
+        a nada y el montaje sale igual que siempre.
+        """
+        if not self.model_endpoint:
+            return None
+        from .understand.namer import LocalModel
+
+        return LocalModel(
+            endpoint=self.model_endpoint,
+            model=self.model_name,
+            timeout=self.model_timeout,
+        )
 
     @property
     def bin_dir(self) -> Path:

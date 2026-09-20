@@ -132,6 +132,9 @@ Todo se ajusta por variables de entorno:
 | `FORGE_FFMPEG` / `FORGE_FFPROBE` | Rutas explicitas a los binarios |
 | `FORGE_THREADS` | Hilos de FFmpeg; `0` deja que decida el |
 | `FORGE_FULL_HASH` | `1` para hashear el fichero entero en vez de muestrear |
+| `FORGE_MODEL_ENDPOINT` | Un modelo local para nombrar secciones. **Vacio por defecto: apagado** |
+| `FORGE_MODEL` | Que modelo pedirle a ese servidor. Por defecto `qwen2.5:7b` |
+| `FORGE_MODEL_TIMEOUT` | Segundos de espera por respuesta. Por defecto `20` |
 
 El **perfil** (`FORGE_TIER`) decide solo el tamano de los modelos, cada cuanto se
 muestrean fotogramas y la resolucion de analisis. En `max` con GPU usa Whisper
@@ -1966,6 +1969,81 @@ reconoce sin leerlo, y en un gameplay --- HUD arriba, subtitulos centrados
 abajo --- la esquina que queda es esa. Se pierde la posibilidad de esquivar lo
 que haya debajo, y esa es la decision. Sin nombre de esquina sigue colocandose
 donde no estorbe, que es lo de siempre.
+
+### Donde contar se acaba
+
+El nombre de una seccion sale de **contar**: que palabras usa este tramo que no
+usan los demas, puntuadas por `veces / (1 + veces_fuera)` y con las de la primera
+frase pesando el triple. Funciona, esta medido, y no necesita nada instalado.
+
+Pero cuenta, no entiende, y hay un sitio donde eso se acaba:
+
+```
+"vamos con la estacion de expediciones, que es lo que nadie explica"
+```
+
+`estacion` y `expediciones` estan en la **misma frase**, las dos se dicen dos
+veces y las dos son exclusivas de esa seccion. No hay nada que contar que las
+separe: para elegir entre ellas hay que saber que una es un mueble y la otra es
+el tema. Medido sobre las tres secciones de la guia de Palworld:
+
+```
+  esperado        cuenta
+  caja            Caja cerca pican              OK
+  expediciones    Estacion rutas tarda          falla
+  capturar        Capturar sube probabilidad    OK
+
+  cuenta  2/3 (67%)
+```
+
+Asi que para **esta** decision --- y solo para esta --- se puede enchufar un
+modelo local:
+
+```bash
+export FORGE_MODEL_ENDPOINT=http://localhost:11434   # Ollama, o llama.cpp server
+export FORGE_MODEL=qwen2.5:7b
+```
+
+Se le manda la seccion, las otras secciones y la frase de apertura, y se le pide
+**una palabra**. Nada mas. No decide cortes, ni zooms, ni efectos: esos son
+medidas, y una medida no se le pregunta a un modelo.
+
+#### Que no puede estropear
+
+Un modelo pequeno contestando "¿de que va esto?" hace tres cosas mal, y las tres
+estan tapadas. La respuesta pasa por un filtro antes de tocar el video:
+
+| Lo que contesta | Que se hace |
+|---|---|
+| `Expediciones` | se usa |
+| `Claro, el nombre seria: Expediciones` | se tira: parrafada |
+| `Expediciones de Pal` | se tira: mas de dos palabras |
+| `Mazmorras` | **se tira: esa palabra no se dice en la seccion** |
+| nada, o el servidor no esta | se tira |
+
+La tercera es la importante. Lo que mas hace un modelo pequeno con esta pregunta
+es contestar algo que suena al tema y no esta en el video, y un cartel con una
+palabra que no dijiste es peor que uno flojo. Asi que **toda** respuesta se
+comprueba contra el texto de la seccion: si la palabra no se dice, no entra.
+
+Y cuando se tira, manda la cuenta. El modelo **no puede empeorar el resultado**:
+en el peor caso el video sale exactamente igual que sin el. Por eso viene
+apagado y por eso no hay que instalar nada.
+
+#### El numero lo sacas tu
+
+Aqui no hay forma de descargar pesos, asi que lo que se prueba es la integracion
+--- con un Ollama de mentira que contesta lo que le digas, para poder verificar
+el filtro entero sin modelo. La calidad se mide en tu maquina, contra el mismo
+fichero que usan esas pruebas:
+
+```bash
+forge eval-nombres ../eval/nombres-palworld.json
+```
+
+Saca las dos columnas, cuenta los aciertos y dice quien gana. Si empata, gana la
+cuenta: no necesita nada instalado. Si el modelo no le gana, se queda apagado y
+no se ha perdido nada.
 
 ### La placa: un rotulo con una imagen detras
 

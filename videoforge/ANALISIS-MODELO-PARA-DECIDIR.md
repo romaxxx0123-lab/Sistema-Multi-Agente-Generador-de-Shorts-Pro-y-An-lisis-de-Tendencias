@@ -113,3 +113,26 @@ Lo honesto es: la escribo con su interfaz, su prueba con un modelo de mentira y
 su apagado por defecto, y **el número lo sacas tú** en tu máquina con
 `forge eval-nombres`. Si el modelo no gana a la cuenta, se queda apagado y no
 hemos perdido nada.
+
+---
+
+## Hecho
+
+Las tres condiciones están cumplidas y la pieza está en el árbol:
+
+| Condición | Dónde |
+|---|---|
+| No puede inventar | `clean_answer()` comprueba la respuesta contra el texto de la sección |
+| Se puede apagar | `FORGE_MODEL_ENDPOINT` vacío por defecto; sin él nada llama a nada |
+| Se mide | `forge eval-nombres ../eval/nombres-palworld.json` (desde `backend/`) |
+
+La cuenta, medida sobre las tres secciones de la guía: **2/3 (67 %)**, y falla
+exactamente en "expediciones", que es el caso que motivó todo esto. Ese es el
+número que el modelo tiene que batir en tu máquina.
+
+Las pruebas (`tests/test_modelo_local.py`, 19) levantan un Ollama de mentira con
+`http.server` y verifican el camino entero —incluido el filtro, pieza a pieza—
+sin descargar ningún peso. Leen la sección **del mismo fichero** que usa
+`forge eval-nombres`, para que lo que falle aquí sea lo que falla ahí.
+
+Lo que explica cómo funciona está en el README, en *"Donde contar se acaba"*.

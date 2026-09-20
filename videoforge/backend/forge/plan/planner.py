@@ -438,6 +438,7 @@ def build_edl(
     style_dir=None,
     providers: list[BrollProvider] | None = None,
     assets: AssetBundle | None = None,
+    modelo=None,
 ) -> EDL:
     """Construye el montaje completo.
 
@@ -467,7 +468,7 @@ def build_edl(
     if analysis.transcript:
         efectos += plan_captions(edl, analysis.transcript, style.captions, analysis)
         capitulos = plan_chapters(
-            edl, analysis.transcript, style.chapters, analysis.narrative
+            edl, analysis.transcript, style.chapters, analysis.narrative, modelo
         )
         edl.chapters = capitulos
         efectos += chapter_cards(capitulos, style.chapters)

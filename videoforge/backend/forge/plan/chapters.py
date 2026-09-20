@@ -91,7 +91,7 @@ def _clean_title(words) -> str:
 OPENING_WORDS = 12
 
 
-def _topic_title(bloque, resto) -> str:
+def _topic_title(bloque, resto, modelo=None) -> str:
     """Titula por los terminos propios del capitulo, no por como empieza.
 
     Se usa cuando quitar el arranque deja la frase en nada ("bueno, vamos a
@@ -102,12 +102,15 @@ def _topic_title(bloque, resto) -> str:
     despues, asi que lo que se dice en la primera frase pesa mas que lo que se
     repite luego (ver `OPENING_BOOST` en `understand/topics.py`).
     """
-    return label(
-        [" ".join(w.text for w in bloque)],
-        [" ".join(w.text for b in resto for w in b)],
-        TOPIC_TITLE_WORDS,
+    from ..understand.namer import Section, name_section
+
+    seccion = Section(
+        text=" ".join(w.text for w in bloque),
+        others=" ".join(w.text for b in resto for w in b),
         opening=" ".join(w.text for w in bloque[:OPENING_WORDS]),
     )
+    nombre, _ = name_section(seccion, modelo)
+    return nombre
 
 
 def _titles_for(bloques) -> list[str]:
@@ -206,7 +209,11 @@ def _chapter_cuts_from_narrative(edl: EDL, narrative, minimo: float) -> list[flo
 
 
 def plan_chapters(
-    edl: EDL, transcript: Transcript, rules: ChapterRules, narrative=None
+    edl: EDL,
+    transcript: Transcript,
+    rules: ChapterRules,
+    narrative=None,
+    modelo=None,
 ) -> list[Chapter]:
     """Divide el montaje en capitulos.
 
@@ -288,7 +295,7 @@ def plan_chapters(
     titulos = _titles_for(bloques)
     # Y el nombre corto de cada uno, que es lo que va al cartel de pantalla.
     temas = [
-        _topic_title(bloque, [b for j, b in enumerate(bloques) if j != i])
+        _topic_title(bloque, [b for j, b in enumerate(bloques) if j != i], modelo)
         for i, bloque in enumerate(bloques)
     ]
     # El primer capitulo siempre arranca en cero, aunque la voz entre despues.

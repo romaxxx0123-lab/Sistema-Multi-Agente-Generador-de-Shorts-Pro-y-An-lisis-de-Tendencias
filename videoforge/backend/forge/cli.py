@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -909,6 +910,92 @@ def demo(
         console.print(f"  {n:3d} × {kind:12s} [dim]{ejemplo[:60]}[/dim]")
 
     console.print(f"\n[dim]Abre los dos ficheros y comparalos.[/dim]")
+
+
+@app.command("eval-nombres")
+def eval_nombres(
+    fichero: Path = typer.Argument(
+        ..., help="JSON con las secciones y el nombre que deberian llevar."
+    ),
+) -> None:
+    """Mide el modelo local contra la cuenta al nombrar secciones.
+
+    El fichero es una lista de secciones con el nombre que tu le pondrias:
+
+        [
+          {"esperado": "expediciones",
+           "texto": "vamos con la estacion de expediciones ...",
+           "otras": "colocamos la caja de pals ..."},
+          ...
+        ]
+
+    Aqui no hay forma de bajar los pesos de ningun modelo, asi que este numero
+    **lo sacas tu**: si el modelo no le gana a la cuenta, se queda apagado y no
+    se ha perdido nada. Configura `FORGE_MODEL_ENDPOINT` antes de ejecutarlo.
+    """
+    from .understand.namer import Section, model_name, stat_name
+
+    settings = Settings.load()
+    modelo = settings.local_model()
+
+    try:
+        casos = json.loads(fichero.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        err_console.print(f"[bold red]Error:[/bold red] no pude leer {fichero}: {exc}")
+        raise typer.Exit(code=1)
+
+    if modelo is None:
+        console.print(
+            f"{WARN} sin modelo configurado: solo se mide la cuenta. "
+            "Pon [bold]FORGE_MODEL_ENDPOINT[/bold] (p. ej. http://localhost:11434)."
+        )
+    elif not modelo.available():
+        console.print(f"{WARN} nadie contesta en {modelo.endpoint}: solo la cuenta.")
+        modelo = None
+
+    tabla = Table(box=None, padding=(0, 2))
+    for columna in ("esperado", "cuenta", "modelo"):
+        tabla.add_column(columna)
+
+    aciertos_cuenta = aciertos_modelo = 0
+    for caso in casos:
+        seccion = Section(
+            text=caso.get("texto", ""),
+            others=caso.get("otras", ""),
+            opening=caso.get("apertura") or caso.get("texto", "")[:120],
+        )
+        esperado = (caso.get("esperado") or "").strip().lower()
+        por_cuenta = stat_name(seccion)
+        por_modelo = model_name(seccion, modelo) if modelo else ""
+
+        bien_cuenta = esperado and esperado in por_cuenta.lower()
+        bien_modelo = esperado and esperado in por_modelo.lower()
+        aciertos_cuenta += bool(bien_cuenta)
+        aciertos_modelo += bool(bien_modelo)
+
+        def marca(texto: str, bien: bool) -> str:
+            if not texto:
+                return "[dim]-[/dim]"
+            return f"[green]{texto}[/green]" if bien else f"[red]{texto}[/red]"
+
+        tabla.add_row(esperado, marca(por_cuenta, bien_cuenta), marca(por_modelo, bien_modelo))
+
+    total = len(casos) or 1
+    console.print(tabla)
+    console.print(
+        f"\n  cuenta  [bold]{aciertos_cuenta}/{len(casos)}[/bold] "
+        f"({aciertos_cuenta / total:.0%})"
+    )
+    if modelo is not None:
+        console.print(
+            f"  modelo  [bold]{aciertos_modelo}/{len(casos)}[/bold] "
+            f"({aciertos_modelo / total:.0%})"
+            f"  [dim]· {modelo.used} de {modelo.asked} respuestas validas[/dim]"
+        )
+        mejor = "el modelo" if aciertos_modelo > aciertos_cuenta else "la cuenta"
+        if aciertos_modelo == aciertos_cuenta:
+            mejor = "empate: se queda la cuenta, que no necesita nada instalado"
+        console.print(f"\n  Gana [bold]{mejor}[/bold].")
 
 
 @app.command()
