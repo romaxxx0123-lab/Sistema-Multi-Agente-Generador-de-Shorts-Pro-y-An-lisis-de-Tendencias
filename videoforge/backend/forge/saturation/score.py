@@ -129,12 +129,32 @@ class SaturationReport:
         return [r for r in self.readings if r.counts and r.status == "bajo"]
 
     @property
+    def excesses(self) -> list[MetricReading]:
+        """Lo que el montaje tiene **de mas** de lo que su estilo pedia.
+
+        El simetrico de `shortfalls`, y faltaba. La media escondia un cero por
+        abajo --- eso ya se arreglo --- pero escondia igual de bien un exceso por
+        arriba: `palworld` apilaba **cuatro capas** sobre una banda que acaba en
+        tres y la nota salia 53, "en el punto". Nadie cobraba por pasarse.
+        """
+        return [r for r in self.readings if r.counts and r.status == "alto"]
+
+    @property
+    def is_overloaded(self) -> bool:
+        """Se pasa de lo que el propio estilo declaro, se note en la nota o no."""
+        return self.score > BUSY or bool(self.excesses)
+
+    @property
     def is_under_edited(self) -> bool:
         return self.score < UNDER_EDITED or bool(self.shortfalls)
 
     @property
     def in_the_pocket(self) -> bool:
-        return not self.shortfalls and UNDER_EDITED <= self.score <= BUSY
+        return (
+            not self.shortfalls
+            and not self.excesses
+            and UNDER_EDITED <= self.score <= BUSY
+        )
 
     def problems(self) -> list[MetricReading]:
         """Metricas fuera de banda, las peores primero."""
@@ -212,11 +232,35 @@ def verdict_for(score: float, readings: list[MetricReading] | None = None) -> st
     decia nada de ninguno.
 
     Asi que una metrica que **vota** y se queda por debajo de su banda es un
-    hueco, y un hueco no es "en el punto" por mucho que la media salga. El
-    medidor existe para avisar de lo que falta y de lo que sobra; avisar solo
-    de lo que sobra es hacer media faena.
+    hueco, y un hueco no es "en el punto" por mucho que la media salga.
+
+    Y la mitad de arriba tenia el mismo agujero, que es peor porque este
+    proyecto existe para no sobresaturar. Medido sobre la guia de Palworld de
+    veinte minutos:
+
+        palworld    53.0  "en el punto"   max_layers = 4 sobre una banda de 0-3
+        vlog        48.7  "en el punto"   pico = 0.874 sobre un techo de 0.850
+
+    Los dos se pasaban de la banda que ellos mismos declaran y el medidor los
+    bendecia, porque la media reparte un exceso entre trece metricas y se lo
+    come. El medidor existe para avisar de lo que falta **y de lo que sobra**;
+    avisar solo de una de las dos cosas es hacer media faena.
     """
-    if readings and any(r.counts and r.status == "bajo" for r in readings):
+    falta = bool(readings and any(r.counts and r.status == "bajo" for r in readings))
+    sobra = bool(readings and any(r.counts and r.status == "alto" for r in readings))
+
+    # Las dos cosas a la vez no es un caso raro: es lo que le pasa a
+    # `gaming-hype` sobre una guia hablada. Da 9.6 cortes por minuto contra una
+    # banda que empieza en 18 --- se queda a la mitad --- y al mismo tiempo clava
+    # el pico de densidad en 1.00 sobre un techo de 0.95, con 133 ventanas
+    # calientes en 16 minutos: 134 zooms y 152 sonidos. Le falta montaje donde
+    # importa y le sobra donde no. Llamarlo "sub-editado" invita a anadir mas de
+    # lo que ya sobra, y llamarlo "cargado" esconde el hueco.
+    if falta and sobra:
+        return "descompensado"
+    if sobra:
+        return "sobresaturado" if score > OVERSATURATED else "cargado"
+    if falta:
         return "sub-editado"
     if score < UNDER_EDITED:
         return "sub-editado"

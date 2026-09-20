@@ -1,6 +1,6 @@
 """Que cada efecto se justifique, y que el quinto no valga lo que el primero.
 
-Dos frenos, y el primero es el que de verdad evita la sobreedicion: **un efecto
+Tres frenos, y el primero es el que de verdad evita la sobreedicion: **un efecto
 tiene que justificarse, no ocupar un cupo**.
 
 Cada planner elige los mejores N candidatos que le permite su cupo, y ahi esta
@@ -58,6 +58,17 @@ from dataclasses import dataclass
 
 from .edl import EDL, EffectKind
 
+#: Efectos que no ocupan una capa de pantalla: no se ven como una cosa encima
+#: del video, son el video. Tiene que coincidir con `saturation.metrics.
+#: AMBIENT_KINDS`, y hay una prueba que lo comprueba --- no se puede importar de
+#: alli porque `saturation` importa de `plan`, no al reves.
+AMBIENT_KINDS = (EffectKind.GRADE, EffectKind.MUSIC)
+
+#: Cuantas capas se aceptan si el estilo no dice nada. Tres es lo que cabe sin
+#: que el video sea el fondo de los adornos: lo que se dice, una cosa senalada y
+#: una de contexto.
+DEFAULT_MAX_LAYERS = 3
+
 #: Ritmo al que el estilo usa cada recurso, si no lo dice en otro sitio. Se usa
 #: solo como respaldo: casi todos salen de los ajustes del estilo.
 DEFAULT_RATE = 4.0
@@ -90,6 +101,10 @@ def justification_bar(intensity: int) -> float:
 
 #: Los subtitulos y el color no cansan: van de principio a fin por definicion.
 NEVER_TIRED = (EffectKind.CAPTION, EffectKind.GRADE, EffectKind.MUSIC)
+
+#: Tope de retiradas del freno de capas, por seguridad: cada vuelta quita
+#: uno, asi que con esto sobra para cualquier montaje sensato.
+MAX_CAP_PASSES = 200
 
 #: Cuantos usos seguidos del mismo recurso, sin nada por medio, se aceptan
 #: antes de considerarlo un bucle. Dos seguidos los hace cualquiera; a partir
@@ -167,6 +182,99 @@ def runs(efectos: list) -> list[list]:
     if len(actual) > 1:
         grupos.append(actual)
     return grupos
+
+
+def _layers_at(efectos: list, at: float) -> list:
+    """Lo que se ve encima del video en un instante."""
+    return [
+        e for e in efectos
+        if e.kind not in AMBIENT_KINDS and e.start <= at < e.end
+    ]
+
+
+def _worst_layer(encima: list):
+    """De lo que hay apilado, lo que menos falta hace.
+
+    Los subtitulos no cuentan: son lo que se esta diciendo, no un adorno, y si
+    hay que elegir entre el texto de la frase y el recuadro que la ilustra, se
+    va el recuadro. Lo demas se ordena por lo que aporta frente a lo que pesa,
+    igual que en el balanceador.
+    """
+    quitables = [
+        e for e in encima
+        if e.kind not in NEVER_TIRED and not getattr(e, "locked", False)
+    ]
+    if not quitables:
+        return None
+    return min(quitables, key=lambda e: (e.value_score / max(e.cost_weight, 1e-6), -e.cost_weight))
+
+
+def cap_layers(edl: EDL, style) -> tuple[list[Tired], list[str]]:
+    """Que no haya mas cosas encima del video de las que el estilo admite.
+
+    Los dos frenos anteriores miran **cada recurso por separado**: que un zoom se
+    justifique, que no salgan cinco zooms seguidos. Ninguno de los dos ve lo que
+    pasa cuando cinco planners distintos aciertan en el mismo segundo. Medido en
+    la guia de Palworld de veinte minutos, con el estilo `palworld` --- que
+    declara un maximo de tres capas --- en el segundo 282 habia:
+
+        caption      280.05-282.41    lo que estas diciendo
+        punch_in     282.13-283.93    un acercamiento
+        callout      281.60-283.40    un recuadro sobre lo que nombras
+        lower_third  281.60-283.40    y su etiqueta
+
+    Cuatro cosas a la vez, en doce instantes del montaje. Cada una estaba bien
+    puesta por su cuenta y ninguna regla se salto: es que nadie contaba el total.
+    Y el medidor lo veia (`max_layers = 4` sobre una banda de 0 a 3) pero lo
+    decia **despues**, cuando ya estaba hecho.
+
+    Se retira lo que menos aporta hasta entrar en el tope, empezando por el
+    instante mas apilado. Como en los otros dos frenos, lo retirado va a
+    reservas: si luego hace falta algo en un tramo vacio, sigue disponible.
+    """
+    banda = style.band("max_layers")
+    tope = int(banda.hi) if banda and banda.hi >= 1 else DEFAULT_MAX_LAYERS
+    if tope < 1:
+        tope = DEFAULT_MAX_LAYERS
+
+    cansados: list[Tired] = []
+    # Los instantes donde algo empieza o acaba son los unicos donde el numero de
+    # capas puede cambiar: basta mirar ahi y no muestrear el video entero.
+    for _ in range(MAX_CAP_PASSES):
+        efectos = list(edl.effects)
+        instantes = sorted({e.start for e in efectos if e.kind not in AMBIENT_KINDS})
+        peor_at, peor_n = None, 0
+        for at in instantes:
+            n = len(_layers_at(efectos, at))
+            if n > peor_n:
+                peor_at, peor_n = at, n
+        if peor_at is None or peor_n <= tope:
+            break
+
+        victima = _worst_layer(_layers_at(efectos, peor_at))
+        if victima is None:
+            # Solo quedan subtitulos apilados: no es sobreedicion, es que hablas
+            # seguido. No se toca.
+            break
+
+        cansados.append(Tired(
+            effect_id=victima.id, kind=victima.kind.value,
+            start=round(victima.start, 3), fatigue=float(peor_n),
+            value=round(victima.value_score, 3),
+        ))
+        edl.demote_effect(victima.id)
+
+    notas: list[str] = []
+    if cansados:
+        por_tipo: dict[str, int] = {}
+        for c in cansados:
+            por_tipo[c.kind] = por_tipo.get(c.kind, 0) + 1
+        detalle = ", ".join(f"{n} {k}" for k, n in sorted(por_tipo.items()))
+        notas.append(
+            f"{len(cansados)} efectos retirados por apilarse: el estilo admite "
+            f"{tope} cosas encima del video a la vez ({detalle})."
+        )
+    return cansados, notas
 
 
 def apply_restraint(edl: EDL, style) -> tuple[list[Tired], list[str]]:

@@ -502,6 +502,131 @@ El deslizador `--intensity` reescala las bandas: a 0 pide un montaje sobrio (y
 el balanceador poda mas), a 100 admite mucha mas carga.
 
 
+### Lo que sobra, medido igual que lo que falta
+
+El medidor aprendio a avisar de lo que **falta** cuando se vio que la media
+escondia un cero: `cinematic` devolvia el video sin un solo corte y la nota
+salia "en el punto". Se arreglo, y quedo la mitad de arriba sin tocar --- que es
+peor, porque este proyecto existe para no sobresaturar.
+
+Medido sobre la guia de Palworld de veinte minutos, con los siete estilos:
+
+```
+  estilo           nota  veredicto      se pasaba de su propia banda
+  palworld         53.0  en el punto    max_layers 4 sobre una banda de 0-3
+  vlog             48.7  en el punto    pico 0.874 sobre un techo de 0.850
+  tutorial         52.8  en el punto    pico 0.731 sobre un techo de 0.720
+  gaming-hype      44.5  sub-editado    pico 1.000 sobre un techo de 0.950
+```
+
+Cuatro de los siete se pasaban de lo que ellos mismos declaran y el medidor los
+bendecia: una media reparte un exceso entre trece metricas y se lo come. Ahora
+un exceso cuenta como un hueco, y hay un veredicto para cuando pasan las dos
+cosas a la vez --- **descompensado** --- que es lo que le ocurre a `gaming-hype`
+sobre una guia hablada: le falta ritmo donde importa (9.6 cortes por minuto
+contra una banda que empieza en 18) y le sobra carga donde no (129 zooms y 141
+sonidos, con 150 ventanas calientes en 16 minutos). Decir "sub-editado" invita a
+anadir mas de lo que ya sobra; decir "cargado" esconde el hueco.
+
+### El balanceador estaba apagado
+
+Y esto es lo gordo. El bucle de control decidia por la **nota global** contra
+[28, 68], y las siete notas caen dentro. Resultado, sobre la misma guia:
+
+```
+  cambios del balanceador, los siete estilos:   0, 0, 0, 0, 0, 0, 0
+  con 182 efectos en reservas y 133 ventanas calientes esperando
+```
+
+Cero movimientos. El motor de autorregulacion existia, estaba probado pieza a
+pieza, y no se movia nunca sobre material de verdad. Tres cosas lo tenian
+parado, y las tres eran el mismo error de fondo --- **medir con la regla
+equivocada**:
+
+1. **Decidia por la nota, no por las bandas.** Una nota de 53 con `max_layers` en
+   4 sobre un techo de 3 no es un montaje en su punto. Ahora mira las bandas.
+2. **Comparaba el informe viejo contra el montaje nuevo.** La funcion que dice
+   *lo mal que esta* necesita el EDL para saber cuanto dura el exceso, y se
+   llamaba **despues** de mutarlo: salia empate siempre, asi que deshacia cada
+   poda acertada una por una hasta agotar los 400 intentos.
+3. **La curva de densidad esta recortada en 1.0.** Con el pico clavado en 1.000
+   se podaba un sonido, la carga bruta bajaba de verdad, y la curva recortada
+   seguia dando 1.0: "no he mejorado nada". El medidor sigue leyendo la curva
+   recortada, que esta calibrada; el balanceador mira ahora una sin recortar,
+   que tiene pendiente.
+
+Y una regla nueva que no tenia: **ningun movimiento puede cambiar un problema
+por otro**. Con el exceso por delante, `gaming-hype` quitaba **cien efectos**
+para meter el pico en banda y acababa en "sub-editado" con tres carencias
+nuevas: cambiaba estar cargado por estar vacio y lo llamaba arreglado. Ahora
+poda lo que puede podar sin abrir un hueco, y lo que no se arregla asi **se
+reporta**: que `gaming-hype` no le va a una guia hablada no lo arregla ningun
+bucle.
+
+### Cuantas cosas caben encima del video
+
+Los dos frenos que ya habia miran **cada recurso por separado**: que un zoom se
+justifique, que no salgan cinco zooms seguidos. Ninguno de los dos ve lo que
+pasa cuando cinco planners aciertan en el mismo segundo. En el segundo 282 de la
+guia habia esto:
+
+```
+  caption      280.05-282.41    lo que estas diciendo
+  punch_in     282.13-283.93    un acercamiento
+  callout      281.60-283.40    un recuadro sobre lo que nombras
+  lower_third  281.60-283.40    y su etiqueta
+```
+
+Cuatro cosas a la vez, en doce instantes del montaje, sobre un estilo que
+declara un maximo de tres. Cada una bien puesta por su cuenta y ninguna regla
+saltada: es que nadie contaba el total. Y el medidor lo veia, pero lo decia
+**despues**, cuando ya estaba hecho.
+
+Ahora el tope del estilo se cumple al planificar. Se retira lo que menos aporta
+--- nunca los subtitulos, que son lo que se esta diciendo y no un adorno --- y lo
+retirado va a reservas, como en los otros dos frenos. Sin esto se pasaban
+`palworld` (4 sobre 3) y `clean-corporate` (3 sobre 2), que son justo los dos
+estilos con el tope mas bajo.
+
+### Y una transicion que informaba, tirada por llegar tarde
+
+Lo contrario de sobreeditar: aqui **faltaba** montaje. El cupo de transiciones
+del estilo se recortaba por orden de tiempo (`motivos[:tope]`), y eso es
+equivocado por construccion: la lista se corta donde el video llega al cupo, asi
+que lo que pase despues no existe. Sobre la guia, con `palworld` y con
+`tutorial`:
+
+```
+  18 motivos para un cupo de 16
+  entran   16 decorativas de valor 0.234
+  se queda fuera  la unica transicion de capitulo, de valor 0.60
+  en el montaje:  0 transiciones
+```
+
+Cero, porque las 16 que pasaron el cupo no se justificaban (el suelo esta en
+0.30) y la unica que informaba de algo no llego a pasarlo. El planner sabia
+perfectamente cual era cual y lo perdia al ordenar. Ahora se recorta por valor.
+
+### Como queda sobre la guia entera
+
+Los siete estilos, tras los seis arreglos, sobre los mismos veinte minutos:
+
+```
+  estilo             nota  veredicto        balanceo   final
+  cinematic          49.4  cargado            -1       en el punto
+  clean-corporate    52.6  en el punto         -        en el punto
+  documentary        43.8  sub-editado         -        falta banco de b-roll
+  gaming-hype        45.1  descompensado     -50       descompensado (lo dice)
+  palworld           48.9  en el punto         -        en el punto
+  tutorial           52.8  cargado            -1        en el punto
+  vlog               50.8  cargado           -24        en el punto
+```
+
+Cinco de siete quedan en su punto. Los dos que no, dicen exactamente por que:
+`documentary` pide entre el 15% y el 45% de metraje con material de apoyo y aqui
+no hay banco instalado (el proveedor `self` da el 3.9%), y `gaming-hype` pide un
+ritmo de montaje que una guia hablada no da.
+
 ## Leer la pantalla
 
 En una guia grabada de pantalla, **la pantalla es donde esta el contenido**: los

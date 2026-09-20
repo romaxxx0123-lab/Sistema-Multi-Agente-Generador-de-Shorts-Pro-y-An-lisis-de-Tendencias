@@ -90,8 +90,23 @@ def raw_load(edl: EDL, rate: float = RATE) -> np.ndarray:
     return carga
 
 
-def density_curve(edl: EDL, rate: float = RATE) -> np.ndarray:
-    """Senal D(t) en 0..1, ya con la fatiga aplicada."""
+def unclipped_curve(edl: EDL, rate: float = RATE) -> np.ndarray:
+    """La misma senal, **sin recortar en 1.0**.
+
+    La curva de lectura se recorta porque una escala 0..1 es lo que se puede
+    pintar y comparar entre estilos. Pero recortar tira justo el dato que
+    necesita quien tiene que arreglarlo: **cuanto** se pasa.
+
+    Medido en la guia de Palworld con `gaming-hype`: el pico (percentil 95) daba
+    1.000 clavado, es decir mas del 5% del montaje pegado al techo. El
+    balanceador podaba un sonido, la carga bruta bajaba de 3.1 a 2.2 --- una
+    mejora real --- y la curva recortada seguia dando 1.0 en ese tramo. Leia "no
+    he mejorado nada", deshacia la poda, la descartaba, y repetia con la
+    siguiente hasta agotar los 400 intentos: cero cambios con el exceso intacto.
+
+    Asi que el medidor sigue leyendo la curva recortada, que esta calibrada y
+    tiene su prueba, y el balanceador mira esta, que tiene pendiente.
+    """
     carga = raw_load(edl, rate)
     if carga.size == 0:
         return carga
@@ -100,7 +115,15 @@ def density_curve(edl: EDL, rate: float = RATE) -> np.ndarray:
     # 'same' mantiene la longitud; el desfase del nucleo asimetrico es de
     # decimas de segundo y no afecta a la lectura.
     suavizada = np.convolve(carga, kernel, mode="same")
-    return np.clip(suavizada / DENSITY_REFERENCE, 0.0, 1.0).astype(np.float32)
+    return (suavizada / DENSITY_REFERENCE).astype(np.float32)
+
+
+def density_curve(edl: EDL, rate: float = RATE) -> np.ndarray:
+    """Senal D(t) en 0..1, ya con la fatiga aplicada."""
+    curva = unclipped_curve(edl, rate)
+    if curva.size == 0:
+        return curva
+    return np.clip(curva, 0.0, 1.0).astype(np.float32)
 
 
 def hot_windows(

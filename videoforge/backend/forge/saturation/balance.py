@@ -3,12 +3,38 @@
 Es un bucle de control determinista, no una heuristica de una pasada:
 
 1. Diagnostica el montaje.
-2. Si se pasa, busca la **ventana mas caliente** de la curva de densidad y quita
-   de ahi el efecto con peor relacion valor/coste. Podar donde ya se esta por
-   debajo no arregla nada y empobrece el montaje.
+2. Si se pasa, busca **donde** se pasa y quita de ahi el efecto con peor
+   relacion valor/coste. Podar donde ya se esta por debajo no arregla nada y
+   empobrece el montaje.
 3. Si se queda corto, asciende el mejor candidato que el planner habia dejado en
    reserva.
 4. Repite hasta entrar en banda, agotarse las opciones o dejar de mejorar.
+
+**Por banda, no por nota media.** Este bucle se guiaba solo por la puntuacion
+global contra [28, 68], y con eso no hacia absolutamente nada. Medido sobre la
+guia de Palworld de veinte minutos, con los siete estilos:
+
+    estilo           nota  se pasaba de su banda         cambios
+    palworld         53.0  max_layers 4 sobre 0-3              0
+    vlog             48.7  pico 0.874 sobre 0.850              0
+    gaming-hype      44.5  pico 1.000 sobre 0.950              0
+    (y los otros cuatro)                                       0
+
+Cero movimientos en los siete. Las siete notas caen dentro de [28, 68], asi que
+el bucle se paraba en la primera vuelta --- con 182 efectos en reservas y 133
+ventanas calientes esperando. El motor de autorregulacion estaba, de hecho,
+apagado: una media reparte un exceso entre trece metricas y se lo come.
+
+Ahora el que manda es **lo mal que esta**, y eso se mide de lo grave a lo fino:
+cuantas metricas se pasan de su banda, cuantas no llegan, y solo al final la
+distancia de la nota. Un movimiento se acepta si ese trio baja, y se deshace si
+no. Asi se acabaron dos comportamientos que eran el mismo fallo de fondo:
+
+- promover un efecto de reserva que no arregla ninguna carencia pero tampoco
+  rompe nada --- llenar el cupo por llenarlo --- ya no se acepta: el trio no baja;
+- y un montaje al que le falta montaje **y** le sobra (el caso de
+  `gaming-hype`) ya no se rellena mas: primero se poda lo que se pasa, y las
+  carencias que ninguna reserva arregla se reportan en vez de taparse.
 
 Solo toca `effects`, nunca `timeline`, asi que **la duracion del montaje no
 cambia** por mucho que pode. Los efectos marcados como `locked` por el usuario
@@ -29,7 +55,8 @@ from ..plan.conflicts import conflicts_with
 from ..plan.edl import EDL, BaseEffect, EffectKind
 from ..plan.restraint import justification_bar
 from ..plan.styles import StylePreset, load_style
-from .density import RATE, density_curve
+from .density import RATE, density_curve, unclipped_curve
+from .metrics import layers_curve
 from .score import BUSY, UNDER_EDITED, SaturationReport, evaluate
 
 #: Tipos que no se podan: son ambiente, cuestan poco y quitarlos no descarga
@@ -146,6 +173,59 @@ def _coldest_window(edl: EDL, seconds: float = COLD_SECONDS) -> tuple[float, flo
     return i / RATE, (i + ancho) / RATE
 
 
+def _window_of_excess(edl: EDL, name: str, seconds: float = 3.0) -> tuple[float, float]:
+    """Donde se pasa **esa** metrica, que no siempre es donde mas densidad hay.
+
+    `max_layers` es el ejemplo claro: dice que en algun momento hay cuatro cosas
+    encima, y ese momento puede ser un tramo tranquilo donde coinciden un
+    subtitulo, un recuadro, un rotulo y una placa. Podar en la ventana mas
+    caliente de la curva de densidad no quita ni una de las cuatro.
+    """
+    if name == "max_layers":
+        capas = layers_curve(edl)
+        if capas.size:
+            i = int(np.argmax(capas))
+            ancho = max(1, int(seconds * RATE))
+            return max(0.0, (i - ancho // 2) / RATE), (i + ancho // 2 + 1) / RATE
+    return _hottest_window(edl, seconds)
+
+
+def _excess_pressure(edl: EDL, report: SaturationReport) -> float:
+    """Cuanto dura el exceso, no solo si lo hay.
+
+    Hace falta porque un **maximo** no baja quitando una cosa. `max_layers` dice
+    "en algun momento hay cuatro capas", y en la guia de Palworld eso pasaba en
+    doce instantes distintos: al podar el primero el maximo seguia siendo cuatro,
+    la cuenta de excesos seguia siendo uno, y el balanceador leia "no he
+    mejorado", deshacia la poda y la descartaba. Cero cambios, con el exceso
+    intacto.
+
+    Lo que si baja con cada poda es **que parte del montaje esta por encima del
+    techo**, y eso es ademas lo que de verdad importa: cuatro cosas encima
+    durante seis segundos no es lo mismo que durante cuatro minutos.
+    """
+    total = 0.0
+    for r in report.excesses:
+        if r.name == "max_layers":
+            capas = layers_curve(edl)
+            if capas.size:
+                total += float((capas > r.band.hi).sum()) / capas.size
+                continue
+        if r.name in ("effect_density_peak", "effect_density_mean"):
+            # Sin recortar: donde la carga esta pegada al techo, la curva de
+            # lectura da 1.0 antes y despues de podar, y el bucle no ve el
+            # progreso que si esta habiendo. Ver `density.unclipped_curve`.
+            curva = unclipped_curve(edl)
+            if curva.size:
+                exceso = np.clip(curva - r.band.hi, 0.0, None)
+                total += float(exceso.sum()) / curva.size
+                continue
+        # Las demas son tasas o proporciones sobre el montaje entero: no tienen
+        # un "donde", asi que lo que mide el exceso es lo lejos que se queda.
+        total += max(0.0, r.position - 1.0)
+    return round(total, 9)
+
+
 def _prunable(edl: EDL, start: float, end: float) -> list[BaseEffect]:
     """Efectos que se pueden quitar dentro de una ventana."""
     return [
@@ -221,23 +301,83 @@ def rebalance(
     #: efectos cuya retirada resulto contraproducente; no se reintentan
     descartados: set[str] = set()
 
-    def fuera_de_banda(r: SaturationReport) -> int:
-        """-1 si se queda corto, +1 si se pasa, 0 si esta en banda."""
+    def mal(r: SaturationReport) -> tuple[int, int, float, float]:
+        """Lo mal que esta el montaje, de lo grave a lo fino.
+
+        El orden es lo que decide todo lo demas, y lo que decide es una sola
+        cosa: **ningun movimiento puede cambiar un problema por otro**. Primero
+        cuantas metricas se quedan cortas, luego cuantas se pasan; asi una poda
+        que arregla un exceso abriendo un hueco se rechaza, y un relleno que tapa
+        un hueco creando un exceso tambien.
+
+        No es teorico. Con el exceso delante, `gaming-hype` sobre la guia de
+        veinte minutos quitaba **cien efectos** para bajar el pico de 1.000 a su
+        banda y terminaba en "sub-editado" con tres carencias nuevas: cambiaba
+        estar cargado por estar vacio y lo llamaba arreglado. Con las carencias
+        delante, poda lo que puede podar sin abrir un hueco y **lo que no se
+        puede arreglar asi se reporta**, que es lo que tiene que pasar: que
+        `gaming-hype` no le va a una guia hablada no lo arregla ningun bucle.
+
+        El tercer numero es **cuanto dura** el exceso, y sin el los dos primeros
+        no sirven para un maximo: quitar una de las cuatro capas de un instante
+        no baja el maximo del montaje, asi que la cuenta de excesos no se mueve y
+        el bucle cree que no ha avanzado. Ver `_excess_pressure`.
+
+        Comparar tuplas da un bucle que no oscila: cada movimiento aceptado baja
+        algo acotado y ninguno puede subir lo que esta mas a la izquierda.
+        """
         if r.score > target_high:
+            lejos = r.score - target_high
+        elif r.score < target_low:
+            lejos = target_low - r.score
+        else:
+            lejos = 0.0
+        return (
+            len(r.shortfalls),
+            len(r.excesses),
+            _excess_pressure(edl, r),
+            round(lejos, 6),
+        )
+
+    def fuera_de_banda(r: SaturationReport) -> int:
+        """-1 si se queda corto, +1 si se pasa, 0 si esta en banda.
+
+        Mira las bandas de verdad, no solo la nota: un estilo puede pasarse de
+        `max_layers` con la nota en 53 y eso es pasarse igual.
+        """
+        if r.excesses or r.score > target_high:
             return 1
-        if r.score < target_low:
+        if r.shortfalls or r.score < target_low:
             return -1
         return 0
 
+    # Aqui habia un freno de mano: si un movimiento cruzaba al otro lado de la
+    # banda, se deshacia y se paraba el bucle. Con la nota como unico criterio
+    # hacia falta; con el trio de `mal` no solo no hace falta, es que estorba.
+    # Podar el exceso de `gaming-hype` deja al descubierto las carencias que ya
+    # tenia debajo --- pasa de "se pasa" a "le falta" --- y ese freno leia el
+    # cambio de signo como haberse pasado de largo: deshacia la unica poda
+    # acertada y se iba. Cada movimiento ya se acepta solo si `mal` baja, asi que
+    # ninguno puede empeorar nada y no hay nada que deshacer al final.
     while vueltas < max_iterations:
         direccion = fuera_de_banda(actual)
         if direccion == 0:
             break
 
         vueltas += 1
+        # Se mide **antes** de tocar nada. `mal` mira el EDL para saber cuanto
+        # dura el exceso, asi que llamarlo despues de mutar mezcla el informe
+        # viejo con el montaje nuevo y sale empate siempre: era esto lo que
+        # dejaba el balanceador en cero cambios incluso podando bien.
+        antes = mal(actual)
 
         if direccion > 0:
-            inicio, fin_ventana = _hottest_window(edl)
+            # Se poda donde se pasa **esa** metrica. Si lo que sobra es carga en
+            # general (la nota por encima del techo), la ventana mas caliente.
+            peor = max(actual.excesses, key=lambda r: r.position, default=None)
+            inicio, fin_ventana = (
+                _window_of_excess(edl, peor.name) if peor else _hottest_window(edl)
+            )
             candidatos_poda = [
                 e for e in _prunable(edl, inicio, fin_ventana) if e.id not in descartados
             ]
@@ -254,9 +394,9 @@ def rebalance(
             siguiente = evaluate(edl, analysis, style=preset, intensity=intens)
 
             # Quitar algo casi siempre descarga, pero si resulta que empeora
-            # (p. ej. deja una metrica por debajo de su banda), se deshace y no
-            # se vuelve a intentar con ese efecto.
-            if siguiente.score > actual.score + EPSILON:
+            # --- deja una metrica por debajo de su banda, o abre otro exceso ---
+            # se deshace y no se vuelve a intentar con ese efecto.
+            if mal(siguiente) >= antes:
                 edl.promote_candidate(victima.id)
                 descartados.add(victima.id)
                 continue
@@ -289,7 +429,11 @@ def rebalance(
             edl.promote_candidate(candidato.id)
             siguiente = evaluate(edl, analysis, style=preset, intensity=intens)
 
-            if siguiente.score < actual.score - EPSILON:
+            # Y aqui esta el freno que faltaba: si el candidato no arregla
+            # ninguna carencia, no entra. Antes bastaba con que no bajase la
+            # nota, y eso es "llenar el cupo porque queda sitio", que es
+            # exactamente como se sobreedita un video.
+            if mal(siguiente) >= antes:
                 edl.demote_effect(candidato.id)
                 descartados.add(candidato.id)
                 continue
@@ -311,16 +455,6 @@ def rebalance(
                     ),
                 )
             )
-
-        # Pasarse al otro lado es peor que quedarse justo fuera: se deshace el
-        # ultimo movimiento y se para.
-        if fuera_de_banda(siguiente) == -direccion:
-            ultimo = cambios.pop()
-            if ultimo.action == "quitado":
-                edl.promote_candidate(ultimo.effect_id)
-            else:
-                edl.demote_effect(ultimo.effect_id)
-            break
 
         actual = siguiente
 

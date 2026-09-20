@@ -580,6 +580,9 @@ def _print_saturation(report, console_out) -> None:
         "en el punto": "green",
         "cargado": "yellow",
         "sobresaturado": "red",
+        # Le falta montaje donde importa y le sobra donde no: no es un punto
+        # de la escala, es las dos cosas a la vez.
+        "descompensado": "magenta",
     }.get(report.verdict, "white")
 
     aguja = Table(show_header=False, box=None, padding=(0, 2))

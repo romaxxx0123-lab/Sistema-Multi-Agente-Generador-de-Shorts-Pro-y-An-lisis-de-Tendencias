@@ -35,13 +35,23 @@ falta un `asplit` con tantas salidas como clips.
 
 ## Y lo que se reportó pero no se tocó
 
-- **`gaming-hype` (18–48 cortes/min) y `vlog` (8–30)** no alcanzan su banda sobre
-  una guía hablada: dan 6,5 y 5,8, porque el único sitio donde se puede cortar
-  son las pausas. O esas bandas asumen material de montaje (gameplay sin voz
-  continua) y hay que decirlo, o el planner necesita una segunda fuente de
-  cortes (planos, beats). Hoy el medidor ya lo dice en vez de callárselo.
+- **`gaming-hype` (18–48 cortes/min)** no alcanza su banda sobre una guía
+  hablada: da 9,6, porque el único sitio donde se puede cortar son las pausas. O
+  esa banda asume material de montaje (gameplay sin voz continua) y hay que
+  decirlo, o el planner necesita una segunda fuente de cortes (planos, beats).
+  Hoy el medidor lo llama **descompensado** —le falta ritmo donde importa y le
+  sobra carga donde no— y el balanceador poda lo que puede sin abrir un hueco,
+  pero no se inventa cortes. `vlog` sí llega a su banda (8,6 sobre un mínimo
+  de 8).
 - **`documentary`** pide entre 15% y 45% de metraje con material de apoyo y aquí
-  no hay banco de b-roll instalado: el proveedor `self` da uno como mucho.
+  no hay banco de b-roll instalado: el proveedor `self` da el 3,9%. Medido sobre
+  la guía de 20 minutos: de **171 momentos** en los que se nombra algo
+  distintivo, **148 no tienen ningún material** que enseñar, porque sin banco el
+  proveedor `self` solo puede devolver un recuerdo de algo que ya se vio en
+  pantalla. Aflojar eso sería volver al fallo que se arregló —insertar el plano
+  con más contraste del vídeo y anunciarlo como "material de apoyo porque ahí
+  hablas de X"—, así que **no se toca**: hace falta un banco, no un umbral más
+  bajo.
 - **El master sale a −17 LUFS** con el objetivo en −14. Es la decisión escrita en
   `_plan_master` (no aplastar la voz para cuadrar un número) y lo reporta en
   `measured_lufs`. Con una voz más comprimida de origen llegará más cerca.

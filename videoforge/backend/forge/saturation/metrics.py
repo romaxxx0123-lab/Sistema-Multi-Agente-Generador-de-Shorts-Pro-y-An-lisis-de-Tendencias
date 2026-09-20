@@ -93,10 +93,15 @@ def _coverage(edl: EDL, kinds: tuple[EffectKind, ...]) -> float:
     return min(1.0, total / edl.duration)
 
 
-def _max_layers(edl: EDL, rate: float = RATE) -> float:
-    """Maximo de efectos no ambientales activos a la vez."""
+def layers_curve(edl: EDL, rate: float = RATE) -> np.ndarray:
+    """Cuantos efectos no ambientales hay encima en cada instante.
+
+    Se expone porque el maximo no basta: saber que en algun momento hay cuatro
+    capas no dice **donde**, y el balanceador necesita el donde para podar ahi y
+    no en la ventana mas caliente de la curva de densidad, que puede ser otra.
+    """
     if edl.duration <= 0:
-        return 0.0
+        return np.zeros(0, dtype=np.int16)
 
     n = max(1, int(round(edl.duration * rate)))
     capas = np.zeros(n, dtype=np.int16)
@@ -106,6 +111,12 @@ def _max_layers(edl: EDL, rate: float = RATE) -> float:
         a = max(0, int(e.start * rate))
         b = min(n, max(a + 1, int(e.end * rate)))
         capas[a:b] += 1
+    return capas
+
+
+def _max_layers(edl: EDL, rate: float = RATE) -> float:
+    """Maximo de efectos no ambientales activos a la vez."""
+    capas = layers_curve(edl, rate)
     return float(capas.max()) if capas.size else 0.0
 
 

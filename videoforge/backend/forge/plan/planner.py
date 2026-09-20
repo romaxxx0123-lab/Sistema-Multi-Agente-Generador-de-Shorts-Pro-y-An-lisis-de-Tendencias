@@ -36,7 +36,7 @@ from .edl import (
 )
 from .labels import plan_labels, plan_speed_tags
 from .placement import ScreenUse
-from .restraint import apply_restraint
+from .restraint import apply_restraint, cap_layers
 from .emphasis import plan_ken_burns, plan_punch_ins
 from .select import plan_selection
 from .sfx import plan_sfx
@@ -263,9 +263,22 @@ def _plan_transitions(
         motivos = [(t, "corte repartido", 0.18) for t in cortes[::paso][:cuantas]]
 
     # El tope del estilo se sigue respetando: si cambia de plano cada dos
-    # segundos, tampoco se pone una transicion en cada uno.
+    # segundos, tampoco se pone una transicion en cada uno. Pero **se recorta por
+    # valor, no por orden de tiempo**, que es lo que se hacia y estaba mal por
+    # construccion: la lista se corta donde el video llega al cupo, asi que lo
+    # que pase despues no existe.
+    #
+    # Medido sobre la guia de Palworld de veinte minutos con `palworld`: 18
+    # motivos para un cupo de 16, y el que se quedaba fuera era justo **el unico
+    # cambio de capitulo** (0.60 de valor), mientras entraban 16 decorativas de
+    # 0.234 que el suelo de justificacion mataba a continuacion. El montaje
+    # acababa con cero transiciones y la unica que informaba de algo, tirada por
+    # llegar tarde. El planner sabia la diferencia y la perdia al ordenar.
     tope = max(1, int(len(cortes) * rules.fraction))
-    elegidos = motivos[:tope]
+    elegidos = sorted(
+        sorted(motivos, key=lambda m: (-m[2], m[0]))[:tope],
+        key=lambda m: m[0],
+    )
 
     return [
         TransitionEffect(
@@ -591,6 +604,14 @@ def build_edl(
     # El cupo de un estilo dice cuantos, no dice como: sin esto salian rachas de
     # once zooms seguidos sin saltarse ninguna regla (ver `plan/restraint.py`).
     _, notas_fatiga = apply_restraint(edl, style)
+
+    # Y lo que nadie contaba: cuantas cosas hay encima del video **a la vez**.
+    # Los dos frenos de arriba miran cada recurso por separado, asi que cinco
+    # planners podian acertar todos en el mismo segundo sin saltarse ninguna
+    # regla. El estilo declara su tope en `max_layers` y aqui se cumple, en vez
+    # de medirlo despues cuando ya esta hecho.
+    _, notas_capas = cap_layers(edl, style)
+    notas_fatiga += notas_capas
 
     # Lo ultimo: la cara de los rotulos. Despues del recorte y del reparto, asi
     # que solo se la lleva lo que de verdad se queda en el montaje.
