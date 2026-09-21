@@ -28,6 +28,30 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 
 ## Instalacion
 
+### Lo mas corto
+
+```bash
+./instalar.sh            # instala y comprueba
+./instalar.sh --probar   # y ademas monta una guia de ejemplo
+```
+
+Detecta si tienes GPU NVIDIA y elige la variante de `onnxruntime` que toca,
+crea el entorno en `backend/.venv`, instala los extras que hacen falta, copia las
+fuentes de los rotulos y acaba pasando `forge doctor`, que es lo unico que de
+verdad dice si esta maquina puede montar un video. Se puede repetir: lo que ya
+este hecho lo salta.
+
+**No hace falta instalar ffmpeg.** `imageio-ffmpeg` es dependencia del proyecto y
+trae su propio ffmpeg 7.0.2; `forge` lo busca en este orden: `FORGE_FFMPEG`, su
+cache, el PATH del sistema, y por ultimo ese. Probado en una maquina sin ffmpeg
+del sistema y con la cache vacia: los cinco filtros necesarios estan y monta
+igual. Lo unico que se pierde es `ffprobe` --- que ese paquete no trae --- y
+entonces los metadatos se sondean con ffmpeg, con menos detalle. Si quieres
+ffprobe, `sudo pacman -S ffmpeg`.
+
+### A mano
+
+
 ### CachyOS / Arch (recomendado)
 
 ```bash
@@ -62,6 +86,41 @@ no es un adorno: sin el se caen los recuadros sobre lo que nombras, senalar por
 nombre y el material sacado de tu propio video. Trae sus propios modelos, asi
 que no hay nada mas que instalar. (`ocr-tesseract` es la alternativa, y ademas
 del paquete necesita el `tesseract` del sistema.)
+
+## Tenerlo como proyecto aparte
+
+VideoForge no depende de nada del repositorio que lo contiene: ni de su codigo,
+ni de su `package.json`, ni de su `.gitignore`. Tiene el suyo. Asi que se puede
+sacar a su propia carpeta y seguir funcionando igual.
+
+Para llevarlo a `~/juegor` **conservando sus commits** (no una copia suelta):
+
+```bash
+mkdir -p ~/juegor && cd ~/juegor
+
+# 1. Un clon de trabajo, del que solo interesa una carpeta
+git clone --branch claude/ai-video-editor-project-dkoahb \
+    https://github.com/<usuario>/<repo>.git .extraccion
+cd .extraccion
+
+# 2. Reescribir la historia de `videoforge/` como si hubiera sido la raiz
+git subtree split --prefix=videoforge -b solo-videoforge
+
+# 3. Y clonar solo esa rama, que ya es el proyecto entero
+cd ~/juegor
+git clone .extraccion -b solo-videoforge videoforge
+cd videoforge && git branch -m solo-videoforge main
+git remote remove origin
+
+# 4. El clon de trabajo ya no hace falta
+rm -rf ~/juegor/.extraccion
+```
+
+Queda `~/juegor/videoforge/` como repositorio propio, con su historia y sin
+ningun remoto (ponle el tuyo con `git remote add origin ...` cuando quieras). A
+partir de ahi, `./instalar.sh` y listo.
+
+Si no te importa perder la historia, `cp -r videoforge ~/juegor/` tambien vale.
 
 ## Uso
 
