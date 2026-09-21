@@ -30,10 +30,26 @@ Todo el analisis corre **en local y con modelos libres**. Sin APIs de pago.
 
 ### Lo mas corto
 
+Linux o macOS:
+
 ```bash
 ./instalar.sh            # instala y comprueba
 ./instalar.sh --probar   # y ademas monta una guia de ejemplo
 ```
+
+Windows, en PowerShell:
+
+```powershell
+.\instalar.ps1            # instala y comprueba
+.\instalar.ps1 -Probar    # y ademas monta una guia de ejemplo
+```
+
+Si PowerShell se niega por la politica de scripts:
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+
+El `.sh` tambien sirve en Windows desde **Git Bash** (viene con Git for
+Windows): descubre si el entorno puso los ejecutables en `bin/` o en `Scripts/`
+en vez de darlo por hecho, que es lo que fallaba antes.
 
 Detecta si tienes GPU NVIDIA y elige la variante de `onnxruntime` que toca,
 crea el entorno en `backend/.venv`, instala los extras que hacen falta, copia las
@@ -120,7 +136,29 @@ Queda `~/juegor/videoforge/` como repositorio propio, con su historia y sin
 ningun remoto (ponle el tuyo con `git remote add origin ...` cuando quieras). A
 partir de ahi, `./instalar.sh` y listo.
 
-Si no te importa perder la historia, `cp -r videoforge ~/juegor/` tambien vale.
+En PowerShell los mismos pasos, sin `\` de continuacion ni `&&` a principio de
+linea --- que es lo que los rompe --- y con `Remove-Item` en vez de `rm -rf`:
+
+```powershell
+cd ~
+mkdir juegor -Force
+cd juegor
+
+git clone --branch claude/ai-video-editor-project-dkoahb https://github.com/<usuario>/<repo>.git .extraccion
+cd .extraccion
+git subtree split --prefix=videoforge -b solo-videoforge
+
+cd ~\juegor
+git clone .extraccion -b solo-videoforge videoforge
+cd videoforge
+git branch -m solo-videoforge main
+git remote remove origin
+
+Remove-Item -Recurse -Force ~\juegor\.extraccion
+```
+
+Si no te importa perder la historia, copiar la carpeta tambien vale
+(`cp -r videoforge ~/juegor/`, o `Copy-Item -Recurse videoforge ~\juegor\`).
 
 ## Uso
 

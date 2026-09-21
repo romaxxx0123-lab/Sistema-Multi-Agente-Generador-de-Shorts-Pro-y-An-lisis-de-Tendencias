@@ -99,7 +99,21 @@ else
     bien "el entorno ya existia"
 fi
 
-PY="$VENV/bin/python"
+# Windows pone los ejecutables del entorno en `Scripts/` y no en `bin/`, asi que
+# la ruta se descubre en vez de darla por hecha. Con esto el script sirve tal cual
+# en Git Bash sobre Windows, en WSL, en Linux y en macOS.
+if [ -x "$VENV/bin/python" ]; then
+    BIN="$VENV/bin"
+    PY="$BIN/python"
+elif [ -x "$VENV/Scripts/python.exe" ]; then
+    BIN="$VENV/Scripts"
+    PY="$BIN/python.exe"
+else
+    malo "el entorno no tiene python (ni en bin/ ni en Scripts/)"
+    exit 1
+fi
+bien "entorno: ${BIN#$AQUI/}"
+
 "$PY" -m pip install --quiet --upgrade pip
 
 paso "Instalando VideoForge y sus extras (esto tarda unos minutos)"
@@ -107,9 +121,10 @@ echo "    speech + audio + $EXTRA_VISION + ocr + fonts + api"
 "$PY" -m pip install --quiet -e "$BACKEND[speech,audio,$EXTRA_VISION,ocr,fonts,api]"
 bien "instalado"
 
-FORGE="$VENV/bin/forge"
+FORGE="$BIN/forge"
+[ -x "$FORGE" ] || FORGE="$BIN/forge.exe"
 if [ ! -x "$FORGE" ]; then
-    malo "no se creo el comando 'forge' en backend/.venv/bin/"
+    malo "no se creo el comando 'forge' en ${BIN#$AQUI/}"
     exit 1
 fi
 
@@ -148,9 +163,9 @@ fi
 
 cat <<AYUDA
 
-$(printf '\033[1m')Listo.$(printf '\033[0m') El comando vive en backend/.venv/bin/forge. Para tenerlo a mano:
+$(printf '\033[1m')Listo.$(printf '\033[0m') El comando vive en ${FORGE#$AQUI/}. Para tenerlo a mano:
 
-    source $VENV/bin/activate
+    $([ -f "$BIN/activate" ] && echo "source $BIN/activate" || echo "$BIN/Activate.ps1")
 
 Y entonces, con un video tuyo:
 
