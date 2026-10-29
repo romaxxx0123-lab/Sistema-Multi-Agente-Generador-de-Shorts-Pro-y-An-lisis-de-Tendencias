@@ -97,8 +97,10 @@ export interface ModuleInstance {
   tier?: number;
   /** Mejora en obras (el módulo sigue funcionando con su nivel actual). */
   upgrade?: { toTier: number; progress: number } | null;
-  /** Minutos de producción acumulados hacia la pieza siguiente (vivero; la grúa también lo usa). Ausente = 0. */
+  /** Avance de una máquina automática: vivero → min hacia la pieza siguiente; grúa → min de trabajo del ciclo. Ausente = 0. */
   prodProgress?: number;
+  /** Grúa: id del resto al que ha lanzado el gancho (o null). */
+  prodTarget?: number | null;
 }
 
 export interface ShipState {

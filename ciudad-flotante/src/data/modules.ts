@@ -538,7 +538,7 @@ const defs: ModuleDef[] = [
     doors: [{ side: 'S', cell: 0 }],
     props: [
       { kind: 'sofa', u: 5.3, v: 3.45, rot: 0, collider: [1.1, 0.45, 0.9] },
-      { kind: 'mesa_juegos', u: 6.3, v: 1.7, rot: 0, collider: [0.7, 0.7, 0.8] },
+      { kind: 'mesa_juegos', u: 2.9, v: 1.9, rot: 0, collider: [0.7, 0.7, 0.8] },
       { kind: 'estanteria_libros', u: 0.45, v: 3.0, rot: -P / 2, collider: [0.9, 0.25, 2.0] },
       { kind: 'alfombra', u: 4.2, v: 2.0, rot: 0, collider: null },
     ],

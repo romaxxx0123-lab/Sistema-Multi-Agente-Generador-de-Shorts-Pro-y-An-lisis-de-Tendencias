@@ -17,7 +17,8 @@
  *   `upgrade = null`, `relations = {}`, la historia por defecto y la hoja 1 del cuaderno (que una
  *   partida nueva lleva en la mochila), con una entrada en el diario. En las partidas actuales esos
  *   campos opcionales se validan si están (nivel dentro de 1..máximo, mejora del nivel siguiente,
- *   afinidades −100..100, hojas 1..7 sin repetir) y, si faltan, significan lo mismo que su valor
+ *   afinidades −100..100, hojas 1..7 sin repetir, avance del vivero y de la grúa) y, si faltan,
+ *   significan lo mismo que su valor
  *   por defecto (`moduleTier`, `activeUpgrade`), así que una ida y vuelta deja el estado idéntico.
  *   Bandejas y combustible se dimensionan con el nivel de mejora (`moduleStat`): nunca se pierden
  *   objetos de un almacén ampliado.
@@ -207,10 +208,11 @@ const int = (v: unknown, d: number): number => (isNum(v) ? Math.round(v) : d);
 const RELATION_LIMIT = 100;
 
 /**
- * Nivel de mejora y mejora en obras de un módulo. `fill`: partida anterior a las mejoras (se
- * escriben los valores por defecto); si no, los campos ausentes se dejan ausentes (= nivel 1, sin obra).
+ * Nivel de mejora y mejora en obras de un módulo, y el avance de las máquinas automáticas (vivero,
+ * grúa). `fill`: partida anterior a las mejoras (se escriben los valores por defecto); si no, los
+ * campos ausentes se dejan ausentes (= nivel 1, sin obra, sin avance).
  */
-function sanitizeUpgrade(m: ModuleInstance, fill: boolean): void {
+function sanitizeModuleExtras(m: ModuleInstance, fill: boolean): void {
   const max = maxTier(m.type);
   const raw = m as unknown as Obj;
   if (raw['tier'] !== undefined || fill) {
@@ -223,6 +225,8 @@ function sanitizeUpgrade(m: ModuleInstance, fill: boolean): void {
     const valid = isObj(u) && isNum(u['toTier']) && u['toTier'] === tier + 1 && u['toTier'] <= max && isNum(u['progress']) && m.status !== 'construction';
     m.upgrade = valid ? { toTier: u['toTier'] as number, progress: Math.min(1, Math.max(0, u['progress'] as number)) } : null;
   }
+  if (raw['prodProgress'] !== undefined) m.prodProgress = isNum(raw['prodProgress']) ? Math.max(0, raw['prodProgress']) : 0;
+  if (raw['prodTarget'] !== undefined) m.prodTarget = isNum(raw['prodTarget']) ? Math.round(raw['prodTarget']) : null;
 }
 
 /** Afinidades de un habitante: ids → número finito en −100..100. */
@@ -309,7 +313,7 @@ export function restoreState(raw: unknown): GameState {
         return typeof b === 'string' ? b : null;
       });
       out.plots = tpl.plots.map((p, i) => fillDefaults(out.plots[i], p) as typeof p);
-      sanitizeUpgrade(out, preStory);
+      sanitizeModuleExtras(out, preStory);
       // Huecos según el nivel de mejora (un almacén con altillo tiene 32): nunca se recorta lo guardado.
       const storage = moduleStat(out, 'storageSlots');
       const fuel = moduleStat(out, 'fuelSlots');

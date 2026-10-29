@@ -2435,6 +2435,12 @@ describe('guardado: campos de la ronda de contenido 2', () => {
     s.ship.modules[3].upgrade = 'roto';
     s.ship.modules[3].inventory.slots[5] = { id: 'tornillos', qty: 7 };
     s.ship.modules[5].upgrade = { toTier: 2, progress: 7 };
+    // Avance de las máquinas automáticas (vivero, grúa).
+    s.ship.modules[6].prodProgress = -4;
+    s.ship.modules[6].prodTarget = 'roto';
+    s.ship.modules[7].prodProgress = 'x';
+    s.ship.modules[8].prodProgress = 37.5;
+    s.ship.modules[8].prodTarget = 12;
     s.npcs[0].relations = { npc2: 500, npc1: 5, raro: 'x' };
     s.npcs[1].relations = 'roto';
     s.story = { pages: [3, 3, 9, 'a', 1, 2, 4, 5], revealed: false, arrived: false };
@@ -2451,6 +2457,10 @@ describe('guardado: campos de la ronda de contenido 2', () => {
     // sigue en el nivel 1 con su bandeja de 6 huecos. Terminado (nivel 2), tiene 10.
     expect(st.ship.modules[5]!.upgrade).toEqual({ toTier: 2, progress: 1 });
     expect(st.ship.modules[5]!.inventory!.slots).toHaveLength(6);
+    expect(st.ship.modules[6]).toMatchObject({ prodProgress: 0, prodTarget: null });
+    expect(st.ship.modules[7]!.prodProgress).toBe(0);
+    expect(st.ship.modules[8]).toMatchObject({ prodProgress: 37.5, prodTarget: 12 });
+    expect('prodProgress' in st.ship.modules[9]!).toBe(false);
     expect(st.npcs[0]!.relations).toEqual({ npc2: 100 });
     expect(st.npcs[1]!.relations).toEqual({});
     expect(st.story).toEqual({ pages: [1, 2, 3, 4, 5], revealed: true, arrived: false });

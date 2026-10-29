@@ -356,6 +356,19 @@ export class Simulation {
     const n = this.state.npcs.find((x) => x.id === npcId);
     return n ? npc.npcMoodFactors(this, n) : [];
   }
+  /** Relaciones de un habitante para su ficha (de la mejor a la peor). */
+  npcRelations(npcId: string) {
+    const n = this.state.npcs.find((x) => x.id === npcId);
+    return n ? npc.npcRelations(this, n) : [];
+  }
+  /** Estado de la grúa de rescate (fase, objetivo, alcance). */
+  gruaStatus(moduleId: number) {
+    return debris.gruaStatus(this, moduleId);
+  }
+  /** Datos de la pantalla de llegada a Puerto Esperanza (null si aún no se ha llegado). */
+  arrivalSummary() {
+    return events.arrivalSummary(this);
+  }
   /** Estado de un evento activo ("Quedan 45 min", "En curso"…). */
   eventStatus(eventId: number): string {
     const e = events.eventById(this, eventId);

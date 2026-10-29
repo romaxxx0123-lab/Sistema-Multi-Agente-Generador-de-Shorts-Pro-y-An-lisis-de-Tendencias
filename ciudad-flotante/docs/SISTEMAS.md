@@ -336,6 +336,12 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 | Camarote / dormitorio / comedor / sala común | más confort | — |
 | Colector, potabilizadora, batería, panel, enfermería, motor, ahumadero, vivero, grúa | una mejora cada uno | — |
 
+- Precisiones de las mejoras (§13): la obra de mejora se pausa mientras el módulo arde. Cancelarla devuelve el 100 % al jugador (si no cabe, en una caja a sus pies). Al desmontar se recupera el 50 % de las mejoras terminadas y el 100 % de la que esté en obras. Los habitantes ayudan en las mejoras igual que en las obras.
+- Energía (§6): `fuelMinutes` da los minutos de funcionamiento según la eficiencia (`runOnFuel`). La grúa consume 0,4 kW y el radar 0,3 kW mientras estén encendidos y operativos (`isGruaReady`, `gruaWorkRate`, `isRadarActive`).
+- Camas y enfermería: una cama en una habitación con más confort que un camarote básico (3) repone +1 de energía por hora por cada punto de más, hasta +4. El camarote acogedor da 17/h y el HUD muestra «Cama acogedora». La enfermería equipada multiplica la curación por su healMult (×1,5).
+- Viaje: con un radar en marcha, el barómetro avisa de la tormenta 3 h antes. El motor mejorado da +5 nudos.
+- Guardado: las partidas sin `story` (anteriores a la ronda 2) se migran con tier=1, upgrade=null, relations={}, la historia por defecto y la hoja 1 a bordo, con su entrada en el diario. En las partidas actuales esos campos se validan; si faltan, se dejan ausentes. SAVE_VERSION no cambia.
+
 ## 14. Módulos especializados (GDD §13, prioridad futura)
 
 - **Sala común** (vivienda): confort 4; los habitantes pasan allí su ocio y mejora su ánimo y su
@@ -363,3 +369,33 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 - Afinidad −100..100 por pareja (`npc.relations`): charlar y compartir mesa o sala común la sube;
   discutir la baja. Amistad (≥ 40): ánimo al estar juntos y más pena si el otro muere. Rivalidad
   (≤ −40): ánimo negativo y más discusiones entre esos dos. La ficha del habitante las muestra.
+
+## 17. Interfaces nuevas de la ronda de contenido 2 (para interfaz, render, construcción y audio)
+
+Implementado en la simulación y probado. Las áreas de presentación deben conectarlo así.
+
+**Interfaz (c2-ui)**
+- `src/ui/icons.ts`: el tipo de evento nuevo `'llegada'` necesita glifo en EVENT_GLYPH (p. ej. `llegada: 'anchor'`).
+- Hojas del cuaderno (categoría `'documento'`): en `useVerb` (model.ts), `if (def.category === 'documento') return 'Leer';` antes de `def.consume`. El botón de la mochila usa el glifo `'book'` para planos y documentos. `sim.useItem(slot)` ya lee y archiva la hoja.
+- Diario: sección «Cuaderno del Albatros» con `storyStatus(sim)` de `src/sim/actions.ts`. Muestra `summary`; las hojas leídas como `Pág. N · «title»` con `text` (párrafos separados por `\n\n`); las que faltan como `Pág. N · ¿?` con `hint`. Con `revealed && !arrived`, destacar «Rumbo de la capitana: elígelo en el timón».
+- Timón: si `opt.captain`, mostrar la insignia `CAPTAIN_COURSE_LABEL` de `src/sim/voyage.ts`. Situar `'esperanza'` en CHART_POS y unirla a la región actual cuando `captainCourseOpen(sim)` sea cierto. Con `barometer().radar`, mostrar `baro.text` en el barómetro del timón y del HUD.
+- `widgets.ts`: añadir `'U'` a KEY_LETTERS (herramienta Mejorar).
+- Pantalla de final: abrirla con `bus.on('worldEventStarted')` cuando `e.type === 'llegada'`, o al pasar `state.story.arrived` a true. Se rellena con `sim.arrivalSummary()`: title, paragraphs[], epilogue, day, daysAtSea, miles, pagesRead/pagesTotal, crew[], newcomers[], modules y marketEventId. El botón «Ir al mercado» abre `{ kind: 'trade', eventId: marketEventId }` (un evento 'mercante' normal).
+- Ficha del habitante: `sim.npcRelations(npcId)` devuelve `[{id, name, value, label}]`, de mejor a peor.
+- Panel de la grúa: `sim.gruaStatus(moduleId)` devuelve status (texto), phase, progress, etaMin, range, inRange y origin. La bandeja es `module.inventory`.
+- Vivero: `viveroStatus` (stations.ts) da el avance; el avance de las máquinas automáticas se guarda en `module.prodProgress` y `module.prodTarget`.
+- Mejoras: `sim.checkUpgrade(id)`, `sim.startUpgrade(id)`, `sim.cancelUpgrade(id)`. `constructionStatus(id)` describe una mejora en obras con `toTier`. Para los nombres, usar `moduleDisplayName(m)` (moduleStats.ts).
+- Los mensajes de radio llegan al diario empezando por «Radio:».
+- El aviso compacto con un panel abierto corta los mensajes de más de unos 95 caracteres: conviene que se lean enteros (dos líneas).
+
+**Render del barco (c2-render-ship)**
+- Sofá: plazas con `SOFA_SEATS = [-0.55, 0.55]` y `SOFA_SEAT_FORWARD = 0.1` (de npc.ts). Para cada prop `'sofa'` y cada `off`:
+  `u = p.u + off·cos(p.rot) − F·sin(p.rot)` y `v = p.v − off·sin(p.rot) − F·cos(p.rot)`; después `localToShip(m, u, v, width)` y `yaw = localYaw(m.rot, p.rot)`.
+- Pose de cartas: con `task.data.anim === 'jugar'`, mirando a `task.data.faceYaw`. Con `task.data.read === true`, un libro en la mano.
+- Grúa: `gruaTarget(sim, moduleId)` (debris.ts) devuelve `{debrisId, kind, pos:{x,z}, progress}` mientras engancha. Con `gruaStatus(...).phase === 'izando'` sube la carga; `origin` es la punta de la pluma.
+
+**Construcción (c2-build)**
+- La herramienta Mejorar va en la tecla U. Valida con `sim.checkUpgrade`. Un módulo en mejora sigue en uso, y el martillo sobre él ayuda a la obra (ya hecho en Interaction.ts).
+
+**Audio (c2-audio)**
+- Sonidos nuevos que emite la simulación: `'mejora_terminada'` (alias de `'obra_terminada'`; mezclarlo con el martillo) y `'pagina'` (leer una hoja). Revisar también los que emiten ahumadero, vivero, grúa, radar y la llegada (buscar `sfx` en src/sim).

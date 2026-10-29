@@ -2676,7 +2676,9 @@ function buildPlan(sim: Simulation, npc: NpcState): Plan | null {
   const helpers = (id: number) => st.npcs.filter((n) => n.id !== npc.id && n.task?.kind === 'construir' && n.task.targetModuleId === id).length;
   const storm = stormNow(sim);
   for (const m of st.ship.modules) {
-    if (m.status !== 'construction' || helpers(m.id) >= MAX_BUILDERS) continue;
+    // Obras nuevas y mejoras en obras (el módulo sigue en uso mientras se mejora).
+    const upgrading = m.status !== 'construction' && !!m.upgrade && m.fire <= 0;
+    if ((m.status !== 'construction' && !upgrading) || helpers(m.id) >= MAX_BUILDERS) continue;
     const c = moduleCenter(m, st.ship.width);
     const p = { x: c.x, y: c.y, z: c.z };
     if (storm && !isIndoorAt(sim, p)) continue;
@@ -3303,7 +3305,8 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
       return;
     case 'construir': {
       const id = t.targetModuleId ?? -2;
-      const site = id === -1 ? sim.state.ship.expansion : findModule(sim, id)?.status === 'construction' ? findModule(sim, id) : null;
+      const mm = id === -1 ? null : findModule(sim, id);
+      const site = id === -1 ? sim.state.ship.expansion : mm && (mm.status === 'construction' || (mm.upgrade && mm.fire <= 0)) ? mm : null;
       if (!site || now >= until) {
         finishTask(sim, npc);
         return;
