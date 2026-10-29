@@ -121,13 +121,19 @@ export class UI {
 
     window.addEventListener('keydown', (e) => this.onKey(e));
     // Tras un clic, el botón suelta el foco: así Espacio o Intro no lo repiten al volver al juego.
-    this.root.addEventListener('click', (e) => {
-      const b = (e.target as Element | null)?.closest?.('button');
-      if (b) {
-        b.blur();
-        this.sfx('ui_clic');
-      }
-    });
+    // En fase de captura: los botones de los paneles paran la propagación de su clic y, si no,
+    // conservaban el foco (y no sonaban).
+    this.root.addEventListener(
+      'click',
+      (e) => {
+        const b = (e.target as Element | null)?.closest?.('button');
+        if (b) {
+          b.blur();
+          this.sfx('ui_clic');
+        }
+      },
+      true,
+    );
     this.updateScale();
   }
 

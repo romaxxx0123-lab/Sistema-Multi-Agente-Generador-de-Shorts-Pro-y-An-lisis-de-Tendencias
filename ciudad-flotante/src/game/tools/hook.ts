@@ -14,6 +14,7 @@ import { DEBRIS_NAMES, hullBounds } from '../../sim/debris';
 import { HOOK_RANGE } from '../../sim/constants';
 import type { PromptInfo } from '../types';
 import { clamp01, easeInOutSine, easeOutCubic } from './aim';
+import { finiteVec } from './effects';
 import type { ToolEnv } from './env';
 import type { DebrisTarget } from './targets';
 
@@ -100,9 +101,16 @@ export class HookTool {
     this.targetId = null;
     this.targetName = '';
     this.begin();
-    this.to.copy(point);
-    const d = Math.hypot(point.x - this.env.ctx.sim.state.player.pos.x, point.z - this.env.ctx.sim.state.player.pos.z);
-    this.flightDur = 0.32 + d / 26;
+    const p = this.env.ctx.sim.state.player.pos;
+    if (finiteVec(point)) this.to.copy(point);
+    else {
+      // Punto inválido (rayo degenerado): al agua, por el costado del jugador.
+      const b = hullBounds(this.env.ctx.sim);
+      const z = (Math.sign(p.z) || 1) * (b.halfW + 6);
+      this.to.set(p.x, this.env.waterHeight(p.x, z), z);
+    }
+    const d = Math.hypot(this.to.x - p.x, this.to.z - p.z);
+    this.flightDur = 0.32 + (Number.isFinite(d) ? d : 10) / 26;
   }
 
   private begin(): void {
@@ -191,6 +199,11 @@ export class HookTool {
       case 'windup': {
         if (this.t >= WINDUP) {
           this.env.handWorld('garfio', this.from);
+          if (!finiteVec(this.from)) {
+            // Sin un punto de partida válido no se lanza nada (nunca NaN en la cuerda).
+            this.finish();
+            break;
+          }
           this.grap.copy(this.from);
           this.env.vm.setPart('garfio', false);
           fx.grapnel.visible = true;
@@ -205,7 +218,11 @@ export class HookTool {
         // El objetivo sigue derivando: el garfio lo persigue.
         if (this.targetId !== null) {
           const ok = this.debrisPoint(_a);
-          if (ok) this.to.copy(ok);
+          if (ok && finiteVec(ok)) this.to.copy(ok);
+          else if (ok) {
+            // Posición del resto corrupta: se suelta como si se hubiera perdido.
+            this.targetId = null;
+          }
           else {
             // Se perdió el resto (lo recogió otro o se alejó): cae al agua.
             this.targetId = null;
@@ -253,6 +270,10 @@ export class HookTool {
         const u = clamp01(this.t / (this.targetId === null && this.release ? MISS_DRAG_TIME : RETRACT_TIME));
         if (this.release) this.pullU = Math.max(0, this.pullU - dt / 0.4);
         this.env.handWorld('garfio', _a);
+        if (!finiteVec(_a)) {
+          this.finish();
+          break;
+        }
         const e = easeOutCubic(u);
         this.grap.lerpVectors(this.retractFrom, _a, e);
         // Sale del agua con un pequeño arco.
@@ -328,9 +349,17 @@ export class HookTool {
       }
     }
     if (this.phase === 'windup') return;
+    this.env.handWorld('mano', _c);
+    if (!finiteVec(this.grap) || !finiteVec(_c)) {
+      // Nunca se dibuja un garfio o una cuerda con coordenadas no finitas.
+      fx.grapnel.visible = false;
+      fx.hookRope.visible = false;
+      return;
+    }
+    fx.grapnel.visible = true;
+    fx.hookRope.visible = true;
     fx.grapnel.position.copy(this.grap);
     // El garfio mira en la dirección del vuelo / del cabo.
-    this.env.handWorld('mano', _c);
     fx.grapnel.lookAt(_c);
     fx.grapnel.rotateX(Math.PI / 2);
     let sag = 0.25;

@@ -8,6 +8,9 @@
  *  2. Procesa la entrada:
  *     - E: abre el panel (estación, almacén, huerto, agua, energía, timón, habitante, caja) o se
  *       acuesta; mantener E (o el clic con el martillo) en una obra ayuda a construir.
+ *       En los usos frecuentes la tecla es física: pulsar E bebe del depósito, cosecha o limpia
+ *       un bancal y coge todo lo de una caja (si cabe); mantener E abre el panel.
+ *     - R en el depósito: llena una botella (si no hay que repararlo).
  *     - Clic: usa la herramienta de la barra rápida (gancho, caña, cubo, cubo con agua,
  *       martillo y llave en reparaciones).
  *     - R: repara el módulo dañado o averiado al que se apunta (con la herramienta adecuada).
@@ -37,7 +40,8 @@ import { ToolEffects } from './tools/effects';
 import type { ToolEnv } from './tools/env';
 import { FishingTool } from './tools/fishing';
 import { HOOK_SCAN_RANGE, HookTool } from './tools/hook';
-import { cratePrompt, npcPrompt, propAction, propPrompt, sitePrompt } from './tools/prompts';
+import { finiteVec } from './tools/effects';
+import { cratePrompt, crateFits, crateQuick, holdPrompt, npcPrompt, propAction, propPrompt, propQuick, sitePrompt, type QuickAction } from './tools/prompts';
 import {
   canHookFrom,
   railFacing,
@@ -74,6 +78,10 @@ interface TimedAction {
 
 /** Duración de una reparación (s). */
 export const REPAIR_TIME = 1.25;
+/** Manteniendo E este tiempo (s) se abre el panel en vez de hacer la acción directa. */
+export const HOLD_PANEL = 0.45;
+/** El anillo de «Mantén E» aparece a partir de aquí (antes es una pulsación normal). */
+const HOLD_HINT = 0.12;
 
 const _o = new THREE.Vector3();
 const _d = new THREE.Vector3();
@@ -87,6 +95,10 @@ export class Interaction implements ToolEnv {
   private timed: TimedAction | null = null;
   /** Obra en la que se está ayudando con el martillo (-1 = ampliación del casco). */
   private building: { id: number; hits: number } | null = null;
+  /** E pulsada sobre un objetivo con acción directa: al soltar se hace; si se mantiene, panel. */
+  private eHold: { focus: Focus; quick: QuickAction; t: number } | null = null;
+  /** La entrada estaba activa el frame anterior (para no usar un clic de recuperar el control). */
+  private wasEnabled = false;
 
   /** Objetivos del último frame (lectura para depuración y pruebas). */
   focus: Focus | null = null;
@@ -144,8 +156,15 @@ export class Interaction implements ToolEnv {
   }
 
   /** Estado de las herramientas (depuración). */
-  get toolState(): { hook: string; fishing: string; timed: string | null; building: number | null; bite: number } {
-    return { hook: this.hook.phase, fishing: this.fishing.phase, timed: this.timed?.kind ?? null, building: this.building?.id ?? null, bite: this.fishing.secondsToBite };
+  get toolState(): { hook: string; fishing: string; timed: string | null; building: number | null; bite: number; holdE: string | null } {
+    return {
+      hook: this.hook.phase,
+      fishing: this.fishing.phase,
+      timed: this.timed?.kind ?? null,
+      building: this.building?.id ?? null,
+      bite: this.fishing.secondsToBite,
+      holdE: this.eHold ? this.eHold.quick.kind : null,
+    };
   }
 
   reset(): void {
@@ -153,6 +172,7 @@ export class Interaction implements ToolEnv {
     this.fishing.abort();
     this.timed = null;
     this.building = null;
+    this.eHold = null;
     this.fx.hideAll();
     this.focus = null;
     this.repairTarget = null;
@@ -178,9 +198,12 @@ export class Interaction implements ToolEnv {
     if (player.firstPersonView && this.vm.visible) {
       const a = this.vm.anchorWorld(anchor, out);
       if (a) return a;
-      return this.ctx.player.camera.localToWorld(out.set(0.26, -0.28, -0.55));
-    }
-    return player.handWorld(out, anchor);
+      this.ctx.player.camera.localToWorld(out.set(0.33, -0.28, -0.55));
+    } else player.handWorld(out, anchor);
+    if (finiteVec(out)) return out;
+    // Último recurso: el pecho del jugador (las cuerdas nunca reciben coordenadas no finitas).
+    const p = this.ctx.sim.state.player.pos;
+    return this.shipToWorld(p.x, p.y + 1.3, p.z, out);
   }
 
   shipToWorld(x: number, y: number, z: number, out: THREE.Vector3): THREE.Vector3 {
@@ -232,6 +255,7 @@ export class Interaction implements ToolEnv {
 
     if (!p.alive || p.sleeping || ctx.mode !== 'play') {
       this.cancelAll();
+      this.wasEnabled = false;
       this.focus = null;
       this.repairTarget = null;
       this.fireTarget = null;
@@ -243,6 +267,14 @@ export class Interaction implements ToolEnv {
     }
 
     const enabled = input.enabled && !ctx.ui.panelOpen;
+    // El primer frame con el control recuperado (al cerrar un panel o el menú, al capturar el
+    // ratón) no usa la herramienta: ese clic era para volver al juego, no para lanzar el gancho.
+    if (enabled && !this.wasEnabled) {
+      input.consume('Mouse0');
+      input.consume('Mouse2');
+    }
+    this.wasEnabled = enabled;
+    if (!enabled) this.eHold = null;
     const aim = this.makeAim();
 
     // --- Objetivos ---
@@ -320,21 +352,34 @@ export class Interaction implements ToolEnv {
     );
   }
 
-  /** Punto del agua al que se apunta (para lanzar el gancho sin objetivo). */
-  private missPoint(out: THREE.Vector3): THREE.Vector3 {
+  /** Punto del agua al que se apunta (para lanzar el gancho sin objetivo). Siempre finito. */
+  missPoint(out: THREE.Vector3): THREE.Vector3 {
     const { o, d } = this.cameraRay();
     const p = this.ctx.sim.state.player.pos;
     const plane = WATERLINE_Y;
-    let t = d.y < -0.05 ? (plane - o.y) / d.y : Infinity;
-    const hl = Math.hypot(d.x, d.z) || 1;
+    // Rayo degenerado (cámara con NaN, mirada vertical): se lanza hacia delante en planta.
+    const ok = finiteVec(o) && finiteVec(d);
+    const ox = ok ? o.x : p.x;
+    const oz = ok ? o.z : p.z;
+    let dx = ok ? d.x : 0;
+    let dz = ok ? d.z : 0;
+    let hl = Math.hypot(dx, dz);
+    if (!(hl > 1e-3)) {
+      const f = lookDir(this.ctx.sim.state.player.yaw, 0);
+      dx = Number.isFinite(f.x) ? f.x : 0;
+      dz = Number.isFinite(f.z) ? f.z : -1;
+      hl = Math.hypot(dx, dz) || 1;
+    }
+    const t = ok && d.y < -0.05 ? (plane - o.y) / d.y : Infinity;
     // Entre 6 y 14 m del jugador en planta.
     const horiz = Math.max(6, Math.min(14, Number.isFinite(t) ? t * hl : 10));
-    t = horiz / hl;
-    out.set(o.x + d.x * t, 0, o.z + d.z * t);
+    out.set(ox + (dx / hl) * horiz, 0, oz + (dz / hl) * horiz);
     // Nunca dentro del casco.
     const b = hullBounds(this.ctx.sim);
     if (Math.abs(out.z) < b.halfW + 1.5 && out.x > b.sternX - 1 && out.x < b.bowX + 1) out.z = (Math.sign(out.z || p.z || 1) || 1) * (b.halfW + 2.5);
-    out.y = this.waterHeight(out.x, out.z);
+    if (!Number.isFinite(out.x) || !Number.isFinite(out.z)) out.set(p.x, 0, (Math.sign(p.z) || 1) * (b.halfW + 6));
+    const wy = this.waterHeight(out.x, out.z);
+    out.y = Number.isFinite(wy) ? wy : WATERLINE_Y;
     return out;
   }
 
@@ -345,6 +390,7 @@ export class Interaction implements ToolEnv {
     if (this.timed || this.building) this.vm.stop();
     this.timed = null;
     this.building = null;
+    this.eHold = null;
   }
 
   /* ================================================================== */
@@ -399,17 +445,105 @@ export class Interaction implements ToolEnv {
       this.useTool(aim, heldId, tool);
     }
 
-    // --- E: abrir / hablar / dormir ---
-    if (ePressed && !this.timed && f && f.kind !== 'site' && f.kind !== 'expansion') this.interact(f);
+    // --- E: acción directa al pulsar (beber, cosechar, coger) o panel al mantener; si no, abrir / hablar / dormir ---
+    if (this.eHold) this.updateHoldE(dt, eHeld);
+    else if (ePressed && !this.timed && f && f.kind !== 'site' && f.kind !== 'expansion') {
+      const quick = this.quickFor(f);
+      if (quick) {
+        this.eHold = { focus: f, quick, t: 0 };
+        // Pulsación tan rápida que ya se soltó dentro del mismo frame.
+        this.updateHoldE(0, eHeld);
+      } else this.interact(f);
+    }
 
-    // --- R: reparar ---
+    // --- R: reparar (o llenar una botella en el depósito) ---
     if (input.pressed('KeyR') && !this.timed && !this.hook.busy && !this.fishing.busy) {
-      if (this.repairTarget) this.startRepair(this.repairTarget);
+      const tank = this.focusedTank();
+      if (this.repairTarget && (tank === null || this.repairTarget.module.id === tank)) this.startRepair(this.repairTarget);
+      else if (tank !== null) this.fillBottle();
+      else if (this.repairTarget) this.startRepair(this.repairTarget);
       else this.toast('Aquí no hay nada que reparar', 'info');
     }
 
     // --- Clic derecho / F: consumible ---
     if ((input.pressed('Mouse2') || input.pressed('KeyF')) && !this.timed && !this.hook.busy && !this.fishing.busy) this.consume(heldId);
+  }
+
+  /** Acción directa de la tecla E sobre el objetivo (null = E abre su panel al momento). */
+  private quickFor(f: Focus): QuickAction | null {
+    const sim = this.ctx.sim;
+    if (f.kind === 'prop' && f.prop) return propQuick(sim, f.prop);
+    if (f.kind === 'crate' && f.crate) return crateQuick(sim, f.crate);
+    return null;
+  }
+
+  /** Módulo del depósito enfocado (null si no se mira a un depósito). */
+  private focusedTank(): number | null {
+    const f = this.focus;
+    return f?.kind === 'prop' && f.prop?.interact === 'deposito' ? f.prop.moduleId : null;
+  }
+
+  /** E mantenida sobre un objetivo con acción directa: soltar pronto = acción; mantener = panel. */
+  private updateHoldE(dt: number, held: boolean): void {
+    const h = this.eHold;
+    if (!h) return;
+    // Mirar a otra parte mientras se mantiene E cancela (ni acción ni panel).
+    if (this.focus?.key !== h.focus.key) {
+      this.eHold = null;
+      return;
+    }
+    if (!held) {
+      this.eHold = null;
+      if (h.t < HOLD_PANEL) this.runQuick(h.quick);
+      return;
+    }
+    h.t += dt;
+    if (h.t >= HOLD_PANEL) {
+      this.eHold = null;
+      this.interact(this.focus ?? h.focus);
+    }
+  }
+
+  private runQuick(q: QuickAction): void {
+    const ctx = this.ctx;
+    const sim = ctx.sim;
+    switch (q.kind) {
+      case 'drink': {
+        const res = sim.drinkFromTank();
+        this.toast(res.msg ?? (res.ok ? 'Bebes agua del depósito' : 'No puedes beber ahora'), res.ok ? 'good' : 'warn');
+        if (res.ok) {
+          const show = this.ctx.sim.state.player.inventory.slots[this.ctx.sim.state.player.hotbar]?.id ?? null;
+          this.vm.play('use');
+          this.timed = { kind: 'eat', t: 0, dur: 0.8, show, avatar: 'drink', avatarTool: null, prompt: null, events: [] };
+        }
+        return;
+      }
+      case 'take': {
+        const crate = sim.state.crates.find((c) => c.id === q.crateId);
+        if (!crate) return;
+        const res = sim.takeAll({ kind: 'crate', id: q.crateId });
+        this.toast(res.msg ?? (res.ok ? 'Lo coges todo' : 'No puedes cogerlo'), res.ok ? 'good' : 'warn');
+        if (res.ok) {
+          this.vm.play('use');
+          this.sfx('recoger', crate.pos);
+        } else if (sim.state.crates.some((c) => c.id === q.crateId)) ctx.ui.openPanel({ kind: 'crate', crateId: q.crateId });
+        return;
+      }
+      case 'harvest':
+      case 'tend': {
+        const res = q.kind === 'harvest' ? sim.harvest(q.moduleId, q.plot) : sim.tendPlot(q.moduleId, q.plot);
+        this.toast(res.msg ?? (res.ok ? 'Hecho' : 'No se puede ahora'), res.ok ? 'good' : 'warn');
+        if (res.ok) this.vm.play('use');
+        return;
+      }
+    }
+  }
+
+  /** R en el depósito: llena una botella. */
+  private fillBottle(): void {
+    const res = this.ctx.sim.fillBottle();
+    this.toast(res.msg ?? (res.ok ? 'Llenas una botella de agua' : 'No puedes llenar una botella'), res.ok ? 'good' : 'warn');
+    if (res.ok) this.vm.play('use');
   }
 
   private siteInReach(id: number): boolean {
@@ -788,7 +922,7 @@ export class Interaction implements ToolEnv {
       case 'npc':
         return f.npc ? npcPrompt(sim, f.npc) : null;
       case 'crate':
-        return f.crate ? cratePrompt(f.crate) : null;
+        return f.crate ? cratePrompt(f.crate, crateFits(sim, f.crate)) : null;
       case 'site':
         return f.moduleId !== undefined ? sitePrompt(sim, f.moduleId, hasHammer, false) : null;
       case 'expansion':
@@ -849,6 +983,10 @@ export class Interaction implements ToolEnv {
     } else if (this.building) {
       prompt = sitePrompt(sim, this.building.id, true, true);
       if (this.building.id >= 0) hl = { kind: 'module', id: this.building.id };
+    } else if (this.eHold && this.eHold.t >= HOLD_HINT) {
+      // Manteniendo E: anillo de progreso hasta abrir el panel.
+      prompt = holdPrompt(this.eHold.quick, this.eHold.t / HOLD_PANEL);
+      hl = this.focusHighlight(this.focus);
     } else {
       // 1) Fuego con el cubo de agua en la mano: lo más urgente.
       if (fire && heldId === 'cubo_agua') {
@@ -868,16 +1006,17 @@ export class Interaction implements ToolEnv {
           if (tool === 'gancho' && this.debrisTarget) hl = { kind: 'debris', id: this.debrisTarget.debris.id };
         } else if (!prompt.alt) prompt = { ...prompt, alt: { key: tp.key, text: tp.text, disabled: tp.disabled } };
       }
-      // 4) Reparación (R).
+      // 4) Reparación (R). Mirando al depósito, R llena una botella salvo que sea él el que se repara.
       const r = this.repairTarget;
-      if (r) {
+      const tank = this.focusedTank();
+      if (r && (tank === null || r.module.id === tank)) {
         const name = moduleDef(r.module.type).name;
         const what = r.module.status === 'broken' ? `Averiado: ${r.module.brokenReason ?? 'roto'}` : r.module.leak ? 'Tiene una fuga' : `Estado ${Math.round(r.module.condition)} %`;
         const need = r.info.tool === 'martillo' ? 'martillo + kit de reparación' : 'llave inglesa + pieza mecánica';
         if (!prompt) {
           prompt = { key: 'R', text: `Reparar ${name}`, sub: r.info.ok ? `${what} · Usa ${need}` : (r.info.reason ?? what), disabled: !r.info.ok };
           hl = { kind: 'module', id: r.module.id };
-        } else if (!prompt.alt) prompt = { ...prompt, alt: { key: 'R', text: `Reparar ${name}`, disabled: !r.info.ok } };
+        } else if (!prompt.alt || tank !== null) prompt = { ...prompt, alt: { key: 'R', text: `Reparar ${name}`, disabled: !r.info.ok } };
       }
       // 5) Fuego sin cubo de agua en la mano: pista.
       if (!prompt && fire) {

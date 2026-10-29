@@ -74,15 +74,16 @@ export interface ToastEntry {
 }
 
 /**
- * Añade un aviso a la cola: si hay uno vivo con la misma forma y tono, lo actualiza (texto más
- * reciente y contador ×N) en vez de apilar otro; si pasan de `max`, se quita el más viejo de los
- * menos graves (un peligro no lo desplaza una ráfaga de avisos informativos).
+ * Añade un aviso a la cola: si hay uno vivo con la misma forma y tono, lo actualiza en vez de
+ * apilar otro (el mismo texto suma un contador ×N; si solo cambian las cifras, se queda el texto
+ * más reciente sin contador, porque «Echas 5× Madera ×2» parecería 10); si pasan de `max`, se
+ * quita el más viejo de los menos graves (un peligro no lo desplaza una ráfaga de avisos).
  */
 export function pushToast(list: ToastEntry[], t: Omit<ToastEntry, 'count'>, max = MAX_TOASTS): ToastEntry[] {
   const shape = toastShape(t.text);
   const same = list.find((x) => x.kind === t.kind && toastShape(x.text) === shape && t.born - x.born < x.ttl);
   if (same) {
-    same.count++;
+    same.count = same.text === t.text ? same.count + 1 : 1;
     same.text = t.text;
     same.born = t.born;
     same.ttl = t.ttl;
@@ -479,7 +480,7 @@ export class Hud {
     if (!step && this.tutShown && doneAge < 1.8) {
       // Animación de "¡Hecho!" del paso que se acaba de completar.
       const s = this.tutShown;
-      return h('div', { key: 'tut', class: 'hud-tut done' }, h('div', { class: 'tut-head' }, gl('check'), h('b', null, s.title), h('span', { class: 'tut-n' }, '¡Hecho!')), h('div', { class: 'tut-text' }, richKeys(s.text)));
+      return h('div', { key: 'tut', class: cx('hud-tut', 'done', panelOpen && 'under') }, h('div', { class: 'tut-head' }, gl('check'), h('b', null, s.title), h('span', { class: 'tut-n' }, '¡Hecho!')), h('div', { class: 'tut-text' }, richKeys(s.text)));
     }
     if (step) this.tutShown = step;
     if (!step) return h('div', { key: 'tut', class: 'hud-tut hidden' });

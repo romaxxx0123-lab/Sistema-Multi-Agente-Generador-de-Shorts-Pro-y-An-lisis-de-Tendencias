@@ -14,6 +14,7 @@ import { buildBobber, buildFish, buildGrapnel } from './models';
 
 const _v = new THREE.Vector3();
 const _m = new THREE.Matrix4();
+const _box = new THREE.Box3();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
 const _c = new THREE.Color();
@@ -22,10 +23,18 @@ const _c = new THREE.Color();
 /* Cuerda                                                              */
 /* ------------------------------------------------------------------ */
 
+/** ¿Son finitas las tres coordenadas? */
+export function finiteVec(v: { x: number; y: number; z: number }): boolean {
+  return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+}
+
 export class Rope {
   readonly line: THREE.Line;
   private readonly pos: Float32Array;
   private t = 0;
+  /** La última vez se tendió con puntos válidos (si no, no se dibuja). */
+  private valid = false;
+  private wantVisible = false;
 
   constructor(
     parent: THREE.Object3D,
@@ -35,15 +44,22 @@ export class Rope {
     this.pos = new Float32Array((segments + 1) * 3);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    // Se actualiza cada frame: la esfera envolvente se mantiene a mano (three.js la calcularía
+    // una sola vez, en el primer dibujo, para ordenar los objetos).
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1);
+    g.boundingBox = new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
     this.line = new THREE.Line(g, new THREE.LineBasicMaterial({ color }));
+    this.line.name = 'cuerda';
     this.line.frustumCulled = false;
     this.line.visible = false;
     this.line.renderOrder = 3;
     parent.add(this.line);
   }
 
+  /** Solo se muestra una vez tendida con puntos válidos. */
   set visible(v: boolean) {
-    this.line.visible = v;
+    this.line.visible = v && this.valid;
+    this.wantVisible = v;
   }
 
   get visible(): boolean {
@@ -54,8 +70,16 @@ export class Rope {
    * Tiende la cuerda de `a` a `b` (coordenadas de mundo). `sag` = flecha en el centro (m),
    * `wobble` = amplitud de vibración lateral (m), `dt` para animarla.
    */
-  set(a: THREE.Vector3, b: THREE.Vector3, sag: number, wobble = 0, dt = 0): void {
-    this.t += dt;
+  set(a: THREE.Vector3, b: THREE.Vector3, sag: number, wobble = 0, dt = 0): boolean {
+    // Un extremo no finito (mano sin anclaje, resto desaparecido…) no debe llegar a la geometría.
+    if (!finiteVec(a) || !finiteVec(b)) {
+      this.valid = false;
+      this.line.visible = false;
+      return false;
+    }
+    if (!Number.isFinite(sag)) sag = 0;
+    if (!Number.isFinite(wobble)) wobble = 0;
+    if (Number.isFinite(dt)) this.t += dt;
     const n = this.segments;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
@@ -71,8 +95,15 @@ export class Rope {
       this.pos[i * 3 + 1] = a.y + (b.y - a.y) * u - sag * bow;
       this.pos[i * 3 + 2] = a.z + dz * u + pz * w;
     }
-    const attr = this.line.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const geo = this.line.geometry;
+    const attr = geo.getAttribute('position') as THREE.BufferAttribute;
     attr.needsUpdate = true;
+    _box.setFromArray(this.pos);
+    geo.boundingBox!.copy(_box);
+    _box.getBoundingSphere(geo.boundingSphere!);
+    this.valid = true;
+    this.line.visible = this.wantVisible;
+    return true;
   }
 
   dispose(): void {
@@ -135,11 +166,15 @@ export class Particles {
     this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
+    // Esfera fija: three.js no la recalcula a partir de matrices que cambian cada frame.
+    this.mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
     this.mesh.name = 'particulas-herramientas';
     parent.add(this.mesh);
   }
 
   burst(at: THREE.Vector3, o: BurstOptions): void {
+    if (!finiteVec(at) || !(o.count > 0)) return;
+    if (o.dir && !finiteVec(o.dir)) o = { ...o, dir: undefined };
     const c1 = new THREE.Color(o.color);
     const c2 = new THREE.Color(o.color2 ?? o.color);
     for (let i = 0; i < o.count; i++) {
@@ -149,7 +184,7 @@ export class Particles {
       const spread = o.spread ?? 1;
       const k = Math.random();
       _c.copy(c1).lerp(c2, k);
-      const life = (o.life ?? 0.7) * (0.6 + Math.random() * 0.6);
+      const life = Math.max(0.02, (Number.isFinite(o.life) ? o.life! : 0.7) * (0.6 + Math.random() * 0.6));
       this.list.push({
         x: at.x,
         y: at.y,
@@ -182,6 +217,10 @@ export class Particles {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+        this.list.splice(i, 1);
+        continue;
+      }
       if (p.y < p.floor) {
         p.y = p.floor;
         p.vy = 0;
@@ -239,6 +278,7 @@ export class Ripples {
   }
 
   spawn(at: THREE.Vector3, size = 1, dur = 0.9): void {
+    if (!finiteVec(at) || !(size > 0) || !(dur > 0)) return;
     let r = this.rings[0]!;
     for (const x of this.rings) if (x.t / x.dur > r.t / r.dur) r = x;
     r.t = 0;

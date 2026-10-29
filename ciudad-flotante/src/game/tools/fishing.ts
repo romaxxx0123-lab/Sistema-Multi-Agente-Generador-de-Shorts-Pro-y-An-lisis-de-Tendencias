@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { isFishBankActive } from '../../sim/events';
 import type { PromptInfo } from '../types';
 import { clamp01, easeOutCubic, type V3 } from './aim';
+import { finiteVec } from './effects';
 import type { ToolEnv } from './env';
 import type { RailInfo } from './targets';
 
@@ -83,7 +84,8 @@ export class FishingTool {
     const tx = -rail.nz;
     const tz = rail.nx;
     const hl = Math.hypot(look.x, look.z) || 1;
-    const lateral = Math.max(-4, Math.min(4, ((look.x * tx + look.z * tz) / hl) * 7));
+    const lat = ((look.x * tx + look.z * tz) / hl) * 7;
+    const lateral = Number.isFinite(lat) ? Math.max(-4, Math.min(4, lat)) : 0;
     this.tx = rail.edgeX + rail.nx * out + tx * lateral;
     this.tz = rail.edgeZ + rail.nz * out + tz * lateral;
     this.phase = 'casting';
@@ -176,6 +178,10 @@ export class FishingTool {
       case 'casting':
         if (this.t >= CAST_RELEASE) {
           this.env.handWorld('punta', this.from);
+          if (!finiteVec(this.from) || !Number.isFinite(this.tx) || !Number.isFinite(this.tz)) {
+            this.finish();
+            break;
+          }
           this.bob.copy(this.from);
           this.env.vm.setPart('colgante', false);
           fx.bobber.visible = true;
@@ -247,6 +253,10 @@ export class FishingTool {
         const dur = this.phase === 'reeling' ? FISH_FLIGHT : RETRACT_TIME;
         const u = clamp01(this.t / dur);
         this.env.handWorld('punta', _a);
+        if (!finiteVec(_a)) {
+          this.finish();
+          break;
+        }
         _a.y -= 0.25;
         this.bob.lerpVectors(this.retractFrom, _a, easeOutCubic(u));
         this.bob.y += Math.sin(u * Math.PI) * 0.9;
@@ -280,9 +290,16 @@ export class FishingTool {
   late(dtRender: number): void {
     if (!this.busy || this.phase === 'casting') return;
     const fx = this.env.fx;
+    this.env.handWorld('punta', _a);
+    if (!finiteVec(this.bob) || !finiteVec(_a)) {
+      fx.bobber.visible = false;
+      fx.fishLine.visible = false;
+      return;
+    }
+    fx.bobber.visible = true;
+    fx.fishLine.visible = true;
     fx.bobber.position.copy(this.bob);
     fx.bobber.rotation.set(this.phase === 'bite' ? Math.sin(this.t * 17) * 0.4 : 0, 0, this.phase === 'bite' ? Math.cos(this.t * 13) * 0.4 : 0);
-    this.env.handWorld('punta', _a);
     let sag = 0.35;
     let wobble = 0;
     if (this.phase === 'flying') sag = 0.12;

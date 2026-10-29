@@ -33,6 +33,8 @@ export interface ItemModel {
   pose: { x: number; y: number; z: number; rx: number; ry: number; rz: number };
   /** Giro del antebrazo respecto al puño (para que no atraviese objetos colgantes como el cubo). */
   armRot: { x: number; y: number; z: number };
+  /** Escala del puño y el objeto en pantalla (el antebrazo y el objeto encogen alrededor del puño). */
+  scale: number;
 }
 
 type Build = (b: GeoBuilder) => void;
@@ -144,8 +146,15 @@ export function buildArm(mat: THREE.Material): THREE.Group {
 /* Objetos                                                             */
 /* ------------------------------------------------------------------ */
 
-const DEFAULT_POSE = { x: 0.27, y: -0.3, z: -0.5, rx: 0.05, ry: -0.12, rz: 0.04 };
-const SMALL_POSE = { x: 0.24, y: -0.27, z: -0.46, rx: 0.25, ry: -0.35, rz: 0.1 };
+/*
+ * Encuadre (FOV vertical 72°, 16:9): el puño queda abajo a la derecha (~75 % del ancho), a la
+ * derecha de la barra rápida, y ningún objeto en reposo sube por encima de la mitad de la
+ * pantalla ni tapa la mira. Cada objeto ocupa un rectángulo de ~15–20 % de la pantalla.
+ */
+const DEFAULT_POSE = { x: 0.33, y: -0.3, z: -0.5, rx: 0.05, ry: -0.12, rz: 0.04 };
+const SMALL_POSE = { x: 0.31, y: -0.25, z: -0.46, rx: 0.25, ry: -0.35, rz: 0.1 };
+/** Escala por defecto del puño y el objeto en mano. */
+const HAND_SCALE = 0.78;
 
 /** Construye el modelo de un objeto para la vista en primera persona. */
 export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.LineBasicMaterial): ItemModel {
@@ -154,6 +163,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
   const parts = new Map<string, THREE.Object3D>();
   const anchors = new Map<string, THREE.Object3D>();
   let pose = { ...DEFAULT_POSE };
+  let scale = HAND_SCALE;
   const armRot = { x: 0, y: 0, z: 0 };
   const add = (name: string, build: Build): THREE.Mesh => {
     const m = meshOf(build, mat, name);
@@ -170,7 +180,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
 
   switch (id) {
     case 'martillo': {
-      pose = { x: 0.3, y: -0.33, z: -0.52, rx: -0.55, ry: -0.18, rz: 0.12 };
+      pose = { x: 0.34, y: -0.33, z: -0.52, rx: -0.55, ry: -0.18, rz: 0.12 };
       add('martillo', (b) => {
         b.cylinderBetween(0, -0.09, 0, 0, 0.25, 0, 0.017, 6, WOOD);
         b.cylinderBetween(0, -0.1, 0, 0, -0.06, 0, 0.021, 6, '#6e4a2e');
@@ -189,7 +199,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       break;
     }
     case 'llave_inglesa': {
-      pose = { x: 0.29, y: -0.32, z: -0.5, rx: -0.5, ry: -0.25, rz: 0.35 };
+      pose = { x: 0.34, y: -0.32, z: -0.5, rx: -0.5, ry: -0.25, rz: 0.35 };
       add('llave', (b) => {
         b.box(-0.016, -0.08, -0.008, 0.016, 0.22, 0.008, STEEL);
         b.box(-0.02, -0.08, -0.01, 0.02, 0.04, 0.01, '#6c757d');
@@ -203,7 +213,10 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       break;
     }
     case 'gancho': {
-      pose = { x: 0.27, y: -0.3, z: -0.5, rx: -0.15, ry: -0.2, rz: 0.08 };
+      // El garfio es lo más alto que se lleva en la mano: más pequeño y más abajo para no tapar
+      // la vista al apuntar (las uñas quedan por debajo de la mitad de la pantalla).
+      pose = { x: 0.35, y: -0.32, z: -0.5, rx: -0.15, ry: -0.2, rz: 0.08 };
+      scale = 0.6;
       add('rollo', (b) => {
         // rollo de cabo en la mano
         b.push();
@@ -226,7 +239,8 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       break;
     }
     case 'cana': {
-      pose = { x: 0.25, y: -0.33, z: -0.5, rx: -0.38, ry: -0.12, rz: 0.08 };
+      pose = { x: 0.32, y: -0.33, z: -0.5, rx: -0.38, ry: -0.12, rz: 0.08 };
+      scale = 0.68;
       add('cana', (b) => {
         // mango de corcho y caña en dos tramos (más fina hacia la punta)
         b.cylinderBetween(0, -0.13, 0.06, 0, 0.06, -0.03, 0.022, 7, '#c9a36a');
@@ -260,7 +274,8 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     }
     case 'cubo':
     case 'cubo_agua': {
-      pose = { x: 0.33, y: -0.14, z: -0.62, rx: 0.38, ry: -0.55, rz: 0.06 };
+      pose = { x: 0.37, y: -0.15, z: -0.62, rx: 0.38, ry: -0.55, rz: 0.06 };
+      scale = 0.7;
       group.scale.setScalar(0.82);
       // El antebrazo sale hacia la derecha, por encima del cubo, en vez de hacia abajo.
       armRot.z = 1.2;
@@ -400,7 +415,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       }
     }
   }
-  return { group, parts, anchors, pose, armRot };
+  return { group, parts, anchors, pose, armRot, scale };
 }
 
 /** Materiales y piezas (montones, rollos, placas…). */

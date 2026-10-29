@@ -34,6 +34,15 @@ export interface VmPose {
 const ZERO: VmPose = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 };
 /** Parte del giro de una acción que hace el brazo entero (el resto lo hace la muñeca). */
 const ARM_SHARE = 0.45;
+/** Muelle de la inercia al girar: rigidez, amortiguación y paso máximo de integración (s). */
+const SWAY_K = 120;
+const SWAY_C = 18;
+const SWAY_STEP = 1 / 120;
+
+function allFinite(...v: number[]): boolean {
+  for (const x of v) if (!Number.isFinite(x)) return false;
+  return true;
+}
 
 export type VmActionName = 'swing' | 'wrench' | 'throw' | 'pull' | 'cast' | 'wait' | 'reel' | 'dip' | 'pour' | 'eat' | 'use' | 'aim';
 
@@ -150,9 +159,9 @@ const ACTIONS: Record<VmActionName, ActionDef> = {
     dur: 0.95,
     keys: [
       { t: 0, p: {} },
-      { t: 0.3, p: { x: -0.18, y: 0.15, z: 0.22, rx: 0.45, ry: 0.55 } },
-      { t: 0.45, p: { x: -0.17, y: 0.13, z: 0.24, rx: 0.55, ry: 0.5 } },
-      { t: 0.6, p: { x: -0.18, y: 0.15, z: 0.22, rx: 0.45, ry: 0.55 } },
+      { t: 0.3, p: { x: -0.24, y: 0.15, z: 0.22, rx: 0.45, ry: 0.55 } },
+      { t: 0.45, p: { x: -0.23, y: 0.13, z: 0.24, rx: 0.55, ry: 0.5 } },
+      { t: 0.6, p: { x: -0.24, y: 0.15, z: 0.22, rx: 0.45, ry: 0.55 } },
       { t: 0.95, p: {} },
     ],
     events: [{ t: 0.42, name: 'consume' }],
@@ -316,7 +325,8 @@ export class ViewModel {
     const a = this.current?.model.anchors.get(name);
     if (!a || !this.root.visible) return null;
     a.updateWorldMatrix(true, false);
-    return a.getWorldPosition(out);
+    a.getWorldPosition(out);
+    return Number.isFinite(out.x) && Number.isFinite(out.y) && Number.isFinite(out.z) ? out : null;
   }
 
   private currentOffset(): VmPose {
@@ -415,20 +425,7 @@ export class ViewModel {
     lerpPose(this.blendFrom, pose, easeInOutSine(this.blendT), this.blend);
 
     // --- Inercia al girar la vista ---
-    const dYaw = wrapAngle(mo.yaw - this.lastYaw);
-    const dPitch = mo.pitch - this.lastPitch;
-    this.lastYaw = mo.yaw;
-    this.lastPitch = mo.pitch;
-    if (dt > 0) {
-      const k = 120;
-      const c = 18;
-      const tx = Math.max(-0.06, Math.min(0.06, dYaw * 0.9));
-      const ty = Math.max(-0.05, Math.min(0.05, -dPitch * 0.9));
-      this.swayVX += (k * (tx - this.swayX) - c * this.swayVX) * dt;
-      this.swayVY += (k * (ty - this.swayY) - c * this.swayVY) * dt;
-      this.swayX += this.swayVX * dt;
-      this.swayY += this.swayVY * dt;
-    }
+    this.updateSway(dt, mo.yaw, mo.pitch);
     this.shake *= Math.exp(-dt * 6);
 
     // --- Composición ---
@@ -440,16 +437,76 @@ export class ViewModel {
     const lowered = (1 - this.equip) * 0.45;
     const sh = this.shake ? Math.sin(this.t * 60) * this.shake * 0.012 : 0;
     const b = this.blend;
-    this.holder.position.set(
-      base.x + b.x + bobX + this.swayX * 0.5 + sh,
-      base.y + b.y + bobY + idle - lowered - mo.landKick * 0.05 - this.swayY * 0.4,
-      base.z + b.z,
-    );
+    const px = base.x + b.x + bobX + this.swayX * 0.5 + sh;
+    const py = base.y + b.y + bobY + idle - lowered - mo.landKick * 0.05 - this.swayY * 0.4;
+    const pz = base.z + b.z;
     // Los giros de las acciones se reparten entre el brazo (codo) y la muñeca: el objeto gira
     // alrededor del puño sin que el antebrazo barra media pantalla.
     const arm = this.action?.def.armShare ?? ARM_SHARE;
-    this.holder.rotation.set(base.rx + b.rx * arm + this.swayY * 1.2 - lowered * 0.6, base.ry + b.ry * arm + this.swayX * 1.5, base.rz + b.rz * arm + bobX * 0.8 + sh, 'XYZ');
+    const rx = base.rx + b.rx * arm + this.swayY * 1.2 - lowered * 0.6;
+    const ry = base.ry + b.ry * arm + this.swayX * 1.5;
+    const rz = base.rz + b.rz * arm + bobX * 0.8 + sh;
+    // Red de seguridad: un valor no finito (entrada corrupta) nunca llega a la escena; se vuelve
+    // al reposo. Con NaN en el modelo, los anclajes de la mano envenenarían la cuerda del gancho.
+    if (!allFinite(px, py, pz, rx, ry, rz)) {
+      this.resetMotion();
+      this.holder.position.set(base.x, base.y, base.z);
+      this.holder.rotation.set(base.rx, base.ry, base.rz, 'XYZ');
+      this.current.model.group.rotation.set(0, 0, 0, 'XYZ');
+      return;
+    }
+    this.holder.position.set(px, py, pz);
+    this.holder.rotation.set(rx, ry, rz, 'XYZ');
+    this.holder.scale.setScalar(this.current.model.scale);
     this.current.model.group.rotation.set(b.rx * (1 - arm), b.ry * (1 - arm), b.rz * (1 - arm), 'XYZ');
+  }
+
+  /**
+   * Muelle de la inercia al girar la vista. Se integra en subpasos fijos: con un paso de 0,1 s
+   * (≈10 fps, render por software o pestaña lenta) la integración explícita del muelle
+   * (k = 120, c = 18) es inestable a partir de ~0,086 s, la oscilación crece ×1,5 por frame y
+   * acaba en Infinity/NaN (origen del «computeBoundingSphere(): radius is NaN» del gancho).
+   */
+  private updateSway(dt: number, yaw: number, pitch: number): void {
+    if (!Number.isFinite(yaw) || !Number.isFinite(pitch)) return;
+    const dYaw = wrapAngle(yaw - this.lastYaw);
+    const dPitch = pitch - this.lastPitch;
+    this.lastYaw = yaw;
+    this.lastPitch = pitch;
+    if (!(dt > 0)) return;
+    const tx = Math.max(-0.06, Math.min(0.06, Number.isFinite(dYaw) ? dYaw * 0.9 : 0));
+    const ty = Math.max(-0.05, Math.min(0.05, Number.isFinite(dPitch) ? -dPitch * 0.9 : 0));
+    let rest = Math.min(dt, 0.25);
+    while (rest > 1e-6) {
+      const h = Math.min(SWAY_STEP, rest);
+      rest -= h;
+      this.swayVX += (SWAY_K * (tx - this.swayX) - SWAY_C * this.swayVX) * h;
+      this.swayVY += (SWAY_K * (ty - this.swayY) - SWAY_C * this.swayVY) * h;
+      this.swayX += this.swayVX * h;
+      this.swayY += this.swayVY * h;
+    }
+    // Nunca más allá de lo que permite el objetivo (más un rebote pequeño).
+    this.swayX = Math.max(-0.1, Math.min(0.1, this.swayX));
+    this.swayY = Math.max(-0.1, Math.min(0.1, this.swayY));
+    if (!allFinite(this.swayX, this.swayY, this.swayVX, this.swayVY)) this.resetMotion();
+  }
+
+  private resetMotion(): void {
+    this.swayX = 0;
+    this.swayY = 0;
+    this.swayVX = 0;
+    this.swayVY = 0;
+    this.shake = 0;
+  }
+
+  /** Desplazamiento actual de la inercia (pruebas). */
+  get sway(): { x: number; y: number } {
+    return { x: this.swayX, y: this.swayY };
+  }
+
+  /** Posición del puño en el espacio de la cámara (pruebas). */
+  get handOffset(): THREE.Vector3 {
+    return this.holder.position;
   }
 
   dispose(): void {

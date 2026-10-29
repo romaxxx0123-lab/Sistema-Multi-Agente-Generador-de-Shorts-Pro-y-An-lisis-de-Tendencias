@@ -4,10 +4,16 @@
  * Traduce el objetivo enfocado (mueble, habitante, caja, obra) a un aviso legible:
  * "E · Abrir el almacén — 12/20 huecos ocupados". También decide en qué cama de un mueble
  * (las literas tienen dos) se acostaría el jugador.
+ *
+ * Interacciones físicas: en los objetivos de uso frecuente, pulsar E hace la acción directa
+ * (beber del depósito, cosechar o limpiar un bancal, coger todo lo de una caja) y mantener E
+ * abre el panel con el resto de opciones (`propQuick`, `crateQuick`).
  */
 import { HULL_EXPANSION, moduleDef, type InteractKind } from '../../data/modules';
 import { sleepBlocker } from '../../sim/actions';
+import { WATER_PER_DRINK } from '../../sim/constants';
 import { findModule } from '../../sim/helpers';
+import { addItem, cloneInventory } from '../../sim/inventory';
 import type { PropInstance } from '../../sim/ship';
 import type { Simulation } from '../../sim/Simulation';
 import type { LooseCrate, ModuleInstance, NpcState } from '../../sim/types';
@@ -15,6 +21,59 @@ import type { PromptInfo } from '../types';
 
 /** Panel o acción directa que corresponde a cada tipo de mueble interactivo. */
 export type PropAction = { kind: 'station'; moduleId: number } | { kind: 'helm' } | { kind: 'sleep'; moduleId: number; bed: number };
+
+/** Acción directa de la tecla E (pulsar); mantener E abre el panel. */
+export type QuickAction =
+  | { kind: 'drink'; moduleId: number }
+  | { kind: 'take'; crateId: number }
+  | { kind: 'harvest'; moduleId: number; plot: number }
+  | { kind: 'tend'; moduleId: number; plot: number };
+
+/** Lo que se abre al mantener E en vez de la acción directa (texto del aviso). */
+const HOLD_TEXT: Record<QuickAction['kind'], string> = {
+  drink: 'Ver el depósito',
+  take: 'Abrir la caja',
+  harvest: 'Ver el bancal',
+  tend: 'Ver el bancal',
+};
+const HOLD_SUB: Record<QuickAction['kind'], string> = {
+  drink: 'Mantén E: ver el depósito',
+  take: 'Mantén E: abrir la caja',
+  harvest: 'Mantén E: ver el bancal',
+  tend: 'Mantén E: ver el bancal',
+};
+
+/** Acción directa de un mueble (null = E abre el panel al momento). */
+export function propQuick(sim: Simulation, prop: PropInstance): QuickAction | null {
+  if (prop.interact !== 'deposito' && prop.interact !== 'huerto') return null;
+  const m = findModule(sim, prop.moduleId);
+  if (!m || m.status === 'construction') return null;
+  if (prop.interact === 'deposito') return { kind: 'drink', moduleId: m.id };
+  const p = m.plots[prop.index];
+  if (!p) return null;
+  // Plantas secas o plaga: se limpian; cultivo maduro: se cosecha. Vacío o creciendo: el panel.
+  if (p.dead || (p.pest && !(p.crop && p.growth >= 1))) return { kind: 'tend', moduleId: m.id, plot: prop.index };
+  if (p.crop && p.growth >= 1) return { kind: 'harvest', moduleId: m.id, plot: prop.index };
+  return null;
+}
+
+/** ¿Cabe todo el contenido de la caja en el inventario del jugador? */
+export function crateFits(sim: Simulation, crate: LooseCrate): boolean {
+  const inv = cloneInventory(sim.state.player.inventory);
+  for (const s of crate.inventory.slots) if (s && addItem(inv, s.id, s.qty) > 0) return false;
+  return true;
+}
+
+/** Caja suelta: si cabe todo, E lo coge de una vez; si no, E abre la caja para elegir. */
+export function crateQuick(sim: Simulation, crate: LooseCrate): QuickAction | null {
+  if (!crate.inventory.slots.some((s) => !!s)) return null;
+  return crateFits(sim, crate) ? { kind: 'take', crateId: crate.id } : null;
+}
+
+/** Aviso mientras se mantiene E (anillo de progreso hasta abrir el panel). */
+export function holdPrompt(q: QuickAction, progress: number): PromptInfo {
+  return { key: 'Mantén E', text: HOLD_TEXT[q.kind], progress: Math.max(0, Math.min(1, progress)) };
+}
 
 /** Cama que usaría el jugador en un mueble: la suya, una libre, la de alguien ausente o la primera. */
 export function chooseBed(sim: Simulation, prop: PropInstance): number {
@@ -51,7 +110,7 @@ const VERB: Record<Exclude<InteractKind, 'dormir'>, string> = {
   taller: 'Usar el taller mecánico',
   huerto: 'Atender el bancal',
   colector: 'Ver el colector de lluvia',
-  deposito: 'Beber o rellenar botellas',
+  deposito: 'Beber',
   potabilizadora: 'Manejar la potabilizadora',
   generador: 'Manejar el generador',
   bateria: 'Ver las baterías',
@@ -116,13 +175,28 @@ export function propPrompt(sim: Simulation, prop: PropInstance): PromptInfo | nu
     }
     case 'almacen':
       return { key: 'E', text: VERB.almacen, sub: join(warn, usedSlots(m)) };
-    case 'huerto':
-      return { key: 'E', text: VERB.huerto, sub: join(warn, sim.plotStatus(m.id, prop.index)) };
-    case 'colector':
-    case 'deposito': {
+    case 'huerto': {
+      const status = sim.plotStatus(m.id, prop.index);
+      const q = propQuick(sim, prop);
+      if (q?.kind === 'harvest') return { key: 'E', text: 'Cosechar', sub: join(warn, status, HOLD_SUB.harvest) };
+      if (q?.kind === 'tend') {
+        const dead = !!m.plots[prop.index]?.dead;
+        return { key: 'E', text: dead ? 'Retirar las plantas secas' : 'Quitar la plaga', sub: join(warn, status, HOLD_SUB.tend) };
+      }
+      return { key: 'E', text: VERB.huerto, sub: join(warn, status) };
+    }
+    case 'colector': {
       const u = st.utilities;
       const water = `Agua potable: ${Math.floor(u.waterL)}/${Math.round(u.water.capacityL)} L`;
-      return { key: 'E', text: VERB[prop.interact], sub: join(warn, water) };
+      return { key: 'E', text: VERB.colector, sub: join(warn, water) };
+    }
+    case 'deposito': {
+      // E bebe al momento, R llena una botella y mantener E abre el panel del depósito.
+      const u = st.utilities;
+      const water = `Agua potable: ${Math.floor(u.waterL)}/${Math.round(u.water.capacityL)} L`;
+      const empty = u.waterL < WATER_PER_DRINK;
+      const note = empty ? 'Está vacío' : st.player.needs.thirst >= 99 ? 'No tienes sed' : null;
+      return { key: 'E', text: 'Beber', sub: join(warn, water, note, HOLD_SUB.drink), alt: { key: 'R', text: 'Llenar una botella', disabled: empty } };
     }
     case 'potabilizadora':
     case 'generador':
@@ -160,9 +234,16 @@ export function npcPrompt(sim: Simulation, npc: NpcState): PromptInfo {
   return { key: 'E', text: `Hablar con ${npc.name}`, sub: sleeping ? 'Está durmiendo' : status || undefined };
 }
 
-export function cratePrompt(crate: LooseCrate): PromptInfo {
+/**
+ * Aviso de una caja suelta. `fits` (si se sabe): true → E coge todo de una vez; false → E abre la
+ * caja porque no cabe todo en el inventario.
+ */
+export function cratePrompt(crate: LooseCrate, fits?: boolean): PromptInfo {
   const n = crate.inventory.slots.reduce((acc, s) => acc + (s ? 1 : 0), 0);
-  return { key: 'E', text: `Abrir: ${crate.label}`, sub: n === 1 ? '1 pila de objetos' : `${n} pilas de objetos` };
+  const piles = n === 1 ? '1 pila de objetos' : `${n} pilas de objetos`;
+  if (fits === true && n > 0) return { key: 'E', text: `Coger todo: ${crate.label}`, sub: `${piles} · ${HOLD_SUB.take}` };
+  if (fits === false && n > 0) return { key: 'E', text: `Abrir: ${crate.label}`, sub: `${piles} · No te cabe todo` };
+  return { key: 'E', text: `Abrir: ${crate.label}`, sub: piles };
 }
 
 /** Obra en curso (`moduleId` = -1 para la ampliación del casco). */
