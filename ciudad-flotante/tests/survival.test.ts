@@ -8,8 +8,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ITEMS } from '../src/data/items';
-import { REGIONS } from '../src/data/regions';
+import { REGION_LIST, REGIONS } from '../src/data/regions';
+import { FINAL_REGION, PAGES_TO_REVEAL, STORY_PAGES, STORY_TEXTS } from '../src/data/story';
 import * as actions from '../src/sim/actions';
+import { ARRIVAL_HOURS } from '../src/sim/events';
 import { CRUISE_SPEED, LEVEL_H, MINUTES_PER_DAY, NEED_RATES, PLAYER_SLOTS, SLEEP_TIME_SCALE, VISUAL_DRIFT } from '../src/sim/constants';
 import { addItem, countItem, createInventory } from '../src/sim/inventory';
 import * as needs from '../src/sim/needs';
@@ -22,6 +24,7 @@ import { hourOf } from '../src/sim/time';
 import * as tutorial from '../src/sim/tutorial';
 import type { GameState, ModuleInstance, Vec3, WeatherKind } from '../src/sim/types';
 import { SAVE_VERSION } from '../src/sim/types';
+import { isRadarActive } from '../src/sim/utilities';
 import * as voyage from '../src/sim/voyage';
 import * as weather from '../src/sim/weather';
 
@@ -1599,7 +1602,7 @@ describe('tutorial', () => {
 
   it('los pasos hechos fuera de orden se saltan y "dormir" espera a la noche', () => {
     const { sim } = setup();
-    for (const id of ['mover', 'gancho', 'comer', 'almacen', 'fabricar', 'cocinar', 'beber']) tutorial.markTutorial(sim, id);
+    for (const id of ['mover', 'gancho', 'comer', 'cuaderno', 'almacen', 'fabricar', 'cocinar', 'beber']) tutorial.markTutorial(sim, id);
     sim.state.time += 30;
     goToHour(sim, 12);
     setNeeds(sim, { energy: 90 });
@@ -1618,7 +1621,7 @@ describe('tutorial', () => {
 
   it('lo oportuno pasa delante: dormir de noche aunque falte cocinar, el timón con una decisión pendiente, reparar con daños', () => {
     const { sim } = setup();
-    for (const id of ['mover', 'gancho', 'comer', 'almacen', 'fabricar', 'pescar', 'beber']) tutorial.markTutorial(sim, id);
+    for (const id of ['mover', 'gancho', 'comer', 'cuaderno', 'almacen', 'fabricar', 'pescar', 'beber']) tutorial.markTutorial(sim, id);
     addItem(sim.state.player.inventory, 'pescado_crudo', 1);
     sim.state.time += 30;
     goToHour(sim, 15);
@@ -1694,7 +1697,9 @@ describe('tutorial', () => {
     for (const s of tutorial.TUTORIAL_STEPS) tutorial.markTutorial(sim, s.id);
     sim.state.time += 100;
     expect(tutorial.currentTutorial(sim)).toBeNull();
-    expect(tutorial.tutorialProgress(sim)).toEqual({ done: 13, total: 13, complete: true });
+    const total = tutorial.TUTORIAL_STEPS.length;
+    expect(total).toBe(15);
+    expect(tutorial.tutorialProgress(sim)).toEqual({ done: total, total, complete: true });
     expect(notes.filter((n) => /Tutorial completado/.test(n.text))).toHaveLength(1);
   });
 
@@ -1947,6 +1952,594 @@ describe('guardado', () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Ronda de contenido 2: el cuaderno del Albatros                       */
+/* ------------------------------------------------------------------ */
+
+/** Lee una hoja (la añade a la mochila si hace falta) y devuelve el resultado. */
+function readPage(sim: Simulation, n: number): ReturnType<Simulation['useItem']> {
+  return sim.useItem(slotWith(sim, `pagina_${n}`));
+}
+
+describe('cuaderno del Albatros: leer hojas', () => {
+  it('la partida nueva trae la hoja 1 en la mochila; leerla la archiva en el diario con sonido y tutorial', () => {
+    const { sim, sfx, notes } = setup();
+    const inv = sim.state.player.inventory;
+    expect(inv.slots[8]).toEqual({ id: 'pagina_1', qty: 1 });
+    expect(sim.state.story).toEqual({ pages: [], revealed: false, arrived: false });
+    const r = sim.useItem(8);
+    expect(r).toEqual({
+      ok: true,
+      msg: 'Lees «A quien encuentre esto» (cuaderno del Albatros, pág. 1). Puedes releerla en el diario (J). Te faltan cuatro hojas para conocer el rumbo a Puerto Esperanza',
+    });
+    // Se consume: el texto completo queda en el Cuaderno del diario.
+    expect(inv.slots[8]).toBeNull();
+    expect(sim.state.story!.pages).toEqual([1]);
+    expect(sim.state.log.at(-1)).toMatchObject({ text: 'Leíste: «A quien encuentre esto» (cuaderno del Albatros, pág. 1)', kind: 'info' });
+    expect(sfx).toContain('pagina');
+    expect(sim.state.tutorial.done).toContain('cuaderno');
+    // La entrada del diario no salta como aviso aparte (el mensaje de la acción ya lo dice).
+    expect(notes.filter((n) => /Leíste/.test(n.text))).toHaveLength(0);
+  });
+
+  it('una copia de una hoja ya leída se archiva sin repetir la entrada del diario', () => {
+    const { sim } = setup();
+    sim.useItem(8);
+    const inv = sim.state.player.inventory;
+    inv.slots[8] = { id: 'pagina_1', qty: 1 };
+    const logLen = sim.state.log.length;
+    const r = sim.useItem(8);
+    expect(r.ok).toBe(true);
+    expect(r.msg).toBe('Ya habías leído esta hoja («A quien encuentre esto»): la guardas con las demás en el cuaderno del diario (J)');
+    expect(inv.slots[8]).toBeNull();
+    expect(sim.state.story!.pages).toEqual([1]);
+    expect(sim.state.log.length).toBe(logLen);
+  });
+
+  it(`con ${PAGES_TO_REVEAL} hojas leídas, en cualquier orden, se conoce el rumbo a Puerto Esperanza (una sola vez)`, () => {
+    const { sim, notes } = setup();
+    for (const n of [7, 3, 1]) expect(readPage(sim, n).ok).toBe(true);
+    expect(readPage(sim, 5).msg).toMatch(/Te falta una hoja para conocer el rumbo a Puerto Esperanza$/);
+    expect(sim.state.story!.revealed).toBe(false);
+    const r = readPage(sim, 2);
+    expect(r.msg).toBe('Lees «Lo que el mar trae» (cuaderno del Albatros, pág. 2). Puedes releerla en el diario (J). ¡Ya sabes cómo llegar a Puerto Esperanza!');
+    expect(sim.state.story).toEqual({ pages: [1, 2, 3, 5, 7], revealed: true, arrived: false });
+    expect(notes.filter((n) => n.text === STORY_TEXTS.revealed)).toEqual([{ text: STORY_TEXTS.revealed, kind: 'good' }]);
+    expect(sim.state.log.some((l) => l.text === STORY_TEXTS.revealed && l.kind === 'good')).toBe(true);
+    // Las siguientes ya no repiten el aviso ni cuentan hojas que faltan.
+    expect(readPage(sim, 4).msg).toBe('Lees «Los que lo intentaron antes» (cuaderno del Albatros, pág. 4). Puedes releerla en el diario (J)');
+    expect(notes.filter((n) => n.text === STORY_TEXTS.revealed)).toHaveLength(1);
+  });
+
+  it('se lee también desde la barra rápida; dormido no', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    inv.slots[6] = { id: 'pagina_4', qty: 1 };
+    expect(sim.useItem(6).ok).toBe(true);
+    expect(sim.state.story!.pages).toEqual([4]);
+    goToHour(sim, 23);
+    place(sim, INDOOR);
+    expect(sim.sleep(mod(sim, 'camarote').id, 0).ok).toBe(true);
+    expect(sim.useItem(8).msg).toBe('Estás durmiendo');
+    expect(inv.slots[8]).toEqual({ id: 'pagina_1', qty: 1 });
+  });
+
+  it('una partida sin `story` (anterior al hilo narrativo) puede leer igualmente', () => {
+    const { sim } = setup();
+    delete (sim.state as { story?: unknown }).story;
+    expect(sim.useItem(8).ok).toBe(true);
+    expect(sim.state.story).toEqual({ pages: [1], revealed: false, arrived: false });
+  });
+
+  it('storyStatus: hojas leídas con su texto, pistas de las que faltan y resumen', () => {
+    const { sim } = setup();
+    let st = actions.storyStatus(sim);
+    expect(st).toMatchObject({ total: STORY_PAGES.length, needed: PAGES_TO_REVEAL, remaining: PAGES_TO_REVEAL, read: [], revealed: false, arrived: false, finalRegion: FINAL_REGION, finalRegionName: 'Puerto Esperanza' });
+    expect(st.pages).toHaveLength(7);
+    expect(st.pages[0]).toMatchObject({ n: 1, item: 'pagina_1', read: false, aboard: 'mochila', title: null, text: null });
+    expect(st.pages[0]!.hint).toBe('La llevas en la mochila sin leer: clic derecho sobre ella, o F con ella en la barra rápida');
+    expect(st.pages[2]).toMatchObject({ region: 'sargazos', regionName: 'Mar de los Sargazos', aboard: null });
+    expect(st.pages[2]!.hint).toBe('Suele aparecer en el Mar de los Sargazos: en cofres de naufragio, estructuras, islas y mercantes');
+    expect(st.summary).toBe('Aún no has leído ninguna hoja del cuaderno del Albatros. Con cinco sabrás cómo llegar a Puerto Esperanza.');
+    // La hoja 2 está en el almacén sin leer; se lee la 1.
+    addItem(mod(sim, 'almacen').inventory!, 'pagina_2', 1);
+    sim.useItem(8);
+    st = actions.storyStatus(sim);
+    expect(st.read).toEqual([1]);
+    expect(st.pages[0]).toMatchObject({ read: true, title: 'A quien encuentre esto', text: STORY_PAGES[0]!.text, hint: null, aboard: null });
+    expect(st.pages[1]).toMatchObject({ read: false, aboard: 'barco', title: null });
+    expect(st.pages[1]!.hint).toMatch(/^Está a bordo sin leer/);
+    expect(st.missing.map((p) => p.n)).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(st.remaining).toBe(4);
+    expect(st.summary).toBe('Hojas leídas: 1 de 7. Con cuatro más sabrás cómo llegar a Puerto Esperanza.');
+    sim.state.story!.revealed = true;
+    st = actions.storyStatus(sim);
+    expect(st.remaining).toBe(0);
+    expect(st.summary).toBe('Conoces el rumbo a Puerto Esperanza: elígelo en el timón al final de cualquier región (el rumbo de la capitana).');
+    sim.state.story!.arrived = true;
+    expect(actions.storyStatus(sim).summary).toBe('Llegaste a Puerto Esperanza siguiendo el rumbo de la capitana Duarte. Hojas leídas: 1 de 7.');
+  });
+
+  it('concordancia de los objetos nuevos', () => {
+    const { sim } = setup();
+    expect(actions.itemWithArticle('pagina_3')).toBe('el cuaderno del Albatros, pág. 3');
+    expect(actions.itemWithArticle('pescado_ahumado')).toBe('el pescado ahumado');
+    expect(actions.itemIndefinite('plano_radar')).toBe('un');
+    setNeeds(sim, { hunger: 40 });
+    expect(sim.useItem(slotWith(sim, 'pescado_ahumado')).msg).toBe('Comes un pescado ahumado');
+  });
+});
+
+describe('rumbo de la capitana: Puerto Esperanza', () => {
+  it('sin el rumbo revelado no se ofrece y el timón dice cuántas hojas faltan', () => {
+    const { sim } = setup();
+    expect(voyage.regionWithArticle('esperanza')).toBe('Puerto Esperanza');
+    expect(voyage.captainCourseOpen(sim)).toBe(false);
+    expect(voyage.nextRegions(sim)).toEqual(['sargazos', 'archipielago']);
+    expect(voyage.routeOptions(sim).some((o) => o.captain)).toBe(false);
+    expect(sim.chooseRoute('esperanza')).toEqual({ ok: false, msg: 'Aún no sabes cómo llegar a Puerto Esperanza: te faltan cinco hojas del cuaderno del Albatros' });
+    sim.state.story!.pages = [1, 2, 3, 4];
+    expect(sim.chooseRoute('esperanza').msg).toBe('Aún no sabes cómo llegar a Puerto Esperanza: te falta una hoja del cuaderno del Albatros');
+  });
+
+  it('revelado: se ofrece al final de la región como rumbo de la capitana; el piloto no lo toma solo', () => {
+    const { sim, notes } = setup();
+    sim.state.story!.revealed = true;
+    const opts = voyage.routeOptions(sim);
+    expect(opts.map((o) => o.id)).toEqual(['sargazos', 'archipielago', 'esperanza']);
+    expect(opts.find((o) => o.id === 'esperanza')).toMatchObject({ captain: true, autopilot: false, chosen: false, name: 'Puerto Esperanza' });
+    expect(opts.filter((o) => o.captain)).toHaveLength(1);
+    expect(voyage.autopilotTarget(sim)).toBe('sargazos');
+    const v = sim.state.voyage;
+    goToHour(sim, 10);
+    v.regionDistance = v.regionLength - 10.2;
+    runVoyage(sim, 5);
+    expect(v.nextChoices).toEqual(['sargazos', 'archipielago', 'esperanza']);
+    expect(notes.map((n) => n.text)).toContain(
+      'Nos acercamos al final de Aguas Templadas: elige rumbo en el timón del puente (el Mar de los Sargazos, el Archipiélago Esmeralda o Puerto Esperanza, el rumbo de la capitana)',
+    );
+    // Sin fijar rumbo, el piloto sigue por la carta.
+    runVoyage(sim, 120);
+    expect(v.regionId).toBe('sargazos');
+  });
+
+  it('fijado: entra en Puerto Esperanza y solo anota la entrada (la llegada la cuenta el evento)', () => {
+    const { sim, notes } = setup();
+    sim.state.story!.revealed = true;
+    const v = sim.state.voyage;
+    goToHour(sim, 10);
+    v.regionDistance = v.regionLength - 10.2;
+    runVoyage(sim, 5);
+    expect(sim.chooseRoute('esperanza')).toEqual({ ok: true, msg: 'Rumbo fijado: Puerto Esperanza, el rumbo de la capitana' });
+    expect(sim.state.log.at(-1)).toMatchObject({ text: 'Fijamos el rumbo de la capitana Duarte: hacia Puerto Esperanza', kind: 'good' });
+    expect(voyage.routeOptions(sim).find((o) => o.id === 'esperanza')!.chosen).toBe(true);
+    notes.length = 0;
+    runVoyage(sim, 120);
+    expect(v.regionId).toBe('esperanza');
+    expect(v.route).toEqual(['templadas', 'esperanza']);
+    expect(v.regionLength).toBe(REGIONS['esperanza']!.length);
+    expect(v.nextChoices).toBeNull();
+    expect(v.chosenNext).toBeNull();
+    const entry = sim.state.log.filter((l) => /rumbo de la capitana Duarte hacia/.test(l.text));
+    expect(entry.map((l) => l.text)).toEqual(['Dejamos atrás Aguas Templadas siguiendo el rumbo de la capitana Duarte hacia Puerto Esperanza.']);
+    // De día no hay aviso propio: lo da el evento de llegada. Ningún texto de story.ts sale del viaje.
+    expect(notes.some((n) => /rumbo de la capitana/.test(n.text))).toBe(false);
+    expect(sim.state.log.some((l) => l.text.includes(STORY_TEXTS.arrival.slice(0, 30)) || /fondeadero de la luz verde/.test(l.text))).toBe(false);
+    // Allí no se ofrece a sí misma: sus salidas normales.
+    expect(voyage.nextRegions(sim)).toEqual(REGIONS['esperanza']!.next);
+    expect(voyage.captainCourseOpen(sim)).toBe(false);
+  });
+
+  it('de noche, la entrada se avisa y la luz verde se buscará al amanecer', () => {
+    const { sim, notes } = setup();
+    sim.state.story!.revealed = true;
+    sim.chooseRoute('esperanza');
+    goToHour(sim, 22);
+    const v = sim.state.voyage;
+    v.regionDistance = v.regionLength - 0.2;
+    runVoyage(sim, 5);
+    expect(v.regionId).toBe('esperanza');
+    expect(notes).toContainEqual({ text: 'Dejamos atrás Aguas Templadas siguiendo el rumbo de la capitana Duarte hacia Puerto Esperanza. Al amanecer buscaremos la luz verde.', kind: 'good' });
+    expect(voyage.ARRIVAL_DAYLIGHT).toEqual(ARRIVAL_HOURS);
+  });
+
+  it('después de llegar ya no se ofrece; si llega a revelarse o a cumplirse con las opciones ya calculadas, se actualizan', () => {
+    const { sim } = setup();
+    const v = sim.state.voyage;
+    v.regionDistance = v.regionLength - 5;
+    runVoyage(sim, 1);
+    expect(v.nextChoices).toEqual(['sargazos', 'archipielago']);
+    sim.state.story!.revealed = true;
+    runVoyage(sim, 0.5);
+    expect(v.nextChoices).toEqual(['sargazos', 'archipielago', 'esperanza']);
+    expect(sim.chooseRoute('esperanza').ok).toBe(true);
+    sim.state.story!.arrived = true;
+    runVoyage(sim, 0.5);
+    expect(v.nextChoices).toEqual(['sargazos', 'archipielago']);
+    expect(v.chosenNext).toBeNull();
+    expect(voyage.nextRegions(sim)).not.toContain('esperanza');
+    expect(sim.chooseRoute('esperanza')).toEqual({ ok: false, msg: 'Ese rumbo no está disponible desde aquí' });
+  });
+
+  it('se ofrece al final de cualquier región, también los primeros días y al dar media vuelta', () => {
+    const { sim } = setup();
+    sim.state.story!.revealed = true;
+    const v = sim.state.voyage;
+    for (const late of [false, true]) {
+      if (late) sim.state.time += voyage.DANGER_GATE_DAYS * MINUTES_PER_DAY;
+      for (const r of REGION_LIST) {
+        if (r.id === FINAL_REGION) continue;
+        v.regionId = r.id;
+        const next = voyage.nextRegions(sim);
+        expect(next, `${r.id} ${late}`).toContain(FINAL_REGION);
+        expect(next.at(-1), r.id).toBe(FINAL_REGION);
+        expect(voyage.autopilotTarget(sim), r.id).not.toBe(FINAL_REGION);
+      }
+    }
+  });
+
+  it('integración: con la simulación completa, al entrar de día el evento de llegada se dispara una sola vez', () => {
+    const { sim } = setup(11);
+    const st = sim.state;
+    st.events.nextRollAt = 1e12;
+    st.story!.pages = [1, 2, 3, 4, 5];
+    st.story!.revealed = true;
+    sim.chooseRoute('esperanza');
+    goToHour(sim, 9);
+    st.voyage.regionDistance = st.voyage.regionLength - 1;
+    let arrivedAt: number | null = null;
+    for (let i = 0; i < 120 && arrivedAt === null; i++) {
+      Object.assign(st.player.needs, { hunger: 100, thirst: 100, energy: 100, health: 100, warmth: 80 });
+      sim.tick(1);
+      if (st.story!.arrived) arrivedAt = st.time;
+    }
+    expect(st.voyage.regionId).toBe('esperanza');
+    expect(arrivedAt).not.toBeNull();
+    expect(st.events.history.filter((h) => h.type === 'llegada')).toHaveLength(1);
+    // Ya en el puerto, el rumbo no se vuelve a ofrecer.
+    expect(voyage.nextRegions(sim)).not.toContain(FINAL_REGION);
+  });
+});
+
+describe('motor mejorado', () => {
+  it('la hélice de paso variable da su bonificación (moduleStat)', () => {
+    const { sim } = setup();
+    const motor = addModule(sim, 'motor', 0, 2, 2);
+    motor.on = true;
+    motor.powered = true;
+    expect(voyage.motorBonus(sim)).toBe(3);
+    motor.tier = 2;
+    expect(voyage.motorBonus(sim)).toBe(5);
+    expect(voyage.targetSpeed(sim)).toBeCloseTo(CRUISE_SPEED + 5, 6);
+  });
+});
+
+describe('radar: aviso de tormenta con 3 h de antelación', () => {
+  function addRadar(sim: Simulation): ModuleInstance {
+    const m = addModule(sim, 'radar', 2, 4, 1);
+    m.on = true;
+    m.powered = true;
+    return m;
+  }
+
+  it('con el radar en marcha, el barómetro avisa 3 h antes, una sola vez, y la lectura dice cuánto falta', () => {
+    const { sim, notes } = setup();
+    addRadar(sim);
+    expect(isRadarActive(sim)).toBe(true);
+    weather.forceWeather(sim, 'nublado', 300);
+    sim.state.weather.next = 'tormenta';
+    let warnedAt: number | null = null;
+    let reading = '';
+    for (let t = 0; t < 300; t += 0.5) {
+      sim.state.time += 0.5;
+      weather.tickWeather(sim, 0.5);
+      if (warnedAt === null && notes.some((n) => /frente de tormenta/.test(n.text))) warnedAt = sim.state.weather.remaining;
+      if (Math.abs(sim.state.weather.remaining - 100) < 0.25) reading = weather.barometer(sim).text;
+    }
+    expect(warnedAt).not.toBeNull();
+    expect(warnedAt!).toBeGreaterThanOrEqual(179);
+    expect(warnedAt!).toBeLessThanOrEqual(180);
+    const warns = notes.filter((n) => /barómetro/.test(n.text));
+    expect(warns).toEqual([{ text: 'El radar detecta un frente de tormenta y el barómetro empieza a caer: llegará en unas tres horas. Prepara el barco y busca refugio', kind: 'warn' }]);
+    expect(reading).toBe('Radar: frente de tormenta, llegará en unas dos horas');
+    expect(sim.state.weather.kind).toBe('tormenta');
+    expect(weather.barometer(sim)).toMatchObject({ trend: 'tormenta', radar: true });
+  });
+
+  it('sin energía el radar no ve nada: aviso normal 60–90 min antes', () => {
+    const { sim, notes } = setup();
+    const radar = addRadar(sim);
+    radar.powered = false;
+    expect(isRadarActive(sim)).toBe(false);
+    weather.forceWeather(sim, 'nublado', 300);
+    sim.state.weather.next = 'tormenta';
+    let warnedAt: number | null = null;
+    for (let t = 0; t < 300; t += 0.5) {
+      sim.state.time += 0.5;
+      weather.tickWeather(sim, 0.5);
+      if (warnedAt === null && notes.some((n) => /barómetro/.test(n.text))) warnedAt = sim.state.weather.remaining;
+    }
+    expect(warnedAt!).toBeLessThanOrEqual(90);
+    expect(notes.some((n) => /radar/i.test(n.text))).toBe(false);
+    expect(weather.barometer(sim).radar).toBe(false);
+  });
+
+  it('si el radar se enciende con la tormenta ya cerca, avisa en el acto', () => {
+    const { sim, notes } = setup();
+    const radar = addRadar(sim);
+    radar.on = false;
+    weather.forceWeather(sim, 'nublado', 100);
+    sim.state.weather.next = 'tormenta';
+    sim.state.time += 0.5;
+    weather.tickWeather(sim, 0.5);
+    expect(notes.some((n) => /barómetro/.test(n.text))).toBe(false);
+    radar.on = true;
+    sim.state.time += 0.5;
+    weather.tickWeather(sim, 0.5);
+    expect(notes.filter((n) => /barómetro/.test(n.text)).map((n) => n.text)).toEqual([
+      'El radar detecta un frente de tormenta y el barómetro empieza a caer: llegará en unas dos horas. Prepara el barco y busca refugio',
+    ]);
+  });
+
+  it('antelación en palabras', () => {
+    expect(weather.etaText(30)).toBe('menos de una hora');
+    expect(weather.etaText(70)).toBe('una hora');
+    expect(weather.etaText(150)).toBe('unas tres horas');
+    expect(weather.etaText(179.5)).toBe('unas tres horas');
+    expect(weather.etaText(Number.NaN)).toBe('menos de una hora');
+  });
+});
+
+describe('confort y enfermería mejorados', () => {
+  it('el camarote acogedor repone algo más de energía al dormir; el básico y el dormitorio, lo normal', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setNeeds(sim, { hunger: 80, thirst: 80, energy: 30, health: 100, warmth: 80 });
+    goToHour(sim, 22);
+    const cam = mod(sim, 'camarote');
+    expect(needs.bedComfortBonus(cam)).toBe(0);
+    cam.tier = 2;
+    expect(needs.bedComfortBonus(cam)).toBe(2);
+    expect(sim.sleep(cam.id, 0).msg).toBe('Te acuestas a dormir en el camarote acogedor…');
+    expect(needs.sleepEnergyPerHour(sim)).toBe(NEED_RATES.energyPerHourBed + 2);
+    expect(needs.playerConditions(sim).find((c) => c.id === 'acogedor')).toEqual({ id: 'acogedor', label: 'Cama acogedora', kind: 'good' });
+    runNeeds(sim, 120);
+    expect(sim.state.player.needs.energy).toBeCloseTo(30 + (NEED_RATES.energyPerHourBed + 2) * 2, 5);
+    const dorm = mod(sim, 'dormitorio');
+    dorm.tier = 2;
+    expect(needs.bedComfortBonus(dorm)).toBe(0);
+    expect(needs.bedComfortBonus(mod(sim, 'cocina'))).toBe(0);
+    expect(needs.bedComfortBonus(null)).toBe(0);
+  });
+
+  it('la enfermería equipada cura ×1,5 más rápido (salud y enfermedad)', () => {
+    const { sim } = setup();
+    place(sim, HOLD);
+    setWeather(sim, 'despejado', 22);
+    const enf = addModule(sim, 'enfermeria', 0, 1, 0, 2);
+    enf.on = true;
+    enf.powered = true;
+    enf.tier = 2;
+    nearBed(sim, enf.id, 0);
+    setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 90, health: 20 });
+    goToHour(sim, 22);
+    const r = sim.sleep(enf.id, 0);
+    expect(r.msg).toBe('Te tumbas en una camilla de la enfermería equipada…');
+    expect(needs.infirmaryMults(sim)).toEqual({ regen: needs.INFIRMARY_REGEN_MULT * 1.5, sickness: needs.INFIRMARY_SICK_MULT * 1.5 });
+    expect(needs.healthRatePerHour(sim)).toBeCloseTo(NEED_RATES.healthRegenPerHour * 4.5, 5);
+    runNeeds(sim, 60);
+    expect(sim.state.player.needs.health).toBeCloseTo(20 + NEED_RATES.healthRegenPerHour * 4.5, 5);
+    setNeeds(sim, { hunger: 100, thirst: 100, health: 80 });
+    sim.state.player.sick = 10;
+    runNeeds(sim, 60);
+    expect(sim.state.player.sick).toBeCloseTo(10 - 3, 5);
+    // Sin energía, ni la mejora la hace curar más que una cama.
+    enf.powered = false;
+    expect(needs.infirmaryMults(sim)).toEqual({ regen: 1, sickness: 1 });
+  });
+});
+
+describe('guardado: campos de la ronda de contenido 2', () => {
+  /** Partida tal como la guardaba la versión anterior a las mejoras y al hilo narrativo. */
+  function oldSave(seed = 5): Record<string, any> {
+    const s = JSON.parse(serialize(createNewGame(seed))) as Record<string, any>;
+    delete s.story;
+    s.player.inventory.slots[8] = null;
+    s.log = s.log.slice(0, 1);
+    for (const m of s.ship.modules) {
+      delete m.tier;
+      delete m.upgrade;
+    }
+    for (const n of s.npcs) delete n.relations;
+    return s;
+  }
+
+  it('una partida antigua se migra: nivel 1, sin obras, sin relaciones, historia por defecto y la hoja 1 en la mochila', () => {
+    const st = deserialize(JSON.stringify(oldSave()));
+    expect(st.version).toBe(SAVE_VERSION);
+    expect(st.story).toEqual({ pages: [], revealed: false, arrived: false });
+    for (const m of st.ship.modules) {
+      expect(m.tier, m.type).toBe(1);
+      expect(m.upgrade, m.type).toBeNull();
+    }
+    for (const n of st.npcs) expect(n.relations).toEqual({});
+    expect(st.player.inventory.slots[8]).toEqual({ id: 'pagina_1', qty: 1 });
+    expect(st.log.at(-1)!.text).toBe('Ordenando las cartas náuticas del puente aparece una hoja doblada: «Cuaderno del Albatros, pág. 1». La tienes en tu mochila: habrá que leerla.');
+    // Se juega con normalidad y la hoja se lee.
+    const sim = new Simulation(st);
+    expect(sim.useItem(8).ok).toBe(true);
+    sim.tick(30);
+    expect(sim.state.player.alive).toBe(true);
+    expect(tutorial.currentTutorial(sim)?.id).not.toBe('cuaderno');
+  });
+
+  it('la hoja 1 nunca se pierde: barra rápida, almacén o una caja; y no se duplica si ya estaba', () => {
+    const fullBag = oldSave();
+    for (let i = 8; i < PLAYER_SLOTS; i++) fullBag.player.inventory.slots[i] = { id: 'madera', qty: 50 };
+    const a = deserialize(JSON.stringify(fullBag));
+    expect(a.player.inventory.slots.findIndex((x) => x?.id === 'pagina_1')).toBeLessThan(8);
+    expect(a.log.at(-1)!.text).toMatch(/La tienes en tu barra rápida/);
+
+    const full = oldSave();
+    for (let i = 0; i < PLAYER_SLOTS; i++) full.player.inventory.slots[i] = { id: 'madera', qty: 50 };
+    const b = deserialize(JSON.stringify(full));
+    const alm = b.ship.modules.find((m) => m.type === 'almacen')!;
+    expect(countItem(alm.inventory!, 'pagina_1')).toBe(1);
+    expect(b.log.at(-1)!.text).toMatch(/La tienes en el almacén/);
+
+    const all = oldSave();
+    for (let i = 0; i < PLAYER_SLOTS; i++) all.player.inventory.slots[i] = { id: 'madera', qty: 50 };
+    const almRaw = all.ship.modules.find((m: { type: string }) => m.type === 'almacen');
+    almRaw.inventory.slots = almRaw.inventory.slots.map(() => ({ id: 'chatarra', qty: 50 }));
+    const c = deserialize(JSON.stringify(all));
+    const crate = c.crates.find((x) => x.inventory.slots.some((sl) => sl?.id === 'pagina_1'))!;
+    expect(crate).toBeTruthy();
+    expect(crate.pos).toEqual(c.player.pos);
+    const ids = [...c.ship.modules.map((m) => m.id), ...c.crates.map((x) => x.id)];
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(c.nextId).toBeGreaterThan(Math.max(...ids));
+    expect(c.log.at(-1)!.text).toMatch(/La tienes en una caja a tus pies/);
+
+    const owned = oldSave();
+    owned.ship.modules.find((m: { type: string }) => m.type === 'almacen').inventory.slots[19] = { id: 'pagina_1', qty: 1 };
+    const d = deserialize(JSON.stringify(owned));
+    expect(d.player.inventory.slots[8]).toBeNull();
+    expect(d.log).toHaveLength(1);
+  });
+
+  it('partida actual con mejoras, relaciones e historia: ida y vuelta idéntica', () => {
+    const { sim } = setup(21);
+    const alm = mod(sim, 'almacen');
+    alm.tier = 2;
+    while (alm.inventory!.slots.length < 32) alm.inventory!.slots.push(null);
+    alm.inventory!.slots[30] = { id: 'tela', qty: 3 };
+    mod(sim, 'camarote').upgrade = { toTier: 2, progress: 0.4 };
+    sim.state.npcs[0]!.relations = { npc2: 35 };
+    sim.state.npcs[1]!.relations = { npc1: -12.5 };
+    sim.state.story = { pages: [1, 3], revealed: false, arrived: false };
+    const json = serialize(sim.state);
+    const loaded = deserialize(json);
+    expect(loaded).toEqual(JSON.parse(json));
+    expect(loaded.ship.modules.find((m) => m.type === 'almacen')!.inventory!.slots[30]).toEqual({ id: 'tela', qty: 3 });
+    // Los módulos sin nivel siguen sin él (= nivel 1): nada cambia al cargar.
+    expect('tier' in loaded.ship.modules.find((m) => m.type === 'cocina')!).toBe(false);
+  });
+
+  it('valida niveles, mejoras en obras, afinidades y hojas; los huecos siguen el nivel', () => {
+    const s = JSON.parse(serialize(createNewGame(5))) as Record<string, any>;
+    // [dormitorio, camarote, cocina, almacen, …]
+    s.ship.modules[0].tier = 'x';
+    s.ship.modules[1].upgrade = { toTier: 3, progress: 0.2 };
+    s.ship.modules[2].tier = 2;
+    s.ship.modules[2].upgrade = { toTier: 3, progress: 0.5 };
+    s.ship.modules[3].tier = 9;
+    s.ship.modules[3].upgrade = 'roto';
+    s.ship.modules[3].inventory.slots[5] = { id: 'tornillos', qty: 7 };
+    s.ship.modules[5].upgrade = { toTier: 2, progress: 7 };
+    s.npcs[0].relations = { npc2: 500, npc1: 5, raro: 'x' };
+    s.npcs[1].relations = 'roto';
+    s.story = { pages: [3, 3, 9, 'a', 1, 2, 4, 5], revealed: false, arrived: false };
+    const st = restoreState(s);
+    expect(st.ship.modules[0]!.tier).toBe(1);
+    expect(st.ship.modules[1]!.upgrade).toBeNull();
+    expect(st.ship.modules[2]!.tier).toBe(2);
+    expect(st.ship.modules[2]!.upgrade).toBeNull();
+    expect(st.ship.modules[3]!.tier).toBe(3);
+    expect(st.ship.modules[3]!.upgrade).toBeNull();
+    expect(st.ship.modules[3]!.inventory!.slots).toHaveLength(48);
+    expect(st.ship.modules[3]!.inventory!.slots[5]).toEqual({ id: 'tornillos', qty: 7 });
+    // Una mejora en obras válida se conserva (progreso limitado a 1); mientras dura, el banco
+    // sigue en el nivel 1 con su bandeja de 6 huecos. Terminado (nivel 2), tiene 10.
+    expect(st.ship.modules[5]!.upgrade).toEqual({ toTier: 2, progress: 1 });
+    expect(st.ship.modules[5]!.inventory!.slots).toHaveLength(6);
+    expect(st.npcs[0]!.relations).toEqual({ npc2: 100 });
+    expect(st.npcs[1]!.relations).toEqual({});
+    expect(st.story).toEqual({ pages: [1, 2, 3, 4, 5], revealed: true, arrived: false });
+    const s2 = JSON.parse(serialize(createNewGame(6))) as Record<string, any>;
+    s2.ship.modules[5].tier = 2;
+    s2.story = { pages: [1], revealed: false, arrived: true };
+    const st2 = restoreState(s2);
+    expect(st2.ship.modules[5]!.inventory!.slots).toHaveLength(10);
+    expect(st2.story).toEqual({ pages: [1], revealed: true, arrived: true });
+  });
+});
+
+describe('tutorial: cuaderno y mejoras', () => {
+  it('«cuaderno» llega tras comer si llevas una hoja sin leer, y leerla lo completa', () => {
+    const { sim } = setup();
+    for (const id of ['mover', 'gancho', 'comer']) tutorial.markTutorial(sim, id);
+    sim.state.time += 30;
+    const step = tutorial.currentTutorial(sim)!;
+    expect(step.id).toBe('cuaderno');
+    expect(step.text).toMatch(/clic derecho/);
+    expect(step.text).toMatch(/pulsa F\.$/);
+    expect(tutorial.hasUnreadPage(sim)).toBe(true);
+    // Guardada en el almacén ya no está en la mochila: el consejo espera.
+    const inv = sim.state.player.inventory;
+    inv.slots[8] = null;
+    addItem(mod(sim, 'almacen').inventory!, 'pagina_1', 1);
+    expect(tutorial.currentTutorial(sim)?.id).toBe('almacen');
+    // Una hoja ya leída tampoco cuenta.
+    sim.state.story!.pages = [2];
+    inv.slots[9] = { id: 'pagina_2', qty: 1 };
+    expect(tutorial.hasUnreadPage(sim)).toBe(false);
+    inv.slots[10] = { id: 'pagina_3', qty: 1 };
+    expect(tutorial.currentTutorial(sim)?.id).toBe('cuaderno');
+    expect(sim.useItem(10).ok).toBe(true);
+    expect(sim.state.tutorial.done).toContain('cuaderno');
+  });
+
+  it('las hojas ya leídas (partida cargada) dan el paso por hecho', () => {
+    const { sim } = setup();
+    sim.state.story!.pages = [1];
+    tutorial.tickTutorial(sim, 0.5);
+    expect(sim.state.tutorial.done).toContain('cuaderno');
+  });
+
+  it('«mejorar» llega después de construir y con una mejora que se pueda pagar; con el almacén lleno es oportuno', () => {
+    const { sim } = setup();
+    for (const s of tutorial.TUTORIAL_STEPS) if (s.id !== 'mejorar' && s.id !== 'construir') tutorial.markTutorial(sim, s.id);
+    sim.state.time += 30;
+    goToHour(sim, 12);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 90 });
+    expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
+    tutorial.markTutorial(sim, 'construir');
+    sim.state.time += 30;
+    // Camarote acogedor: 4 de tela y 6 de madera, que hay en el almacén inicial.
+    expect(tutorial.affordableUpgrades(sim).map((m) => m.type)).toContain('camarote');
+    const step = tutorial.currentTutorial(sim)!;
+    expect(step.id).toBe('mejorar');
+    expect(step.urgent).toBeUndefined();
+    expect(step.text).toMatch(/modo construcción \(B\), la herramienta Mejorar \(U\)/);
+    // Sin materiales no hay nada que mejorar: no se muestra.
+    const stash = sim.state.ship.modules.map((m) => m.inventory?.slots.slice() ?? null);
+    const bag = sim.state.player.inventory.slots.slice();
+    for (const m of sim.state.ship.modules) if (m.inventory) m.inventory.slots.fill(null);
+    sim.state.player.inventory.slots.fill(null);
+    expect(tutorial.affordableUpgrades(sim)).toEqual([]);
+    expect(tutorial.currentTutorial(sim)).toBeNull();
+    // Almacén lleno y con lo necesario para ampliarlo (12 de madera y 6 de tornillería): oportuno.
+    const alm = mod(sim, 'almacen');
+    alm.inventory!.slots.fill({ id: 'chatarra', qty: 50 });
+    alm.inventory!.slots[0] = { id: 'madera', qty: 12 };
+    alm.inventory!.slots[1] = { id: 'tornillos', qty: 6 };
+    const urgent = tutorial.currentTutorial(sim)!;
+    expect(urgent.id).toBe('mejorar');
+    expect(urgent.urgent).toBe(true);
+    // Un módulo averiado, ardiendo o con otra mejora en obras no cuenta.
+    alm.status = 'broken';
+    expect(tutorial.affordableUpgrades(sim).some((m) => m.id === alm.id)).toBe(false);
+    alm.status = 'active';
+    sim.state.ship.modules.forEach((m, i) => m.inventory && (m.inventory.slots = stash[i] ?? m.inventory.slots));
+    sim.state.player.inventory.slots = bag;
+    // Encargar una mejora (aunque la encargue otro sistema) completa el paso.
+    mod(sim, 'camarote').upgrade = { toTier: 2, progress: 0 };
+    tutorial.tickTutorial(sim, 0.5);
+    expect(sim.state.tutorial.done).toContain('mejorar');
+    expect(tutorial.tutorialProgress(sim).complete).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Integración: vida a bordo                                           */
 /* ------------------------------------------------------------------ */
 
@@ -1994,5 +2587,7 @@ describe('integración: varios días a bordo', () => {
       expect(ate).toBeGreaterThan(3);
       expect(st.voyage.route.length).toBeGreaterThanOrEqual(2);
     }
-  });
+    // Tres semillas × tres días de simulación completa: con la batería en paralelo y la máquina
+    // cargada puede pasar de los 5 s por defecto sin que nada vaya mal.
+  }, 30_000);
 });

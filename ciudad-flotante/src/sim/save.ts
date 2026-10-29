@@ -11,15 +11,28 @@
  *   plantilla de su tipo. Errores claros (`SaveError`) si el guardado está dañado.
  * - Errores de cuota: se reintenta liberando la propia ranura y, si aun así no cabe, se lanza un
  *   `SaveError` de tipo 'quota' sin perder el guardado anterior.
+ * - Ronda de contenido 2 (retrocompatible, misma `SAVE_VERSION`): mejoras de módulos (`tier`,
+ *   `upgrade`), relaciones entre habitantes (`relations`) e hilo narrativo (`story`). Una partida
+ *   anterior a esta ronda se reconoce porque no tiene `story`: se migra con `tier = 1`,
+ *   `upgrade = null`, `relations = {}`, la historia por defecto y la hoja 1 del cuaderno (que una
+ *   partida nueva lleva en la mochila), con una entrada en el diario. En las partidas actuales esos
+ *   campos opcionales se validan si están (nivel dentro de 1..máximo, mejora del nivel siguiente,
+ *   afinidades −100..100, hojas 1..7 sin repetir) y, si faltan, significan lo mismo que su valor
+ *   por defecto (`moduleTier`, `activeUpgrade`), así que una ida y vuelta deja el estado idéntico.
+ *   Bandejas y combustible se dimensionan con el nivel de mejora (`moduleStat`): nunca se pierden
+ *   objetos de un almacén ampliado.
  */
 import { ITEMS } from '../data/items';
 import { MODULES } from '../data/modules';
 import { REGIONS, START_REGION } from '../data/regions';
-import { PLAYER_SLOTS } from './constants';
+import { PAGES_TO_REVEAL, STORY_PAGES } from '../data/story';
+import { HOTBAR_SLOTS, PLAYER_SLOTS } from './constants';
+import { addItem } from './inventory';
+import { maxTier, moduleStat } from './moduleStats';
 import { createNewGame, makeNpc } from './newGame';
 import { instantiateModule } from './ship';
 import { dayOf } from './time';
-import type { GameState, Inventory, Rotation } from './types';
+import type { GameState, Inventory, ModuleInstance, NpcState, Rotation } from './types';
 import { SAVE_VERSION } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -190,6 +203,82 @@ function sanitizeInventory(inv: unknown, minSlots: number): Inventory {
 
 const int = (v: unknown, d: number): number => (isNum(v) ? Math.round(v) : d);
 
+/** Afinidad mínima y máxima entre habitantes (npc.ts). */
+const RELATION_LIMIT = 100;
+
+/**
+ * Nivel de mejora y mejora en obras de un módulo. `fill`: partida anterior a las mejoras (se
+ * escriben los valores por defecto); si no, los campos ausentes se dejan ausentes (= nivel 1, sin obra).
+ */
+function sanitizeUpgrade(m: ModuleInstance, fill: boolean): void {
+  const max = maxTier(m.type);
+  const raw = m as unknown as Obj;
+  if (raw['tier'] !== undefined || fill) {
+    const t = isNum(raw['tier']) ? Math.floor(raw['tier']) : 1;
+    m.tier = Math.min(max, Math.max(1, t));
+  }
+  if (raw['upgrade'] !== undefined || fill) {
+    const u = raw['upgrade'];
+    const tier = m.tier ?? 1;
+    const valid = isObj(u) && isNum(u['toTier']) && u['toTier'] === tier + 1 && u['toTier'] <= max && isNum(u['progress']) && m.status !== 'construction';
+    m.upgrade = valid ? { toTier: u['toTier'] as number, progress: Math.min(1, Math.max(0, u['progress'] as number)) } : null;
+  }
+}
+
+/** Afinidades de un habitante: ids → número finito en −100..100. */
+function sanitizeRelations(n: NpcState, fill: boolean): void {
+  const raw = (n as unknown as Obj)['relations'];
+  if (raw === undefined && !fill) return;
+  const out: Record<string, number> = {};
+  if (isObj(raw)) {
+    for (const [id, v] of Object.entries(raw)) {
+      if (id && id !== n.id && isNum(v)) out[id] = Math.min(RELATION_LIMIT, Math.max(-RELATION_LIMIT, v));
+    }
+  }
+  n.relations = out;
+}
+
+/** ¿Hay un objeto en algún sitio de la partida (jugador, módulos, cajas, restos)? */
+function stateHasItem(s: GameState, id: string): boolean {
+  const inInv = (inv: Inventory | null) => !!inv && inv.slots.some((x) => x?.id === id);
+  if (inInv(s.player.inventory)) return true;
+  if (s.ship.modules.some((m) => inInv(m.inventory) || inInv(m.fuelInv))) return true;
+  if (s.crates.some((c) => inInv(c.inventory))) return true;
+  return s.debris.some((d) => d.loot.some((l) => l.id === id));
+}
+
+/**
+ * Partida anterior al hilo narrativo: la hoja 1 del cuaderno (que una partida nueva trae en la
+ * mochila) aparece en la mochila del jugador, o en la barra, o en un almacén, o en una caja a sus
+ * pies; nunca se pierde. Queda anotado en el diario, diciendo dónde está.
+ */
+function grantFirstPage(s: GameState): void {
+  const item = STORY_PAGES[0]?.item;
+  if (!item || !ITEMS[item] || stateHasItem(s, item)) return;
+  const slots = s.player.inventory.slots;
+  let where: string | null = null;
+  let free = slots.findIndex((x, i) => i >= HOTBAR_SLOTS && !x);
+  if (free < 0) free = slots.findIndex((x) => !x);
+  if (free >= 0) {
+    slots[free] = { id: item, qty: 1 };
+    where = free >= HOTBAR_SLOTS ? 'en tu mochila' : 'en tu barra rápida';
+  } else {
+    const store = s.ship.modules.find((m) => m.type === 'almacen' && m.status !== 'construction' && m.inventory && addItem(m.inventory, item, 1) === 0);
+    if (store) where = 'en el almacén';
+  }
+  if (!where) {
+    const p = s.player.pos;
+    s.crates.push({ id: s.nextId++, pos: { x: p.x, y: p.y, z: p.z }, inventory: { slots: [{ id: item, qty: 1 }] }, label: 'Hoja del cuaderno' });
+    where = 'en una caja a tus pies';
+  }
+  s.log.push({
+    at: s.time,
+    text: `Ordenando las cartas náuticas del puente aparece una hoja doblada: «${ITEMS[item]!.name}». La tienes ${where}: habrá que leerla.`,
+    kind: 'info',
+  });
+  if (s.log.length > 120) s.log.splice(0, s.log.length - 120);
+}
+
 /** Valida y completa un estado leído de un guardado. */
 export function restoreState(raw: unknown): GameState {
   if (!isObj(raw)) throw new SaveError('corrupt', 'La partida guardada está dañada: no contiene un estado de juego');
@@ -198,6 +287,8 @@ export function restoreState(raw: unknown): GameState {
   if (!isNum(raw['time']) || (raw['time'] as number) < 0) throw new SaveError('corrupt', 'La partida guardada está dañada: el reloj no es válido');
 
   migrate(raw);
+  // Partida anterior a la ronda de contenido 2 (mejoras, relaciones, hilo narrativo).
+  const preStory = !isObj(raw['story']);
   const def = createNewGame(isNum(raw['seed']) ? (raw['seed'] as number) : 12345);
   const s = fillDefaults(raw, def) as GameState;
 
@@ -212,15 +303,18 @@ export function restoreState(raw: unknown): GameState {
       const out = fillDefaults(m, tpl) as typeof tpl;
       out.rot = rot;
       out.status = status;
-      const mdef = MODULES[type]!;
       // Camas y parcelas: tantas como diga la definición actual.
       out.beds = tpl.beds.map((_, i) => {
         const b = out.beds[i];
         return typeof b === 'string' ? b : null;
       });
       out.plots = tpl.plots.map((p, i) => fillDefaults(out.plots[i], p) as typeof p);
-      out.inventory = mdef.storageSlots ? sanitizeInventory(out.inventory, mdef.storageSlots) : null;
-      out.fuelInv = mdef.fuelSlots ? sanitizeInventory(out.fuelInv, mdef.fuelSlots) : null;
+      sanitizeUpgrade(out, preStory);
+      // Huecos según el nivel de mejora (un almacén con altillo tiene 32): nunca se recorta lo guardado.
+      const storage = moduleStat(out, 'storageSlots');
+      const fuel = moduleStat(out, 'fuelSlots');
+      out.inventory = storage > 0 ? sanitizeInventory(out.inventory, storage) : null;
+      out.fuelInv = fuel > 0 ? sanitizeInventory(out.fuelInv, fuel) : null;
       out.queue = (Array.isArray(out.queue) ? out.queue : []).filter((j) => isObj(j) && typeof j.recipeId === 'string' && isNum(j.progress));
       return out;
     });
@@ -251,7 +345,9 @@ export function restoreState(raw: unknown): GameState {
         int(n['joinedDay'], 1),
         int(n['joinedDay'], 1),
       );
-      return fillDefaults(n, tpl) as typeof tpl;
+      const out = fillDefaults(n, tpl) as typeof tpl;
+      sanitizeRelations(out, preStory);
+      return out;
     });
 
   // --- Cajas sueltas.
@@ -306,6 +402,12 @@ export function restoreState(raw: unknown): GameState {
   s.events.scripted = s.events.scripted.filter((x) => typeof x === 'string');
   s.events.history = s.events.history.filter(isObj) as GameState['events']['history'];
 
+  // --- Hilo narrativo: hojas leídas válidas (1..7, sin repetir); el rumbo se conoce con
+  // PAGES_TO_REVEAL hojas (o si ya se llegó).
+  const story = s.story!;
+  story.pages = [...new Set(story.pages.filter((n): n is number => Number.isInteger(n) && n >= 1 && n <= STORY_PAGES.length))].sort((a, b) => a - b);
+  if (story.arrived || story.pages.length >= PAGES_TO_REVEAL) story.revealed = true;
+
   // --- Listas simples.
   s.unlocks = s.unlocks.filter((u) => typeof u === 'string');
   s.tutorial.done = s.tutorial.done.filter((u) => typeof u === 'string');
@@ -322,6 +424,7 @@ export function restoreState(raw: unknown): GameState {
   s.voyage.sightings.forEach((x) => see(x.id));
   s.events.active.forEach((e) => see(e.id));
   s.nextId = Math.max(int(s.nextId, 1), maxId + 1);
+  if (preStory) grantFirstPage(s);
   s.rngState = int(s.rngState, s.seed) >>> 0;
   s.version = SAVE_VERSION;
   return s;

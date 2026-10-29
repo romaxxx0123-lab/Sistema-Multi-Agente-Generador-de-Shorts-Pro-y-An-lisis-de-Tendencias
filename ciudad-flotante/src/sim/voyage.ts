@@ -375,7 +375,8 @@ export function chooseRoute(sim: Simulation, regionId: string): ActionResult {
     const story = sim.state.story;
     if (regionId === FINAL_REGION && !story?.revealed) {
       const left = Math.max(1, PAGES_TO_REVEAL - (story?.pages.length ?? 0));
-      return fail(`Aún no sabes cómo llegar a ${r.name}: ${left === 1 ? 'te falta una hoja' : `te faltan ${left} hojas`} del cuaderno del Albatros`);
+      const words = ['', 'una', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete'];
+      return fail(`Aún no sabes cómo llegar a ${r.name}: ${left === 1 ? 'te falta una hoja' : `te faltan ${words[left] ?? left} hojas`} del cuaderno del Albatros`);
     }
   }
   if (!r || !options.includes(regionId)) return fail('Ese rumbo no está disponible desde aquí');

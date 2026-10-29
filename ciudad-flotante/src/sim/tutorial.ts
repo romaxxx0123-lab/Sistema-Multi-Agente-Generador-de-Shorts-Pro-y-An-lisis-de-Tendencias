@@ -17,14 +17,23 @@
  * Los textos describen la acción física (teclas y muebles), no menús, salvo donde el juego usa un
  * panel de estación.
  *
+ * Ronda de contenido 2: 'cuaderno' (leer la hoja del cuaderno del Albatros que se lleva en la
+ * mochila: lo marca actions.readDocument) y 'mejorar' (la herramienta Mejorar del modo
+ * construcción, cuando hay una mejora que se puede pagar; oportuno con un almacén lleno). Ambos se
+ * dan también por hechos en `tickTutorial` si el estado lo demuestra (hojas leídas, una mejora en
+ * obras o terminada), así que no dependen de quién encargue la mejora.
+ *
  * Estado transitorio (no se guarda): posición anterior y distancia recorrida para 'mover' y minuto
  * del último paso completado. Se reinicia al cargar (el primer consejo pendiente aparece de inmediato).
  */
+import { ITEMS } from '../data/items';
+import { pageByItem } from '../data/story';
 import { hourOf } from './time';
 import { countItem } from './inventory';
-import { shipCount } from './helpers';
+import { payInventories, shipCount } from './helpers';
+import { moduleTier, nextUpgrade } from './moduleStats';
 import type { Simulation } from './Simulation';
-import type { Vec3 } from './types';
+import type { ModuleInstance, Vec3 } from './types';
 
 export interface TutorialStep {
   id: string;
@@ -91,6 +100,44 @@ function canPlant(sim: Simulation): boolean {
   return ['semilla_hortaliza', 'semilla_lino'].some((id) => countItem(st.player.inventory, id) > 0 || shipCount(sim, id) > 0);
 }
 
+/** ¿Lleva el jugador encima una hoja del cuaderno sin leer? */
+export function hasUnreadPage(sim: Simulation): boolean {
+  const read = sim.state.story?.pages ?? [];
+  return sim.state.player.inventory.slots.some((s) => {
+    if (!s || ITEMS[s.id]?.category !== 'documento') return false;
+    const page = pageByItem(s.id);
+    return !!page && !read.includes(page.n);
+  });
+}
+
+/**
+ * Módulos que se pueden mejorar ahora mismo: terminados, sin avería ni fuego ni otra mejora en
+ * obras, con la mejora siguiente desbloqueada y su coste a mano (jugador, almacenes y bandejas,
+ * como paga construction.startUpgrade).
+ */
+export function affordableUpgrades(sim: Simulation): ModuleInstance[] {
+  const st = sim.state;
+  let have: Map<string, number> | null = null;
+  const out: ModuleInstance[] = [];
+  for (const m of st.ship.modules) {
+    if (m.status !== 'active' || m.fire > 0 || m.upgrade) continue;
+    const up = nextUpgrade(m);
+    if (!up || (up.unlock && !st.unlocks.includes(up.unlock))) continue;
+    if (!have) {
+      have = new Map();
+      for (const inv of payInventories(sim)) for (const s of inv.slots) if (s) have.set(s.id, (have.get(s.id) ?? 0) + s.qty);
+    }
+    const stock = have;
+    if (Object.entries(up.cost).every(([id, q]) => (stock.get(id) ?? 0) >= q)) out.push(m);
+  }
+  return out;
+}
+
+/** Un almacén está lleno y se puede ampliar ya: mejorar es oportuno. */
+function storageFullAndUpgradable(sim: Simulation): boolean {
+  return affordableUpgrades(sim).some((m) => m.type === 'almacen' && !!m.inventory && m.inventory.slots.every((s) => !!s));
+}
+
 const STEPS: readonly StepDef[] = [
   { id: 'mover', title: 'Moverse', text: 'WASD para moverte, Mayús para correr y Espacio para saltar. Mira alrededor con el ratón.' },
   {
@@ -104,6 +151,12 @@ const STEPS: readonly StepDef[] = [
     title: 'Comer y beber',
     text: 'Elige la comida o la botella de agua en la barra rápida (números o rueda) y pulsa F o clic derecho.',
     now: (sim) => sim.state.player.needs.hunger < NEED_LOW || sim.state.player.needs.thirst < NEED_LOW,
+  },
+  {
+    id: 'cuaderno',
+    title: 'El cuaderno del Albatros',
+    text: 'Llevas en la mochila una hoja del cuaderno del Albatros: haz clic derecho sobre ella para leerla, o ponla en la barra rápida y pulsa F.',
+    when: hasUnreadPage,
   },
   { id: 'almacen', title: 'Almacén', text: 'Guarda lo que no necesites en el almacén: pulsa E ante las estanterías.' },
   { id: 'fabricar', title: 'Fabricar', text: 'Pulsa E en el banco de trabajo y fabrica una caña de pescar (2 de madera y 2 de cuerda).' },
@@ -136,6 +189,13 @@ const STEPS: readonly StepDef[] = [
     },
   },
   { id: 'construir', title: 'Construir', text: 'Pulsa B para construir: elige una pieza, colócala con clic y gírala con R.' },
+  {
+    id: 'mejorar',
+    title: 'Mejorar instalaciones',
+    text: 'En el modo construcción (B), la herramienta Mejorar (U) mejora lo que ya tienes: almacenes más grandes, depósitos mayores, camas más cómodas, cocinas más rápidas.',
+    when: (sim) => sim.state.tutorial.done.includes('construir') && affordableUpgrades(sim).length > 0,
+    now: storageFullAndUpgradable,
+  },
   {
     id: 'plantar',
     title: 'Cultivar',
@@ -198,6 +258,9 @@ export function tickTutorial(sim: Simulation, _dt: number): void {
   const memo = memoOf(sim);
   // Si el reloj retrocede (depuración), no bloqueamos los consejos.
   if (st.time < memo.lastDoneAt) memo.lastDoneAt = st.time - TUTORIAL_GAP_MIN;
+  // Pasos que demuestra el propio estado: hojas ya leídas, una mejora encargada o terminada.
+  if (!t.done.includes('cuaderno') && (st.story?.pages.length ?? 0) > 0) markTutorial(sim, 'cuaderno');
+  if (!t.done.includes('mejorar') && st.ship.modules.some((m) => !!m.upgrade || moduleTier(m) > 1)) markTutorial(sim, 'mejorar');
   if (t.dismissed || t.done.includes('mover')) return;
   const p = st.player;
   if (!p.alive || p.sleeping) return;
