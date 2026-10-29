@@ -17,7 +17,11 @@ export class Input {
   /** Si es false (UI abierta, menú), las teclas de juego se ignoran salvo las globales. */
   enabled = true;
   private lockWanted = false;
-  /** Último texto tecleado en campos de UI: si el foco está en un input, no se capturan teclas. */
+  /** El navegador no permite capturar el ratón (iframe sin permiso, headless…): se usa mirada libre. */
+  lockUnavailable = false;
+  /** El usuario soltó la captura (Esc del navegador) mientras el juego la quería. */
+  private lockLost = false;
+  private weReleased = false;
 
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -46,10 +50,19 @@ export class Input {
       const r = element.getBoundingClientRect();
       this.mouseX = e.clientX - r.left;
       this.mouseY = e.clientY - r.top;
-      if (this.locked) {
+      if (this.locked || (this.lockWanted && this.lockUnavailable)) {
         this.dx += e.movementX;
         this.dy += e.movementY;
       }
+    });
+    document.addEventListener('pointerlockerror', () => {
+      this.lockUnavailable = true;
+      this.updateCursor();
+    });
+    document.addEventListener('pointerlockchange', () => {
+      if (!this.locked && this.lockWanted && !this.weReleased) this.lockLost = true;
+      this.weReleased = false;
+      this.updateCursor();
     });
     element.addEventListener(
       'wheel',
@@ -73,17 +86,50 @@ export class Input {
 
   /** Indica si el juego quiere el ratón capturado (modo juego sin paneles). */
   setPointerLockWanted(want: boolean): void {
+    if (want === this.lockWanted) {
+      return;
+    }
     this.lockWanted = want;
     if (want && !this.locked) this.requestLock();
-    if (!want && this.locked) document.exitPointerLock();
+    if (!want && this.locked) {
+      this.weReleased = true;
+      document.exitPointerLock();
+    }
+    this.updateCursor();
+  }
+
+  /** true si el usuario liberó el ratón por su cuenta (Esc del navegador). Se consume al leerlo. */
+  consumeLockLost(): boolean {
+    const v = this.lockLost;
+    this.lockLost = false;
+    return v;
+  }
+
+  /** Mirada libre sin captura (el cursor se oculta sobre el lienzo). */
+  get freeLook(): boolean {
+    return this.lockWanted && this.lockUnavailable;
+  }
+
+  private updateCursor(): void {
+    this.element.style.cursor = this.lockWanted && !this.locked ? (this.lockUnavailable ? 'none' : 'pointer') : '';
   }
 
   private requestLock(): void {
+    if (this.lockUnavailable || !('requestPointerLock' in this.element)) {
+      this.lockUnavailable = true;
+      return;
+    }
     try {
       const p = this.element.requestPointerLock() as unknown as Promise<void> | undefined;
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          // Sin gesto de usuario reciente no es un fallo permanente; un entorno sin permiso sí.
+          const name = (err as { name?: string } | null)?.name ?? '';
+          if (name === 'NotSupportedError' || name === 'SecurityError' || name === 'WrongDocumentError') this.lockUnavailable = true;
+        });
+      }
     } catch {
-      /* navegadores sin pointer lock (tests headless) */
+      this.lockUnavailable = true;
     }
   }
 

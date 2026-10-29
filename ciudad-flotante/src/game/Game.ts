@@ -212,6 +212,12 @@ export class Game implements GameContext {
     const inp = this.input;
     const ui = this.ui;
     if (this._mode === 'menu' || this._mode === 'dead') return;
+    // Con el ratón capturado, el navegador se queda la tecla Esc: lo detectamos por la pérdida de captura.
+    if (inp.consumeLockLost() && this._mode === 'play' && !ui.panelOpen && !this.paused) {
+      this.paused = true;
+      ui.showPauseMenu();
+      return;
+    }
     if (inp.pressed('Escape')) {
       if (this._mode === 'build') this.setMode('play');
       else if (ui.panelOpen) ui.closePanel();
