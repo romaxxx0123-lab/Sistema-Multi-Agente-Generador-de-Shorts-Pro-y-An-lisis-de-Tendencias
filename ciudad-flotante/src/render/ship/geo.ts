@@ -86,6 +86,9 @@ export interface CylinderOpts {
   phase?: number;
 }
 
+/** Floats iniciales de cada búfer (crecen al doble cuando hace falta). */
+const INITIAL_FLOATS = 576;
+
 const _m = new THREE.Matrix4();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
@@ -97,9 +100,16 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _q = new THREE.Quaternion();
 
 export class GeoBuilder {
-  private pos: number[] = [];
-  private nrm: number[] = [];
-  private clr: number[] = [];
+  /**
+   * Búferes tipados que crecen por duplicación (posición, normal y color por vértice). Escribir
+   * directamente en Float32Array es varias veces más rápido que `Array.push` y `build()` los
+   * entrega a three.js sin conversión: la reconstrucción del barco depende de ello.
+   */
+  private pos = new Float32Array(INITIAL_FLOATS);
+  private nrm = new Float32Array(INITIAL_FLOATS);
+  private clr = new Float32Array(INITIAL_FLOATS);
+  /** Número de floats escritos en cada búfer (3 por vértice). */
+  private n = 0;
   private mat = new THREE.Matrix4();
   private stack: THREE.Matrix4[] = [];
   private flip = false;
@@ -107,15 +117,31 @@ export class GeoBuilder {
   tint = 1;
 
   get vertexCount(): number {
-    return this.pos.length / 3;
+    return this.n / 3;
   }
 
   get triangleCount(): number {
-    return this.pos.length / 9;
+    return this.n / 9;
   }
 
   isEmpty(): boolean {
-    return this.pos.length === 0;
+    return this.n === 0;
+  }
+
+  /** Garantiza sitio para `floats` floats más en cada búfer. */
+  private reserve(floats: number): void {
+    const need = this.n + floats;
+    if (need <= this.pos.length) return;
+    let cap = this.pos.length * 2;
+    while (cap < need) cap *= 2;
+    const grow = (a: Float32Array<ArrayBuffer>): Float32Array<ArrayBuffer> => {
+      const b = new Float32Array(cap);
+      b.set(a.subarray(0, this.n));
+      return b;
+    };
+    this.pos = grow(this.pos);
+    this.nrm = grow(this.nrm);
+    this.clr = grow(this.clr);
   }
 
   /* ---------------- Transformaciones ---------------- */
@@ -178,29 +204,65 @@ export class GeoBuilder {
 
   /** Triángulo en coordenadas locales (antihorario visto desde fuera). */
   tri(ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number, color: ColorLike): void {
-    _a.set(ax, ay, az).applyMatrix4(this.mat);
-    _b.set(bx, by, bz).applyMatrix4(this.mat);
-    _c.set(cx, cy, cz).applyMatrix4(this.mat);
-    if (this.flip) this.emit(_a, _c, _b, color);
-    else this.emit(_a, _b, _c, color);
+    // Transformación afín en línea (la matriz del constructor nunca tiene perspectiva).
+    const e = this.mat.elements;
+    const x0 = e[0]! * ax + e[4]! * ay + e[8]! * az + e[12]!;
+    const y0 = e[1]! * ax + e[5]! * ay + e[9]! * az + e[13]!;
+    const z0 = e[2]! * ax + e[6]! * ay + e[10]! * az + e[14]!;
+    const x1 = e[0]! * bx + e[4]! * by + e[8]! * bz + e[12]!;
+    const y1 = e[1]! * bx + e[5]! * by + e[9]! * bz + e[13]!;
+    const z1 = e[2]! * bx + e[6]! * by + e[10]! * bz + e[14]!;
+    const x2 = e[0]! * cx + e[4]! * cy + e[8]! * cz + e[12]!;
+    const y2 = e[1]! * cx + e[5]! * cy + e[9]! * cz + e[13]!;
+    const z2 = e[2]! * cx + e[6]! * cy + e[10]! * cz + e[14]!;
+    if (this.flip) this.emit(x0, y0, z0, x2, y2, z2, x1, y1, z1, color);
+    else this.emit(x0, y0, z0, x1, y1, z1, x2, y2, z2, color);
   }
 
   /** Emite un triángulo ya transformado. */
-  private emit(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, color: ColorLike): void {
-    _ab.subVectors(b, a);
-    _ac.subVectors(c, a);
-    _n.crossVectors(_ab, _ac);
-    const len = _n.length();
+  private emit(ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number, color: ColorLike): void {
+    const ux = bx - ax;
+    const uy = by - ay;
+    const uz = bz - az;
+    const vx = cx - ax;
+    const vy = cy - ay;
+    const vz = cz - az;
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (len < 1e-12) return; // triángulo degenerado
-    _n.multiplyScalar(1 / len);
+    nx /= len;
+    ny /= len;
+    nz /= len;
     const k = col(color);
     const t = this.tint;
     const r = k.r * t;
     const g = k.g * t;
     const bl = k.b * t;
-    this.pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-    this.nrm.push(_n.x, _n.y, _n.z, _n.x, _n.y, _n.z, _n.x, _n.y, _n.z);
-    this.clr.push(r, g, bl, r, g, bl, r, g, bl);
+    this.reserve(9);
+    const i = this.n;
+    const P = this.pos;
+    const N = this.nrm;
+    const C = this.clr;
+    P[i] = ax;
+    P[i + 1] = ay;
+    P[i + 2] = az;
+    P[i + 3] = bx;
+    P[i + 4] = by;
+    P[i + 5] = bz;
+    P[i + 6] = cx;
+    P[i + 7] = cy;
+    P[i + 8] = cz;
+    for (let k2 = 0; k2 < 9; k2 += 3) {
+      N[i + k2] = nx;
+      N[i + k2 + 1] = ny;
+      N[i + k2 + 2] = nz;
+      C[i + k2] = r;
+      C[i + k2 + 1] = g;
+      C[i + k2 + 2] = bl;
+    }
+    this.n = i + 9;
   }
 
   triV(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, color: ColorLike): void {
@@ -437,33 +499,43 @@ export class GeoBuilder {
       const len = _n.length();
       if (len < 1e-12) continue;
       _n.multiplyScalar(1 / len);
-      this.pos.push(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z);
-      this.nrm.push(_n.x, _n.y, _n.z, _n.x, _n.y, _n.z, _n.x, _n.y, _n.z);
+      this.reserve(9);
+      const o = this.n;
+      this.pos.set([_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z], o);
+      this.nrm.set([_n.x, _n.y, _n.z, _n.x, _n.y, _n.z, _n.x, _n.y, _n.z], o);
+      let j = o;
       for (const vi of [ia, flip ? ic : ib, flip ? ib : ic]) {
         if (fixed) tmpCol.copy(fixed);
         else if (colAttr) tmpCol.setRGB(colAttr.getX(vi), colAttr.getY(vi), colAttr.getZ(vi));
         else tmpCol.setRGB(1, 1, 1);
-        this.clr.push(tmpCol.r * t, tmpCol.g * t, tmpCol.b * t);
+        this.clr[j] = tmpCol.r * t;
+        this.clr[j + 1] = tmpCol.g * t;
+        this.clr[j + 2] = tmpCol.b * t;
+        j += 3;
       }
+      this.n = o + 9;
     }
   }
 
-  /** Geometría resultante (no indexada: position, normal, color). */
-  build(): THREE.BufferGeometry {
+  /**
+   * Geometría resultante (no indexada: position, normal, color). `bounds = false` omite el cálculo
+   * de la esfera y la caja envolventes (cuando la geometría se va a fusionar con otras).
+   */
+  build(bounds = true): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.clr, 3));
-    g.computeBoundingSphere();
-    g.computeBoundingBox();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos.slice(0, this.n), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.nrm.slice(0, this.n), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.clr.slice(0, this.n), 3));
+    if (bounds) {
+      g.computeBoundingSphere();
+      g.computeBoundingBox();
+    }
     return g;
   }
 
   /** Vacía el constructor para reutilizarlo. */
   clear(): void {
-    this.pos = [];
-    this.nrm = [];
-    this.clr = [];
+    this.n = 0;
     this.mat.identity();
     this.stack = [];
     this.flip = false;
