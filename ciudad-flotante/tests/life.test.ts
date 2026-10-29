@@ -1307,7 +1307,7 @@ describe('habitantes: subsistencia', () => {
     expect(sim.state.log.filter((l) => l.kind === 'danger' && l.text.startsWith('Marina') && /hambre/.test(l.text)).length).toBe(1);
   });
 
-  it('la enfermedad se pasa sola en un día (más rápido en la enfermería)', () => {
+  it('guardando cama, la enfermedad se cura en un día (más rápido en la enfermería)', () => {
     let cured = 0;
     for (const seed of [1, 2, 3, 4, 5, 6]) {
       const sim = quiet(setup(seed));
@@ -1316,7 +1316,7 @@ describe('habitantes: subsistencia', () => {
       run(sim, 40 * 60);
       if (!npcById(sim, 'npc1').sick) cured++;
     }
-    // P(curarse en 40 h) ≈ 87 %: casi todos.
+    // Reposan en su cama: P(curarse en 40 h) ≈ 95 %, casi todos.
     expect(cured).toBeGreaterThanOrEqual(4);
   });
 
@@ -1530,8 +1530,9 @@ describe('QA: necesidades de los habitantes', () => {
     addItem(deck.inventory!, 'fruta', 10);
     const marina = npcById(sim, 'npc1');
     marina.needs.hunger = 20;
-    run(sim, 120);
-    expect(marina.needs.hunger).toBeGreaterThan(40);
+    let low = 100;
+    run(sim, 120, () => (low = Math.min(low, marina.needs.hunger)));
+    expect(marina.needs.hunger).toBeGreaterThan(low + 10); // ha comido
     expect(countItem(deck.inventory, 'fruta')).toBeLessThan(10);
     expect(countItem(hold.inventory, 'conserva')).toBe(20);
     // Ahora solo queda comida donde no se llega: la queja lo dice (y no «no queda comida»).
@@ -1580,9 +1581,7 @@ describe('QA: necesidades de los habitantes', () => {
     expect(evs.length).toBe(2);
     expect(evs.some((e) => /contagio de Marina/.test(e.description))).toBe(true);
     // Se curan con reposo: éxito «tras guardar cama».
-    run(sim, 3 * MINUTES_PER_DAY, () => {
-      if (!marina.sick && !tomas.sick) return;
-    });
+    run(sim, 3 * MINUTES_PER_DAY);
     const cured = sim.state.log.filter((l) => /se ha recuperado de la enfermedad (tras guardar cama|tras reposar)/.test(l.text));
     expect(cured.length).toBeGreaterThanOrEqual(1);
     expect(sim.state.events.history.filter((h) => h.type === 'enfermedad').every((h) => h.success !== null)).toBe(true);
@@ -1722,7 +1721,7 @@ describe('QA: tormentas', () => {
     expect(events.activeEvent(sim, 'tormenta')).toBeUndefined();
     const text = sim.state.log.filter((l) => /tormenta ha pasado/.test(l.text)).pop()!.text;
     expect(text).not.toMatch(/ya están reparados/);
-    expect(text).toMatch(/Daños leves en la cocina \(55 %\) y el puente \(71 %\)/);
+    expect(text).toMatch(/Daños leves en la cocina \(55 %\) y el puente de mando \(71 %\): repáralos cuando puedas/);
   });
 
   it('[41] «Ponte a cubierto» se marca al estar en un interior', () => {
@@ -1809,6 +1808,9 @@ describe('QA: averías', () => {
     addItem(mod(sim, 'almacen').inventory!, 'pieza_mecanica', 1);
     run(sim, 1);
     expect(ev.objectives.map((o) => o.done)).toEqual([true, true, false]);
+    // La interfaz puede mostrar el motivo de la avería en el panel del módulo.
+    expect(events.breakdownReason(sim, gen.id)).toBe((ev.data as { reason: string }).reason);
+    expect(events.breakdownReason(sim, mod(sim, 'cocina').id)).toBeNull();
   });
 
   it('[9] si en 24 h nadie la repara, el mecánico hace un apaño: máquina al 40 % y fracaso parcial', () => {
@@ -1961,7 +1963,8 @@ describe('QA: incendios, náufragos, naufragios y expediciones', () => {
     let junk = '';
     for (let i = 0; i < 300 && !junk; i++) {
       const r = sim.catchFish();
-      if (!/pescado|captura/i.test(r.msg)) junk = r.msg;
+      const msg = r.msg ?? '';
+      if (!/pescado|captura/i.test(msg)) junk = msg;
     }
     expect(junk).toMatch(/^Algo se ha enganchado en el anzuelo: 1× /);
     expect(junk).not.toMatch(/enredado/);
@@ -2000,5 +2003,24 @@ describe('QA: la cocinera y el fogón', () => {
     });
     expect(atStove).toBeGreaterThan(0);
     expect(onUse).toBe(0);
+    // Aunque acabe en el punto de uso (p. ej. sin hueco a los lados al llegar), si el jugador se
+    // acerca, da un paso a un lado sin dejar de cocinar.
+    sim.state.npcs = [marina];
+    emptyFood(sim); // despensa vacía: la cocinera se pone a cocinar
+    marina.needs.hunger = 90;
+    addItem(mod(sim, 'almacen').inventory!, 'pescado_crudo', 2);
+    addItem(mod(sim, 'almacen').inventory!, 'hortaliza', 2);
+    const atTheStove = () => {
+      const t = marina.task;
+      return t?.kind === 'trabajar' && (t.data as { anim?: string }).anim === 'cocinar' && (t.data as { phase: string }).phase === 'act' && (t.until ?? 0) > sim.state.time + 4;
+    };
+    for (let i = 0; i < 90 && !atTheStove(); i++) run(sim, 1);
+    expect(atTheStove()).toBe(true);
+    const task = marina.task;
+    Object.assign(marina.pos, use);
+    placePlayer(sim, { x: use.x + 1, y: use.y, z: use.z });
+    run(sim, 3);
+    expect(Math.hypot(marina.pos.x - use.x, marina.pos.z - use.z)).toBeGreaterThan(0.5);
+    expect(marina.task).toBe(task); // sin dejar lo que estaba haciendo
   });
 });

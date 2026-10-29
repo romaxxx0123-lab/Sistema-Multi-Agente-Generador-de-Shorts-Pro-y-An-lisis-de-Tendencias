@@ -3,9 +3,11 @@
  *
  * Cada habitante tiene necesidades (hambre, sed, energía, salud) y ánimo, y elige qué hacer con
  * una lista de prioridades que se reevalúa cada ~10 min o al acabar la tarea:
- *   1. expedición (la gestiona events.ts) · 2. incendio (van a apagarlo) · 3. tormenta a la
- *   intemperie → a cubierto · 4. dormir (de noche o agotado) en su cama · 5. comer de los almacenes
- *   en una mesa · 6. beber del depósito · 7. trabajar según el puesto (8–20 h) · 8. ocio.
+ *   1. expedición (la gestiona events.ts) · 2. incendio (como mucho dos por fuego: con cubos del
+ *   almacén, que llenan en la borda; sin cubos lo sofocan a mano, muy despacio) · 3. tormenta a la
+ *   intemperie → a cubierto · 4. dormir (de noche o agotado) en su cama; agotado pero con sed o
+ *   hambre urgentes, primero bebe o come · 5. comer de los almacenes en una mesa · 6. beber del
+ *   depósito · 7. trabajar según el puesto (8–20 h) · 8. ocio.
  * Las emergencias (fuego, tormenta, discusión, balsa de náufragos) se comprueban cada minuto y se
  * adelantan a lo que estén haciendo.
  *
@@ -19,12 +21,19 @@
  * los generadores; el pescador pesca desde la borda; el recolector rescata restos con el gancho; los
  * demás ayudan en las obras (actividad 'building' + `task.targetModuleId`, que construction.ts cuenta).
  *
- * Supervivencia coherente: si la despensa no llega, quien no tenga nada que hacer pesca (y con hambre
- * y la despensa vacía, antes que nada); el pescado crudo se asa en el fogón antes de comerlo; si los
+ * Supervivencia coherente: la comida y el agua se buscan solo donde se puede llegar (si la favorita
+ * está en un almacén aislado, se toma la siguiente, y la queja lo dice); si la despensa no llega,
+ * quien no tenga nada que hacer pesca (y con hambre y la despensa vacía, antes que nada); el
+ * pescado crudo se asa en el fogón antes de comerlo; si los
  * depósitos se secan, destilan agua de mar (cubo del almacén → borda → fogón, o fabrican un cubo);
  * con los almacenes llenos dejan de pescar y rescatar y lo dicen. Una balsa de náufragos se avisa a
  * voces y, si el jugador no la engancha a tiempo, acude quien sea valiente. Un habitante grave deja una
- * entrada de peligro en el diario. Nadie se planta encima de otro (`PERSONAL_SPACE`).
+ * entrada de peligro en el diario. Nadie se planta encima de otro (`PERSONAL_SPACE`), y quien cocina
+ * lo hace a un lado del fogón, dejando libre su punto de uso al jugador.
+ *
+ * Enfermedad: solo se cura con tratamiento (botiquín, enfermería o guardando cama); sin él la salud
+ * cae y puede contagiarse a quien esté al lado. Rasgos y puestos concuerdan con el género del nombre
+ * (`NAME_GENDER`, `npcTraitName`, `npcRoleName`).
  *
  * Estado transitorio (no se guarda; se reconstruye al cargar): próxima decisión, recuerdos cortos
  * para el ánimo (última comida caliente, comedor, charla), control de atascos y la máscara de
@@ -2359,6 +2368,21 @@ function fireSpot(sim: Simulation, m: ModuleInstance): Vec3 | null {
   return null;
 }
 
+/** Punto de la borda que menos rodeo supone para ir desde `from` y volver al fuego (`to`). */
+function railForFire(sim: Simulation, from: Vec3, to: Vec3 | null): RailSpot | null {
+  let best: RailSpot | null = null;
+  let bestD = Infinity;
+  const leg = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.z - b.z) + Math.abs(a.y - b.y) * 3;
+  for (const s of railSpots(sim)) {
+    const d = leg(from, s.pos) + (to ? leg(s.pos, to) : 0);
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
 /** Almacén alcanzable con un cubo para el fuego (lleno primero; vacío solo si se puede ir a la borda). */
 function bucketSource(sim: Simulation, npc: NpcState): { m: ModuleInstance; id: ItemId; spot: Vec3 } | null {
   for (const id of ['cubo_agua', 'cubo'] as const) {
@@ -2382,8 +2406,10 @@ function firePlan(sim: Simulation, npc: NpcState, m: ModuleInstance): Plan | nul
     const spot = fireSpot(sim, m);
     return spot ? { ...base, target: spot, data: { stage: 'arrojar' }, duration: 1 } : null;
   }
-  if (carry === 'cubo' && !stormNow(sim)) {
-    const rail = railSpotNear(sim, npc.pos.x, undefined, npc.pos.y);
+  // Con el cubo vacío: a la borda más a mano para ir y volver al fuego (si ya casi está apagado,
+  // se remata a mano sin soltar el cubo).
+  if (carry === 'cubo' && !stormNow(sim) && m.fire > NPC_BUCKET_EXTINGUISH / 2) {
+    const rail = railForFire(sim, npc.pos, fireSpot(sim, m));
     if (rail) return { ...base, target: rail.pos, data: { stage: 'llenar', faceYaw: rail.yaw }, duration: 1 };
   }
   const b = carry === 'cubo' || blocked(sim, npc, 'cubo_fuego') ? null : bucketSource(sim, npc);
@@ -3006,10 +3032,12 @@ function chatter(sim: Simulation, npc: NpcState, lines: readonly string[]): void
 /* Necesidades, ánimo y salud                                          */
 /* ------------------------------------------------------------------ */
 
+/** ¿Está tumbado en una cama o camilla de verdad? (el suelo de la bodega no cuenta). */
 function onBed(npc: NpcState): boolean {
   const k = npc.task?.kind;
-  if (k === 'descansar') return true;
-  return k === 'dormir' && td(npc)['bed'] === true;
+  const d = td(npc);
+  if (k === 'descansar') return typeof d['restModuleId'] === 'number' || d['bed'] === true;
+  return k === 'dormir' && d['bed'] === true;
 }
 
 function inHealingBed(sim: Simulation, npc: NpcState): boolean {
@@ -3139,7 +3167,7 @@ function tickNeedsOf(sim: Simulation, npc: NpcState, dt: number): void {
  * El contagiado abre su propio evento de enfermedad (o, si ya hay uno, enferma igualmente y queda
  * anotado en el diario).
  */
-function spreadSickness(sim: Simulation, npc: NpcState, hours: number): void {
+export function spreadSickness(sim: Simulation, npc: NpcState, hours: number): void {
   if (!isPresent(npc)) return;
   const p = 1 - Math.pow(1 - CONTAGION_PER_HOUR, hours);
   const room = npc.activity === 'sleeping' ? npc.task?.targetModuleId : undefined;
@@ -3426,6 +3454,9 @@ function samePlan(plan: Plan, npc: NpcState): boolean {
 function greet(sim: Simulation, npc: NpcState): void {
   const p = sim.state.player;
   if (p.sleeping || !p.alive || npc.activity === 'sleeping') return;
+  // En plena emergencia nadie se para a dar los buenos días.
+  const k = npc.task?.kind;
+  if (k === 'apagar' || k === 'refugio' || k === 'discutir') return;
   if (Math.abs(p.pos.y - npc.pos.y) > 1.5 || dist2(p.pos, npc.pos) > 2.6) return;
   const mem = memoOf(sim, npc);
   const now = sim.state.time;

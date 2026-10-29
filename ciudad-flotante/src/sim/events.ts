@@ -202,7 +202,7 @@ export const STRUCTURAL_DECAY_PER_HOUR_PER_M = 0.8;
 export const FIRE_START = 40;
 export const FIRE_GROWTH_PER_HOUR = 9;
 /** Condición que quema un fuego al 100 % por hora (proporcional a la intensidad). */
-export const FIRE_BURN_PER_HOUR = 30;
+export const FIRE_BURN_PER_HOUR = 45;
 export const FIRE_SPREAD_ABOVE = 60;
 export const FIRE_SPREAD_CHANCE_PER_HOUR = 0.2;
 /** Lo que apaga un cubo de agua de mar. */
@@ -392,6 +392,12 @@ export function isFishBankActive(sim: Simulation): boolean {
 /** ¿Hay una avería activa sobre este módulo? (el mecánico la trata como urgente). */
 export function isBreakdownTarget(sim: Simulation, moduleId: number): boolean {
   return sim.state.events.active.some((e) => e.type === 'averia' && (e.data as { moduleId?: number }).moduleId === moduleId);
+}
+
+/** Motivo de la avería activa sobre un módulo («La prensa ha perdido presión»), o null (para la interfaz). */
+export function breakdownReason(sim: Simulation, moduleId: number): string | null {
+  const ev = sim.state.events.active.find((e) => e.type === 'averia' && (e.data as { moduleId?: number }).moduleId === moduleId);
+  return ev ? ((ev.data as { reason?: string }).reason ?? null) : null;
 }
 
 /** Módulos que arden ahora mismo. */
@@ -902,7 +908,7 @@ function patchBreakdown(sim: Simulation, ev: ActiveEvent, m: ModuleInstance): vo
   m.status = 'active';
   m.brokenReason = null;
   m.condition = Math.max(m.condition, BREAKDOWN_PATCH_CONDITION);
-  const what = d.structural ? `${capitalize(withArticle(name))} aguantará` : `${capitalize(withArticle(name))} vuelve a funcionar`;
+  const what = d.structural ? `${withArticle(name)} aguantará` : `${withArticle(name)} vuelve a funcionar`;
   endEvent(sim, ev, false, `${who.name} hace un apaño provisional: ${what}, pero al ${BREAKDOWN_PATCH_CONDITION} %. Hará falta repararl${isFeminineName(name) ? 'a' : 'o'} de verdad.`, 'warn');
 }
 
@@ -1478,9 +1484,15 @@ export function stormWaveHits(sim: Simulation, p: number): void {
   }
 }
 
-/** «la cocina (55 %) y el puente (71 %)»: módulos con desperfectos leves que conviene reparar. */
+/**
+ * «la cocina (55 %) y el puente de mando (71 %)»: módulos dañados, los peores primero; con más de
+ * tres, «… y 2 más».
+ */
 function damageList(mods: ModuleInstance[]): string {
-  const parts = mods.map((m) => `${withArticle(moduleDef(m.type).name)} (${Math.round(m.condition)} %)`);
+  const sorted = [...mods].sort((a, b) => a.condition - b.condition);
+  const parts = sorted.slice(0, 3).map((m) => `${withArticle(moduleDef(m.type).name)} (${Math.round(m.condition)} %)`);
+  const more = sorted.length - parts.length;
+  if (more > 0) return `${parts.join(', ')} y ${more} ${more === 1 ? 'módulo más' : 'módulos más'}`;
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
 }
 
