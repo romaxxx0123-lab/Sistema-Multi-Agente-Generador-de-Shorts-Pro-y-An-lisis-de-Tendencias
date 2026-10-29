@@ -84,12 +84,16 @@ export function toolUse(def: ItemDef): string | null {
   return def.tool ? (TOOL_USE[def.tool] ?? null) : null;
 }
 
-/** Verbo de la acción "usar" de un objeto (clic derecho), o null si no se usa directamente. */
-export function useVerb(def: ItemDef, slot: number): string | null {
+/**
+ * Verbo de la acción "usar" de un objeto (clic derecho), o null si no se usa directamente.
+ * Las herramientas se empuñan también desde la mochila: el inventario las pasa antes a la barra
+ * rápida (por eso la ranura ya no cambia el verbo).
+ */
+export function useVerb(def: ItemDef, _slot: number): string | null {
   if (def.category === 'plano') return 'Estudiar';
   if (def.category === 'ropa') return 'Ponérselo';
   if (def.consume) return def.consume.verb;
-  if (def.category === 'herramienta') return slot < 8 ? 'Empuñar' : null;
+  if (def.category === 'herramienta') return 'Empuñar';
   return null;
 }
 

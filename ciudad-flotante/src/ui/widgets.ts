@@ -130,8 +130,10 @@ export interface SlotOpts {
   placeholder?: string;
   /** Clic izquierdo (sin arrastre). */
   onClick?: (e: MouseEvent) => void;
-  /** Clic derecho / doble clic. */
+  /** Clic derecho / doble clic (usar el objeto). */
   onUse?: () => void;
+  /** Clic derecho, si hace algo distinto de `onUse` (mover media pila en los paneles de transferencia). */
+  onRight?: (e: MouseEvent) => void;
   /** Líneas de ayuda de la descripción emergente. */
   hints?: string[];
   cls?: string;
@@ -160,7 +162,9 @@ export function slot(env: UiEnv, o: SlotOpts): VNode {
       },
       oncontextmenu: (e: MouseEvent) => {
         e.preventDefault();
-        if (s) o.onUse?.();
+        if (!s) return;
+        if (o.onRight) o.onRight(e);
+        else o.onUse?.();
       },
       ondblclick: (e: MouseEvent) => {
         e.preventDefault();
@@ -225,10 +229,13 @@ export function stackList(rec: Record<string, number>, have?: (id: string) => nu
 /** Teclas de una letra que usa el juego (para no confundir "A cielo abierto" con una tecla). */
 const KEY_LETTERS = new Set(['E', 'B', 'R', 'F', 'V', 'J', 'C', 'I', 'W', 'S', 'D']);
 
-/** Texto con teclas resaltadas: "(Tab)", "Pulsa B", "WASD", "(1)"… */
+/**
+ * Texto con teclas y acciones del ratón resaltadas: "(Tab)", "Pulsa B", "WASD", "(1)", "F1",
+ * "Ctrl", "clic", "clic derecho"… (así los consejos enseñan el gesto físico, no un menú).
+ */
 export function richKeys(text: string): VInput[] {
   const out: VInput[] = [];
-  const re = /\b(WASD|Mayús|Espacio|Tab|Esc|[A-Z]|[1-8])\b/g;
+  const re = /\b(WASD|Mayús|Espacio|Tab|Esc|Ctrl|F1|[Cc]lic derecho|[Cc]lic|[A-Z]|[1-8])\b/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
@@ -236,8 +243,9 @@ export function richKeys(text: string): VInput[] {
     // Solo dígitos entre paréntesis "(1)" y letras sueltas que sean teclas del juego.
     if (/^[1-8]$/.test(tok) && !(text[m.index - 1] === '(' && text[m.index + 1] === ')')) continue;
     if (/^[A-Z]$/.test(tok) && !KEY_LETTERS.has(tok)) continue;
+    const label = /^clic derecho$/i.test(tok) ? 'Clic der.' : /^clic$/i.test(tok) ? 'Clic' : tok;
     out.push(text.slice(last, m.index));
-    out.push(kbd(tok));
+    out.push(kbd(label));
     last = m.index + tok.length;
   }
   out.push(text.slice(last));

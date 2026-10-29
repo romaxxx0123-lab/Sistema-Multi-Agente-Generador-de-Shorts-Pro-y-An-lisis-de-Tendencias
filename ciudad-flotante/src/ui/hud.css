@@ -848,8 +848,27 @@
   }
 }
 
+/* Con un panel abierto, la tarjeta se aparta: el panel ya dice qué hacer y no debe quedar cortada. */
 .hud-tut.under {
   z-index: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0s 0.2s;
+}
+
+.hud-tut.urgent {
+  border-color: rgba(240, 190, 90, 0.85);
+}
+
+.tut-now {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(240, 190, 90, 0.2);
+  color: #f3c36b;
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .tut-head {
@@ -1167,6 +1186,15 @@
   flex: none;
 }
 
+/* Como mucho dos líneas por aviso: una ráfaga nunca baja hasta el centro de la pantalla. */
+.toast > span:not(.gl):not(.toast-n) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
 .toast.t-info .gl {
   color: var(--info);
 }
@@ -1205,6 +1233,7 @@
 }
 
 .hud-toasts.compact .toast > span:not(.gl):not(.toast-n) {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

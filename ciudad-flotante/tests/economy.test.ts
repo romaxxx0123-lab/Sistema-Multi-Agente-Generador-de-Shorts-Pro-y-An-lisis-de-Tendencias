@@ -634,7 +634,7 @@ describe('fabricación', () => {
     sim.queueCraft(banco.id, 'tornillos');
     run(sim, 7);
     expect(countItem(almacen.inventory, 'tornillos')).toBe(4);
-    expect(texts(notes, /guardado en el almacén/)).toHaveLength(1);
+    expect(texts(notes, /^Tornillería lista en el banco de trabajo \(bandeja llena: se ha guardado en el almacén\)$/)).toHaveLength(1);
 
     for (const inv of [almacen.inventory!, cocina.inventory!]) inv.slots = inv.slots.map((s) => s ?? { id: 'conserva', qty: 20 });
     for (const inv of [almacen.inventory!, cocina.inventory!]) for (const s of inv.slots) if (s) s.qty = s.id === 'tornillos' ? 99 : (s.qty = 999);
@@ -953,6 +953,17 @@ describe('huerto', () => {
       return sim.harvest(h.id, 0).msg;
     };
     expect(harvestWith(31)).toBe(harvestWith(31));
+  });
+
+  it('cosechar deja el estado del azar sincronizado en el guardado', () => {
+    const { sim } = setup(31);
+    give(sim, MATERIALS);
+    give(sim, { semilla_hortaliza: 1 });
+    const h = build(sim, 'huerto', 1, 8, 0);
+    sim.plant(h.id, 0, 'semilla_hortaliza');
+    h.plots[0]!.growth = 1;
+    sim.harvest(h.id, 0);
+    expect(sim.state.rngState).toBe(sim.rng.state);
   });
 });
 

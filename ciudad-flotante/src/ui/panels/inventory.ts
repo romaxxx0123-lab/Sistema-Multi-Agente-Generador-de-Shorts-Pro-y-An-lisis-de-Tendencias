@@ -159,7 +159,55 @@ function useSlot(env: UiEnv, i: number): void {
   const sim = env.ctx.sim;
   const s = sim.state.player.inventory.slots[i];
   if (!s) return;
+  if (i >= HOTBAR_SLOTS && ITEMS[s.id]?.category === 'herramienta') {
+    const to = wieldFromSlot(env, i);
+    if (to >= 0 && env.ps.sel === i) env.ps.sel = to;
+    return;
+  }
   env.act(sim.useItem(i), 'good');
+}
+
+/**
+ * Empuña una herramienta de la mochila: la lleva a la barra rápida (a un hueco libre o, si está
+ * llena, cambiándola por lo menos útil que no sea herramienta) y la selecciona. Devuelve la
+ * ranura de la barra donde queda (o -1).
+ */
+export function wieldFromSlot(env: UiEnv, slot: number): number {
+  const sim = env.ctx.sim;
+  const player = { kind: 'player' as const };
+  const inv = sim.state.player.inventory;
+  let to = -1;
+  for (let i = 0; i < HOTBAR_SLOTS; i++) {
+    if (!inv.slots[i]) {
+      to = i;
+      break;
+    }
+  }
+  if (to < 0) {
+    // Barra llena: se intercambia con lo menos útil que no sea herramienta.
+    const rank: Record<string, number> = { material: 0, pieza: 1, semilla: 2, combustible: 3, plano: 4, ropa: 5, medicina: 6, comida: 7, bebida: 8 };
+    let best = Infinity;
+    for (let i = HOTBAR_SLOTS - 1; i >= 0; i--) {
+      const c = ITEMS[inv.slots[i]?.id ?? '']?.category;
+      if (!c || c === 'herramienta') continue;
+      const r = rank[c] ?? 9;
+      if (r < best) {
+        best = r;
+        to = i;
+      }
+    }
+  }
+  if (to < 0) {
+    env.act({ ok: false, msg: 'La barra rápida está llena de herramientas: arrastra una a la mochila' }, 'info');
+    return -1;
+  }
+  const mv = sim.moveItem(player, slot, player, to);
+  if (!mv.ok) {
+    env.act(mv, 'info');
+    return -1;
+  }
+  env.act(sim.useItem(to), 'good');
+  return to;
 }
 
 /** Primera ranura libre de la barra rápida (o la seleccionada si están todas ocupadas). */
@@ -180,21 +228,25 @@ function detailSection(env: UiEnv, sel: number | null, stack: { id: string; qty:
   const effects = itemEffects(def, sim.state.unlocks);
   const use = toolUse(def);
   const actions: VInput[] = [];
-  if (verb) actions.push(btn(verb, () => useSlot(env, sel), { primary: true, glyph: def.category === 'plano' ? 'book' : def.category === 'ropa' ? 'shirt' : 'hand' }));
-  if (sel >= HOTBAR_SLOTS) {
+  const isTool = def.category === 'herramienta';
+  const held = isTool && sel < HOTBAR_SLOTS && sim.state.player.hotbar === sel;
+  if (verb) {
+    actions.push(
+      btn(held ? 'En la mano' : verb, () => useSlot(env, sel), {
+        primary: !held,
+        disabled: held,
+        glyph: def.category === 'plano' ? 'book' : def.category === 'ropa' ? 'shirt' : 'hand',
+        title: isTool && sel >= HOTBAR_SLOTS ? 'La pasa a la barra rápida y la lleva en la mano' : undefined,
+      }),
+    );
+  }
+  if (sel >= HOTBAR_SLOTS && !isTool) {
     actions.push(
       btn('A la barra rápida', () => {
         const to = hotbarTarget(env);
         if (env.act(sim.moveItem({ kind: 'player' }, sel, { kind: 'player' }, to), 'info')) env.ps.sel = to;
         env.refresh();
       }, { glyph: 'arrow' }),
-    );
-  } else if (def.tool) {
-    actions.push(
-      btn(sim.state.player.hotbar === sel ? 'En la mano' : 'Llevar en la mano', () => {
-        sim.setHotbar(sel);
-        env.refresh();
-      }, { disabled: sim.state.player.hotbar === sel, glyph: 'hand' }),
     );
   }
   actions.push(

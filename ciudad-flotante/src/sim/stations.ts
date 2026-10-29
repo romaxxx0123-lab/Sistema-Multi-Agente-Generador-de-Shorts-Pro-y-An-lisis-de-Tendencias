@@ -502,7 +502,7 @@ function finishJob(sim: Simulation, m: ModuleInstance, kind: StationKind, r: Rec
   markTutorial(sim, kind === 'cocina' ? 'cocinar' : 'fabricar');
   const name = productName(r);
   let text = `${name} ${agree(name, 'listo')} en ${STATION_PLACE[kind]}`;
-  if (where === 'almacen') text += ' (bandeja llena: guardado en el almacén)';
+  if (where === 'almacen') text += ' (bandeja llena: se ha guardado en el almacén)';
   else if (where === 'caja') text += ' (sin sitio: en una caja junto a la estación)';
   sim.notify(text, 'good');
 }
@@ -733,6 +733,7 @@ export function harvest(sim: Simulation, moduleId: number, plot: number, actor: 
     const q = sim.rng.int(crop.seedReturn.min, crop.seedReturn.max);
     if (q > 0) items.push({ id: crop.seed, qty: q });
   }
+  sim.syncRng(); // los dados de un comando también deben quedar en el guardado
   resetPlot(p);
   let note = '';
   if (actor.by === 'npc') {

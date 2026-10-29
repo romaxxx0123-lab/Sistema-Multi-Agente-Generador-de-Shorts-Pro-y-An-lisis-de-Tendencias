@@ -569,8 +569,10 @@ export class Menus {
         ]),
         group('Inventario', [
           ['Arrastrar', 'Mover entre ranuras e inventarios'],
-          [[kbd('Clic der.'), ' / doble clic'], 'Usar el objeto'],
-          [kbd('Clic'), 'Pasar la pila al otro inventario'],
+          [[kbd('Clic der.'), ' / doble clic'], 'Usar o empuñar el objeto (inventario)'],
+          [kbd('Clic'), 'Almacenes y cajas: pasar la pila'],
+          [kbd('Clic der.'), 'Almacenes y cajas: pasar la mitad'],
+          [[kbd('Ctrl'), '+', kbd('Clic')], 'Almacenes y cajas: pasar una'],
           [[kbd('Mayús'), '+', kbd('Clic')], 'Pasar todo lo de ese tipo'],
           [[kbd('1'), '–', kbd('8'), ' encima'], 'Llevar a la barra rápida'],
         ]),

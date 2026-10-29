@@ -154,7 +154,11 @@ describe('formato de textos', () => {
         .filter((x): x is VNode => typeof x === 'object' && x !== null && !Array.isArray(x))
         .map((x) => String(x.children[0]));
     expect(keys('WASD para moverte, Mayús para correr, Espacio para saltar.')).toEqual(['WASD', 'Mayús', 'Espacio']);
-    expect(keys('Selecciona el gancho (1) y haz clic.')).toEqual(['1']);
+    expect(keys('Selecciona el gancho (1) y haz clic.')).toEqual(['1', 'Clic']);
+    // Las acciones del ratón también se muestran como teclas (el consejo enseña el gesto, no un menú).
+    expect(keys('Elige la comida en la barra rápida y pulsa F o clic derecho.')).toEqual(['F', 'Clic der.']);
+    expect(keys('F1 oculta los consejos; Ctrl+clic coge una.')).toEqual(['F1', 'Ctrl', 'Clic']);
+    expect(keys('Un clicado no es un clic')).toEqual(['Clic']);
     expect(keys('Pulsa B para el modo construcción')).toEqual(['B']);
     expect(keys('Guarda lo que no necesites (E sobre las estanterías).')).toEqual(['E']);
     expect(keys('A cielo abierto crecen mejor. Y de noche, menos.')).toEqual([]);
@@ -230,7 +234,8 @@ describe('datos para los paneles', () => {
     expect(useVerb(ITEMS['agua_potable']!, 10)).toBe('Beber');
     expect(useVerb(ITEMS['abrigo']!, 10)).toBe('Ponérselo');
     expect(useVerb(ITEMS['gancho']!, 2)).toBe('Empuñar');
-    expect(useVerb(ITEMS['gancho']!, 12)).toBeNull();
+    // Desde la mochila también: el inventario la pasa a la barra rápida y la selecciona.
+    expect(useVerb(ITEMS['gancho']!, 12)).toBe('Empuñar');
     expect(useVerb(ITEMS['madera']!, 0)).toBeNull();
   });
 

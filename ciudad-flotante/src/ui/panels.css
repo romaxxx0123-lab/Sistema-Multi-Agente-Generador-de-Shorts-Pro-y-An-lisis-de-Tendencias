@@ -1561,6 +1561,11 @@ body.ui-dragging * {
   margin-top: 8px;
 }
 
+.fuel-add {
+  display: inline-flex;
+  gap: 3px;
+}
+
 .switch-row {
   display: flex;
   align-items: center;
@@ -2523,4 +2528,45 @@ body.ui-dragging * {
 
 .generic p {
   margin: 0;
+}
+
+/* ---------- Consejo del tutorial dentro de un panel de estación ---------- */
+
+.st-tut {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(224, 164, 88, 0.45);
+  background: rgba(224, 164, 88, 0.1);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.st-tut .gl {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.st-tut .kbd {
+  font-size: 10.5px;
+  min-width: 0;
+  padding: 0 5px;
+}
+
+/* Lo que se perdería al desmontar (agua, carga): discreto, pero a la vista. */
+.note.demolish-loss {
+  margin-top: 0;
+  align-items: flex-start;
+  background: rgba(200, 85, 61, 0.1);
+  color: var(--ink-dim);
+}
+
+.util-main .help-line {
+  margin-top: 0;
 }

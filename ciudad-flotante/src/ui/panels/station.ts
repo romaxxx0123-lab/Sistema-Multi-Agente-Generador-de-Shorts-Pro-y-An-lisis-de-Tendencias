@@ -11,7 +11,7 @@
 import { CROPS } from '../../data/crops';
 import { moduleDef, type ModuleDef } from '../../data/modules';
 import { WATER_PER_DRINK } from '../../sim/constants';
-import { REPAIR_THRESHOLD } from '../../sim/construction';
+import { demolishLosses, REPAIR_THRESHOLD } from '../../sim/construction';
 import { findModule, payInventories } from '../../sim/helpers';
 import { countIn, countItem } from '../../sim/inventory';
 import type { InvRef } from '../../sim/Simulation';
@@ -20,13 +20,13 @@ import { daylight } from '../../sim/time';
 import type { ModuleInstance } from '../../sim/types';
 import { conditionFactor, fuelMinutes, hasGrowLamps, hasPowerSwitch, moduleHasSky } from '../../sim/utilities';
 import type { UiEnv } from '../env';
-import { duration, itemName, num, pct } from '../fmt';
+import { duration, itemName, num, pct, qtyName } from '../fmt';
 import { MODULE_GLYPH } from '../icons';
 import { cx, h, type VInput, type VNode } from '../vdom';
-import { bar, btn, chip, empty, gl, icon, kbd, meter, section, slot } from '../widgets';
+import { bar, btn, chip, empty, gl, icon, kbd, meter, richKeys, section, slot } from '../widgets';
 import { recipeDetail, recipeRow } from './crafting';
 import type { PanelView } from './index';
-import { quickMove, transferHelp, transferView } from './transfer';
+import { moveSlotOpts, takeAllFrom, transferHelp, transferView } from './transfer';
 
 export function renderStation(env: UiEnv, moduleId: number): PanelView | null {
   const sim = env.ctx.sim;
@@ -242,8 +242,12 @@ function craftStation(env: UiEnv, m: ModuleInstance, def: ModuleDef): { body: VN
 
   const recipes = sim.stationRecipes(m.id);
   const ss = sim.stationStatus(m.id);
+  const tut = stationTutorial(env, m);
   let selId = env.ps.recipe ?? null;
-  if (!selId || !recipes.some((r) => r.recipe.id === selId)) selId = recipes.find((r) => r.canCraft)?.recipe.id ?? recipes[0]?.recipe.id ?? null;
+  if (!selId || !recipes.some((r) => r.recipe.id === selId)) {
+    const hinted = tut ? recipes.find((r) => r.recipe.id === tut.recipe && !r.locked) : undefined;
+    selId = hinted?.recipe.id ?? recipes.find((r) => r.canCraft)?.recipe.id ?? recipes[0]?.recipe.id ?? null;
+  }
   const sel = recipes.find((r) => r.recipe.id === selId) ?? null;
   const queueFull = m.queue.length >= MAX_QUEUE;
 
@@ -320,14 +324,29 @@ function craftStation(env: UiEnv, m: ModuleInstance, def: ModuleDef): { body: VN
     const used = inv ? inv.slots.filter((s) => !!s).length : 0;
     side.push(
       section(
-        h('span', { class: 'sec-row' }, h('span', null, gl('box'), 'Bandeja de salida'), btn('Tomar todo', () => env.act(sim.takeAll(ref), 'good'), { small: true, disabled: used === 0 })),
+        h('span', { class: 'sec-row' }, h('span', null, gl('box'), 'Bandeja de salida'), btn('Tomar todo', () => takeAllFrom(env, ref), { small: true, disabled: used === 0 })),
         trayRow(env, m, 6),
-        h('div', { class: 'faint small' }, 'Lo fabricado espera aquí. Clic en una ranura para cogerlo.'),
+        h('div', { class: 'faint small' }, 'Lo fabricado espera aquí. Clic para cogerlo: las herramientas van a la barra rápida.'),
       ),
     );
   }
 
-  return { tabs, body: h('div', { class: 'station-layout' }, h('div', { class: 'st-list' }, list), h('div', { class: 'st-detail scroll' }, detail), h('div', { class: 'st-side scroll' }, side)) };
+  const tip = tut ? h('div', { class: 'st-tut' }, gl('star'), h('span', null, richKeys(tut.text))) : null;
+  return { tabs, body: h('div', { class: 'station-layout' }, h('div', { class: 'st-list' }, list), h('div', { class: 'st-detail scroll' }, tip, detail), h('div', { class: 'st-side scroll' }, side)) };
+}
+
+/** Pasos del tutorial que se hacen dentro de un panel de estación: receta que se preselecciona y consejo. */
+const STATION_TUTORIAL: Record<string, { step: string; recipe: string; text: string }> = {
+  banco_trabajo: { step: 'fabricar', recipe: 'cana', text: 'Consejo: elige la caña de pescar y pulsa «Fabricar ×1». Cuando esté lista, haz clic en la bandeja: irá a tu barra rápida.' },
+  cocina: { step: 'cocinar', recipe: 'pescado_asado', text: 'Consejo: echa 1 de madera al fogón (arde 40 min, de sobra para un pescado) y pulsa «Cocinar ×1» en el pescado asado.' },
+};
+
+/** Consejo del tutorial pendiente para esta estación (null si ya se hizo o los consejos están ocultos). */
+export function stationTutorial(env: UiEnv, m: ModuleInstance): { recipe: string; text: string } | null {
+  const t = STATION_TUTORIAL[m.type];
+  const st = env.ctx.sim.state;
+  if (!t || !env.ctx.settings.tutorial || st.tutorial.dismissed || st.tutorial.done.includes(t.step)) return null;
+  return t;
 }
 
 /** Fila compacta de la bandeja/despensa: clic coge la pila. */
@@ -343,10 +362,51 @@ function trayRow(env: UiEnv, m: ModuleInstance, max: number): VNode {
     h(
       'div',
       { class: 'slot-grid', style: `--cols:${max}` },
-      slots.map((s, i) => slot(env, { ref, index: i, stack: s, hints: ['Clic: coger · Mayús+clic: coger todo lo de ese tipo'], onClick: (e) => quickMove(env, ref, i, { kind: 'player' }, e.shiftKey) })),
+      slots.map((s, i) => slot(env, { ref, index: i, stack: s, ...moveSlotOpts(env, ref, i, { kind: 'player' }, 'coger') })),
     ),
     more ? h('div', { class: 'faint small' }, `y ${more} pila${more === 1 ? '' : 's'} más`) : null,
   );
+}
+
+/** Unidades que echa el botón de combustible con Mayús (o el botón ×5). */
+export const FUEL_BATCH = 5;
+
+/**
+ * Echa `n` unidades de `id` (madera o bidones) de tu inventario a la ranura de combustible.
+ * Toma de varias pilas si hace falta y nunca mueve más de lo pedido. Devuelve las unidades echadas.
+ */
+export function addFuel(env: UiEnv, m: ModuleInstance, id: string, n: number): number {
+  const sim = env.ctx.sim;
+  const ref: InvRef = { kind: 'module', id: m.id, slot: 'fuel' };
+  const pinv = sim.state.player.inventory;
+  let left = Math.max(0, Math.floor(n));
+  let fail: { ok: boolean; msg?: string } | null = null;
+  // Primero las pilas de la mochila (las últimas): la barra rápida se queda como está.
+  for (let i = pinv.slots.length - 1; i >= 0 && left > 0; i--) {
+    const s = pinv.slots[i];
+    if (!s || s.id !== id) continue;
+    const before = s.qty;
+    const take = Math.min(left, before);
+    const r = sim.moveItem({ kind: 'player' }, i, ref, undefined, take);
+    if (!r.ok) {
+      fail = r;
+      break;
+    }
+    const after = pinv.slots[i];
+    const moved = after && after.id === id ? before - after.qty : before;
+    left -= moved;
+    if (moved < take) {
+      fail = r;
+      break;
+    }
+  }
+  const done = Math.max(0, Math.floor(n) - left);
+  if (done > 0) {
+    const where = m.type === 'cocina' ? 'al fogón' : 'al generador';
+    const extra = fail ? ': no cabe más' : '';
+    env.act({ ok: true, msg: `Echas ${qtyName(id, done)} ${where}${extra}` }, 'info');
+  } else env.act(fail ?? { ok: false, msg: `No llevas ${id === 'madera' ? 'madera' : 'bidones'} encima` }, 'info');
+  return done;
 }
 
 /** Ranura(s) de combustible con su autonomía y botones para echar leña o un bidón. */
@@ -357,10 +417,7 @@ function fuelBox(env: UiEnv, m: ModuleInstance, title: string): VNode {
   const mins = fuelMinutes(m);
   const pinv = sim.state.player.inventory;
   const fuels = ['madera', 'combustible'].filter((id) => countItem(pinv, id) > 0);
-  const addFuel = (id: string): void => {
-    const i = pinv.slots.findIndex((s) => s?.id === id);
-    if (i >= 0) env.act(sim.moveItem({ kind: 'player' }, i, ref), 'info');
-  };
+  const each = (id: string): string => (id === 'madera' ? '40 min' : '6 h');
   return section(
     h('span', { class: 'sec-row' }, h('span', null, gl('fire'), title), m.fuelBurn > 0.01 && m.powered ? chip('Encendido', 'good', 'fire') : null),
     h(
@@ -377,8 +434,8 @@ function fuelBox(env: UiEnv, m: ModuleInstance, title: string): VNode {
                 stack: s,
                 placeholder: 'fire',
                 emptyTitle: 'Arrastra aquí madera o un bidón de combustible',
-                hints: ['Clic: sacar el combustible'],
-                onClick: () => quickMove(env, ref, i, { kind: 'player' }, false),
+                ...moveSlotOpts(env, ref, i, { kind: 'player' }, 'sacar'),
+                hints: ['Clic: sacar todo · Clic derecho: la mitad · Ctrl+clic: una'],
               }),
             ),
           )
@@ -389,9 +446,20 @@ function fuelBox(env: UiEnv, m: ModuleInstance, title: string): VNode {
       'div',
       { class: 'fuel-btns' },
       fuels.length
-        ? fuels.map((id) => btn(`Echar ${id === 'madera' ? 'madera' : 'bidón'} (${countItem(pinv, id)})`, () => addFuel(id), { small: true, title: 'Mueve una pila de tu inventario a la ranura de combustible' }))
+        ? fuels.map((id) =>
+            h(
+              'span',
+              { key: id, class: 'fuel-add' },
+              btn(`Echar ${id === 'madera' ? 'madera' : 'un bidón'} (${countItem(pinv, id)})`, (e) => addFuel(env, m, id, e.shiftKey ? FUEL_BATCH : 1), {
+                small: true,
+                title: `Echa 1 (${each(id)}). Mayús+clic: echa ${FUEL_BATCH}`,
+              }),
+              btn(`×${FUEL_BATCH}`, () => addFuel(env, m, id, FUEL_BATCH), { small: true, title: `Echa ${FUEL_BATCH} de golpe` }),
+            ),
+          )
         : h('span', { class: 'faint small' }, 'No llevas madera ni bidones encima.'),
     ),
+    h('div', { class: 'faint small' }, 'Lo que eches al fuego ya no cuenta para fabricar ni construir.'),
   );
 }
 
@@ -496,10 +564,32 @@ function waterKv(env: UiEnv): VNode {
   return h('div', { class: 'kv' }, kvRow('Entrada', `${num(u.water.inPerHour, 1)} L/h`), kvRow('Consumo y pérdidas', `${num(u.water.outPerHour, 1)} L/h`), kvRow('Balance', h('span', { class: net < -0.05 ? 'warn' : net > 0.05 ? 'good' : '' }, `${net >= 0 ? '+' : '−'}${num(Math.abs(net), 1)} L/h`)));
 }
 
+/**
+ * Aviso de lo que se perdería al desmontar el módulo ahora (agua que ya no cabe en el resto de
+ * depósitos o carga que no cabe en el resto de baterías), o null si no se pierde nada.
+ */
+export function demolishLossNote(env: UiEnv, m: ModuleInstance): VNode | null {
+  let l: ReturnType<typeof demolishLosses>;
+  try {
+    l = demolishLosses(env.ctx.sim, m);
+  } catch {
+    return null;
+  }
+  const parts: string[] = [];
+  if (l.waterLossL >= 0.5) parts.push(`se perderían ${Math.round(l.waterLossL)} L de agua (${l.waterCapacityAfterL > 0 ? `la capacidad bajaría a ${Math.round(l.waterCapacityAfterL)} L` : 'no quedaría ningún depósito para beber'})`);
+  if (l.batteryLossKWh >= 0.5) parts.push(`se perderían ${Math.round(l.batteryLossKWh)} kWh de carga (${l.batteryCapacityAfterKWh > 0 ? `la capacidad bajaría a ${Math.round(l.batteryCapacityAfterKWh)} kWh` : 'no quedaría ninguna batería'})`);
+  if (!parts.length) return null;
+  return h('div', { class: 'note faint small demolish-loss' }, gl('trash'), `Si lo desmontas ahora, ${parts.join(' y ')}.`);
+}
+
+/** Atajos del depósito sin pasar por este panel (E bebe directamente; manteniendo E se abre el panel). */
+const TANK_SHORTCUTS: VInput[] = [h('span', null, kbd('E'), ' ante el depósito: beber un trago'), h('span', null, kbd('Mantén'), ' ', kbd('E'), ': abrir este panel')];
+
 function tankBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
   const u = sim.state.utilities;
   const p = sim.state.player;
+  const def = moduleDef(m.type);
   const bottles = countItem(p.inventory, 'agua_potable');
   const empty0 = u.waterL < WATER_PER_DRINK;
   return h(
@@ -509,7 +599,7 @@ function tankBody(env: UiEnv, m: ModuleInstance): VNode {
     h(
       'div',
       { class: 'util-main' },
-      h('p', { class: 'muted' }, 'Todos los depósitos y colectores comparten la red de agua potable del barco.'),
+      h('p', { class: 'muted' }, `Todos los depósitos y colectores comparten la red de agua potable del barco. Este depósito aporta ${def.waterCapacity ?? 0} L de capacidad.`),
       waterKv(env),
       m.leak ? h('div', { class: 'note warn' }, gl('leak'), 'Este depósito tiene una fuga: pierde 6 L cada hora hasta que la repares.') : null,
       h(
@@ -519,6 +609,8 @@ function tankBody(env: UiEnv, m: ModuleInstance): VNode {
         btn(`Llenar botella${bottles ? ` (tienes ${bottles})` : ''}`, () => env.act(sim.fillBottle(), 'good'), { glyph: 'drop', disabled: empty0, title: '1 L del depósito → 1 Botella de agua' }),
       ),
       empty0 ? h('div', { class: 'note warn' }, gl('alert'), 'Los depósitos están vacíos: recoge lluvia, destila agua de mar en la cocina o construye una potabilizadora.') : null,
+      h('div', { class: 'help-line' }, TANK_SHORTCUTS),
+      demolishLossNote(env, m),
     ),
   );
 }
@@ -539,6 +631,7 @@ function collectorBody(env: UiEnv, m: ModuleInstance): VNode {
       h('div', { class: 'big-stat' }, gl('rain'), h('b', null, `${num(rate, 1)} L/h`), h('span', { class: 'muted' }, rate > 0 ? 'recogiendo lluvia' : rain > 0 ? 'no le llega la lluvia' : 'esperando lluvia')),
       h('div', { class: 'kv' }, kvRow('Lluvia', pct(rain)), kvRow('A cielo abierto', sky ? 'Sí' : 'No (algo lo cubre)'), kvRow('Capacidad extra', `${def.waterCapacity ?? 0} L`)),
       waterKv(env),
+      demolishLossNote(env, m),
     ),
   );
 }
@@ -610,6 +703,7 @@ function batteryBody(env: UiEnv, m: ModuleInstance): VNode {
       h('div', { class: 'big-stat' }, gl('battery'), h('b', null, flow > 0.05 && frac < 0.999 ? 'Cargando' : flow < -0.05 && u.batteryKWh > 0.01 ? 'Descargando' : 'En reposo'), h('span', { class: 'muted' }, `${num(Math.abs(flow), 1)} kW de ${flow >= 0 ? 'excedente' : 'déficit'}`)),
       h('div', { class: 'faint small' }, `Este banco guarda ${def.batteryKWh ?? 0} kWh y entrega hasta 10 kW. ${m.status === 'broken' ? 'Averiado: desconectado de la red.' : ''}`),
       gridKv(env),
+      demolishLossNote(env, m),
     ),
   );
 }

@@ -26,14 +26,7 @@ import { eventTone, sortedEvents } from './model';
 import { cx, h, patch, type VNode } from './vdom';
 import { gl, icon, kbd, richKeys } from './widgets';
 
-interface Toast {
-  id: number;
-  text: string;
-  kind: NotifyKind;
-  born: number;
-  ttl: number;
-  count: number;
-}
+type Toast = ToastEntry;
 
 interface FeedEntry {
   id: number;
@@ -61,7 +54,49 @@ const NEEDS = [
 ] as const;
 
 const TOAST_TTL: Record<NotifyKind, number> = { info: 4.5, good: 4.5, warn: 6.5, danger: 8 };
-const MAX_TOASTS = 4;
+/** Avisos visibles a la vez (los más viejos y menos graves ceden el sitio). */
+export const MAX_TOASTS = 3;
+const TOAST_RANK: Record<NotifyKind, number> = { info: 0, good: 0, warn: 1, danger: 2 };
+
+/** Forma de un aviso sin cifras: "Bebes agua (quedan 56 L)" y "(quedan 55 L)" se agrupan. */
+export function toastShape(text: string): string {
+  return text.replace(/\d+(?:[.,]\d+)?/g, '#').trim();
+}
+
+/** Aviso en pantalla (estado puro de la cola; el HUD lo pinta). */
+export interface ToastEntry {
+  id: number;
+  text: string;
+  kind: NotifyKind;
+  born: number;
+  ttl: number;
+  count: number;
+}
+
+/**
+ * Añade un aviso a la cola: si hay uno vivo con la misma forma y tono, lo actualiza (texto más
+ * reciente y contador ×N) en vez de apilar otro; si pasan de `max`, se quita el más viejo de los
+ * menos graves (un peligro no lo desplaza una ráfaga de avisos informativos).
+ */
+export function pushToast(list: ToastEntry[], t: Omit<ToastEntry, 'count'>, max = MAX_TOASTS): ToastEntry[] {
+  const shape = toastShape(t.text);
+  const same = list.find((x) => x.kind === t.kind && toastShape(x.text) === shape && t.born - x.born < x.ttl);
+  if (same) {
+    same.count++;
+    same.text = t.text;
+    same.born = t.born;
+    same.ttl = t.ttl;
+    // El agrupado pasa al final (es el más reciente).
+    return [...list.filter((x) => x !== same), same];
+  }
+  const out = [...list, { ...t, count: 1 }];
+  while (out.length > max) {
+    let drop = 0;
+    for (let i = 1; i < out.length; i++) if (TOAST_RANK[out[i]!.kind] < TOAST_RANK[out[drop]!.kind]) drop = i;
+    out.splice(drop, 1);
+  }
+  return out;
+}
 
 export class Hud {
   readonly el: HTMLElement;
@@ -106,14 +141,7 @@ export class Hud {
   toast(text: string, kind: NotifyKind): void {
     const t = text.trim();
     if (!t) return;
-    const same = this.toasts.find((x) => x.text === t && x.kind === kind && this.time - x.born < x.ttl);
-    if (same) {
-      same.count++;
-      same.born = this.time;
-      return;
-    }
-    this.toasts.push({ id: this.nextId++, text: t, kind, born: this.time, ttl: TOAST_TTL[kind] ?? 5, count: 1 });
-    while (this.toasts.length > MAX_TOASTS) this.toasts.shift();
+    this.toasts = pushToast(this.toasts, { id: this.nextId++, text: t, kind, born: this.time, ttl: TOAST_TTL[kind] ?? 5 });
   }
 
   itemGained(id: string, qty: number): void {
@@ -458,13 +486,14 @@ export class Hud {
     const prog = tutorialProgress(ctx.sim);
     return h(
       'div',
-      { key: 'tut', class: cx('hud-tut', panelOpen && 'under') },
+      { key: 'tut', class: cx('hud-tut', panelOpen && 'under', step.urgent && 'urgent') },
       h(
         'div',
         { class: 'tut-head' },
-        gl('star'),
+        gl(step.urgent ? 'alert' : 'star'),
         h('b', null, step.title),
-        h('span', { class: 'tut-n' }, `${prog.done + 1}/${prog.total}`),
+        step.urgent ? h('span', { class: 'tut-now', title: 'Este consejo es oportuno ahora' }, 'Ahora') : null,
+        h('span', { class: 'tut-n', title: `Consejos aprendidos: ${prog.done} de ${prog.total}` }, `${prog.done}/${prog.total}`),
         h('span', { class: 'tut-hide', title: 'F1 oculta o muestra los consejos' }, kbd('F1')),
         h(
           'button',
