@@ -1085,8 +1085,11 @@ function startExpeditionSighting(sim: Simulation, type: 'isla' | 'estructura'): 
     { id: 'expedicion', label: `Fondear y enviar una expedición (${minutes / 60} h)`, enabled: !block, ...(block ? { reason: block } : {}) },
     { id: 'seguir', label: 'Seguir rumbo', enabled: true },
   ];
-  const radar = lead ? 'El radar marca tierra antes de verla. ' : '';
-  return begin(sim, ev, 'info', type === 'isla' ? `${radar}Tierra a la vista: ${name}. Podemos fondear y enviar una expedición.` : `${lead ? 'El radar detecta' : 'Avistamos'} ${name}. Una expedición podría registrarla.`);
+  const text =
+    type === 'isla'
+      ? `${lead ? 'El radar marca tierra por delante, aún lejos' : 'Tierra a la vista'}: ${name}. Podemos fondear y enviar una expedición.`
+      : `${lead ? 'El radar detecta' : 'Avistamos'} ${name}. Una expedición podría registrarla.`;
+  return begin(sim, ev, 'info', text);
 }
 
 function launchExpedition(sim: Simulation, ev: ActiveEvent): ActionResult {
@@ -1513,8 +1516,11 @@ function startMerchant(sim: Simulation): ActiveEvent {
     { id: 'despedir', label: 'Despedir al mercante', enabled: true },
   ];
   refreshObjectives(sim, ev);
-  const how = minutes > MERCHANT_MIN ? `El radar lo detecta y la radio lo contacta antes de verlo: el mercante «${ship}» se acerca` : `El mercante «${ship}» se acerca`;
-  return begin(sim, ev, 'info', `${how} por ${sideName(side)}: podemos comerciar durante ${hoursText(minutes)}.${page ? ' ¡Trae una hoja del cuaderno del Albatros!' : ''}`);
+  const text =
+    minutes > MERCHANT_MIN
+      ? `El radar detecta al mercante «${ship}» antes de verlo y la radio lo confirma: se acerca por ${sideName(side)} y podremos comerciar durante ${hoursText(minutes)}.`
+      : `El mercante «${ship}» se acerca por ${sideName(side)}: podemos comerciar durante ${hoursText(minutes)}.`;
+  return begin(sim, ev, 'info', `${text}${page ? ' ¡Trae una hoja del cuaderno del Albatros!' : ''}`);
 }
 
 /**

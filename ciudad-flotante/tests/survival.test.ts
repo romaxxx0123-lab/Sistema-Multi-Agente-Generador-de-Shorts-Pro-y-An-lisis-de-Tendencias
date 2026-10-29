@@ -1969,7 +1969,7 @@ describe('cuaderno del Albatros: leer hojas', () => {
     const r = sim.useItem(8);
     expect(r).toEqual({
       ok: true,
-      msg: 'Lees «A quien encuentre esto» (cuaderno del Albatros, pág. 1). Puedes releerla en el diario (J). Te faltan cuatro hojas para conocer el rumbo a Puerto Esperanza',
+      msg: 'Lees «A quien encuentre esto» (pág. 1) y la guardas en el diario (J). Te faltan cuatro hojas para conocer el rumbo',
     });
     // Se consume: el texto completo queda en el Cuaderno del diario.
     expect(inv.slots[8]).toBeNull();
@@ -1989,7 +1989,7 @@ describe('cuaderno del Albatros: leer hojas', () => {
     const logLen = sim.state.log.length;
     const r = sim.useItem(8);
     expect(r.ok).toBe(true);
-    expect(r.msg).toBe('Ya habías leído esta hoja («A quien encuentre esto»): la guardas con las demás en el cuaderno del diario (J)');
+    expect(r.msg).toBe('Ya habías leído «A quien encuentre esto»: guardas la copia en el diario (J)');
     expect(inv.slots[8]).toBeNull();
     expect(sim.state.story!.pages).toEqual([1]);
     expect(sim.state.log.length).toBe(logLen);
@@ -1998,15 +1998,15 @@ describe('cuaderno del Albatros: leer hojas', () => {
   it(`con ${PAGES_TO_REVEAL} hojas leídas, en cualquier orden, se conoce el rumbo a Puerto Esperanza (una sola vez)`, () => {
     const { sim, notes } = setup();
     for (const n of [7, 3, 1]) expect(readPage(sim, n).ok).toBe(true);
-    expect(readPage(sim, 5).msg).toMatch(/Te falta una hoja para conocer el rumbo a Puerto Esperanza$/);
+    expect(readPage(sim, 5).msg).toMatch(/\. Te falta una hoja para conocer el rumbo$/);
     expect(sim.state.story!.revealed).toBe(false);
     const r = readPage(sim, 2);
-    expect(r.msg).toBe('Lees «Lo que el mar trae» (cuaderno del Albatros, pág. 2). Puedes releerla en el diario (J). ¡Ya sabes cómo llegar a Puerto Esperanza!');
+    expect(r.msg).toBe('Lees «Lo que el mar trae» (pág. 2) y la guardas en el diario (J). ¡Ya sabes cómo llegar a Puerto Esperanza!');
     expect(sim.state.story).toEqual({ pages: [1, 2, 3, 5, 7], revealed: true, arrived: false });
     expect(notes.filter((n) => n.text === STORY_TEXTS.revealed)).toEqual([{ text: STORY_TEXTS.revealed, kind: 'good' }]);
     expect(sim.state.log.some((l) => l.text === STORY_TEXTS.revealed && l.kind === 'good')).toBe(true);
     // Las siguientes ya no repiten el aviso ni cuentan hojas que faltan.
-    expect(readPage(sim, 4).msg).toBe('Lees «Los que lo intentaron antes» (cuaderno del Albatros, pág. 4). Puedes releerla en el diario (J)');
+    expect(readPage(sim, 4).msg).toBe('Lees «Los que lo intentaron antes» (pág. 4) y la guardas en el diario (J)');
     expect(notes.filter((n) => n.text === STORY_TEXTS.revealed)).toHaveLength(1);
   });
 

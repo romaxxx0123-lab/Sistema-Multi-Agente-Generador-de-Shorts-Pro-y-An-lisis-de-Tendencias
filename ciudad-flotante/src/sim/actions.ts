@@ -327,15 +327,16 @@ function readDocument(sim: Simulation, slot: number, def: ItemDef): ActionResult
   sim.bus.emit('sfx', { name: 'pagina', x: p.pos.x, y: p.pos.y + 1.2, z: p.pos.z });
   markTutorial(sim, 'cuaderno');
   if (story.pages.includes(page.n)) {
-    return ok(`Ya habías leído esta hoja («${page.title}»): la guardas con las demás en el cuaderno del diario (J)`);
+    return ok(`Ya habías leído «${page.title}»: guardas la copia en el diario (J)`);
   }
   story.pages.push(page.n);
   story.pages.sort((a, b) => a - b);
   sim.log(`Leíste: «${page.title}» (cuaderno del Albatros, pág. ${page.n})`, 'info', false);
-  const base = `Lees «${page.title}» (cuaderno del Albatros, pág. ${page.n}). Puedes releerla en el diario (J)`;
+  // Corto: cabe en el aviso aunque haya un panel abierto. El texto completo está en el diario.
+  const base = `Lees «${page.title}» (pág. ${page.n}) y la guardas en el diario (J)`;
   if (story.revealed) return ok(base);
   const left = PAGES_TO_REVEAL - story.pages.length;
-  if (left > 0) return ok(`${base}. ${left === 1 ? 'Te falta una hoja' : `Te faltan ${pageWord(left)} hojas`} para conocer el rumbo a ${REGIONS[FINAL_REGION]?.name ?? 'Puerto Esperanza'}`);
+  if (left > 0) return ok(`${base}. ${left === 1 ? 'Te falta una hoja' : `Te faltan ${pageWord(left)} hojas`} para conocer el rumbo`);
   story.revealed = true;
   sim.log(STORY_TEXTS.revealed, 'good');
   return ok(`${base}. ¡Ya sabes cómo llegar a ${REGIONS[FINAL_REGION]?.name ?? 'Puerto Esperanza'}!`);
