@@ -191,6 +191,11 @@ Tipos (todos con título, descripción, objetivos y entrada de diario; `worldEve
 12. **discusión** — dos habitantes con ánimo < 45 discuten; hablar con uno para mediar.
 13. **estructura** — plataforma/faro misterioso: expedición de 2 h con componentes y plano.
 
+Además: la tormenta lanza golpes de mar (6–12 de daño al jugador en cubierta abierta, heridas a
+habitantes a la intemperie); la avería estructural pierde 0,8 de condición por hora y metro de ola
+hasta repararse; una discusión resta 3 de ánimo al resto; el director reduce a ×0,35 el peso del
+último tipo de evento para dar variedad.
+
 `eventChoice`, `trade`, `extinguish` (requiere cubo de agua de mar; lo devuelve vacío).
 
 ## 11. Habitantes (`npc.ts`) — sim-life
@@ -217,6 +222,16 @@ Tipos (todos con título, descripción, objetivos y entrada de diario; `worldEve
 - Diálogo (`talkTo`): saludo según ánimo, qué hace, quejas (hambre, sin cama, enfermo), petición.
   Opciones: mediar, curar (botiquín), cambiar de puesto (`setRole`), dar objeto (`giveItem`).
 - Nuevos habitantes (`spawnSurvivor`): nombre libre de `NPC_NAMES`, rasgo y aspecto aleatorios.
+- Supervivencia autónoma: pescan de relleno si quedan menos de 3 raciones por habitante (también
+  fuera de horario si hay escasez); asan el pescado crudo en el fogón antes de comerlo; si los
+  depósitos se secan, llenan un cubo en la borda y destilan en la cocina (fabrican el cubo si falta);
+  comen y beben de las cajas sueltas y las ordenan en el almacén; con los almacenes llenos dejan de
+  pescar y de rescatar y lo avisan.
+- Balsas: el habitante despierto más cercano da la voz de alarma; si la balsa se escapa, la rescata
+  el recolector, quien no tiene puesto o un habitante valiente.
+- Salud: aviso en el diario cuando alguien está grave (< 35); la enfermedad se cura sola en ~20 h
+  (12 h en cama, 5 h en la enfermería); regeneración 2/h. Los factores del ánimo son consultables
+  (`npcMoodFactors`) y el diálogo explica lo que más pesa.
 
 ---
 
@@ -250,3 +265,12 @@ validación y motivo, rotación (R), demolición con confirmación, ampliación 
 
 ### Audio — audio
 Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI; procedural.
+
+### Efectos de sonido por bus (`sfx`)
+- Simulación: interruptor, encargo, fabricar, fabricado, cocinado, plantar, cosechar, cuidar,
+  obra_iniciada, obra_terminada, demoler, reparar, averia, trueno, comer, beber, curar, plano,
+  equipar, dormir, despertar, desmayo, soltar, llenar.
+- Jugador: paso, salto, aterrizar, aterrizar_fuerte, gancho_impulso, gancho, chapoteo,
+  chapoteo_corcho, tirar_cabo, recoger, cana, picada, carrete, escapado, martillo, llave, agua_fuego.
+  `toolUsed.tool` ∈ gancho | cana | cubo | cubo_agua | martillo | llave.
+- Interfaz y construcción: ui_abrir, ui_cerrar, ui_clic, ui_click, ui_error, ui_mover.

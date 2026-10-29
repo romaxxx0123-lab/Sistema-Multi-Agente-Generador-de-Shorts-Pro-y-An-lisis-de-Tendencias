@@ -103,7 +103,16 @@ Props: el frente del modelo mira a -z local con `rot = 0`; el eje largo va en x 
 - `node scripts/shot.mjs …` — arranca el juego en Chromium headless (WebGL por software),
   ejecuta pasos con la API de depuración `window.__game` y guarda capturas. Falla si hay errores en consola.
 
-API de depuración (`window.__game`): `state`, `sim`, `ctx`, y `cmd.give(id, n)`, `cmd.giveAll()`,
-`cmd.unlockAll()`, `cmd.setHour(h)`, `cmd.teleport(x,y,z)`, `cmd.look(yaw,pitch)`, `cmd.advance(min)`,
-`cmd.step(frames, dt)`, `cmd.key(code, down)`, `cmd.mouse(dx, dy)`, `cmd.mode(m)`, `cmd.newGame(seed)`.
-Cada módulo puede registrar más con `registerDebug(nombre, fn)` (`src/game/debug.ts`).
+API de depuración (`window.__game`): `state`, `sim`, `ctx` y `cmd.*`. Cada módulo registra los suyos
+con `registerDebug(nombre, fn)` (`src/game/debug.ts`); `Object.keys(__game.cmd)` los lista.
+
+| Área | Comandos |
+|---|---|
+| Núcleo | `give(id, n)`, `giveAll()`, `unlockAll()`, `setHour(h)`, `teleport(x,y,z)`, `look(yaw,pitch)`, `advance(min)`, `step(frames, dt)`, `key(code, down)`, `mouse(dx, dy)`, `mode(m)`, `newGame(seed)`, `weather(clima, min)`, `route(región)`, `event(tipo)`, `fire(moduleId)`, `survivor()` |
+| Jugador | `jugador()` (posición, objetivo, aviso, resaltado, herramientas, últimos avisos), `herramienta(id)`, `resto(tipo, dist, dx, supervivientes)`, `mirarA(x,y,z)`, `mirarResto(id)`, `pulsar(code, frames)`, `picarYa()` |
+| Mundo | `vista(px,py,pz,tx,ty,tz,fov)` (cámara libre; sin argumentos vuelve a la del juego), `clima(tipo)` (aspecto instantáneo), `avistamiento(tipo,x,dist,lado,nombre)`, `mundo()`, `delfines(dist)`, `peces(on)`, `decorado()` |
+| Construcción | `buildInfo()`, `buildLevel(l)`, `buildSelect(tipo)`, `buildRotate(n)`, `buildDemolish(on)`, `buildCategory(c)`, `buildView(yaw,pitch,dist,tx,tz)`, `buildCellToScreen(nivel,x,z)`, `buildModuleToScreen(id,altura)`, `buildExpand()`, `buildConfirm()` |
+| Interfaz | `uiScreen()`, `uiMenu(sub)` |
+| Audio | `audio()`, `audioMeter()`, `audioPlay(nombre)`, `audioUnlock()`, `audioTest()` (síntesis offline) |
+
+Parámetros de URL: `?autostart` (partida nueva directa), `seed=N`, `quality=baja|media|alta`.
