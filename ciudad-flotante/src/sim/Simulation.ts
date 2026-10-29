@@ -114,6 +114,11 @@ export class Simulation {
     return this.state.player.sleeping ? SLEEP_TIME_SCALE : 1;
   }
 
+  /** Copia el estado del RNG al GameState (los comandos fuera del tick también tiran dados). */
+  syncRng(): void {
+    this.state.rngState = this.rng.state;
+  }
+
   nextId(): number {
     return this.state.nextId++;
   }
@@ -177,8 +182,9 @@ export class Simulation {
   unequipClothing(): ActionResult {
     return actions.unequipClothing(this);
   }
-  moveItem(from: InvRef, fromSlot: number, to: InvRef, toSlot?: number): ActionResult {
-    return actions.moveItem(this, from, fromSlot, to, toSlot);
+  /** Mueve una pila (o solo `qty` unidades) entre inventarios. */
+  moveItem(from: InvRef, fromSlot: number, to: InvRef, toSlot?: number, qty?: number): ActionResult {
+    return actions.moveItem(this, from, fromSlot, to, toSlot, qty);
   }
   takeAll(from: InvRef): ActionResult {
     return actions.takeAll(this, from);

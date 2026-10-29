@@ -164,6 +164,7 @@ export class Game implements GameContext {
 
   saveGame(slot = 'manual'): void {
     try {
+      this.sim.syncRng();
       this.saves.save(slot, this.sim.state);
       this.bus.emit('saved', { slot });
       this.sim.notify(slot === AUTOSAVE_SLOT ? 'Partida guardada automáticamente' : 'Partida guardada', 'good');
@@ -198,6 +199,7 @@ export class Game implements GameContext {
    */
   snapshot(): { state: string; mode: GameMode } | null {
     if (this._mode !== 'play' && this._mode !== 'build') return null;
+    this.sim.syncRng();
     return { state: serialize(this.sim.state), mode: this._mode };
   }
 

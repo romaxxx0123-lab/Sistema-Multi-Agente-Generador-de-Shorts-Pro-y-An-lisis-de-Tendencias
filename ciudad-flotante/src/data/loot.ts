@@ -15,7 +15,7 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
     { id: 'cuerda', min: 1, max: 1, chance: 0.15 },
   ],
   barril: [
-    { id: 'conserva', min: 1, max: 2, chance: 0.55 },
+    { id: 'conserva', min: 1, max: 2, chance: 0.35 },
     { id: 'agua_potable', min: 1, max: 2, chance: 0.5 },
     { id: 'combustible', min: 1, max: 1, chance: 0.25 },
     { id: 'plastico', min: 1, max: 2, chance: 0.4 },
@@ -24,7 +24,7 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
     { id: 'madera', min: 1, max: 3, chance: 0.7 },
     { id: 'tela', min: 1, max: 2, chance: 0.4 },
     { id: 'cuerda', min: 1, max: 2, chance: 0.35 },
-    { id: 'conserva', min: 1, max: 1, chance: 0.3 },
+    { id: 'conserva', min: 1, max: 1, chance: 0.2 },
     { id: 'tornillos', min: 2, max: 5, chance: 0.3 },
     { id: 'semilla_hortaliza', min: 1, max: 2, chance: 0.15 },
     { id: 'semilla_lino', min: 1, max: 2, chance: 0.12 },
@@ -79,8 +79,7 @@ export const TRADE_OFFERS: { give: Record<ItemId, number>; get: Record<ItemId, n
   { give: { conserva: 3 }, get: { botiquin: 1 } },
   { give: { tela: 4 }, get: { semilla_hortaliza: 4 } },
   { give: { pescado_asado: 4 }, get: { pieza_mecanica: 1 } },
-  { give: { componentes: 3 }, get: { plano_solar: 1 } },
-  { give: { placa_metal: 6 }, get: { plano_casco: 1 } },
+  { give: { componentes: 6 }, get: { plano_solar: 1 } },
+  { give: { placa_metal: 12, componentes: 2 }, get: { plano_casco: 1 } },
   { give: { combustible: 2 }, get: { semilla_lino: 4 } },
-  { give: { madera: 10 }, get: { conserva: 3 } },
 ];

@@ -162,7 +162,7 @@ export function createNewGame(seed = 12345): GameState {
     debris: [],
     utilities: {
       batteryKWh: 0,
-      waterL: 60,
+      waterL: 90,
       power: { generation: 0, demand: 0, satisfaction: 1, capacityKWh: 0 },
       water: { capacityL: 120, inPerHour: 0, outPerHour: 0 },
     },

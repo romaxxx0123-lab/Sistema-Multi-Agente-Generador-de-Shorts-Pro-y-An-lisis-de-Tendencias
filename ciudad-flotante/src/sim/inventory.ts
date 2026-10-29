@@ -59,6 +59,36 @@ export function addItem(inv: Inventory, id: ItemId, qty: number): number {
   return left;
 }
 
+/**
+ * Como `addItem`, pero los huecos libres se rellenan primero en el rango preferido
+ * [from, to) y después en el resto. Las pilas existentes se completan siempre primero.
+ */
+export function addItemPreferring(inv: Inventory, id: ItemId, qty: number, from: number, to: number): number {
+  if (qty <= 0) return 0;
+  const lim = stackLimit(id);
+  let left = qty;
+  for (const s of inv.slots) {
+    if (left <= 0) break;
+    if (s && s.id === id && s.qty < lim) {
+      const add = Math.min(lim - s.qty, left);
+      s.qty += add;
+      left -= add;
+    }
+  }
+  const order: number[] = [];
+  for (let i = Math.max(0, from); i < Math.min(inv.slots.length, to); i++) order.push(i);
+  for (let i = 0; i < inv.slots.length; i++) if (i < from || i >= to) order.push(i);
+  for (const i of order) {
+    if (left <= 0) break;
+    if (!inv.slots[i]) {
+      const add = Math.min(lim, left);
+      inv.slots[i] = { id, qty: add };
+      left -= add;
+    }
+  }
+  return left;
+}
+
 /** Quita `qty` unidades si hay suficientes. Devuelve true si se quitaron. Empieza por las últimas ranuras. */
 export function removeItem(inv: Inventory, id: ItemId, qty: number): boolean {
   if (qty <= 0) return true;

@@ -30,10 +30,11 @@ const defs: RecipeDef[] = [
   { id: 'tela', name: 'Tela', station: 'banco', inputs: { fibra: 4 }, outputs: { tela: 1 }, time: 10 },
   { id: 'kit_reparacion', name: 'Kit de reparación', station: 'banco', inputs: { madera: 3, tornillos: 2, cuerda: 1 }, outputs: { kit_reparacion: 1 }, time: 15 },
   { id: 'abrigo', name: 'Abrigo de lona', station: 'banco', inputs: { tela: 4, cuerda: 1 }, outputs: { abrigo: 1 }, time: 25 },
+  { id: 'pieza_improvisada', name: 'Pieza mecánica improvisada', station: 'banco', inputs: { placa_metal: 2, tornillos: 4, chatarra: 2 }, outputs: { pieza_mecanica: 1 }, time: 60, desc: 'Un apaño a martillazos: más cara que la del taller, pero sirve cuando el taller no puede.' },
   { id: 'botiquin', name: 'Botiquín', station: 'banco', inputs: { vendaje: 2, plastico: 1, agua_potable: 1 }, outputs: { botiquin: 1 }, time: 20 },
   // Taller (eléctrico)
   { id: 'pieza_mecanica', name: 'Pieza mecánica', station: 'taller', inputs: { placa_metal: 1, tornillos: 3 }, outputs: { pieza_mecanica: 1 }, time: 30, unlock: 'taller' },
-  { id: 'componentes', name: 'Componentes eléctricos', station: 'taller', inputs: { chatarra: 2, plastico: 2 }, outputs: { componentes: 1 }, time: 45, unlock: 'taller' },
+  { id: 'componentes', name: 'Componentes eléctricos', station: 'taller', inputs: { chatarra: 4, plastico: 3 }, outputs: { componentes: 1 }, time: 75, unlock: 'taller' },
   { id: 'placas_lote', name: 'Lote de placas', station: 'taller', inputs: { chatarra: 6 }, outputs: { placa_metal: 3 }, time: 25, unlock: 'taller' },
   { id: 'celula_solar', name: 'Célula solar', station: 'taller', inputs: { componentes: 2, plastico: 1 }, outputs: { celula_solar: 1 }, time: 60, unlock: 'solar' },
   // Cocina (necesita combustible)

@@ -18,7 +18,7 @@ import { ITEMS, type ItemDef } from '../data/items';
 import { MODULES } from '../data/modules';
 import { HOTBAR_SLOTS, INTERACT_RANGE, WATER_PER_DRINK } from './constants';
 import { findModule, giveToPlayer, itemName, pruneCrates, spawnCrate } from './helpers';
-import { addItem, moveStack, spaceFor, takeFromSlot } from './inventory';
+import { addItem, moveStack, spaceFor, takeFromSlot, stackLimit } from './inventory';
 import { CRITICAL_HEALTH, CRITICAL_NEED, DEATH_CAUSES, SICK_HOURS, fireAboard, healthRatePerHour, killPlayer, wakePlayer } from './needs';
 import type { ActionResult, InvRef, Simulation } from './Simulation';
 import { hourOf } from './time';
@@ -254,7 +254,7 @@ export function unequipClothing(sim: Simulation): ActionResult {
  * Mueve la pila `from[fromSlot]` a `to` (a `toSlot` si se indica: fusiona o intercambia).
  * Reglas: la ranura de combustible solo admite objetos que arden; no se guarda nada en obras.
  */
-export function moveItem(sim: Simulation, from: InvRef, fromSlot: number, to: InvRef, toSlot?: number): ActionResult {
+export function moveItem(sim: Simulation, from: InvRef, fromSlot: number, to: InvRef, toSlot?: number, qty?: number): ActionResult {
   if (sim.state.player.sleeping) return fail('Estás durmiendo');
   const src = inventoryOf(sim, from);
   const dst = inventoryOf(sim, to);
@@ -283,6 +283,30 @@ export function moveItem(sim: Simulation, from: InvRef, fromSlot: number, to: In
 
   const id = s.id;
   const before = s.qty;
+  // Movimiento parcial: solo `qty` unidades (p. ej. echar 3 maderas al fogón).
+  if (qty !== undefined && Number.isFinite(qty) && qty >= 1 && qty < s.qty) {
+    const n = Math.floor(qty);
+    let left: number;
+    if (toSlot === undefined) left = addItem(dst, id, n);
+    else {
+      const t = dst.slots[toSlot];
+      if (!t) {
+        dst.slots[toSlot] = { id, qty: n };
+        left = 0;
+      } else if (t.id === id) {
+        const add = Math.min(stackLimit(id) - t.qty, n);
+        t.qty += add;
+        left = n - add;
+      } else left = n;
+    }
+    const movedPart = n - left;
+    if (movedPart <= 0) return fail(toSlot === undefined ? 'No hay sitio' : 'No cabe ahí');
+    s.qty -= movedPart;
+    if (s.qty <= 0) src.slots[fromSlot] = null;
+    if (from.kind === 'crate' || to.kind === 'crate') pruneCrates(sim);
+    if (dstModule?.type === 'almacen') markTutorial(sim, 'almacen');
+    return movedPart < n ? ok(`Solo caben ${movedPart}× ${itemName(id)}`) : ok();
+  }
   if (!moveStack(src, fromSlot, dst, toSlot)) return fail(toSlot === undefined ? 'No hay sitio' : 'No cabe ahí');
   // `moveStack` modifica la pila en su sitio: si sigue en el origen, solo se movió una parte.
   const moved = src.slots[fromSlot] === s ? before - s.qty : before;

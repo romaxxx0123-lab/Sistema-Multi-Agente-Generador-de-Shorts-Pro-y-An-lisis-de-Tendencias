@@ -1,7 +1,8 @@
 /** Utilidades compartidas por los sistemas de simulación. */
 import { ITEMS } from '../data/items';
 import { moduleDef } from '../data/modules';
-import { addItem, createInventory, countIn, isEmpty } from './inventory';
+import { addItem, addItemPreferring, createInventory, countIn, isEmpty } from './inventory';
+import { HOTBAR_SLOTS } from './constants';
 import type { Simulation } from './Simulation';
 import type { Inventory, ItemId, ItemStack, LooseCrate, ModuleInstance, Vec3 } from './types';
 
@@ -76,7 +77,7 @@ export function pruneCrates(sim: Simulation): void {
  */
 export function giveToPlayer(sim: Simulation, id: ItemId, qty: number, quiet = false): boolean {
   if (qty <= 0) return true;
-  const left = addItem(sim.state.player.inventory, id, qty);
+  const left = addToPlayerInventory(sim, id, qty);
   const got = qty - left;
   if (got > 0) sim.bus.emit('itemGained', { id, qty: got });
   if (left > 0) {
@@ -85,6 +86,18 @@ export function giveToPlayer(sim: Simulation, id: ItemId, qty: number, quiet = f
     return false;
   }
   return true;
+}
+
+/**
+ * Añade al inventario del jugador con preferencia de ranura: herramientas, ropa y medicinas van
+ * primero a la barra rápida (para poder empuñarlas); materiales, comida y lo demás, a la mochila.
+ * Devuelve lo que no cupo.
+ */
+export function addToPlayerInventory(sim: Simulation, id: ItemId, qty: number): number {
+  const inv = sim.state.player.inventory;
+  const cat = ITEMS[id]?.category;
+  const toHotbar = cat === 'herramienta' || cat === 'medicina' || cat === 'ropa';
+  return toHotbar ? addItemPreferring(inv, id, qty, 0, HOTBAR_SLOTS) : addItemPreferring(inv, id, qty, HOTBAR_SLOTS, inv.slots.length);
 }
 
 export function itemName(id: ItemId): string {
