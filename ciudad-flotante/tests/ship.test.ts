@@ -96,3 +96,56 @@ describe('reglas de construcción', () => {
     expect(checkDemolish(s.ship, esc.id).ok).toBe(false);
   });
 });
+
+describe('validación fina: nada puede tapar puertas ni muebles', () => {
+  const s = createNewGame(5);
+  const all = ['solar', 'energia', 'agua', 'taller', 'enfermeria', 'casco', 'invernadero', 'motor'];
+
+  it('en el barco inicial todo es alcanzable', async () => {
+    const { reachReport } = await import('../src/sim/reach');
+    const r = reachReport(computeLayout(s.ship, true));
+    expect([...r.rooms.values()].every(Boolean)).toBe(true);
+    expect([...r.stairs.values()].every(Boolean)).toBe(true);
+    const bad = [...r.props.entries()].filter(([, ok]) => !ok).map(([k]) => k);
+    expect(bad).toEqual([]);
+  });
+
+  it('rechaza un camarote cuya cama tapa la puerta del dormitorio', () => {
+    const r = checkPlacement(s.ship, all, 'camarote', 1, 2, 1, 2);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/dormitorio|cama|puerta/i);
+  });
+
+  it('rechaza un camarote cuya puerta da detrás de una litera', () => {
+    const r = checkPlacement(s.ship, all, 'camarote', 1, 0, 0, 1);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rechaza un banco de trabajo delante de la puerta de la cocina', () => {
+    const r = checkPlacement(s.ship, all, 'banco_trabajo', 1, 1, 2, 0);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/cocina|fogón/i);
+  });
+
+  it('rechaza piezas en el rellano de la escalera del puente que dejen el timón fuera de alcance', () => {
+    for (const rot of [0, 1, 2, 3] as const) {
+      const r = checkPlacement(s.ship, all, 'panel_solar', 2, 3, 0, rot);
+      expect(r.ok, `panel rot ${rot}`).toBe(false);
+    }
+    expect(checkPlacement(s.ship, all, 'camarote', 2, 3, 0, 1).ok).toBe(false);
+  });
+
+  it('sigue aceptando colocaciones razonables', () => {
+    expect(checkPlacement(s.ship, all, 'camarote', 1, 6, 3, 0).ok).toBe(true);
+    expect(checkPlacement(s.ship, all, 'deposito', 0, 2, 2, 0).ok).toBe(true);
+    expect(checkPlacement(s.ship, all, 'huerto', 1, 7, 0, 0).ok || checkPlacement(s.ship, all, 'huerto', 1, 8, 0, 0).ok).toBe(true);
+    expect(checkPlacement(s.ship, all, 'generador', 0, 1, 1, 0).ok).toBe(true);
+  });
+
+  it('valida rápido (caché del estado previo)', () => {
+    const t0 = performance.now();
+    for (let x = 0; x < 9; x++) checkPlacement(s.ship, all, 'almacen', 0, x, 2, 0);
+    const per = (performance.now() - t0) / 9;
+    expect(per).toBeLessThan(120);
+  });
+});

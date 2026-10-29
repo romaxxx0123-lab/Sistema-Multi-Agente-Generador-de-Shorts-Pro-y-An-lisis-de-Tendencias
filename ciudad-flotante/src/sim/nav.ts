@@ -5,7 +5,7 @@
  */
 import { CELL, LEVEL_H, SHIP_ORIGIN_X } from './constants';
 import { rampHeight } from './physics';
-import { halfWidthM, type PropInstance, type ShipLayout } from './ship';
+import { halfWidthM, pointToCell, type AABB, type PropInstance, type ShipLayout } from './ship';
 import type { Vec3 } from './types';
 import type { Rng } from '../core/Rng';
 
@@ -29,9 +29,30 @@ export class NavGrid {
   /** Enlaces extra entre niveles (índice global -> índices globales). */
   readonly links = new Map<number, number[]>();
   private readonly hw: number;
+  /** Colisionadores agrupados por celda gruesa (con margen) para acelerar `blocked`. */
+  private readonly buckets = new Map<number, AABB[]>();
 
-  constructor(public readonly layout: ShipLayout) {
+  /**
+   * @param radius radio del agente para inflar paredes y muebles (0,3 habitantes; usa ≥ 0,32
+   *               para comprobar que también cabe el jugador).
+   */
+  constructor(
+    public readonly layout: ShipLayout,
+    readonly radius = AGENT_RADIUS,
+  ) {
     this.levels = layout.levels;
+    for (const c of layout.colliders) {
+      const a = pointToCell(c.minX - radius - 0.01, c.minZ - radius - 0.01, layout.width);
+      const b = pointToCell(c.maxX + radius + 0.01, c.maxZ + radius + 0.01, layout.width);
+      for (let x = a.x; x <= b.x; x++) {
+        for (let z = a.z; z <= b.z; z++) {
+          const k = x * 1024 + z;
+          let arr = this.buckets.get(k);
+          if (!arr) this.buckets.set(k, (arr = []));
+          arr.push(c);
+        }
+      }
+    }
     this.nx = Math.round((layout.length * CELL) / NAV_RES);
     this.nz = Math.round((layout.width * CELL) / NAV_RES);
     this.hw = halfWidthM(layout.width);
@@ -96,10 +117,12 @@ export class NavGrid {
   }
 
   private blocked(x: number, z: number, y: number): boolean {
-    const r = AGENT_RADIUS;
+    const r = this.radius;
     const y0 = y + 0.12;
     const y1 = y + 1.6;
-    for (const c of this.layout.colliders) {
+    const cell = pointToCell(x, z, this.layout.width);
+    const list = this.buckets.get(cell.x * 1024 + cell.z) ?? [];
+    for (const c of list) {
       if (c.maxY <= y0 || c.minY >= y1) continue;
       if (x > c.minX - r && x < c.maxX + r && z > c.minZ - r && z < c.maxZ + r) return true;
     }
@@ -292,6 +315,48 @@ export class NavGrid {
     const pts = out.slice(1).map((p) => this.worldOf(p));
     // Puntos intermedios a lo largo de rampas para que la altura sea suave.
     return densifyRamps(pts, this, this.worldOf(a));
+  }
+
+  /**
+   * Nodos alcanzables desde `start` con las mismas reglas de vecindad que `findPath`
+   * (8 vecinos sin cortar esquinas, desnivel ≤ 0,6 m y enlaces de escalera).
+   * Devuelve un array indexado por `gid` con 1 en los alcanzables.
+   */
+  reachableFrom(start: NavPoint): Uint8Array {
+    const total = this.levels * this.nx * this.nz;
+    const seen = new Uint8Array(total);
+    if (!this.isWalk(start.level, start.i, start.j)) return seen;
+    const queue = new Int32Array(total);
+    let head = 0;
+    let tail = 0;
+    const s0 = this.gid(start.level, start.i, start.j);
+    seen[s0] = 1;
+    queue[tail++] = s0;
+    while (head < tail) {
+      const cur = queue[head++]!;
+      const p = this.fromGid(cur);
+      const h0 = this.height[p.level]![p.i * this.nz + p.j]!;
+      for (let di = -1; di <= 1; di++) {
+        for (let dj = -1; dj <= 1; dj++) {
+          if (!di && !dj) continue;
+          const ni = p.i + di;
+          const nj = p.j + dj;
+          if (!this.isWalk(p.level, ni, nj)) continue;
+          if (di && dj && (!this.isWalk(p.level, p.i + di, p.j) || !this.isWalk(p.level, p.i, p.j + dj))) continue;
+          if (Math.abs(this.height[p.level]![ni * this.nz + nj]! - h0) > 0.6) continue;
+          const g = this.gid(p.level, ni, nj);
+          if (seen[g]) continue;
+          seen[g] = 1;
+          queue[tail++] = g;
+        }
+      }
+      for (const n of this.links.get(cur) ?? []) {
+        if (seen[n]) continue;
+        seen[n] = 1;
+        queue[tail++] = n;
+      }
+    }
+    return seen;
   }
 
   /** Punto transitable frente a un prop para usarlo. */

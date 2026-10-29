@@ -833,7 +833,55 @@ export function checkPlacement(ship: ShipState, unlocks: string[], type: string,
   }
   if (after.some((id) => !before.includes(id))) return fail('Dejaría otra zona del barco sin acceso', cells);
   if (unreachableDeckCells(ship, [preview]) > unreachableDeckCells(ship, [])) return fail('Partiría la cubierta en zonas aisladas', cells);
+  // Comprobación fina (muebles y colisionadores): que nada quede tapado.
+  const fine = fineReachCheck(ship, preview);
+  if (fine) return fail(fine, cells);
   return { ok: true, reason: null, cells };
+}
+
+/* Caché del informe "antes" por estado del barco (no depende de la pieza que se prueba). */
+let reachCache: { key: string; report: ReachReport } | null = null;
+
+function shipKey(ship: ShipState): string {
+  return `${ship.revision}|${ship.length}|${ship.modules.map((m) => `${m.id}:${m.type}:${m.level}:${m.x}:${m.z}:${m.rot}`).join(',')}`;
+}
+
+/**
+ * Compara lo alcanzable antes y después de añadir la pieza. Devuelve un motivo de rechazo o null.
+ * Solo culpa a la pieza nueva de lo que ELLA rompe (lo que ya era inaccesible no cuenta).
+ */
+function fineReachCheck(ship: ShipState, preview: ModuleInstance): string | null {
+  const key = shipKey(ship);
+  let before: ReachReport;
+  if (reachCache && reachCache.key === key) before = reachCache.report;
+  else {
+    before = reachReport(computeLayout(ship, true));
+    reachCache = { key, report: before };
+  }
+  const afterLayout = computeLayout(ship, true, [preview]);
+  const after = reachReport(afterLayout);
+  const typeOf = (id: number): string => (id === -1 ? preview.type : ship.modules.find((m) => m.id === id)?.type ?? '');
+  // La propia pieza.
+  if (after.rooms.has(-1) && !after.rooms.get(-1)) return 'Su puerta quedaría tapada: no se podría entrar';
+  if (after.stairs.has(-1) && !after.stairs.get(-1)) return 'No se podría llegar a la escalera';
+  for (const p of afterLayout.props) {
+    if (p.moduleId !== -1 || !p.interact) continue;
+    if (!after.props.get(p.key)) return `No quedaría sitio para usar ${propLabel(p.interact)}`;
+  }
+  // Lo que ya existía.
+  for (const [id, ok] of before.rooms) {
+    if (ok && after.rooms.get(id) === false) return `Taparía el acceso ${toModule(typeOf(id))}`;
+  }
+  for (const [id, ok] of before.stairs) {
+    if (ok && after.stairs.get(id) === false) return 'Bloquearía el paso por una escalera';
+  }
+  for (const p of afterLayout.props) {
+    if (p.moduleId === -1 || !p.interact) continue;
+    if (before.props.get(p.key) && after.props.get(p.key) === false) {
+      return `Dejaría ${propLabel(p.interact)} ${ofModule(p.moduleType)} fuera de alcance`;
+    }
+  }
+  return null;
 }
 
 /** Comprueba si un módulo se puede demoler. */
@@ -897,6 +945,7 @@ export { WALL_T };
 /* ------------------------------------------------------------------ */
 
 import { createInventory } from './inventory';
+import { ofModule, propLabel, reachReport, toModule, type ReachReport } from './reach';
 
 /** Crea una instancia de módulo con sus inventarios, camas y parcelas inicializados. */
 export function instantiateModule(
