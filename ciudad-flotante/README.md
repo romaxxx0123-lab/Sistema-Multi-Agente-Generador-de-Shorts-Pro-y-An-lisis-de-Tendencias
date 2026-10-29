@@ -6,6 +6,21 @@ averías, convives con otros habitantes y amplías el barco mientras viaja sin d
 
 El diseño completo está en [docs/GDD.md](docs/GDD.md).
 
+**Jugar ahora:** versión publicada como página privada en claude.ai (enlace en la conversación del
+proyecto), o en local con los pasos de abajo.
+
+### Qué hay a bordo
+
+- Supervivencia exigente pero no molesta: hambre, sed, energía, salud, frío y enfermedades.
+- Restos flotantes que se rescatan con el gancho, pesca desde la borda, agua de mar que se destila o
+  se potabiliza, huertos que beben de los depósitos.
+- Fabricación en banco, taller, cocina y ahumadero; energía con generadores, paneles y baterías.
+- Modo construcción con vista exterior: habitaciones, máquinas, escaleras, ampliación del casco y
+  **mejoras de nivel** de casi todas las instalaciones.
+- Habitantes autónomos con oficios, rutinas, ánimo, amistades y roces.
+- Viaje por siete regiones con clima dinámico y trece tipos de eventos que se resuelven a bordo.
+- Un misterio que seguir: las páginas del cuaderno del *Albatros* llevan a **Puerto Esperanza**.
+
 ## Cómo jugar
 
 ```bash
@@ -44,6 +59,8 @@ npm run build:single   # crea dist-single/ciudad-flotante.html
 4. Bebe del depósito de la bodega y rellena botellas.
 5. Sube al puente: en el timón eliges el rumbo y respondes a los avistamientos.
 6. Pulsa B para construir: camarotes para nuevos habitantes, huertos, depósitos, talleres…
+7. Lee la hoja doblada que llevas en la mochila (F o clic derecho): es la primera página del
+   cuaderno de la capitana Elena Duarte.
 
 ## Desarrollo
 
