@@ -310,3 +310,56 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
   chapoteo_corcho, tirar_cabo, recoger, cana, picada, carrete, escapado, martillo, llave, agua_fuego.
   `toolUsed.tool` ∈ gancho | cana | cubo | cubo_agua | martillo | llave.
 - Interfaz y construcción: ui_abrir, ui_cerrar, ui_clic, ui_click, ui_error, ui_mover.
+
+---
+
+## 13. Mejoras de instalaciones (GDD §7)
+
+- Cada módulo mejorable tiene niveles (`ModuleDef.upgrades`, hasta nivel 3) con coste, tiempo de obra
+  y efectos (`ModuleEffects`): capacidades (`storageSlots`, `waterCapacity`, `batteryKWh`…),
+  producciones (`waterGen`, `powerGen`), confort y multiplicadores (`workSpeed`, `fuelEfficiency`,
+  `growthMult`, `waterUseMult`, `healMult`, `wearMult`).
+- Todos los sistemas leen los valores efectivos con `moduleStat` / `moduleMult` (`src/sim/moduleStats.ts`).
+- La mejora se encarga en el modo construcción (herramienta Mejorar, U): se paga al empezar, el módulo
+  sigue funcionando con su nivel actual mientras dura la obra (`module.upgrade`), los habitantes libres
+  y el martillo del jugador ayudan, y al terminar sube `module.tier` (inventarios ampliados).
+
+| Módulo | Nivel 2 | Nivel 3 |
+|---|---|---|
+| Almacén | 32 huecos | 48 huecos |
+| Depósito | 220 L | 340 L |
+| Generador | 8 kW, combustible ×1,3 | 11 kW, ×1,6 |
+| Huerto | agua ×0,6, crecimiento ×1,2 | crecimiento ×1,5 |
+| Cocina | ×1,5 velocidad y leña, 18 huecos | — |
+| Taller | ×1,6 velocidad, desgaste ×0,7 | — |
+| Banco | ×1,5 velocidad, 10 huecos | — |
+| Camarote / dormitorio / comedor / sala común | más confort | — |
+| Colector, potabilizadora, batería, panel, enfermería, motor, ahumadero, vivero, grúa | una mejora cada uno | — |
+
+## 14. Módulos especializados (GDD §13, prioridad futura)
+
+- **Sala común** (vivienda): confort 4; los habitantes pasan allí su ocio y mejora su ánimo y su
+  relación.
+- **Ahumadero** (cubierta, cielo abierto): receta «Ahumar pescado» (3 crudos + 1 madera → 3 ahumados
+  en 90 min). El pescado ahumado alimenta bien y no hay que cocinarlo.
+- **Vivero de peces** (plano de acuicultura): con energía produce pescado en su bandeja cada 150 min.
+- **Grúa de rescate** (plano, junto a la borda): con energía rescata sola el resto más cercano de su
+  costado a ≤ 30 m cada 25 min (también balsas de náufragos). Automatización.
+- **Radar y radio** (plano, cubierta superior): con energía, avistamientos antes y durante más tiempo,
+  aviso de tormenta 3 h antes y mensajes de radio de otros barcos en el diario.
+
+## 15. Hilo narrativo: el cuaderno del Albatros (GDD §13: misterios del mundo)
+
+- Siete páginas del cuaderno de la capitana Elena Duarte (`src/data/story.ts`). La primera está en la
+  mochila al empezar (la encontraste en la carta náutica). Las demás aparecen en cofres de naufragio,
+  estructuras, expediciones y mercantes, preferentemente en su región y en orden.
+- Leer una página (F o clic derecho) la guarda en el Cuaderno del Diario. Con cinco páginas se conoce
+  el rumbo a **Puerto Esperanza**, que aparece como opción en el timón al final de cualquier región.
+- Al llegar: celebración, pantalla de llegada con el epílogo y las estadísticas de la travesía, dos
+  habitantes nuevos y un gran mercado. Después se puede seguir navegando.
+
+## 16. Relaciones entre habitantes (GDD §13)
+
+- Afinidad −100..100 por pareja (`npc.relations`): charlar y compartir mesa o sala común la sube;
+  discutir la baja. Amistad (≥ 40): ánimo al estar juntos y más pena si el otro muere. Rivalidad
+  (≤ −40): ánimo negativo y más discusiones entre esos dos. La ficha del habitante las muestra.

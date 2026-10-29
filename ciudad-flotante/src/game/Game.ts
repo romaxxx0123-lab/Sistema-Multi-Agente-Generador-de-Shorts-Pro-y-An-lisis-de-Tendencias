@@ -111,7 +111,9 @@ export class Game implements GameContext {
       // La mano en primera persona cuelga de la cámara que también usa el menú: ocultarla.
       // (En juego, Interaction decide su visibilidad cada frame.)
       this.interaction.hideViewModel();
-      if (mode === 'menu') this.avatar.object.visible = false;
+      // En el menú no se ve el personaje; al morir en primera persona tampoco (la cámara está en su cabeza;
+      // pasa sobre todo al morir en el modo construcción, donde el avatar estaba visible).
+      if (mode === 'menu' || this.player.perspective === 'first') this.avatar.object.visible = false;
     }
     if (mode === 'dead') this.ui.showDeath();
     if (mode === 'play') this.ui.hideMenus();
