@@ -461,7 +461,6 @@ export class Interaction implements ToolEnv {
       const tank = this.focusedTank();
       if (this.repairTarget && (tank === null || this.repairTarget.module.id === tank)) this.startRepair(this.repairTarget);
       else if (tank !== null) this.fillBottle();
-      else if (this.repairTarget) this.startRepair(this.repairTarget);
       else this.toast('Aquí no hay nada que reparar', 'info');
     }
 

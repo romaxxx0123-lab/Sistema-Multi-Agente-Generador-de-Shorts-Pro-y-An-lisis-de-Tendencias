@@ -5,7 +5,12 @@
  *   salto con margen de pulsación, física del barco (`sim.collision.move`: paredes, muebles,
  *   escalones y rampas de escalera) y corrección de la velocidad al chocar (deslizamiento).
  * - Ratón con la sensibilidad y la inversión de los ajustes; FOV de los ajustes con un leve
- *   ensanchamiento al correr.
+ *   ensanchamiento al correr. Los deltas de los primeros frames tras recuperar el control (cerrar
+ *   un panel o el menú) o capturar el puntero se descartan: al capturarlo, el navegador puede
+ *   mandar un salto igual a la posición del cursor y la vista acabaría mirando al cielo.
+ * - Choque con los habitantes visibles (círculo contra círculo, radios 0,32 + 0,3 m) y la cámara
+ *   en tercera persona tampoco se mete en ellos. Si uno tapa un paso estrecho y el jugador lleva
+ *   2,5 s empujando sin avanzar, se le deja pasar (nunca se queda encerrado).
  * - Cámara hija de `shipRoot` (se mece con el barco). Primera persona con cabeceo al andar
  *   sincronizado con los pasos (sonido 'paso' en cada pisada) y golpe al aterrizar. Tercera
  *   persona (V): brazo detrás del hombro con colisión contra paredes y techos, transición suave.
@@ -19,11 +24,11 @@ import { ITEMS, type ToolKind } from '../data/items';
 import type { PlayerAvatar } from '../render/PlayerAvatar';
 import { bedPose } from '../render/ship/furniture';
 import { EYE_HEIGHT, forwardOf, type Body } from '../sim/physics';
-import { cellAtPoint } from '../sim/ship';
+import { cellAtPoint, type AABB } from '../sim/ship';
 import type { Vec3 } from '../sim/types';
 import type { GameContext } from './context';
-import { damp, lookDir, wrapAngle, type V3 } from './tools/aim';
-import { approachVelocity, stepAssist } from './tools/locomotion';
+import { boxAt, damp, lookDir, wrapAngle, type V3 } from './tools/aim';
+import { approachVelocity, NPC_RADIUS, NpcCollider, stepAssist, type Obstacle } from './tools/locomotion';
 import { ARM_LENGTH, computeArm, THIRD_PITCH_MAX, THIRD_PITCH_MIN, verticalLimits } from './tools/cameraRig';
 
 /** Velocidades (m/s). */
@@ -42,6 +47,13 @@ const STRIDE_RUN = 0.98;
 const PITCH_LIMIT = 1.45;
 /** Altura por debajo de la cual se considera que el jugador cayó al mar (m). */
 const FALL_LIMIT_Y = -3;
+/** Frames de ratón descartados al recuperar el control o capturar el puntero. */
+export const LOOK_GRACE_FRAMES = 2;
+/**
+ * Un delta de ratón mayor que esto en un solo frame (px) es un salto espurio del navegador (con la
+ * sensibilidad por defecto son 4,4 rad: más de media vuelta en un frame).
+ */
+export const MAX_LOOK_DELTA = 2000;
 
 const _v = new THREE.Vector3();
 
@@ -68,6 +80,14 @@ export class PlayerController {
   private landVel = 0;
   /** Orientación del cuerpo tumbado en el suelo durante un desmayo (null = sin calcular). */
   private floorYaw: number | null = null;
+  /** Frames de ratón que quedan por descartar (ver LOOK_GRACE_FRAMES). */
+  private lookGrace = 0;
+  private hadControl = false;
+  private wasLocked = false;
+  /** Cuerpos de los habitantes de este frame (reutilizado). */
+  private readonly obstacles: Obstacle[] = [];
+  /** Choque con los habitantes (con salida de emergencia si uno tapa un paso estrecho). */
+  private readonly npcCollider = new NpcCollider();
 
   /** Fase de los pasos (π por pisada) para el cabeceo y el modelo en mano. */
   bobPhase = 0;
@@ -106,6 +126,7 @@ export class PlayerController {
     this.speed = 0;
     this.written = { ...p };
     this.avatarYaw = this.ctx.sim.state.player.yaw;
+    this.npcCollider.reset();
   }
 
   togglePerspective(): void {
@@ -182,12 +203,7 @@ export class PlayerController {
     this.floorYaw = null;
 
     // --- Mirada ---
-    if (canControl) {
-      const md = input.mouseDelta();
-      const sens = ctx.settings.sensitivity / 1000;
-      st.yaw = wrapAngle(st.yaw - md.dx * sens);
-      st.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, st.pitch - md.dy * sens * (ctx.settings.invertY ? -1 : 1)));
-    }
+    this.applyLook(canControl);
 
     // --- Intención de movimiento ---
     let ix = 0;
@@ -238,6 +254,11 @@ export class PlayerController {
     const wasGrounded = body.onGround;
     if (dt > 0) sim.collision.move(body, this.vel.x, this.vel.z, dt, jump);
     if (dt > 0 && wasGrounded && !jump) stepAssist(sim.collision, body, bx, by, bz, this.vel.x, this.vel.z, dt);
+    // Los habitantes son sólidos: no se atraviesan ni se mete uno dentro de ellos.
+    if (dt > 0) {
+      const back = forwardOf(st.yaw);
+      this.npcCollider.resolve(sim.collision, body, this.npcObstacles(), { x: -back.x, z: -back.z }, { x: bx, z: bz }, ilen > 0, dt);
+    }
     let moved = 0;
     if (dt > 0) {
       const ax = (body.pos.x - bx) / dt;
@@ -301,6 +322,78 @@ export class PlayerController {
   }
 
   /* ------------------------------------------------------------------ */
+  /* Ratón                                                               */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Movimiento del ratón de este frame, o null si hay que descartarlo: sin control, en los
+   * LOOK_GRACE_FRAMES frames tras recuperar el control o capturar el puntero (el navegador puede
+   * mandar un salto igual a la posición del cursor), o si es absurdo / no finito.
+   */
+  lookDelta(canControl: boolean): { dx: number; dy: number } | null {
+    const input = this.ctx.input;
+    const locked = !!(input as { locked?: boolean }).locked;
+    if ((canControl && !this.hadControl) || (locked && !this.wasLocked)) this.lookGrace = LOOK_GRACE_FRAMES;
+    this.hadControl = canControl;
+    this.wasLocked = locked;
+    if (!canControl) return null;
+    const md = input.mouseDelta();
+    if (this.lookGrace > 0) {
+      this.lookGrace--;
+      return null;
+    }
+    if (!Number.isFinite(md.dx) || !Number.isFinite(md.dy)) return null;
+    if (Math.abs(md.dx) > MAX_LOOK_DELTA || Math.abs(md.dy) > MAX_LOOK_DELTA) return null;
+    return md;
+  }
+
+  private applyLook(canControl: boolean): void {
+    const ctx = this.ctx;
+    const st = ctx.sim.state.player;
+    // Una orientación corrupta (NaN) nunca debe propagarse a la cámara ni a las herramientas.
+    if (!Number.isFinite(st.yaw)) st.yaw = 0;
+    if (!Number.isFinite(st.pitch)) st.pitch = 0;
+    const md = this.lookDelta(canControl);
+    if (!md) return;
+    const sens = ctx.settings.sensitivity / 1000;
+    st.yaw = wrapAngle(st.yaw - md.dx * sens);
+    st.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, st.pitch - md.dy * sens * (ctx.settings.invertY ? -1 : 1)));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Habitantes                                                          */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Cuerpos de los habitantes presentes y despiertos, en la posición en que se ven (sentados en
+   * su silla, por ejemplo) o, si aún no se han dibujado, en la de la simulación.
+   */
+  private npcObstacles(): Obstacle[] {
+    const out = this.obstacles;
+    out.length = 0;
+    const view = this.ctx.npcView as { objectOf?: (id: string) => THREE.Object3D | null } | undefined;
+    for (const n of this.ctx.sim.state.npcs) {
+      if (n.awayUntil !== null || n.activity === 'away' || n.activity === 'sleeping') continue;
+      const obj = view?.objectOf?.(n.id) ?? null;
+      if (obj && !obj.visible) continue;
+      const p = obj ? obj.position : n.pos;
+      out.push({ x: p.x, y: p.y, z: p.z, r: NPC_RADIUS, h: 1.8 * (n.appearance?.height ?? 1) });
+    }
+    return out;
+  }
+
+  /** Cajas de los habitantes cercanos para el brazo de la cámara en tercera persona. */
+  private npcCameraBoxes(): AABB[] {
+    const st = this.ctx.sim.state.player;
+    const out: AABB[] = [];
+    for (const o of this.npcObstacles()) {
+      if (Math.hypot(o.x - st.pos.x, o.z - st.pos.z) > ARM_LENGTH + 1.5 || Math.abs(o.y - st.pos.y) > 1.5) continue;
+      out.push(boxAt(o.x, o.y, o.z, o.r, o.r, o.h));
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Cámara                                                              */
   /* ------------------------------------------------------------------ */
 
@@ -333,7 +426,7 @@ export class PlayerController {
       return;
     }
     const pitch = Math.max(THIRD_PITCH_MIN, Math.min(THIRD_PITCH_MAX, st.pitch));
-    const res = computeArm({ layout: this.ctx.sim.layout, feet: st.pos, yaw: st.yaw, pitch, length: this.armFree });
+    const res = computeArm({ layout: this.ctx.sim.layout, feet: st.pos, yaw: st.yaw, pitch, length: this.armFree, obstacles: this.npcCameraBoxes() });
     // Acorta al instante al chocar; se alarga despacio cuando se libera.
     if (res.length < this.arm) this.arm = res.length;
     else this.arm += (res.length - this.arm) * damp(4, dt);
@@ -420,12 +513,7 @@ export class PlayerController {
       }
     }
     // Mirar alrededor tumbado (poco) o girar la cámara en tercera persona.
-    if (canControl) {
-      const md = input.mouseDelta();
-      const sens = ctx.settings.sensitivity / 1000;
-      st.yaw = wrapAngle(st.yaw - md.dx * sens);
-      st.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, st.pitch - md.dy * sens * (ctx.settings.invertY ? -1 : 1)));
-    }
+    this.applyLook(canControl);
     this.updateFov(dt);
     const bed = sl.moduleId !== null ? bedPose(sim.state.ship, sl.moduleId, sl.bed) : null;
     // Pies y orientación del cuerpo tumbado. En el suelo (desmayo), hacia un lado sin obstáculos.

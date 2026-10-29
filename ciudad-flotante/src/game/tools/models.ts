@@ -216,7 +216,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       // El garfio es lo más alto que se lleva en la mano: más pequeño y más abajo para no tapar
       // la vista al apuntar (las uñas quedan por debajo de la mitad de la pantalla).
       pose = { x: 0.35, y: -0.32, z: -0.5, rx: -0.15, ry: -0.2, rz: 0.08 };
-      scale = 0.6;
+      scale = 0.64;
       add('rollo', (b) => {
         // rollo de cabo en la mano
         b.push();
@@ -274,8 +274,8 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     }
     case 'cubo':
     case 'cubo_agua': {
-      pose = { x: 0.37, y: -0.15, z: -0.62, rx: 0.38, ry: -0.55, rz: 0.06 };
-      scale = 0.7;
+      pose = { x: 0.38, y: -0.14, z: -0.62, rx: 0.38, ry: -0.55, rz: 0.06 };
+      scale = 0.62;
       group.scale.setScalar(0.82);
       // El antebrazo sale hacia la derecha, por encima del cubo, en vez de hacia abajo.
       armRot.z = 1.2;

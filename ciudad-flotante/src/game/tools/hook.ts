@@ -222,8 +222,7 @@ export class HookTool {
           else if (ok) {
             // Posición del resto corrupta: se suelta como si se hubiera perdido.
             this.targetId = null;
-          }
-          else {
+          } else {
             // Se perdió el resto (lo recogió otro o se alejó): cae al agua.
             this.targetId = null;
             this.env.toast('El resto ya no está: recoges el gancho', 'info');

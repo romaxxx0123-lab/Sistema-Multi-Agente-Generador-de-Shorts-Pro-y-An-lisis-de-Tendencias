@@ -2,21 +2,31 @@
  * Pruebas del área game-player: puntería, selección de objetivos, borda, cámara en tercera
  * persona, locomoción (incluidas las escaleras) y textos de los avisos.
  */
+import * as THREE from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { GameContext } from '../src/game/context';
+import { HOLD_PANEL, Interaction } from '../src/game/Interaction';
+import { LOOK_GRACE_FRAMES, PlayerController } from '../src/game/PlayerController';
+import type { PanelRequest, PromptInfo } from '../src/game/types';
+import type { PlayerAvatar } from '../src/render/PlayerAvatar';
 import { CELL, HOOK_RANGE, INTERACT_RANGE, LEVEL_H } from '../src/sim/constants';
 import { spawnDebris } from '../src/sim/debris';
 import { startFire } from '../src/sim/events';
-import { addItem } from '../src/sim/inventory';
+import { addItem, countItem } from '../src/sim/inventory';
 import { createNewGame } from '../src/sim/newGame';
-import { EYE_HEIGHT, type Body } from '../src/sim/physics';
+import { EYE_HEIGHT, PLAYER_RADIUS, type Body } from '../src/sim/physics';
 import { cellCenter } from '../src/sim/ship';
 import { Simulation } from '../src/sim/Simulation';
-import { angleTo, lookDir, rayAabb, segmentBlocked, wrapAngle, yawPitchTo, type V3 } from '../src/game/tools/aim';
+import type { ModuleInstance } from '../src/sim/types';
+import { angleTo, boxAt, lookDir, rayAabb, segmentBlocked, wrapAngle, yawPitchTo, type V3 } from '../src/game/tools/aim';
 import { ARM_LENGTH, computeArm, verticalLimits } from '../src/game/tools/cameraRig';
-import { approachVelocity, stepAssist } from '../src/game/tools/locomotion';
-import { chooseBed, cratePrompt, npcPrompt, propAction, propPrompt, sitePrompt } from '../src/game/tools/prompts';
+import { Rope, ToolEffects } from '../src/game/tools/effects';
+import type { ToolEnv } from '../src/game/tools/env';
+import { HookTool } from '../src/game/tools/hook';
+import { approachVelocity, NPC_RADIUS, NPC_SQUEEZE_TIME, NpcCollider, pushOutOfObstacles, stepAssist, type Obstacle } from '../src/game/tools/locomotion';
+import { chooseBed, cratePrompt, crateQuick, holdPrompt, npcPrompt, propAction, propPrompt, propQuick, sitePrompt } from '../src/game/tools/prompts';
 import { canHookFrom, railFacing, scanDebris, scanFire, scanFocus, scanRepair, type Aim } from '../src/game/tools/targets';
-import { samplePose } from '../src/game/tools/viewmodel';
+import { samplePose, ViewModel } from '../src/game/tools/viewmodel';
 
 function aimAt(sim: Simulation, feet: V3, target: V3): Aim {
   const eye = { x: feet.x, y: feet.y + EYE_HEIGHT, z: feet.z };
@@ -346,5 +356,502 @@ describe('animaciones del modelo en mano', () => {
 describe('alcances', () => {
   it('el alcance de interacción es razonable para el tamaño de las celdas', () => {
     expect(INTERACT_RANGE).toBeLessThan(CELL);
+  });
+});
+
+/* ====================================================================== */
+/* Regresiones de la ronda de QA 1                                         */
+/* ====================================================================== */
+
+const finite3 = (v: { x: number; y: number; z: number }): boolean => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+
+describe('[0] sin NaN en el modelo en mano ni en las cuerdas', () => {
+  it('la inercia del modelo en mano es estable a 10 fps (antes divergía hasta NaN)', () => {
+    const cam = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 3000);
+    const vm = new ViewModel(cam);
+    vm.show('gancho');
+    const mo = { bobPhase: 0, bobAmount: 0, yaw: 0, pitch: 0, landKick: 0, light: 1 };
+    const out = new THREE.Vector3();
+    // 3000 frames a dt = 0,1 s (render por software): con la integración explícita del muelle
+    // la oscilación crecía ×1,5 por frame y a los ~1700 frames el garfio estaba en NaN.
+    for (let i = 0; i < 3000; i++) {
+      mo.yaw = Math.sin(i * 0.7) * 0.08;
+      mo.pitch = Math.cos(i * 0.5) * 0.05;
+      vm.update(0.1, mo, false);
+      expect(Math.abs(vm.sway.x)).toBeLessThanOrEqual(0.1);
+      expect(Math.abs(vm.sway.y)).toBeLessThanOrEqual(0.1);
+    }
+    const a = vm.anchorWorld('garfio', out);
+    expect(a).not.toBeNull();
+    expect(finite3(out)).toBe(true);
+    // El garfio sigue delante de la cámara, en la mano (a menos de un metro).
+    expect(out.length()).toBeLessThan(1);
+    // Una mirada corrupta (NaN) no contamina el modelo.
+    mo.yaw = Number.NaN;
+    vm.update(0.016, mo, false);
+    expect(finite3(vm.handOffset)).toBe(true);
+  });
+
+  it('la cuerda ignora extremos no finitos y mantiene su esfera envolvente a mano', () => {
+    const scene = new THREE.Scene();
+    const rope = new Rope(scene, '#ffffff', 8);
+    rope.visible = true;
+    // Sin tender todavía no se dibuja (three.js calcularía la esfera con lo que hubiera).
+    expect(rope.line.visible).toBe(false);
+    expect(rope.set(new THREE.Vector3(0, 1, 0), new THREE.Vector3(4, 0, 3), 0.3, 0.05, 0.016)).toBe(true);
+    expect(rope.line.visible).toBe(true);
+    const geo = rope.line.geometry;
+    const r0 = geo.boundingSphere!.radius;
+    expect(Number.isFinite(r0)).toBe(true);
+    expect(r0).toBeGreaterThan(2);
+    expect(rope.set(new THREE.Vector3(Number.NaN, 0, 0), new THREE.Vector3(1, 1, 1), 0.2)).toBe(false);
+    expect(rope.line.visible).toBe(false);
+    const pos = geo.getAttribute('position').array as Float32Array;
+    expect(Array.from(pos).every(Number.isFinite)).toBe(true);
+    // three.js no tiene que calcular nada: la esfera ya existe y es finita.
+    expect(geo.boundingSphere).not.toBeNull();
+    expect(Number.isFinite(geo.boundingSphere!.radius)).toBe(true);
+  });
+
+  it('un lanzamiento con la mano o el punto de caída en NaN no deja NaN en la cuerda', () => {
+    const sim = new Simulation(createNewGame(1));
+    const scene = new THREE.Scene();
+    const fx = new ToolEffects(scene);
+    let handNaN = false;
+    const vmStub = { play() {}, stop() {}, setPart() {}, kick() {} };
+    const env: ToolEnv = {
+      ctx: { sim, renderer: { worldRoot: new THREE.Group() } } as unknown as GameContext,
+      vm: vmStub as unknown as ViewModel,
+      fx,
+      handWorld: (_a, out) => (handNaN ? out.set(Number.NaN, Number.NaN, Number.NaN) : out.set(1, 4.5, -2)),
+      shipToWorld: (x, y, z, out) => out.set(x, y, z),
+      waterHeight: () => 0,
+      sfx() {},
+      toast() {},
+      toolUsed() {},
+    };
+    const hook = new HookTool(env);
+    const ropePos = () => Array.from(fx.hookRope.line.geometry.getAttribute('position').array as Float32Array);
+    // 1) Punto de caída no finito: se corrige a un punto del agua junto al costado.
+    hook.throwMiss(new THREE.Vector3(Number.NaN, 0, Number.NaN));
+    for (let i = 0; i < 200 && hook.busy; i++) {
+      hook.update(1 / 30);
+      hook.late(1 / 30);
+      expect(ropePos().every(Number.isFinite)).toBe(true);
+    }
+    expect(hook.busy).toBe(false);
+    // 2) La mano devuelve NaN (modelo en mano corrupto): no se lanza nada y la cuerda no se toca.
+    handNaN = true;
+    hook.throwMiss(new THREE.Vector3(3, 0, -12));
+    for (let i = 0; i < 60 && hook.busy; i++) {
+      hook.update(1 / 30);
+      hook.late(1 / 30);
+    }
+    expect(hook.busy).toBe(false);
+    expect(fx.hookRope.visible).toBe(false);
+    expect(ropePos().every(Number.isFinite)).toBe(true);
+    expect(finite3(fx.grapnel.position)).toBe(true);
+  });
+
+  it('las partículas descartan ráfagas con origen no finito', () => {
+    const fx = new ToolEffects(new THREE.Scene());
+    fx.particles.burst(new THREE.Vector3(Number.NaN, 0, 0), { count: 10, color: '#fff', speed: 1 });
+    expect(fx.particles.active).toBe(0);
+    fx.particles.burst(new THREE.Vector3(0, 1, 0), { count: 10, color: '#fff', speed: 1, life: Number.NaN });
+    fx.particles.update(0.016);
+    expect(fx.particles.active).toBe(10);
+    expect(fx.particles.mesh.boundingSphere).not.toBeNull();
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+/* Contexto de juego mínimo para PlayerController / Interaction             */
+/* ---------------------------------------------------------------------- */
+
+class FakeInput {
+  enabled = true;
+  locked = false;
+  private held = new Set<string>();
+  private justDown = new Set<string>();
+  dx = 0;
+  dy = 0;
+  key(code: string, down: boolean): void {
+    if (down) {
+      if (!this.held.has(code)) this.justDown.add(code);
+      this.held.add(code);
+    } else this.held.delete(code);
+  }
+  pressed(c: string): boolean {
+    return this.justDown.has(c);
+  }
+  down(c: string): boolean {
+    return this.held.has(c);
+  }
+  released(): boolean {
+    return false;
+  }
+  consume(c: string): void {
+    this.justDown.delete(c);
+  }
+  mouseDelta(): { dx: number; dy: number } {
+    return { dx: this.dx, dy: this.dy };
+  }
+  wheel(): number {
+    return 0;
+  }
+  endFrame(): void {
+    this.justDown.clear();
+    this.dx = 0;
+    this.dy = 0;
+  }
+}
+
+interface Harness {
+  sim: Simulation;
+  input: FakeInput;
+  ui: { panelOpen: boolean; opened: PanelRequest | null; prompt: PromptInfo | null; toasts: string[]; setPrompt(p: PromptInfo | null): void; toast(t: string): void; openPanel(r: PanelRequest): void; closePanel(): void };
+  ctx: GameContext;
+  ia: Interaction;
+  frame(n?: number): void;
+  tap(code: string): void;
+}
+
+function harness(): Harness {
+  const sim = new Simulation(createNewGame(1));
+  const st = sim.state.player;
+  const input = new FakeInput();
+  const ui = {
+    panelOpen: false,
+    opened: null as PanelRequest | null,
+    prompt: null as PromptInfo | null,
+    toasts: [] as string[],
+    setPrompt(p: PromptInfo | null) {
+      this.prompt = p;
+    },
+    toast(t: string) {
+      this.toasts.push(t);
+    },
+    openPanel(r: PanelRequest) {
+      this.panelOpen = true;
+      this.opened = r;
+    },
+    closePanel() {
+      this.panelOpen = false;
+    },
+  };
+  const camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 3000);
+  const shipRoot = new THREE.Group();
+  shipRoot.add(camera);
+  const player = {
+    camera,
+    firstPersonView: true,
+    bobPhase: 0,
+    bobAmount: 0,
+    landKick: 0,
+    eye: () => ({ x: st.pos.x, y: st.pos.y + EYE_HEIGHT, z: st.pos.z }),
+    lookDirection: () => lookDir(st.yaw, st.pitch),
+    isIndoor: () => false,
+    handWorld: (out: THREE.Vector3) => out.set(st.pos.x, st.pos.y + 1.2, st.pos.z),
+  };
+  const ctx = {
+    sim,
+    bus: sim.bus,
+    renderer: { scene: new THREE.Scene(), shipRoot, worldRoot: new THREE.Group(), waterHeight: () => 0, renderer: { shadowMap: { enabled: false } } },
+    input,
+    ui,
+    player,
+    mode: 'play',
+    highlight: null,
+    settings: { fov: 72, perspective: 'first', sensitivity: 2.2, invertY: false },
+  } as unknown as GameContext;
+  const ia = new Interaction(ctx);
+  const frame = (n = 1) => {
+    for (let i = 0; i < n; i++) {
+      camera.position.set(st.pos.x, st.pos.y + EYE_HEIGHT, st.pos.z);
+      camera.rotation.set(st.pitch, st.yaw, 0, 'YXZ');
+      ia.update(1 / 60);
+      input.endFrame();
+    }
+  };
+  const tap = (code: string) => {
+    input.key(code, true);
+    frame();
+    input.key(code, false);
+    frame();
+  };
+  // El primer frame con control no usa clics (recuperar el control): se consume aquí.
+  frame();
+  return { sim, input, ui, ctx, ia, frame, tap };
+}
+
+/** Coloca al jugador delante de un mueble interactivo, mirándolo. */
+function faceProp(h: Harness, interact: string): { moduleId: number } {
+  const sim = h.sim;
+  const prop = sim.layout.props.find((p) => p.interact === interact)!;
+  const st = sim.state.player;
+  for (const [ox, oz] of [
+    [prop.hx + 0.8, 0],
+    [-(prop.hx + 0.8), 0],
+    [0, prop.hz + 0.8],
+    [0, -(prop.hz + 0.8)],
+  ] as const) {
+    const x = prop.x + ox;
+    const z = prop.z + oz;
+    if (!sim.collision.isFree(x, z, prop.y)) continue;
+    st.pos = { x, y: prop.y, z };
+    const yp = yawPitchTo({ x, y: prop.y + EYE_HEIGHT, z }, { x: prop.x, y: prop.y + 1, z: prop.z });
+    st.yaw = yp.yaw;
+    st.pitch = yp.pitch;
+    h.frame();
+    if (h.ia.focus?.prop?.interact === interact) return { moduleId: prop.moduleId };
+  }
+  throw new Error(`No se pudo mirar a ${interact}`);
+}
+
+describe('[22] E física en el depósito, las cajas y los bancales', () => {
+  it('E bebe al momento del depósito; R llena una botella; mantener E abre el panel', () => {
+    const h = harness();
+    const st = h.sim.state.player;
+    const { moduleId } = faceProp(h, 'deposito');
+    expect(h.ui.prompt?.text).toBe('Beber');
+    expect(h.ui.prompt?.sub).toMatch(/Agua potable: \d+\/\d+ L/);
+    expect(h.ui.prompt?.sub).toMatch(/Mantén E: ver el depósito/);
+    expect(h.ui.prompt?.alt).toEqual({ key: 'R', text: 'Llenar una botella', disabled: false });
+    st.needs.thirst = 40;
+    const water0 = h.sim.state.utilities.waterL;
+    h.tap('KeyE');
+    expect(h.ui.panelOpen).toBe(false);
+    expect(st.needs.thirst).toBeCloseTo(80, 5);
+    expect(h.sim.state.utilities.waterL).toBeCloseTo(water0 - 1, 5);
+    // R: una botella más en el inventario.
+    h.frame(60);
+    const bottles = countItem(st.inventory, 'agua_potable');
+    h.tap('KeyR');
+    expect(countItem(st.inventory, 'agua_potable')).toBe(bottles + 1);
+    // Mantener E: anillo de progreso y, al llegar, el panel del depósito (sin beber).
+    const thirst = st.needs.thirst;
+    h.input.key('KeyE', true);
+    h.frame(15);
+    expect(h.ui.prompt?.key).toBe('Mantén E');
+    expect(h.ui.prompt?.progress).toBeGreaterThan(0);
+    expect(h.ui.panelOpen).toBe(false);
+    h.frame(Math.ceil(HOLD_PANEL * 60));
+    expect(h.ui.panelOpen).toBe(true);
+    expect(h.ui.opened).toEqual({ kind: 'station', moduleId });
+    h.input.key('KeyE', false);
+    h.frame();
+    expect(st.needs.thirst).toBe(thirst);
+  });
+
+  it('si el depósito necesita reparación, R repara en vez de llenar la botella', () => {
+    const h = harness();
+    const { moduleId } = faceProp(h, 'deposito');
+    const m = h.sim.state.ship.modules.find((mm) => mm.id === moduleId)!;
+    m.condition = 30;
+    h.frame();
+    expect(h.ui.prompt?.alt?.text).toMatch(/^Reparar/);
+  });
+
+  it('E en una caja suelta lo coge todo si cabe; si no cabe, la abre', () => {
+    const h = harness();
+    const sim = h.sim;
+    const st = sim.state.player;
+    st.pos = { x: 4.2, y: LEVEL_H, z: -2 };
+    const yp = yawPitchTo({ x: 4.2, y: LEVEL_H + EYE_HEIGHT, z: -2 }, { x: 6, y: LEVEL_H + 0.3, z: -2 });
+    st.yaw = yp.yaw;
+    st.pitch = yp.pitch;
+    sim.state.crates.push({ id: 900, pos: { x: 6, y: LEVEL_H, z: -2 }, inventory: { slots: [{ id: 'madera', qty: 3 }, { id: 'cuerda', qty: 1 }] }, label: 'Restos' });
+    h.frame();
+    expect(h.ia.focus?.kind).toBe('crate');
+    expect(h.ui.prompt?.text).toBe('Coger todo: Restos');
+    const wood = countItem(st.inventory, 'madera');
+    h.tap('KeyE');
+    expect(h.ui.panelOpen).toBe(false);
+    expect(countItem(st.inventory, 'madera')).toBe(wood + 3);
+    expect(sim.state.crates.some((c) => c.id === 900)).toBe(false);
+    // Inventario lleno: la caja se abre para elegir.
+    for (let i = 0; i < st.inventory.slots.length; i++) if (!st.inventory.slots[i]) st.inventory.slots[i] = { id: 'chatarra', qty: 1 };
+    for (const s of st.inventory.slots) if (s && s.id !== 'chatarra') s.qty = Math.max(s.qty, 99);
+    sim.state.crates.push({ id: 901, pos: { x: 6, y: LEVEL_H, z: -2 }, inventory: { slots: [{ id: 'plano_taller', qty: 1 }] }, label: 'Cofre' });
+    h.frame();
+    expect(h.ui.prompt?.text).toBe('Abrir: Cofre');
+    expect(h.ui.prompt?.sub).toMatch(/No te cabe todo/);
+    h.tap('KeyE');
+    expect(h.ui.opened).toEqual({ kind: 'crate', crateId: 901 });
+  });
+
+  it('bancales: E cosecha lo maduro y limpia lo seco; vacío o creciendo abre el panel', () => {
+    const sim = new Simulation(createNewGame(1));
+    const base = sim.state.ship.modules[0]!;
+    const plot = (crop: string | null, growth: number, dead = false, pest = false) => ({ crop, growth, dryHours: 0, dead, pest });
+    const m = { ...structuredClone(base), id: 999, type: 'huerto', status: 'active', inventory: null, plots: [plot('hortaliza', 1), plot('hortaliza', 0.5, true), plot('hortaliza', 0.4, false, true), plot(null, 0)] } as unknown as ModuleInstance;
+    sim.state.ship.modules.push(m);
+    const prop = (index: number) => ({ ...sim.layout.props[0]!, key: `999:${index}`, moduleId: 999, moduleType: 'huerto', kind: 'bancal' as const, interact: 'huerto' as const, index });
+    expect(propQuick(sim, prop(0))).toEqual({ kind: 'harvest', moduleId: 999, plot: 0 });
+    expect(propPrompt(sim, prop(0))?.text).toBe('Cosechar');
+    expect(propPrompt(sim, prop(0))?.sub).toMatch(/Hortalizas: listas para cosechar · Mantén E: ver el bancal/);
+    expect(propQuick(sim, prop(1))).toEqual({ kind: 'tend', moduleId: 999, plot: 1 });
+    expect(propPrompt(sim, prop(1))?.text).toBe('Retirar las plantas secas');
+    expect(propQuick(sim, prop(2))).toEqual({ kind: 'tend', moduleId: 999, plot: 2 });
+    expect(propPrompt(sim, prop(2))?.text).toBe('Quitar la plaga');
+    expect(propQuick(sim, prop(3))).toBeNull();
+    expect(propPrompt(sim, prop(3))?.text).toBe('Atender el bancal');
+    // Obra en curso: nada directo.
+    m.status = 'construction';
+    expect(propQuick(sim, prop(0))).toBeNull();
+  });
+
+  it('textos de las cajas y del anillo de «Mantén E»', () => {
+    const sim = new Simulation(createNewGame(1));
+    const crate = { id: 5, pos: { x: 0, y: 0, z: 0 }, label: 'Restos', inventory: { slots: [{ id: 'madera', qty: 2 }, null] } };
+    expect(crateQuick(sim, crate)).toEqual({ kind: 'take', crateId: 5 });
+    expect(cratePrompt(crate, true)).toEqual({ key: 'E', text: 'Coger todo: Restos', sub: '1 pila de objetos · Mantén E: abrir la caja' });
+    expect(cratePrompt(crate, false).sub).toBe('1 pila de objetos · No te cabe todo');
+    expect(crateQuick(sim, { ...crate, inventory: { slots: [null] } })).toBeNull();
+    expect(holdPrompt({ kind: 'drink', moduleId: 1 }, 0.5)).toEqual({ key: 'Mantén E', text: 'Ver el depósito', progress: 0.5 });
+    expect(holdPrompt({ kind: 'take', crateId: 1 }, 2).progress).toBe(1);
+  });
+});
+
+describe('[35] el clic que devuelve el control no usa la herramienta', () => {
+  it('al cerrar un panel, el clic de ese frame no lanza el gancho; el siguiente sí', () => {
+    const h = harness();
+    const st = h.sim.state.player;
+    st.pos = { x: 4, y: LEVEL_H, z: -6 };
+    st.yaw = 0;
+    st.pitch = -0.3;
+    h.frame();
+    h.ui.panelOpen = true;
+    h.frame(3);
+    h.ui.panelOpen = false;
+    h.input.key('Mouse0', true);
+    h.frame();
+    h.input.key('Mouse0', false);
+    h.frame();
+    expect(h.ia.toolState.hook).toBe('idle');
+    h.tap('Mouse0');
+    expect(h.ia.toolState.hook).not.toBe('idle');
+  });
+});
+
+describe('[16] la vista no salta al capturar el ratón', () => {
+  function controller(input: FakeInput): PlayerController {
+    const ctx = { settings: { fov: 72, perspective: 'first', sensitivity: 2.2, invertY: false }, input } as unknown as GameContext;
+    return new PlayerController(ctx, {} as PlayerAvatar);
+  }
+
+  it('descarta los deltas al recuperar el control y al capturar el puntero', () => {
+    const input = new FakeInput();
+    const pc = controller(input);
+    // Menú: sin control.
+    expect(pc.lookDelta(false)).toBeNull();
+    // Primer frame de juego con el salto del navegador (−posición del cursor).
+    input.dx = -246;
+    input.dy = -378;
+    for (let i = 0; i < LOOK_GRACE_FRAMES; i++) expect(pc.lookDelta(true)).toBeNull();
+    input.dx = 5;
+    input.dy = -3;
+    expect(pc.lookDelta(true)).toEqual({ dx: 5, dy: -3 });
+    // La captura llega unos frames después: también se descarta su primer delta.
+    input.locked = true;
+    input.dx = 300;
+    expect(pc.lookDelta(true)).toBeNull();
+    // Saltos absurdos o no finitos nunca giran la vista.
+    for (let i = 0; i < LOOK_GRACE_FRAMES; i++) pc.lookDelta(true);
+    input.dx = 5000;
+    expect(pc.lookDelta(true)).toBeNull();
+    input.dx = Number.NaN;
+    expect(pc.lookDelta(true)).toBeNull();
+    input.dx = 12;
+    input.dy = 4;
+    expect(pc.lookDelta(true)).toEqual({ dx: 12, dy: 4 });
+    // Abrir y cerrar un panel vuelve a descartar.
+    expect(pc.lookDelta(false)).toBeNull();
+    expect(pc.lookDelta(true)).toBeNull();
+  });
+});
+
+describe('[19] los habitantes son sólidos', () => {
+  let sim: Simulation;
+  beforeEach(() => {
+    sim = new Simulation(createNewGame(1));
+  });
+
+  const step = (body: Body, vx: number, vz: number, obstacles: Obstacle[], seconds: number) => {
+    const dt = 1 / 60;
+    let minD = Infinity;
+    for (let t = 0; t < seconds; t += dt) {
+      sim.collision.move(body, vx, vz, dt, false);
+      pushOutOfObstacles(sim.collision, body, obstacles, { x: -1, z: 0 });
+      for (const o of obstacles) minD = Math.min(minD, Math.hypot(body.pos.x - o.x, body.pos.z - o.z));
+    }
+    return minD;
+  };
+
+  it('caminar contra un habitante no lo atraviesa y se rodea deslizando', () => {
+    const npc: Obstacle = { x: 6, y: LEVEL_H, z: 0, r: NPC_RADIUS, h: 1.8 };
+    const body: Body = { pos: { x: 3, y: LEVEL_H, z: 0 }, vy: 0, onGround: true };
+    const minD = step(body, 3.4, 0, [npc], 2);
+    expect(minD).toBeGreaterThanOrEqual(NPC_RADIUS + PLAYER_RADIUS - 0.02);
+    expect(body.pos.x).toBeLessThan(npc.x);
+    // Un poco de ángulo: lo rodea y sigue adelante.
+    const b2: Body = { pos: { x: 3, y: LEVEL_H, z: 0.1 }, vy: 0, onGround: true };
+    const minD2 = step(b2, 3.4, 0, [npc], 3);
+    expect(minD2).toBeGreaterThanOrEqual(NPC_RADIUS + PLAYER_RADIUS - 0.02);
+    expect(b2.pos.x).toBeGreaterThan(npc.x + 0.5);
+  });
+
+  it('el empuje nunca mete al jugador en una pared; centros coincidentes y otro nivel', () => {
+    // Pegado a la barandilla de babor (z ≈ -7,7) con un habitante encima: no sale por la borda.
+    const body: Body = { pos: { x: 4, y: LEVEL_H, z: -6 }, vy: 0, onGround: true };
+    step(body, 0, -4, [], 1);
+    const railZ = body.pos.z;
+    const npc: Obstacle = { x: body.pos.x, y: LEVEL_H, z: railZ + 0.2, r: NPC_RADIUS, h: 1.8 };
+    pushOutOfObstacles(sim.collision, body, [npc], { x: 0, z: -1 });
+    expect(body.pos.z).toBeGreaterThanOrEqual(railZ - 1e-6);
+    expect(sim.collision.isFree(body.pos.x, body.pos.z, body.pos.y)).toBe(true);
+    // Centros coincidentes: sale hacia la dirección de escape.
+    const b2: Body = { pos: { x: 6, y: LEVEL_H, z: 0 }, vy: 0, onGround: true };
+    expect(pushOutOfObstacles(sim.collision, b2, [{ x: 6, y: LEVEL_H, z: 0, r: NPC_RADIUS, h: 1.8 }], { x: -1, z: 0 })).toBe(true);
+    expect(b2.pos.x).toBeCloseTo(6 - NPC_RADIUS - PLAYER_RADIUS, 2);
+    // Un habitante en la bodega, justo debajo, no empuja.
+    const b3: Body = { pos: { x: 6, y: LEVEL_H, z: 0 }, vy: 0, onGround: true };
+    expect(pushOutOfObstacles(sim.collision, b3, [{ x: 6, y: 0, z: 0, r: NPC_RADIUS, h: 1.8 }], { x: -1, z: 0 })).toBe(false);
+  });
+
+  it('un habitante quieto no deja encerrado al jugador: tras empujar 2,5 s sin avanzar, se pasa', () => {
+    const npc: Obstacle = { x: 6, y: LEVEL_H, z: 0, r: NPC_RADIUS, h: 1.8 };
+    const body: Body = { pos: { x: 4, y: LEVEL_H, z: 0 }, vy: 0, onGround: true };
+    const nc = new NpcCollider();
+    const dt = 1 / 60;
+    let t = 0;
+    let firstInside = -1;
+    for (; t < NPC_SQUEEZE_TIME + 3; t += dt) {
+      const from = { x: body.pos.x, z: body.pos.z };
+      sim.collision.move(body, 3.4, 0, dt, false);
+      nc.resolve(sim.collision, body, [npc], { x: -1, z: 0 }, from, true, dt);
+      const d = Math.hypot(body.pos.x - npc.x, body.pos.z - npc.z);
+      if (d < NPC_RADIUS + PLAYER_RADIUS - 0.05 && firstInside < 0) firstInside = t;
+      if (body.pos.x > npc.x + 1.5) break;
+    }
+    // Primero choca (no lo atraviesa enseguida) y, pasado el tiempo de espera, pasa al otro lado.
+    expect(firstInside).toBeGreaterThan(NPC_SQUEEZE_TIME - 0.1);
+    expect(body.pos.x).toBeGreaterThan(npc.x + 1.5);
+    // Separado del habitante, vuelve a ser sólido.
+    nc.resolve(sim.collision, body, [npc], { x: -1, z: 0 }, { x: body.pos.x, z: body.pos.z }, false, dt);
+    expect(nc.ghost).toBe(false);
+  });
+
+  it('la cámara en tercera persona se acorta antes de meterse en un habitante', () => {
+    const feet = { x: 6, y: LEVEL_H, z: 0 };
+    // Mira hacia +x: la cámara queda en -x, donde está el habitante.
+    const free = computeArm({ layout: sim.layout, feet, yaw: -Math.PI / 2, pitch: -0.2, length: ARM_LENGTH });
+    const npcBox = boxAt(feet.x - 1.6, LEVEL_H, feet.z + 0.3, NPC_RADIUS, NPC_RADIUS, 1.8);
+    const r = computeArm({ layout: sim.layout, feet, yaw: -Math.PI / 2, pitch: -0.2, length: ARM_LENGTH, obstacles: [npcBox] });
+    expect(r.length).toBeLessThan(free.length);
+    expect(r.blocked).toBe(true);
+    // La cámara queda fuera de la caja del habitante.
+    const inside = r.pos.x > npcBox.minX && r.pos.x < npcBox.maxX && r.pos.z > npcBox.minZ && r.pos.z < npcBox.maxZ && r.pos.y < npcBox.maxY;
+    expect(inside).toBe(false);
   });
 });

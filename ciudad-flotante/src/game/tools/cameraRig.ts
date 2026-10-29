@@ -34,6 +34,8 @@ export interface ArmInput {
   length: number;
   /** Lado del hombro (1 derecho, -1 izquierdo, 0 centrado). */
   shoulder?: number;
+  /** Obstáculos móviles además de paredes y muebles (habitantes): la cámara no se mete en ellos. */
+  obstacles?: readonly AABB[];
 }
 
 export interface ArmResult {
@@ -82,7 +84,7 @@ export function computeArm(inp: ArmInput): ArmResult {
   const lim = verticalLimits(layout, feet);
   const pivot: V3 = { x: feet.x, y: Math.min(feet.y + ARM_PIVOT_Y, lim.ceil - 0.05), z: feet.z };
   if (inp.length <= 1e-3) return { pos: { ...pivot }, pivot, length: 0, blocked: false };
-  const boxes = cameraBoxes(layout);
+  const boxes = inp.obstacles && inp.obstacles.length ? [...cameraBoxes(layout), ...inp.obstacles] : cameraBoxes(layout);
   // 1) Del pivote al hombro (lateral).
   const rx = Math.cos(yaw);
   const rz = -Math.sin(yaw);

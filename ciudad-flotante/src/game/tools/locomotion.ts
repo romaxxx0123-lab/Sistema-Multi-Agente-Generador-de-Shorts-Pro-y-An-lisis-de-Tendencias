@@ -1,8 +1,9 @@
 /**
- * [AGENTE game-player] LOCOMOCIÓN (pura, sin three.js): aceleración suave y ayuda para coronar
- * las rampas de escalera. La usa `PlayerController` y se prueba con Vitest.
+ * [AGENTE game-player] LOCOMOCIÓN (pura, sin three.js): aceleración suave, ayuda para coronar
+ * las rampas de escalera y choque con los habitantes. La usa `PlayerController` y se prueba con
+ * Vitest.
  */
-import type { Body, ShipCollision } from '../../sim/physics';
+import { PLAYER_RADIUS, STEP_HEIGHT, type Body, type ShipCollision } from '../../sim/physics';
 
 /** Elevación de prueba de la ayuda para coronar rampas (m). */
 export const STEP_ASSIST = 0.25;
@@ -53,4 +54,115 @@ export function stepAssist(col: ShipCollision, body: Body, bx: number, by: numbe
   body.vy = 0;
   body.onGround = true;
   return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Habitantes                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Radio del cuerpo de un habitante para chocar con el jugador (m). */
+export const NPC_RADIUS = 0.3;
+/** Diferencia de altura (m) a partir de la cual un habitante está en otro nivel y no choca. */
+const OBSTACLE_DY = 1.2;
+
+/** Cuerpo cilíndrico (pies en `y`) con el que choca el jugador. */
+export interface Obstacle {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  /** Altura (m). */
+  h: number;
+}
+
+/**
+ * Saca al jugador de los cuerpos de los habitantes (choque círculo-círculo, después de
+ * `collision.move`). El empuje pasa por la colisión del barco: nunca mete al jugador en una pared
+ * ni lo deja sin suelo; si no hay sitio, se queda donde está. `away` = dirección de escape cuando
+ * los centros coinciden (p. ej. hacia atrás de la mirada). Devuelve true si empujó.
+ */
+export function pushOutOfObstacles(col: ShipCollision, body: Body, obstacles: readonly Obstacle[], away: { x: number; z: number }): boolean {
+  let pushed = false;
+  for (let iter = 0; iter < 3; iter++) {
+    let moved = false;
+    for (const o of obstacles) {
+      if (!Number.isFinite(o.x) || !Number.isFinite(o.z) || Math.abs(o.y - body.pos.y) > OBSTACLE_DY) continue;
+      const min = o.r + PLAYER_RADIUS;
+      let dx = body.pos.x - o.x;
+      let dz = body.pos.z - o.z;
+      let d = Math.hypot(dx, dz);
+      if (!(d < min - 1e-4)) continue;
+      if (d < 1e-4) {
+        dx = Number.isFinite(away.x) ? away.x : 1;
+        dz = Number.isFinite(away.z) ? away.z : 0;
+        d = Math.hypot(dx, dz);
+        if (d < 1e-6) {
+          dx = 1;
+          dz = 0;
+          d = 1;
+        }
+        dx /= d;
+        dz /= d;
+        d = 0;
+      } else {
+        dx /= d;
+        dz /= d;
+      }
+      const push = min - d;
+      const r = col.resolve(body.pos.x + dx * push, body.pos.z + dz * push, body.pos.y);
+      if (!Number.isFinite(r.x) || !Number.isFinite(r.z)) continue;
+      const g = col.groundAt(r.x, r.z, body.pos.y);
+      if (g === null || g > body.pos.y + STEP_HEIGHT || g < body.pos.y - 0.6) continue;
+      // La pared puede devolverlo hacia el habitante: solo cuenta si de verdad se aleja.
+      const nd = Math.hypot(r.x - o.x, r.z - o.z);
+      if (nd <= d + 1e-4) continue;
+      body.pos.x = r.x;
+      body.pos.z = r.z;
+      if (body.onGround) body.pos.y = g;
+      moved = true;
+      pushed = true;
+    }
+    if (!moved) break;
+  }
+  return pushed;
+}
+
+/** Tiempo (s) empujando contra un habitante sin avanzar tras el cual se le deja atravesar. */
+export const NPC_SQUEEZE_TIME = 2.5;
+
+/**
+ * Choque con los habitantes con salida de emergencia: si el jugador lleva NPC_SQUEEZE_TIME
+ * empujando contra uno sin avanzar (un habitante quieto en una puerta o un pasillo estrecho), se
+ * le deja pasar hasta separarse de él. Así nadie se queda encerrado por un habitante trabajando.
+ */
+export class NpcCollider {
+  private blocked = 0;
+  /** Atravesando habitantes hasta separarse de ellos. */
+  ghost = false;
+
+  /**
+   * Aplica el choque después de `collision.move`. `from` = posición antes de moverse este frame;
+   * `wantsMove` = el jugador pulsa una dirección. Devuelve true si empujó.
+   */
+  resolve(col: ShipCollision, body: Body, obstacles: readonly Obstacle[], away: { x: number; z: number }, from: { x: number; z: number }, wantsMove: boolean, dt: number): boolean {
+    if (this.ghost) {
+      const touching = obstacles.some((o) => Math.abs(o.y - body.pos.y) <= OBSTACLE_DY && Math.hypot(body.pos.x - o.x, body.pos.z - o.z) < o.r + PLAYER_RADIUS + 0.05);
+      if (touching) return false;
+      this.ghost = false;
+    }
+    const pushed = pushOutOfObstacles(col, body, obstacles, away);
+    const advanced = Math.hypot(body.pos.x - from.x, body.pos.z - from.z);
+    if (pushed && wantsMove && advanced < 0.4 * dt) this.blocked += dt;
+    else this.blocked = Math.max(0, this.blocked - dt);
+    if (this.blocked >= NPC_SQUEEZE_TIME) {
+      this.ghost = true;
+      this.blocked = 0;
+    }
+    return pushed;
+  }
+
+  reset(): void {
+    this.blocked = 0;
+    this.ghost = false;
+  }
 }
