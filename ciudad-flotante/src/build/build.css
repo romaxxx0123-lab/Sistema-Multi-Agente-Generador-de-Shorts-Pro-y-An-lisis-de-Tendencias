@@ -644,7 +644,12 @@
 
 .bm-tip {
   position: absolute;
-  max-width: 300px;
+  /* Ancho propio (no el hueco que queda hasta el borde): los motivos largos ocupan dos líneas
+     y el rótulo no se estrecha al acercarse al borde derecho antes de darse la vuelta. */
+  width: max-content;
+  max-width: 320px;
+  line-height: 1.3;
+  overflow-wrap: break-word;
   padding: 6px 10px 7px;
   border-radius: 8px;
   background: rgba(20, 28, 36, 0.9);
@@ -786,6 +791,19 @@
   line-height: 1.3;
 }
 
+.bm-info-loss {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  color: #ffb1a3;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.bm-info-loss .bm-gl {
+  color: var(--bm-bad);
+}
+
 /* ---------- Confirmación ---------- */
 
 .bm-modal {
@@ -873,6 +891,23 @@
   color: var(--warn);
   font-weight: 700;
   line-height: 1.3;
+}
+
+.bm-confirm-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 107, 87, 0.14);
+  border: 1px solid rgba(255, 107, 87, 0.45);
+  color: #ffb1a3;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.bm-confirm-warn .bm-gl {
+  color: var(--bm-bad);
 }
 
 .bm-confirm-actions {

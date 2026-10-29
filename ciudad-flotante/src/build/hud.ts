@@ -52,6 +52,8 @@ export interface ConfirmModel {
   /** Lista de objetos (reembolso o coste). */
   items: { id: string; name: string; qty: number; have?: number }[];
   itemsLabel: string;
+  /** Avisos de peligro (agua o carga que se perderán), en rojo antes de los botones. */
+  warnings?: string[];
   note?: string;
   confirmLabel: string;
   danger: boolean;
@@ -457,6 +459,7 @@ export class BuildHud {
       if (demolish.ok) {
         const refund = demolish.refund.length ? demolish.refund.map((r) => `${r.qty}× ${esc(r.name)}`).join(', ') : 'nada';
         html += `<div class="bm-info-foot bad">${gl('trash')}<span><b>Clic: ${demolish.inConstruction ? 'cancelar la obra' : 'desmontar'}</b><br>Recuperas: ${refund}</span></div>`;
+        for (const l of demolish.losses) html += `<div class="bm-info-loss">${gl('alert')}<span>${esc(l)}</span></div>`;
       } else {
         html += `<div class="bm-info-foot warn">${gl('lock')}<span>${esc(demolish.reason ?? 'No se puede desmontar')}</span></div>`;
       }
@@ -502,6 +505,7 @@ export class BuildHud {
       c.lines.map((l) => `<p>${esc(l)}</p>`).join('') +
       items +
       (c.note ? `<div class="bm-confirm-note">${gl('box')}<span>${esc(c.note)}</span></div>` : '') +
+      (c.warnings ?? []).map((w) => `<div class="bm-confirm-warn" role="alert">${gl('alert')}<span>${esc(w)}</span></div>`).join('') +
       `<div class="bm-confirm-actions"><button type="button" class="btn" data-act="cancel">Cancelar ${kbd('Esc')}</button><button type="button" class="btn primary${c.danger ? ' bm-danger' : ''}" data-act="confirm">${esc(c.confirmLabel)} ${kbd('Intro')}</button></div>` +
       `</div>`;
     setHtml(this.modal, html);

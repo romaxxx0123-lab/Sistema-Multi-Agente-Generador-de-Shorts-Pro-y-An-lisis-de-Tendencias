@@ -15,7 +15,7 @@ import { totals } from '../sim/inventory';
 import type { Simulation } from '../sim/Simulation';
 import { blueprintName } from '../sim/stations';
 import type { ItemId, ModuleInstance } from '../sim/types';
-import { isConsumer } from '../sim/utilities';
+import { finite, isConsumer } from '../sim/utilities';
 
 /* ------------------------------------------------------------------ */
 /* Textos y formato                                                    */
@@ -179,6 +179,8 @@ export interface ExpansionInfo {
   lengthNowM: number;
   lengthAfterM: number;
   atMax: boolean;
+  /** Ampliaciones ya terminadas (el coste base se multiplica por 1 + este número). */
+  done: number;
   /** Obra en curso: progreso 0..1 y minutos restantes. */
   progress: number | null;
   etaMin: number | null;
@@ -193,11 +195,13 @@ export function expansionInfo(sim: Simulation, have: Record<ItemId, number>): Ex
     lockShort: st.unlocks.includes(HULL_EXPANSION.unlock) ? null : blueprintName(HULL_EXPANSION.unlock),
     ok: chk.ok,
     reason: chk.reason,
-    cost: costLines(HULL_EXPANSION.cost, have),
+    // El coste crece con cada ampliación hecha: el que dice la simulación, no el base de los datos.
+    cost: costLines(chk.cost ?? HULL_EXPANSION.cost, have),
     timeText: durationText(HULL_EXPANSION.buildTime),
     lengthNowM: st.ship.length * CELL,
     lengthAfterM: Math.min(SHIP_MAX_LENGTH, st.ship.length + HULL_EXPANSION_CELLS) * CELL,
     atMax: st.ship.length + HULL_EXPANSION_CELLS > SHIP_MAX_LENGTH,
+    done: Math.max(0, Math.floor(finite(st.ship.hullTier))),
     progress: status ? status.progress : null,
     etaMin: status ? status.etaMin : null,
   };
@@ -359,6 +363,29 @@ export interface DemolishPreview {
   refund: { id: ItemId; name: string; qty: number }[];
   /** Unidades guardadas dentro (almacén, combustible, trabajos pagados, plantas vivas). */
   contents: number;
+  /** Agua potable (L) y carga (kWh) que se perderían porque baja la capacidad. */
+  waterLossL: number;
+  batteryLossKWh: number;
+  /** Avisos de pérdida para la ficha y la confirmación ("Se perderán 40 L de agua: …"). */
+  losses: string[];
+}
+
+/**
+ * Agua y carga que se perderían al desmontar `m`, si la simulación no lo dice: lo que no cabe en
+ * la capacidad que queda sin el módulo (las obras aún no cuentan en la capacidad).
+ */
+export function estimateLosses(sim: Simulation, m: ModuleInstance): Pick<DemolishPreview, 'waterLossL' | 'batteryLossKWh' | 'losses'> {
+  const def = moduleDef(m.type);
+  const u = sim.state.utilities;
+  const built = m.status !== 'construction';
+  const waterCap = Math.max(0, finite(u.water?.capacityL) - (built ? (def.waterCapacity ?? 0) : 0));
+  const battCap = Math.max(0, finite(u.power?.capacityKWh) - (built ? (def.batteryKWh ?? 0) : 0));
+  const waterLossL = Math.max(0, finite(u.waterL) - waterCap);
+  const batteryLossKWh = Math.max(0, finite(u.batteryKWh) - battCap);
+  const losses: string[] = [];
+  if (waterLossL >= 0.5) losses.push(`Se perderán ${Math.round(waterLossL)} L de agua: ${waterCap > 0 ? `la capacidad baja a ${Math.round(waterCap)} L` : 'no quedará ningún depósito'}`);
+  if (batteryLossKWh >= 0.5) losses.push(`Se perderán ${Math.round(batteryLossKWh)} kWh de las baterías: ${battCap > 0 ? `la capacidad baja a ${Math.round(battCap)} kWh` : 'no quedará ninguna batería'}`);
+  return { waterLossL, batteryLossKWh, losses };
 }
 
 export function demolishPreview(sim: Simulation, m: ModuleInstance): DemolishPreview {
@@ -377,5 +404,21 @@ export function demolishPreview(sim: Simulation, m: ModuleInstance): DemolishPre
       .filter(([, q]) => q > 0)
       .map(([id, qty]) => ({ id, name: itemName(id), qty })),
     contents,
+    ...demolishLossesOf(sim, m, chk),
+  };
+}
+
+/** Pérdidas que devuelve `checkDemolishModule` o, si no las trae, una estimación propia. */
+function demolishLossesOf(
+  sim: Simulation,
+  m: ModuleInstance,
+  chk: { waterLossL?: number; batteryLossKWh?: number; losses?: string[] },
+): Pick<DemolishPreview, 'waterLossL' | 'batteryLossKWh' | 'losses'> {
+  if (chk.waterLossL === undefined && chk.batteryLossKWh === undefined && !chk.losses) return estimateLosses(sim, m);
+  const est = chk.losses ? null : estimateLosses(sim, m);
+  return {
+    waterLossL: finite(chk.waterLossL),
+    batteryLossKWh: finite(chk.batteryLossKWh),
+    losses: chk.losses ? [...chk.losses] : est!.losses,
   };
 }

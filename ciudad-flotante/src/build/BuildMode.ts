@@ -26,11 +26,13 @@ import { MODULES, moduleDef, type ModuleCategory, type ModuleDef } from '../data
 import type { GameContext } from '../game/context';
 import { registerDebug } from '../game/debug';
 import { CELL, HULL_EXPANSION_CELLS, LEVEL_H, RAIL_H, SHIP_ORIGIN_X } from '../sim/constants';
-import { cellMin, checkPlacement, footprintSize, halfWidthM, levelOfY, levelY, moduleCells } from '../sim/ship';
+import { cellMin, footprintSize, halfWidthM, levelOfY, levelY, moduleCells } from '../sim/ship';
 import type { Simulation } from '../sim/Simulation';
 import { daylight } from '../sim/time';
 import type { ModuleInstance, Rotation } from '../sim/types';
-import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, levelName, LEVEL_SHORT, moduleInfo, paletteModules, shipSummary, stock, type DemolishPreview } from './catalog';
+import { withArticle } from '../sim/utilities';
+import { explainPlacement, levelReason, placeHintSteps, type PlaceSpot } from './advice';
+import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, moduleInfo, paletteModules, shipSummary, stock, type DemolishPreview } from './catalog';
 import { BoxMarker, GHOST_COLORS, GhostView, GridView, Pulse } from './ghost';
 import { BuildHud, esc, type ConfirmModel, type HudActions, type TipModel } from './hud';
 import { DEFAULT_PITCH, DEFAULT_YAW, fitDistance, OrbitRig } from './orbit';
@@ -48,6 +50,11 @@ const HUD_REFRESH = 0.25;
 const CHECK_REFRESH = 0.4;
 /** Segundos con el cursor quieto antes de buscar un giro que sí valga (pista "pulsa R"). */
 const HINT_DELAY = 0.12;
+/**
+ * Milisegundos por frame que se dedican a calcular la pista (cada prueba es una validación
+ * completa con la comprobación fina de muebles: varios ms). Siempre se da al menos un paso.
+ */
+const HINT_BUDGET_MS = 6;
 
 type Confirm = { kind: 'demolish'; moduleId: number } | { kind: 'expand' };
 
@@ -56,14 +63,24 @@ interface PlaceState {
   ok: boolean;
   /** El sitio vale; solo faltan materiales (fantasma ámbar en vez de rojo). */
   costOnly: boolean;
+  /** Motivo tal como lo da `sim.checkPlace` (para saber si cambió al revalidar). */
+  rawReason: string | null;
+  /** Motivo para el rótulo (más orientativo: ver `advice.ts`). */
   reason: string | null;
   hint: string | null;
+  /** Aviso que no impide construir (p. ej. el consumo de las lámparas de un huerto interior). */
+  warning: string | null;
 }
+
+const NO_PLACE: PlaceState = { key: '', ok: false, costOnly: false, rawReason: null, reason: null, hint: null, warning: null };
 
 interface CursorGhost {
   level: number;
   x: number;
   z: number;
+  /** Cursor en celdas continuas (para re-centrar la pieza al probar otros giros). */
+  fx: number;
+  fz: number;
 }
 
 const _v = new THREE.Vector3();
@@ -104,11 +121,14 @@ export class BuildMode {
 
   /* --- Resultado del cursor --- */
   private ghostAt: CursorGhost | null = null;
-  private place: PlaceState = { key: '', ok: false, costOnly: false, reason: null, hint: null };
+  private place: PlaceState = { ...NO_PLACE };
   private placeTimer = 0;
   /** Tiempo que el cursor lleva en la misma celda (para calcular la pista con calma). */
   private placeStill = 0;
-  private hintPending = false;
+  /** Cálculo de la pista en curso (por pasos, con presupuesto de tiempo por frame). */
+  private hintJob: { key: string; it: Generator<void, string | null> } | null = null;
+  /** Último rótulo mostrado junto al cursor (para depuración y pruebas). */
+  private lastTip: TipModel | null = null;
   private hoverId: number | null = null;
   private hoverDemolish: DemolishPreview | null = null;
   private placedFlash = 0;
@@ -238,7 +258,9 @@ export class BuildMode {
     this.hoverId = null;
     this.hoverDemolish = null;
     this.demolishCache = null;
-    this.place = { key: '', ok: false, costOnly: false, reason: null, hint: null };
+    this.place = { ...NO_PLACE };
+    this.hintJob = null;
+    this.lastTip = null;
     if (this.ctx.highlight?.kind === 'module') this.ctx.highlight = null;
   }
 
@@ -536,14 +558,20 @@ export class BuildMode {
       if (this.selected) {
         const def = moduleDef(this.selected);
         const hit = intersectLevel(this.localRay, this.level);
-        if (hit) {
-          const { fx, fz } = continuousCell(hit.x, hit.z, ship.width);
-          const a = anchorFor(def, this.rot, fx, fz, ship);
-          if (a) {
-            this.ghostAt = { level: this.level, x: a.x, z: a.z };
-            this.validate(def, a.x, a.z);
-            tip = this.placeTip(def);
-          }
+        const cell = hit ? continuousCell(hit.x, hit.z, ship.width) : null;
+        const a = cell ? anchorFor(def, this.rot, cell.fx, cell.fz, ship) : null;
+        if (a && cell) {
+          this.ghostAt = { level: this.level, x: a.x, z: a.z, fx: cell.fx, fz: cell.fz };
+          this.validate(def, this.ghostAt);
+          tip = this.placeTip(def);
+        } else {
+          // Sin fantasma (lejos del casco o mirando al cielo): siempre un rótulo que diga por qué.
+          tip = {
+            tone: 'info',
+            title: def.name,
+            text: hit ? 'Fuera del casco' : 'Apunta al barco',
+            sub: hit ? 'Acerca la pieza al barco para colocarla' : 'Señala una celda del nivel para colocar la pieza',
+          };
         }
       } else {
         const m = pickModule(this.localRay, ship, this.level);
@@ -572,6 +600,7 @@ export class BuildMode {
     if (info) hud.setInfo(moduleInfo(sim, info.m), mx, my, info.demolish);
     else hud.setInfo(null, 0, 0);
     hud.setTip(tip, mx, my);
+    this.lastTip = tip;
   }
 
   /** Vista previa de demolición con caché (comprobar la conectividad recalcula la distribución). */
@@ -586,13 +615,16 @@ export class BuildMode {
   }
 
   /**
-   * Valida la colocación con caché (`checkPlace` recalcula la distribución del barco, ~1 ms).
-   * Se revalida al cambiar de celda/giro/nivel y cada `CHECK_REFRESH` s (el coste puede cambiar).
-   * La pista de "gira la pieza" prueba otros giros (3 validaciones más): se calcula solo cuando el
-   * cursor se queda quieto un instante, para que barrer el barco con el ratón no cueste de más.
+   * Valida la colocación con caché (`checkPlace` recalcula la distribución del barco y hace la
+   * comprobación fina de muebles: varios ms). Se revalida al cambiar de celda/giro/nivel y cada
+   * `CHECK_REFRESH` s (el coste puede cambiar). El motivo se traduce a algo orientativo al momento
+   * (`explainPlacement`); la pista cara (probar giros y sitios para una escalera, todos con
+   * `sim.checkPlace` completo) se calcula cuando el cursor se queda quieto, por pasos y con un
+   * presupuesto de tiempo por frame, para que barrer el barco con el ratón no tironee.
    */
-  private validate(def: ModuleDef, x: number, z: number): void {
+  private validate(def: ModuleDef, at: CursorGhost): void {
     const sim = this.ctx.sim;
+    const { x, z } = at;
     const key = `${def.id}|${this.level}|${x}|${z}|${this.rot}|${sim.state.ship.revision}|${sim.state.unlocks.length}`;
     if (key !== this.place.key || this.placeTimer >= CHECK_REFRESH) {
       const sameSpot = key === this.place.key;
@@ -600,40 +632,40 @@ export class BuildMode {
       const chk = sim.checkPlace(def.id, this.level, x, z, this.rot);
       // `checkPlace` solo informa de la falta de materiales cuando el sitio es válido.
       const costOnly = !chk.ok && Object.keys(chk.missing).length > 0 && !!chk.reason?.startsWith('Faltan');
-      const keepHint = sameSpot && chk.reason === this.place.reason;
-      let hint = keepHint ? this.place.hint : null;
-      if (costOnly) hint = 'El sitio es bueno: consigue los materiales (cuentan los almacenes)';
-      this.hintPending = !chk.ok && !costOnly && !keepHint;
+      const warning = chk.warning ?? null;
       if (!sameSpot) this.placeStill = 0;
-      this.place = { key, ok: chk.ok, costOnly, reason: chk.reason, hint };
+      if (sameSpot && chk.reason === this.place.rawReason) {
+        // Mismo sitio y mismo motivo: se conservan el texto y la pista (o su cálculo en curso).
+        this.place.ok = chk.ok;
+        this.place.costOnly = costOnly;
+        this.place.warning = warning;
+      } else {
+        const spot: PlaceSpot = { def, level: this.level, x, z, rot: this.rot, fx: at.fx, fz: at.fz };
+        const ex = chk.ok ? null : explainPlacement(sim, spot, chk.reason);
+        this.place = { key, ok: chk.ok, costOnly, rawReason: chk.reason, reason: ex?.reason ?? chk.reason, hint: ex?.hint ?? null, warning };
+        this.hintJob = !chk.ok && !costOnly && ex ? { key, it: placeHintSteps(sim, spot, chk.reason, ex) } : null;
+      }
     }
-    if (this.hintPending && this.placeStill >= HINT_DELAY) {
-      this.hintPending = false;
-      this.place.hint = this.hintFor(def, x, z, this.place.reason);
+    const job = this.hintJob;
+    if (job && job.key === this.place.key && this.placeStill >= HINT_DELAY) {
+      const t0 = performance.now();
+      for (;;) {
+        const r = job.it.next();
+        if (r.done) {
+          if (r.value) this.place.hint = r.value;
+          this.hintJob = null;
+          break;
+        }
+        if (performance.now() - t0 >= HINT_BUDGET_MS) break;
+      }
     }
-  }
-
-  /** Sugerencia para arreglar una colocación inválida (girar, cambiar de nivel). */
-  private hintFor(def: ModuleDef, x: number, z: number, reason: string | null): string | null {
-    const st = this.ctx.sim.state;
-    if (!def.levels.includes(this.level)) {
-      return `Se construye en: ${def.levels.map((l) => LEVEL_SHORT[l]).join(', ')} (Re Pág / Av Pág)`;
-    }
-    if (reason && (reason.startsWith('Faltan') || reason.startsWith('Necesitas'))) return null;
-    // ¿Funcionaría con otro giro? (solo reglas espaciales)
-    for (let k = 1; k < 4; k++) {
-      const r = ((this.rot + k) % 4) as Rotation;
-      const [fw, fd] = footprintSize(def, r);
-      if (x + fw > st.ship.length || z + fd > st.ship.width) continue;
-      if (checkPlacement(st.ship, st.unlocks, def.id, this.level, x, z, r).ok) return 'Pulsa R para girarla: así sí cabe';
-    }
-    return null;
   }
 
   private placeTip(def: ModuleDef): TipModel {
     if (this.placedFlash > 0) return { tone: 'ok', title: def.name, text: this.placedMsg, sub: 'Sigue colocando o suelta la pieza con clic derecho' };
     if (this.place.ok) {
-      return { tone: 'ok', title: def.name, text: 'Clic para construir aquí', sub: `<span class="kbd">R</span> girar · <span class="kbd">Clic der.</span> soltar` };
+      const keys = `<span class="kbd">R</span> girar · <span class="kbd">Clic der.</span> soltar`;
+      return { tone: 'ok', title: def.name, text: 'Clic para construir aquí', sub: this.place.warning ? esc(this.place.warning) : keys };
     }
     return {
       tone: this.place.costOnly ? 'warn' : 'bad',
@@ -736,7 +768,7 @@ export class BuildMode {
         // Lleva al nivel permitido más cercano.
         const best = [...def.levels].sort((a, b) => Math.abs(a - this.level) - Math.abs(b - this.level))[0]!;
         this.setLevel(best);
-        sim.notify(`${def.name}: se construye en ${def.levels.map((l) => levelName(l).toLowerCase()).join(' o ')}`, 'info');
+        sim.notify(levelReason(def), 'info');
       }
       this.ctx.bus.emit('sfx', { name: 'ui_click' });
     }
@@ -802,11 +834,13 @@ export class BuildMode {
       : ['Se recupera la mitad de los materiales. Los habitantes que dormían o trabajaban aquí buscarán otro sitio.'];
     return {
       kind: 'demolish',
-      title: p.inConstruction ? `¿Cancelar la obra: ${p.name}?` : `¿Desmontar ${p.name}?`,
+      title: p.inConstruction ? `¿Cancelar la obra: ${p.name}?` : `¿Desmontar ${withArticle(p.name)}?`,
       glyph: 'trash',
       lines,
       items: p.refund.map((r) => ({ id: r.id, name: r.name, qty: r.qty })),
       itemsLabel: 'Recuperas',
+      // El agua y la carga no caben en la caja: se avisa antes, no después.
+      warnings: p.losses,
       note:
         p.contents > 0
           ? `Lo que contenga (${p.contents} ${p.contents === 1 ? 'objeto' : 'objetos'}) quedará en una caja en el suelo, junto con los materiales.`
@@ -835,6 +869,7 @@ export class BuildMode {
       lines: [
         `El barco crecerá dos secciones por la proa: de ${info.lengthNowM} m a ${info.lengthAfterM} m de eslora, con más cubierta y más bodega.`,
         `La obra dura unas ${info.timeText}; puedes ayudar con el martillo en la proa.`,
+        ...(info.done > 0 ? [`Cada ampliación cuesta más que la anterior: esta es la ${info.done + 1}.ª.`] : []),
       ],
       items: info.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need, have: c.have })),
       itemsLabel: 'Coste',
@@ -930,7 +965,8 @@ export class BuildMode {
       giro: this.rot,
       demoler: this.demolishing,
       confirmacion: this.confirm?.kind ?? null,
-      fantasma: this.ghostAt ? { ...this.ghostAt, ok: this.place.ok, motivo: this.place.reason, pista: this.place.hint } : null,
+      fantasma: this.ghostAt ? { level: this.ghostAt.level, x: this.ghostAt.x, z: this.ghostAt.z, ok: this.place.ok, motivo: this.place.reason, pista: this.place.hint, aviso: this.place.warning } : null,
+      rotulo: this.lastTip ? { tono: this.lastTip.tone, titulo: this.lastTip.title, texto: this.lastTip.text, sub: this.lastTip.sub ?? null } : null,
       señalado: this.hoverId,
       camara: { yaw: +c.yaw.toFixed(3), pitch: +c.pitch.toFixed(3), dist: +c.dist.toFixed(2), tx: +c.tx.toFixed(2), ty: +c.ty.toFixed(2), tz: +c.tz.toFixed(2) },
       transicion: +this.trans.toFixed(2),

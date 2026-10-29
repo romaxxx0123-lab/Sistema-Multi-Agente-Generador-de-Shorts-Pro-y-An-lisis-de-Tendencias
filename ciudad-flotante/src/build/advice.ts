@@ -51,7 +51,9 @@ function levelPlace(l: number): string {
 
 /** "en la bodega o en la cubierta principal", "en la bodega, en la cubierta principal o en…". */
 export function levelsPhrase(levels: readonly number[]): string {
-  const ls = [...levels].sort((a, b) => a - b).map((l) => `en ${levelPlace(l)}`);
+  const sorted = [...levels].sort((a, b) => a - b);
+  // "en la cubierta principal o en la superior" (sin repetir "cubierta").
+  const ls = sorted.map((l) => `en ${l === 2 && sorted.includes(1) ? 'la superior' : levelPlace(l)}`);
   if (ls.length <= 1) return ls[0] ?? '';
   return `${ls.slice(0, -1).join(', ')} o ${ls[ls.length - 1]}`;
 }
@@ -258,7 +260,11 @@ export function explainPlacement(sim: Simulation, spot: PlaceSpot, reason: strin
   if (!def.levels.includes(spot.level)) return { reason: levelReason(def), hint: levelHint(def, spot.level), area: null };
   if (!reason) return { reason: null, hint: null, area: null };
   if (reason.startsWith('Faltan')) return { reason, hint: 'El sitio es bueno: consigue los materiales (cuentan los almacenes)', area: null };
-  if (reason.startsWith('Necesitas')) return { reason, hint: null, area: null };
+  if (reason.startsWith('Necesitas')) {
+    // Huerto bajo techo sin el plano de lámparas: al sol crece sin ellas.
+    const sun = /no llega el sol/.test(reason) ? 'Constrúyelo en la cubierta, a cielo abierto: allí crece sin lámparas' : null;
+    return { reason, hint: sun, area: null };
+  }
   if (reason.startsWith('Sin acceso')) {
     const area = isolatedArea(sim, spot);
     if (area) return { reason: isolatedReason(area), hint: isolatedHint(area), area };
