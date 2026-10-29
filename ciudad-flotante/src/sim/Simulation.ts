@@ -311,4 +311,28 @@ export class Simulation {
   stationRecipes(moduleId: number | null) {
     return stations.availableRecipes(this, moduleId);
   }
+  /** Cola con progreso y tiempo restante, texto de estado ("Sin energía", "Sin combustible"…). */
+  stationStatus(moduleId: number) {
+    return stations.stationStatus(this, moduleId);
+  }
+  plotStatus(moduleId: number, plot: number): string {
+    return stations.plotStatus(this, moduleId, plot);
+  }
+  /** Obra en curso (-1 = ampliación del casco): progreso, ayudantes, minutos restantes. */
+  constructionStatus(moduleId: number) {
+    return construction.constructionStatus(this, moduleId);
+  }
+  /** Quién produce y quién consume en la red eléctrica ahora mismo. */
+  powerBreakdown() {
+    return utilities.powerBreakdown(this);
+  }
+  /** Ofertas de un mercante con disponibilidad. */
+  tradeOffers(eventId: number) {
+    return events.tradeOffers(this, eventId);
+  }
+  /** Texto corto de lo que hace un habitante ahora. */
+  npcStatus(npcId: string): string {
+    const n = this.state.npcs.find((x) => x.id === npcId);
+    return n ? npc.npcStatusText(this, n) : '';
+  }
 }

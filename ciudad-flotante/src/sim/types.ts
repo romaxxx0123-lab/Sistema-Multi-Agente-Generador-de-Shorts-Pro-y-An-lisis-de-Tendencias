@@ -42,6 +42,8 @@ export interface CraftJob {
   recipeId: string;
   /** Minutos de juego ya trabajados. */
   progress: number;
+  /** Quién lo encargó: 'npc' = un habitante (paga con almacenes, no cuenta para estadísticas, tutorial ni avisos). Ausente = jugador. */
+  by?: 'player' | 'npc';
 }
 
 export interface PlotState {

@@ -18,6 +18,7 @@
  *   --out <png>        Captura (repetible: se toma tras el --eval anterior).
  *   --script <mjs>     Módulo con `export default async (page, helpers) => {}` para escenas complejas.
  *   --keep             No cerrar (depuración).
+ * Calidad gráfica: baja por defecto (render por software); usa SHOT_QUALITY=media|alta para otra.
  * Imprime los errores y avisos de consola de la página. Código de salida 2 si hubo errores.
  */
 import { createRequire } from 'node:module';
@@ -75,7 +76,7 @@ page.on('pageerror', (err) => {
   errors++;
   console.log(`[pageerror] ${err.message}\n${err.stack ?? ''}`);
 });
-const query = opts.query ?? `autostart&seed=${opts.seed}`;
+const query = opts.query ?? `autostart&seed=${opts.seed}&quality=${process.env.SHOT_QUALITY ?? 'baja'}`;
 await page.goto(`${base}?${query}`, { waitUntil: 'load' });
 await page.waitForFunction(() => !!window.__game, null, { timeout: 30000 });
 await page.waitForTimeout(500);
@@ -84,7 +85,7 @@ const helpers = {
   step: (frames = 5, dt = 1 / 60) => page.evaluate(([f, d]) => window.__game.cmd.step(f, d), [frames, dt]),
   shot: async (out) => {
     mkdirSync(dirname(resolve(out)), { recursive: true });
-    await page.screenshot({ path: out });
+    await page.screenshot({ path: out, timeout: 120000 });
     console.log('captura:', out);
   },
   eval: (js) => page.evaluate(js),

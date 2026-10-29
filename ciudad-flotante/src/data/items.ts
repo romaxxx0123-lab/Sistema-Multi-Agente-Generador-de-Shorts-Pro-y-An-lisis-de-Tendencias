@@ -75,7 +75,7 @@ const defs: ItemDef[] = [
   { id: 'guiso', name: 'Guiso marinero', desc: 'Pescado con verduras a fuego lento. La mejor comida a bordo.', category: 'comida', stack: 10, color: '#bc6c25', consume: { hunger: 50, thirst: 10, warmth: 20, energy: 6, verb: 'Comer' }, value: 9 },
   // Bebida
   { id: 'agua_potable', name: 'Botella de agua', desc: 'Agua potable. Se rellena en cualquier depósito.', category: 'bebida', stack: 10, color: '#4cc9f0', consume: { thirst: 40, verb: 'Beber' }, value: 3 },
-  { id: 'cubo_agua', name: 'Cubo de agua de mar', desc: 'Agua salada: no se bebe. Sirve para apagar fuegos o destilarla en la cocina.', category: 'herramienta', stack: 1, color: '#2a9d8f', tool: 'cubo_lleno', consume: { thirst: -8, health: -6, verb: 'Beber (salada)', leaves: 'cubo' }, value: 2 },
+  { id: 'cubo_agua', name: 'Cubo de agua de mar', desc: 'Agua salada: no se bebe. Sirve para apagar fuegos o destilarla en la cocina.', category: 'herramienta', stack: 1, color: '#2a9d8f', tool: 'cubo_lleno', consume: { thirst: -8, health: -6, sickChance: 0.5, verb: 'Beber (salada)', leaves: 'cubo' }, value: 2 },
   // Semillas
   { id: 'semilla_hortaliza', name: 'Semillas de hortaliza', desc: 'Se plantan en un huerto. Necesitan agua de los depósitos y luz.', category: 'semilla', stack: 20, color: '#6a994e', value: 2 },
   { id: 'semilla_lino', name: 'Semillas de lino', desc: 'El lino da fibra para cuerda y tela.', category: 'semilla', stack: 20, color: '#577590', value: 2 },

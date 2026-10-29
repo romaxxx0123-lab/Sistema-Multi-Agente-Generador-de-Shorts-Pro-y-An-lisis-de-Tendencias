@@ -27,6 +27,10 @@ import { DEFAULT_SETTINGS, type GameMode, type HighlightTarget, type Settings } 
 import { addItem } from '../sim/inventory';
 import { BLUEPRINT_ORDER } from '../data/loot';
 import { ITEMS } from '../data/items';
+import { forceWeather } from '../sim/weather';
+import type { WeatherKind } from '../sim/types';
+import * as events from '../sim/events';
+import { spawnSurvivor } from '../sim/npc';
 
 const SETTINGS_KEY = 'ciudad-flotante:settings';
 const AUTOSAVE_SLOT = 'auto';
@@ -58,6 +62,9 @@ export class Game implements GameContext {
 
   constructor(private readonly container: HTMLElement) {
     this.settings = this.loadSettings();
+    // Parámetro de URL ?quality=baja|media|alta (pruebas automáticas, equipos lentos). No se guarda.
+    const q = new URLSearchParams(location.search).get('quality');
+    if (q === 'baja' || q === 'media' || q === 'alta') this.settings.quality = q;
     this.saves = createLocalSaveStore();
     this.sim = Simulation.newGame(undefined, this.bus);
     this.renderer = new Renderer(container, this.settings.quality);
@@ -175,7 +182,8 @@ export class Game implements GameContext {
       const st = this.saves.load(slot);
       if (!st) return false;
       this.replaceSim(new Simulation(st, this.bus), 'load');
-      this.sim.notify('Partida cargada', 'good');
+      if (!this.sim.state.player.alive) this.setMode('dead');
+      else this.sim.notify('Partida cargada', 'good');
       return true;
     } catch (e) {
       console.error(e);
@@ -300,7 +308,10 @@ export class Game implements GameContext {
     const layout = this.sim.layout;
     const hide = this._mode === 'build' ? this.build.hideAboveLevel : null;
     this.shipView.sync(st, layout, { hideAboveLevel: hide, cutaway: this._mode === 'build', highlight: this.highlight }, dt, camera);
-    this.npcView.sync(st, dt, hide);
+    const hl = this.highlight;
+    this.npcView.setHighlight(hl?.kind === 'npc' ? hl.id : null);
+    this.debrisView.setHighlight(hl?.kind === 'debris' ? hl.id : null);
+    this.npcView.sync(st, dt, hide, camera);
     this.debrisView.sync(st, dt, (x, z) => this.renderer.waterHeight(x, z));
     this.renderer.update(st, layout, dt, camera);
     this.renderer.render(camera);
@@ -348,5 +359,13 @@ export class Game implements GameContext {
     registerDebug('mouse', ((dx: number, dy: number) => this.input.injectMouse(dx, dy)) as never);
     registerDebug('mode', ((m: GameMode) => this.setMode(m)) as never);
     registerDebug('newGame', ((seed?: number) => this.newGame(seed)) as never);
+    registerDebug('weather', ((kind: WeatherKind, minutes?: number) => forceWeather(this.sim, kind, minutes, true)) as never);
+    registerDebug('route', ((regionId: string) => this.sim.chooseRoute(regionId)) as never);
+    registerDebug('event', ((type: string) => events.startEvent(this.sim, type as events.EventType, { scripted: true })) as never);
+    registerDebug('fire', ((moduleId: number) => {
+      const m = this.sim.state.ship.modules.find((mm) => mm.id === moduleId);
+      if (m) events.startFire(this.sim, m, 40);
+    }) as never);
+    registerDebug('survivor', (() => spawnSurvivor(this.sim)) as never);
   }
 }

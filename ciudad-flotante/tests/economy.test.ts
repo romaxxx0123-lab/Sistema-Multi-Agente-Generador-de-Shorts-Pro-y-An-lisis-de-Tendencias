@@ -332,6 +332,8 @@ describe('red eléctrica', () => {
 describe('red de agua', () => {
   it('el colector recoge 10 L/h × lluvia a cielo abierto', () => {
     const { sim } = setup();
+    // Los habitantes beben del depósito (SISTEMAS §11): fuera para medir solo el colector.
+    sim.state.npcs = [];
     const u = sim.state.utilities;
     const w0 = u.waterL;
     for (let i = 0; i < 120; i++) {
@@ -342,7 +344,8 @@ describe('red de agua', () => {
     expect(u.waterL - w0).toBeGreaterThan(9.8);
     expect(u.waterL - w0).toBeLessThanOrEqual(10.0001);
     expect(u.water.inPerHour).toBeGreaterThan(9);
-    // Sin lluvia no entra nada.
+    // Sin lluvia no entra nada (clima seco: con el clima real la lluvia tiende a su objetivo).
+    freeze(sim, 'despejado');
     run(sim, 60, () => {
       sim.state.weather.rain = 0;
     });

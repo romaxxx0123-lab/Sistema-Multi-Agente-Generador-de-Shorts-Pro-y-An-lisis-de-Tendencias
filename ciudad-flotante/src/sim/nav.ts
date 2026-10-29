@@ -291,7 +291,7 @@ export class NavGrid {
     out.push(raw[raw.length - 1]!);
     const pts = out.slice(1).map((p) => this.worldOf(p));
     // Puntos intermedios a lo largo de rampas para que la altura sea suave.
-    return densifyRamps(pts, this);
+    return densifyRamps(pts, this, this.worldOf(a));
   }
 
   /** Punto transitable frente a un prop para usarlo. */
@@ -324,9 +324,9 @@ export class NavGrid {
   }
 }
 
-function densifyRamps(pts: Vec3[], nav: NavGrid): Vec3[] {
+function densifyRamps(pts: Vec3[], nav: NavGrid, start: Vec3 | null = null): Vec3[] {
   const out: Vec3[] = [];
-  let prev: Vec3 | null = null;
+  let prev: Vec3 | null = start;
   for (const p of pts) {
     if (prev && Math.abs(p.y - prev.y) > 0.3) {
       const n = Math.ceil(Math.hypot(p.x - prev.x, p.z - prev.z) / 0.8);

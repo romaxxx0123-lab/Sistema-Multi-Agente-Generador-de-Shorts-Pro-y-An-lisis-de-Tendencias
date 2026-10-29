@@ -94,7 +94,25 @@ export function decideNpcPose(n: NpcState, state: GameState, speed: number, seat
     }
   }
   switch (act) {
-    case 'working':
+    case 'working': {
+      // Pista de animación que deja la IA (task.data.anim); si no hay, la pose del puesto.
+      const anim = (n.task?.data as { anim?: string } | undefined)?.anim;
+      switch (anim) {
+        case 'cocinar':
+          return { ...base, pose: 'stir', tool: 'cucharon', carry: false };
+        case 'cultivar':
+          return { ...base, pose: 'kneel', tool: null, carry: false };
+        case 'reparar':
+          return { ...base, pose: 'hammer', tool: 'llave', carry: false };
+        case 'pescar':
+          return { ...base, pose: 'reel', tool: 'cana', carry: false };
+        case 'gancho':
+          return { ...base, pose: 'cast', tool: 'gancho', carry: false };
+        case 'construir':
+          return { ...base, pose: 'hammer', tool: 'martillo', carry: false };
+        default:
+          break;
+      }
       switch (n.role) {
         case 'cocinero':
           return { ...base, pose: 'stir', tool: 'cucharon', carry: false };
@@ -109,6 +127,7 @@ export function decideNpcPose(n: NpcState, state: GameState, speed: number, seat
         default:
           return { ...base, pose: 'work', carry: false };
       }
+    }
     case 'building':
       return { ...base, pose: 'hammer', tool: 'martillo', carry: false };
     case 'firefighting':
