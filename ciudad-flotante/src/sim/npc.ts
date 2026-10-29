@@ -1394,23 +1394,55 @@ function takeFromSource(sim: Simulation, s: Source, id: ItemId, qty: number): nu
   return take;
 }
 
-/** Fuente (almacenes primero, luego cajas sueltas alcanzables) que tiene un objeto. */
-function findSource(sim: Simulation, id: ItemId): Source | null {
-  const m = storageModules(sim).find((mm) => mm.fire <= 0 && countItem(mm.inventory, id) > 0);
-  if (m) return { m, crate: null };
+/**
+ * Fuente ALCANZABLE (almacenes primero, luego cajas sueltas) que tiene un objeto: un almacén al que
+ * no se puede llegar (tapiado por una obra, en una zona aislada) no cuenta, y se prueba el siguiente.
+ * Con `from`, el almacén más cercano primero.
+ */
+function findSource(sim: Simulation, id: ItemId, from?: Vec3): Source | null {
+  const mods = storageModules(sim).filter((mm) => mm.fire <= 0 && countItem(mm.inventory, id) > 0);
+  if (from && mods.length > 1) {
+    const d = (m: ModuleInstance) => {
+      const c = moduleCenter(m, sim.state.ship.width);
+      return Math.hypot(c.x - from.x, c.z - from.z) + Math.abs(c.y - from.y) * 4;
+    };
+    mods.sort((a, b) => d(a) - d(b));
+  }
+  for (const m of mods) {
+    const s: Source = { m, crate: null };
+    if (sourceSpot(sim, s)) return s;
+  }
   for (const c of sim.state.crates) {
     if (countItem(c.inventory, id) > 0 && snapReachable(sim, c.pos, 2.5)) return { m: null, crate: c };
   }
   return null;
 }
 
-/** La mejor comida disponible (por preferencia) y dónde está. */
-function bestFood(sim: Simulation): { src: Source; id: ItemId } | null {
+/** ¿Hay `id` en algún almacén o caja suelta, se llegue o no? (para las quejas). */
+function anywhereAboard(sim: Simulation, id: ItemId): boolean {
+  return storageModules(sim).some((m) => countItem(m.inventory, id) > 0) || sim.state.crates.some((c) => countItem(c.inventory, id) > 0);
+}
+
+/**
+ * La mejor comida disponible (por preferencia) en una fuente alcanzable, y dónde está: si la
+ * preferida está donde no se llega, se pasa a la siguiente.
+ */
+function bestFood(sim: Simulation, from?: Vec3): { src: Source; id: ItemId } | null {
   for (const id of FOOD_PREFERENCE) {
-    const src = findSource(sim, id);
+    const src = findSource(sim, id, from);
     if (src) return { src, id };
   }
   return null;
+}
+
+/** ¿Hay comida a bordo aunque nadie pueda llegar a ella? */
+function foodAboard(sim: Simulation): boolean {
+  return FOOD_PREFERENCE.some((id) => anywhereAboard(sim, id));
+}
+
+/** ¿Hay agua a bordo (depósitos o botellas) aunque nadie pueda llegar a ella? */
+function waterAboard(sim: Simulation): boolean {
+  return sim.state.utilities.waterL >= WATER_PER_DRINK || anywhereAboard(sim, 'agua_potable');
 }
 
 function storageSpot(sim: Simulation, m: ModuleInstance): Vec3 | null {
@@ -1422,7 +1454,7 @@ function eatPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
     const seat = freeSeat(sim, npc);
     return { kind: 'comer', prio, target: seat?.pos ?? null, data: { stage: 'mesa', seatKey: seat?.key ?? null, comedor: seat?.comedor ?? false }, duration: EAT_MINUTES };
   }
-  const food = bestFood(sim);
+  const food = bestFood(sim, npc.pos);
   if (!food) return null;
   // Solo queda pescado crudo: mejor asarlo un momento que arriesgarse a enfermar (salvo desesperación).
   if (food.id === 'pescado_crudo' && npc.needs.hunger > 8) {
@@ -1505,7 +1537,7 @@ function pickUpFood(sim: Simulation, npc: NpcState): void {
   if (!got) {
     // Se la han llevado: probar en otro sitio (una vez).
     const tries = (d['tries'] as number | undefined) ?? 0;
-    const food = tries < 1 ? bestFood(sim) : null;
+    const food = tries < 1 ? bestFood(sim, npc.pos) : null;
     const spot = food ? sourceSpot(sim, food.src) : null;
     if (food && spot) {
       startPlan(sim, npc, { kind: 'comer', prio: d.prio, target: spot, ...(food.src.m ? { moduleId: food.src.m.id } : {}), data: { stage: 'recoger', ...sourceData(food.src), tries: tries + 1 }, duration: EAT_MINUTES });
@@ -1551,7 +1583,7 @@ function drinkPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
     }
   }
   if (npc.carry?.id === 'agua_potable') return { kind: 'beber', prio, target: null, data: { stage: 'mano' }, duration: DRINK_MINUTES };
-  const src = findSource(sim, 'agua_potable');
+  const src = findSource(sim, 'agua_potable', npc.pos);
   if (src) {
     const spot = sourceSpot(sim, src);
     if (spot) return { kind: 'beber', prio, target: spot, ...(src.m ? { moduleId: src.m.id } : {}), data: { stage: 'botella', ...sourceData(src) }, duration: DRINK_MINUTES };
