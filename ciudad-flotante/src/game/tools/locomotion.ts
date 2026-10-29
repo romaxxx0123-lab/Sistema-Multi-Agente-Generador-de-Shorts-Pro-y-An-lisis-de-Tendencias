@@ -127,6 +127,45 @@ export function pushOutOfObstacles(col: ShipCollision, body: Body, obstacles: re
   return pushed;
 }
 
+/**
+ * Desvía la velocidad deseada alrededor de los habitantes con los que se está en contacto: se
+ * quita la componente que va hacia ellos (se desliza por su contorno) y, si se va de frente, se
+ * esquiva hacia la derecha. Así se rodea a una persona en vez de quedarse empujándola.
+ */
+export function steerAround(pos: { x: number; y: number; z: number }, vx: number, vz: number, obstacles: readonly Obstacle[]): { x: number; z: number } {
+  const speed = Math.hypot(vx, vz);
+  let x = vx;
+  let z = vz;
+  if (!(speed > 1e-4)) return { x, z };
+  for (const o of obstacles) {
+    if (!Number.isFinite(o.x) || !Number.isFinite(o.z) || Math.abs(o.y - pos.y) > OBSTACLE_DY) continue;
+    const dx = pos.x - o.x;
+    const dz = pos.z - o.z;
+    const d = Math.hypot(dx, dz);
+    if (d > o.r + PLAYER_RADIUS + 0.12 || d < 1e-6) continue;
+    const nx = dx / d;
+    const nz = dz / d;
+    const into = x * nx + z * nz;
+    if (into >= 0) continue;
+    x -= into * nx;
+    z -= into * nz;
+    if (Math.hypot(x, z) < speed * 0.35) {
+      // De frente: rodearlo por el lado hacia el que ya se desliza (o por la derecha).
+      let tx = -nz;
+      let tz = nx;
+      const side = x * tx + z * tz;
+      const right = -vz * tx + vx * tz;
+      if (side < 0 || (Math.abs(side) < 1e-6 && right < 0)) {
+        tx = -tx;
+        tz = -tz;
+      }
+      x = tx * speed * 0.7;
+      z = tz * speed * 0.7;
+    }
+  }
+  return { x, z };
+}
+
 /** Tiempo (s) empujando contra un habitante sin avanzar tras el cual se le deja atravesar. */
 export const NPC_SQUEEZE_TIME = 2.5;
 

@@ -28,7 +28,7 @@ import { cellAtPoint, type AABB } from '../sim/ship';
 import type { Vec3 } from '../sim/types';
 import type { GameContext } from './context';
 import { boxAt, damp, lookDir, wrapAngle, type V3 } from './tools/aim';
-import { approachVelocity, NPC_RADIUS, NpcCollider, stepAssist, type Obstacle } from './tools/locomotion';
+import { approachVelocity, NPC_RADIUS, NpcCollider, steerAround, stepAssist, type Obstacle } from './tools/locomotion';
 import { ARM_LENGTH, computeArm, THIRD_PITCH_MAX, THIRD_PITCH_MIN, verticalLimits } from './tools/cameraRig';
 
 /** Velocidades (m/s). */
@@ -47,8 +47,9 @@ const STRIDE_RUN = 0.98;
 const PITCH_LIMIT = 1.45;
 /** Altura por debajo de la cual se considera que el jugador cayó al mar (m). */
 const FALL_LIMIT_Y = -3;
-/** Frames de ratón descartados al recuperar el control o capturar el puntero. */
+/** Frames y tiempo mínimo (s) de ratón descartados al recuperar el control o capturar el puntero. */
 export const LOOK_GRACE_FRAMES = 2;
+export const LOOK_GRACE_TIME = 0.15;
 /**
  * Un delta de ratón mayor que esto en un solo frame (px) es un salto espurio del navegador (con la
  * sensibilidad por defecto son 4,4 rad: más de media vuelta en un frame).
@@ -82,6 +83,7 @@ export class PlayerController {
   private floorYaw: number | null = null;
   /** Frames de ratón que quedan por descartar (ver LOOK_GRACE_FRAMES). */
   private lookGrace = 0;
+  private lookGraceT = 0;
   private hadControl = false;
   private wasLocked = false;
   /** Cuerpos de los habitantes de este frame (reutilizado). */
@@ -203,7 +205,7 @@ export class PlayerController {
     this.floorYaw = null;
 
     // --- Mirada ---
-    this.applyLook(canControl);
+    this.applyLook(canControl, dt);
 
     // --- Intención de movimiento ---
     let ix = 0;
@@ -252,12 +254,14 @@ export class PlayerController {
     const bz = body.pos.z;
     const vyBefore = body.vy;
     const wasGrounded = body.onGround;
-    if (dt > 0) sim.collision.move(body, this.vel.x, this.vel.z, dt, jump);
-    if (dt > 0 && wasGrounded && !jump) stepAssist(sim.collision, body, bx, by, bz, this.vel.x, this.vel.z, dt);
-    // Los habitantes son sólidos: no se atraviesan ni se mete uno dentro de ellos.
+    // Los habitantes son sólidos: se rodean al rozarlos y nunca se atraviesan ni se mete uno en ellos.
+    const npcs = dt > 0 ? this.npcObstacles() : [];
+    const mv = this.npcCollider.ghost ? { x: this.vel.x, z: this.vel.z } : steerAround(body.pos, this.vel.x, this.vel.z, npcs);
+    if (dt > 0) sim.collision.move(body, mv.x, mv.z, dt, jump);
+    if (dt > 0 && wasGrounded && !jump) stepAssist(sim.collision, body, bx, by, bz, mv.x, mv.z, dt);
     if (dt > 0) {
       const back = forwardOf(st.yaw);
-      this.npcCollider.resolve(sim.collision, body, this.npcObstacles(), { x: -back.x, z: -back.z }, { x: bx, z: bz }, ilen > 0, dt);
+      this.npcCollider.resolve(sim.collision, body, npcs, { x: -back.x, z: -back.z }, { x: bx, z: bz }, ilen > 0, dt);
     }
     let moved = 0;
     if (dt > 0) {
@@ -326,34 +330,44 @@ export class PlayerController {
   /* ------------------------------------------------------------------ */
 
   /**
-   * Movimiento del ratón de este frame, o null si hay que descartarlo: sin control, en los
-   * LOOK_GRACE_FRAMES frames tras recuperar el control o capturar el puntero (el navegador puede
-   * mandar un salto igual a la posición del cursor), o si es absurdo / no finito.
+   * Movimiento del ratón de este frame, o null si hay que descartarlo: sin control; durante
+   * LOOK_GRACE_FRAMES frames y LOOK_GRACE_TIME segundos tras recuperar el control o capturar el
+   * puntero; si es el salto típico del navegador al capturar (exactamente menos la posición del
+   * cursor); o si es absurdo / no finito. `dt` = duración real del frame.
    */
-  lookDelta(canControl: boolean): { dx: number; dy: number } | null {
-    const input = this.ctx.input;
-    const locked = !!(input as { locked?: boolean }).locked;
-    if ((canControl && !this.hadControl) || (locked && !this.wasLocked)) this.lookGrace = LOOK_GRACE_FRAMES;
+  lookDelta(canControl: boolean, dt = 1 / 60): { dx: number; dy: number } | null {
+    const input = this.ctx.input as GameContext['input'] & { locked?: boolean; mouseX?: number; mouseY?: number };
+    const locked = !!input.locked;
+    if ((canControl && !this.hadControl) || (locked && !this.wasLocked)) {
+      this.lookGrace = LOOK_GRACE_FRAMES;
+      this.lookGraceT = LOOK_GRACE_TIME;
+    }
     this.hadControl = canControl;
     this.wasLocked = locked;
     if (!canControl) return null;
     const md = input.mouseDelta();
-    if (this.lookGrace > 0) {
-      this.lookGrace--;
+    if (this.lookGrace > 0 || this.lookGraceT > 0) {
+      this.lookGrace = Math.max(0, this.lookGrace - 1);
+      this.lookGraceT -= Math.max(0, Number.isFinite(dt) ? dt : 0);
       return null;
     }
     if (!Number.isFinite(md.dx) || !Number.isFinite(md.dy)) return null;
     if (Math.abs(md.dx) > MAX_LOOK_DELTA || Math.abs(md.dy) > MAX_LOOK_DELTA) return null;
+    // Con el puntero capturado, Chromium a veces manda un movimiento igual a menos la posición
+    // del cursor (al capturar o tras un clic): no es un movimiento real de la mano.
+    const mx = input.mouseX;
+    const my = input.mouseY;
+    if (locked && typeof mx === 'number' && typeof my === 'number' && Math.abs(mx) + Math.abs(my) > 2 && Math.abs(md.dx + mx) < 0.5 && Math.abs(md.dy + my) < 0.5) return null;
     return md;
   }
 
-  private applyLook(canControl: boolean): void {
+  private applyLook(canControl: boolean, dt: number): void {
     const ctx = this.ctx;
     const st = ctx.sim.state.player;
     // Una orientación corrupta (NaN) nunca debe propagarse a la cámara ni a las herramientas.
     if (!Number.isFinite(st.yaw)) st.yaw = 0;
     if (!Number.isFinite(st.pitch)) st.pitch = 0;
-    const md = this.lookDelta(canControl);
+    const md = this.lookDelta(canControl, dt);
     if (!md) return;
     const sens = ctx.settings.sensitivity / 1000;
     st.yaw = wrapAngle(st.yaw - md.dx * sens);
@@ -513,7 +527,7 @@ export class PlayerController {
       }
     }
     // Mirar alrededor tumbado (poco) o girar la cámara en tercera persona.
-    this.applyLook(canControl);
+    this.applyLook(canControl, dt);
     this.updateFov(dt);
     const bed = sl.moduleId !== null ? bedPose(sim.state.ship, sl.moduleId, sl.bed) : null;
     // Pies y orientación del cuerpo tumbado. En el suelo (desmayo), hacia un lado sin obstáculos.

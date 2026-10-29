@@ -28,8 +28,12 @@ Valores iniciales de equilibrio. Todo el texto visible está en español. Tiempo
 - `sleep(moduleId, bed)`: módulo activo con camas, cama libre o asignada al jugador (si es de un
   habitante presente: "Esa cama es de X"). Solo si energía < 80 o es de noche (≥ 21 h o < 5 h).
 - Mientras duerme, el tiempo va ×14 (`Simulation.timeScale`).
-- Despierta solo cuando energía ≥ 98 y son entre 6 y 20 h, o si: sed/hambre < 8, salud < 25,
-  incendio a bordo, inicio de tormenta, o un evento que requiera atención (motivo en aviso).
+- Despierta solo cuando energía ≥ 98 y son entre 6 y 20 h, o por una emergencia real: incendio a
+  bordo, inicio de tormenta, sed/hambre críticas, salud en peligro o un golpe que hiera. Un evento
+  puede forzarlo con `data.wakePlayer`. Lo demás (avistamientos, averías leves, fugas…) se anota y se
+  resume al despertar: «Mientras dormías: …».
+- Las camillas de la enfermería solo curan ×3 (y la enfermedad ×2) si la enfermería tiene energía
+  (`isHealingBedPowered`); si no, son camas normales.
 
 ### Objetos (`useItem`)
 - Comida/bebida/medicina: aplica `consume` (limitar 0..100), enfermedad por probabilidad,
@@ -65,6 +69,8 @@ Valores iniciales de equilibrio. Todo el texto visible está en español. Tiempo
 - Velocidad: 0 si fondeado; si no `CRUISE_SPEED × región.speedMult + motor activo con energía (+3)`.
 - Distancia en millas: `velocidad × dt/60`.
 - A 10 millas del final de la región: `nextChoices = región.next` y aviso "elige rumbo en el timón".
+  Antes de 6 días jugados no se ofrecen regiones de peligro ≥ 4 si hay alternativa; el piloto
+  automático elige la menos peligrosa al principio y sigue la corriente después.
   Al llegar: entra en `chosenNext ?? nextChoices[0]`, diario "Entramos en …" con descripción.
 - Fondeo: `anchoredUntil` → al pasar, "Levamos anclas".
 - Avistamientos (`voyage.sightings`, los crea events.ts): avanzan hacia popa a
@@ -72,7 +78,10 @@ Valores iniciales de equilibrio. Todo el texto visible está en español. Tiempo
 
 ## 4. Tutorial (`tutorial.ts`) — sim-survival
 
-Pasos (se muestran de uno en uno, sin bloquear, ≥ 20 s entre pasos; se marcan con `markTutorial`):
+Pasos (de uno en uno, sin bloquear, ≥ 20 min de juego entre pasos; se marcan con `markTutorial`). No son
+estrictamente secuenciales: cada paso tiene un «tiene sentido ahora» y un «es oportuno ahora» (dormir de
+noche, el timón con una decisión pendiente, reparar si hay daños, comer o beber si falta) y los oportunos
+van primero. Los textos describen acciones físicas, no menús.
 
 | id | texto | se completa |
 |---|---|---|
@@ -105,6 +114,8 @@ Pasos (se muestran de uno en uno, sin bloquear, ≥ 20 s entre pasos; se marcan 
 - **Generador**: si está encendido, activo y hay demanda o batería por llenar, quema combustible
   de su ranura (`fuelBurn` minutos; madera 40, bidón 360). Produce 5 kW (×0,7 si condición < 50).
 - **Panel solar**: 1,6 kW × luz diurna × (1 − 0,65·nubes) × factor de condición.
+- La enfermería solo consume 0,3 kW con alguien en una camilla. Una batería averiada conserva su
+  carga pero no carga ni descarga hasta repararla.
 - **Demanda**: taller (1,5 kW, solo con cola), potabilizadora (2 kW, si el agua no está llena),
   enfermería (0,3 kW), motor (4 kW, encendido y navegando), huerto interior con lámparas
   (0,15 kW por parcela creciendo, requiere `invernadero`).
@@ -113,7 +124,7 @@ Pasos (se muestran de uno en uno, sin bloquear, ≥ 20 s entre pasos; se marcan 
   para cada consumidor activo y encendido. Las estaciones trabajan a velocidad × satisfaction.
 - **Agua**: capacidad = depósitos (120 L) + colectores (20 L). Entradas: colector 10 L/h × lluvia
   (solo a cielo abierto), potabilizadora 18 L/h × satisfaction. Pérdidas: fuga 6 L/h, depósito
-  dañado (< 50) 1 L/h. Consumo de huertos/habitantes lo restan sus sistemas. Límite 0..capacidad.
+  dañado (< 50) 1 L/h. (Valores actuales: potabilizadora 10 L/h.) Consumo de huertos/habitantes lo restan sus sistemas. Límite 0..capacidad.
 - `togglePower` enciende/apaga generadores y consumidores.
 
 ## 7. Estaciones y cultivos (`stations.ts`) — sim-economy
@@ -125,6 +136,9 @@ Pasos (se muestran de uno en uno, sin bloquear, ≥ 20 s entre pasos; se marcan 
   cocina quemando combustible de su ranura). Al terminar, los productos van a la bandeja de la
   estación → si no caben, al almacén → si no, a una caja. Aviso "Pescado asado listo en la cocina".
 - `cancelCraft` devuelve los ingredientes al jugador.
+- Los encargos del jugador van delante de los de habitantes (`by: 'npc'`), que conservan su avance.
+- Las cajas se dejan siempre en un punto transitable (`safeDropPoint`): nunca en un hueco de escalera,
+  una rampa ni dentro de un mueble.
 - **Huerto**: con luz (a cielo abierto: ritmo completo de día y 30 % de noche; interior: solo con
   `invernadero` y energía). Consume agua de la red (`waterPerHour`); sin agua acumula `dryHours`
   y muere al llegar a `dryHoursToDie`. Con plaga no crece. Madura con `growth ≥ 1`.
@@ -134,15 +148,24 @@ Pasos (se muestran de uno en uno, sin bloquear, ≥ 20 s entre pasos; se marcan 
 ## 8. Construcción y reparación (`construction.ts`) — sim-economy
 
 - `checkPlace` = `checkPlacement` + `missing` (coste contra `payInventories`). Si falta algo,
-  `ok=false` y `reason = "Faltan: 3× Madera"`.
+  `ok=false` y `reason = "Faltan: 3× Madera"`. Un huerto sin cielo abierto necesita el plano de
+  lámparas de cultivo.
+- Validación fina (`src/sim/reach.ts`): ninguna pieza puede dejar sin acceso una habitación, un mueble
+  interactivo o una escalera que antes lo tenía (recorrido de la rejilla con el radio del jugador).
 - `placeModule`: paga, crea la obra (`status='construction'`), `sim.shipChanged()`.
 - Obras: `progreso += dt / buildTime × (1 + 0,75 × habitantes ayudando)`; el jugador con martillo
   (`helpBuild`) cuenta como ×2 mientras ayuda. Al terminar: activo, `shipChanged()`, diario.
 - `checkDemolishModule` / `demolish`: reembolso 100 % si está en obra, 50 % si no; contenido +
   reembolso a una caja en el centro del módulo; libera camas; despierta al jugador si dormía ahí.
-- Ampliación del casco: `HULL_EXPANSION` (plano `casco`, +2 celdas por proa, máx. 18). Obra
+- Ampliación del casco: `HULL_EXPANSION` (plano `casco`, +2 celdas por proa, máx. 18). Coste base
+  × (1 + ampliaciones hechas); `cancelExpansion` devuelve lo pagado.
+- Al terminar o desmontar, jugador, habitantes y cajas mal situados pasan al punto transitable más
+  cercano (nadie cae a la bodega al terminar una escalera).
+- `checkDemolishModule` también informa del agua y la carga que se perderían (`losses`). Obra
   especial `ship.expansion`; `helpBuild(-1, …)` ayuda en ella.
-- Desgaste: máquinas funcionando pierden 1 de condición cada 12 h; a 0 → averiadas ("Desgaste").
+- Desgaste: máquinas funcionando pierden 1 de condición cada 8 h según su carga; a 0 → averiadas ("Desgaste").
+- Si falta el repuesto, el motivo dice dónde conseguirlo. La pieza mecánica también se improvisa en el
+  banco de trabajo (más cara), así que una avería nunca bloquea su propia reparación.
 - `repairInfo` / `repair`: máquinas (`def.machine`) → llave inglesa + pieza mecánica; estructuras →
   martillo + kit de reparación. Restaura condición 100, quita avería y fuga. No con fuego activo.
 
@@ -162,34 +185,43 @@ Pasos (se muestran de uno en uno, sin bloquear, ≥ 20 s entre pasos; se marcan 
 ## 10. Eventos (`events.ts`) — sim-life
 
 Director: cada 150–300 min tira dados con los pesos de la región (con enfriamientos por tipo y
-condiciones previas). Guion inicial garantizado:
+condiciones previas). El día mínimo de cada tipo se cuenta en horas jugadas, así que la primera noche
+no hay crisis; con el jugador dormido no hay avistamientos. Guion inicial garantizado:
 - Día 1, 13:00 → **naufragio** con el primer plano pendiente (`BLUEPRINT_ORDER`).
 - Día 2, 10:00 → **náufragos** (balsa con 1 superviviente).
-- Día 3, 11:00 → **mercante**. Día 3, 16:00 → **naufragio** con el siguiente plano. Día 4 → **isla**.
+- Día 3, 11:00 → **mercante**. Día 4, 10:00 → **isla**. Día 5, 16:00 → **naufragio** con el siguiente plano.
+Los avistamientos del guion esperan a que el jugador despierte.
 
 Tipos (todos con título, descripción, objetivos y entrada de diario; `worldEventStarted/Ended`):
-1. **tormenta** — se crea cuando `weather.kind` pasa a tormenta. Cada hora, cada módulo expuesto
+1. **tormenta** — se crea cuando `weather.kind` pasa a tormenta. El daño escala con el tiempo jugado
+   (× min(1,5; 0,5 + días/10)). La fase de daños dura como mucho 12 h (si vence, fracaso). Cada hora, cada módulo expuesto
    (cielo abierto o habitación en nivel ≥ 1) tiene 25 % × (ola/2,6) de perder 10–30 de condición;
    los depósitos pueden empezar a perder agua (30 %); un rayo puede incendiar un módulo del nivel
    superior (2 %/h). Al terminar: fase de daños hasta reparar lo que quede < 50 (o 12 h).
 2. **naufragio** — avistamiento. Opciones en el timón: "Detenerse a rescatar (1 h)" → fondeo 60 min
-   y 8–12 restos ricos alrededor (cofre con plano) / "Seguir rumbo". Caduca en 120 min.
+   y 5–8 restos ricos alrededor (cofre con plano en el guion; 15 % al azar) / "Seguir rumbo". Caduca en
+   120 min. Al rescatarlo todo se leva el ancla.
 3. **isla** — avistamiento. "Fondear y enviar una expedición (3 h)" (requiere un habitante
    disponible) → 1–2 habitantes fuera; al volver: madera, fruta, fibra, semillas, 25 % plano,
    15 % nuevo habitante, 10 % herido. Alternativa: seguir rumbo.
 4. **náufragos** — balsa (`debris` 'balsa') con 1–2 supervivientes; objetivo "Lanza el gancho a la
-   balsa". Si pasa de largo: fracaso.
+   balsa". "Echar el ancla (45 min)" hace que remen hasta ≤ 15 m de la borda. Si pasa de largo: fracaso.
 5. **avería** — una máquina activa se avería (llave + pieza). Sin máquinas: un daño estructural (35).
+   Nunca el taller, la única fuente de energía ni el banco sin repuesto a bordo. Objetivos por pasos;
+   a las 24 h el mecánico hace un apaño (máquina al 40 %, fracaso parcial).
 6. **incendio** — en la cocina (si tiene fuego), el generador (si funciona) u otra habitación.
-   El fuego crece 6/h hasta 100, quema condición, se propaga a vecinos si > 60. Se apaga con cubos
-   (−35 por cubo) y con habitantes ayudando.
+   Empieza al 40 %, crece 9/h, quema condición y contenido, se propaga a vecinos si > 60. El jugador
+   apaga −35 por cubo; los habitantes (máx. 2) −20 por cubo que llenan en la borda, o 0,8/min sin cubo.
 7. **banco de peces** — 120 min de pesca rápida.
 8. **mercante** — barco junto al costado 120 min; 4 ofertas de `TRADE_OFFERS` (cada una una vez).
 9. **plaga** — 1–3 parcelas con plaga; si no se retira en 24 h, mueren.
 10. **fuga** — un depósito pierde agua hasta repararlo.
-11. **enfermedad** — un habitante enferma; botiquín o enfermería.
+11. **enfermedad** — un habitante enferma; solo se cura con tratamiento (botiquín, enfermería ~4 h o
+    guardar cama ~12 h). Pierde 2,5 de salud/h (1/h en cama) y puede contagiar (3 %/h). Fracaso si muere
+    o baja de 40 de salud.
 12. **discusión** — dos habitantes con ánimo < 45 discuten; hablar con uno para mediar.
-13. **estructura** — plataforma/faro misterioso: expedición de 2 h con componentes y plano.
+13. **estructura** — plataforma/faro misterioso (desde el día 6): expedición de 2 h con componentes y
+    plano al 50 %.
 
 Además: la tormenta lanza golpes de mar (6–12 de daño al jugador en cubierta abierta, heridas a
 habitantes a la intemperie); la avería estructural pierde 0,8 de condición por hora y metro de ola
@@ -222,6 +254,10 @@ hasta repararse; una discusión resta 3 de ánimo al resto; el director reduce a
 - Diálogo (`talkTo`): saludo según ánimo, qué hace, quejas (hambre, sin cama, enfermo), petición.
   Opciones: mediar, curar (botiquín), cambiar de puesto (`setRole`), dar objeto (`giveItem`).
 - Nuevos habitantes (`spawnSurvivor`): nombre libre de `NPC_NAMES`, rasgo y aspecto aleatorios.
+- Prioridades vitales: si están agotados pero tienen sed o hambre urgentes y algo con qué saciarlas,
+  primero beben o comen. Solo usan fuentes alcanzables: si no llegan a la comida preferida pasan a la
+  siguiente, y la queja dice «No llego…». Quien cocina trabaja a un lado del fogón y deja sitio al
+  jugador. Rasgo y puesto concuerdan con el género del nombre.
 - Supervivencia autónoma: pescan de relleno si quedan menos de 3 raciones por habitante (también
   fuera de horario si hay escasez); asan el pescado crudo en el fogón antes de comerlo; si los
   depósitos se secan, llenan un cubo en la borda y destilan en la cocina (fabrican el cubo si falta);
@@ -229,8 +265,8 @@ hasta repararse; una discusión resta 3 de ánimo al resto; el director reduce a
   pescar y de rescatar y lo avisan.
 - Balsas: el habitante despierto más cercano da la voz de alarma; si la balsa se escapa, la rescata
   el recolector, quien no tiene puesto o un habitante valiente.
-- Salud: aviso en el diario cuando alguien está grave (< 35); la enfermedad se cura sola en ~20 h
-  (12 h en cama, 5 h en la enfermería); regeneración 2/h. Los factores del ánimo son consultables
+- Salud: aviso en el diario cuando alguien está grave (< 35); la enfermedad solo se cura con
+  tratamiento (ver §10); regeneración 2/h. Los factores del ánimo son consultables
   (`npcMoodFactors`) y el diálogo explica lo que más pesa.
 
 ---

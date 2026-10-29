@@ -3,6 +3,7 @@ import { ITEMS } from '../data/items';
 import { moduleDef } from '../data/modules';
 import { addItem, addItemPreferring, createInventory, countIn, isEmpty } from './inventory';
 import { HOTBAR_SLOTS } from './constants';
+import { safeDropPoint } from './stations';
 import type { Simulation } from './Simulation';
 import type { Inventory, ItemId, ItemStack, LooseCrate, ModuleInstance, Vec3 } from './types';
 
@@ -50,6 +51,8 @@ export function depositToStorage(sim: Simulation, id: ItemId, qty: number): numb
 export function spawnCrate(sim: Simulation, pos: Vec3, items: ItemStack[], label = 'Caja'): LooseCrate | null {
   const real = items.filter((s) => s.qty > 0);
   if (!real.length) return null;
+  // Nunca sobre el hueco de una escalera, en una rampa ni dentro de un mueble.
+  pos = safeDropPoint(sim, pos);
   let crate = sim.state.crates.find((c) => Math.hypot(c.pos.x - pos.x, c.pos.z - pos.z) < 1.2 && Math.abs(c.pos.y - pos.y) < 1);
   if (!crate) {
     crate = { id: sim.nextId(), pos: { ...pos }, inventory: createInventory(16), label };

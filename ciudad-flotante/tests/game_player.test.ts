@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { GameContext } from '../src/game/context';
 import { HOLD_PANEL, Interaction } from '../src/game/Interaction';
-import { LOOK_GRACE_FRAMES, PlayerController } from '../src/game/PlayerController';
+import { LOOK_GRACE_FRAMES, LOOK_GRACE_TIME, PlayerController } from '../src/game/PlayerController';
 import type { PanelRequest, PromptInfo } from '../src/game/types';
 import type { PlayerAvatar } from '../src/render/PlayerAvatar';
 import { CELL, HOOK_RANGE, INTERACT_RANGE, LEVEL_H } from '../src/sim/constants';
@@ -23,7 +23,7 @@ import { ARM_LENGTH, computeArm, verticalLimits } from '../src/game/tools/camera
 import { Rope, ToolEffects } from '../src/game/tools/effects';
 import type { ToolEnv } from '../src/game/tools/env';
 import { HookTool } from '../src/game/tools/hook';
-import { approachVelocity, NPC_RADIUS, NPC_SQUEEZE_TIME, NpcCollider, pushOutOfObstacles, stepAssist, type Obstacle } from '../src/game/tools/locomotion';
+import { approachVelocity, NPC_RADIUS, NPC_SQUEEZE_TIME, NpcCollider, pushOutOfObstacles, steerAround, stepAssist, type Obstacle } from '../src/game/tools/locomotion';
 import { chooseBed, cratePrompt, crateQuick, holdPrompt, npcPrompt, propAction, propPrompt, propQuick, sitePrompt } from '../src/game/tools/prompts';
 import { canHookFrom, railFacing, scanDebris, scanFire, scanFocus, scanRepair, type Aim } from '../src/game/tools/targets';
 import { samplePose, ViewModel } from '../src/game/tools/viewmodel';
@@ -471,6 +471,8 @@ describe('[0] sin NaN en el modelo en mano ni en las cuerdas', () => {
 class FakeInput {
   enabled = true;
   locked = false;
+  mouseX = 0;
+  mouseY = 0;
   private held = new Set<string>();
   private justDown = new Set<string>();
   dx = 0;
@@ -743,25 +745,41 @@ describe('[16] la vista no salta al capturar el ratón', () => {
   it('descarta los deltas al recuperar el control y al capturar el puntero', () => {
     const input = new FakeInput();
     const pc = controller(input);
+    /** Frames descartados (con `dt` por frame) hasta que pasa un delta. */
+    const drained = (dt: number): number => {
+      let n = 0;
+      input.dx = 5;
+      input.dy = -3;
+      while (pc.lookDelta(true, dt) === null && n < 100) n++;
+      return n;
+    };
     // Menú: sin control.
     expect(pc.lookDelta(false)).toBeNull();
     // Primer frame de juego con el salto del navegador (−posición del cursor).
     input.dx = -246;
     input.dy = -378;
-    for (let i = 0; i < LOOK_GRACE_FRAMES; i++) expect(pc.lookDelta(true)).toBeNull();
-    input.dx = 5;
-    input.dy = -3;
-    expect(pc.lookDelta(true)).toEqual({ dx: 5, dy: -3 });
-    // La captura llega unos frames después: también se descarta su primer delta.
+    expect(pc.lookDelta(true, 1 / 60)).toBeNull();
+    // A 60 fps se descartan ~0,15 s (9–10 frames); luego el ratón gira la vista con normalidad.
+    const frames60 = drained(1 / 60) + 1;
+    expect(frames60).toBeGreaterThanOrEqual(Math.round(LOOK_GRACE_TIME * 60));
+    expect(frames60).toBeLessThanOrEqual(Math.round(LOOK_GRACE_TIME * 60) + 1);
+    expect(pc.lookDelta(true, 1 / 60)).toEqual({ dx: 5, dy: -3 });
+    // La captura llega unos frames después: también se descarta (a 10 fps, LOOK_GRACE_FRAMES).
     input.locked = true;
-    input.dx = 300;
-    expect(pc.lookDelta(true)).toBeNull();
+    expect(drained(0.1)).toBe(LOOK_GRACE_FRAMES);
     // Saltos absurdos o no finitos nunca giran la vista.
-    for (let i = 0; i < LOOK_GRACE_FRAMES; i++) pc.lookDelta(true);
     input.dx = 5000;
     expect(pc.lookDelta(true)).toBeNull();
     input.dx = Number.NaN;
     expect(pc.lookDelta(true)).toBeNull();
+    // Salto de Chromium con el puntero capturado: exactamente menos la posición del cursor.
+    input.mouseX = 640;
+    input.mouseY = 360;
+    input.dx = -640;
+    input.dy = -360;
+    expect(pc.lookDelta(true)).toBeNull();
+    input.dx = -639;
+    expect(pc.lookDelta(true)).toEqual({ dx: -639, dy: -360 });
     input.dx = 12;
     input.dy = 4;
     expect(pc.lookDelta(true)).toEqual({ dx: 12, dy: 4 });
@@ -817,6 +835,30 @@ describe('[19] los habitantes son sólidos', () => {
     // Un habitante en la bodega, justo debajo, no empuja.
     const b3: Body = { pos: { x: 6, y: LEVEL_H, z: 0 }, vy: 0, onGround: true };
     expect(pushOutOfObstacles(sim.collision, b3, [{ x: 6, y: 0, z: 0, r: NPC_RADIUS, h: 1.8 }], { x: -1, z: 0 })).toBe(false);
+  });
+
+  it('de frente contra un habitante en cubierta abierta, se le rodea sin tocarlo ni esperar', () => {
+    const npc: Obstacle = { x: 6, y: LEVEL_H, z: 0, r: NPC_RADIUS, h: 1.8 };
+    const body: Body = { pos: { x: 3, y: LEVEL_H, z: 0 }, vy: 0, onGround: true };
+    const nc = new NpcCollider();
+    const dt = 1 / 60;
+    let minD = Infinity;
+    let t = 0;
+    for (; t < 4 && body.pos.x < npc.x + 1; t += dt) {
+      const from = { x: body.pos.x, z: body.pos.z };
+      const mv = steerAround(body.pos, 3.4, 0, [npc]);
+      sim.collision.move(body, mv.x, mv.z, dt, false);
+      nc.resolve(sim.collision, body, [npc], { x: -1, z: 0 }, from, true, dt);
+      minD = Math.min(minD, Math.hypot(body.pos.x - npc.x, body.pos.z - npc.z));
+    }
+    expect(body.pos.x).toBeGreaterThan(npc.x + 1);
+    expect(minD).toBeGreaterThanOrEqual(NPC_RADIUS + PLAYER_RADIUS - 0.02);
+    // Sin la espera de emergencia: lo ha rodeado mucho antes.
+    expect(t).toBeLessThan(NPC_SQUEEZE_TIME);
+    expect(nc.ghost).toBe(false);
+    // Alejándose o sin tocarlo, la velocidad no cambia.
+    expect(steerAround({ x: 3, y: LEVEL_H, z: 0 }, 3.4, 0, [npc])).toEqual({ x: 3.4, z: 0 });
+    expect(steerAround({ x: 5.4, y: LEVEL_H, z: 0 }, -3.4, 0, [npc])).toEqual({ x: -3.4, z: 0 });
   });
 
   it('un habitante quieto no deja encerrado al jugador: tras empujar 2,5 s sin avanzar, se pasa', () => {

@@ -136,7 +136,7 @@ function itemsTab(env: UiEnv): VNode {
         'div',
         { class: 'inv-hint' },
         h('span', null, gl('info'), 'Arrastra para ordenar.'),
-        h('span', null, kbd('Clic der.'), ' o doble clic: usar.'),
+        h('span', null, kbd('Clic der.'), ' o doble clic: usar o empuñar (una herramienta de la mochila pasa a la barra).'),
         h('span', null, 'Con el ratón encima, ', kbd('1'), '–', kbd('8'), ' la lleva a la barra rápida.'),
       ),
     ),

@@ -12,7 +12,7 @@ import { SLEEP_TIME_SCALE } from './constants';
 import { NavGrid } from './nav';
 import { createNewGame } from './newGame';
 import { ShipCollision } from './physics';
-import { computeLayout, type PlaceCheck, type ShipLayout } from './ship';
+import { computeLayout, type ShipLayout } from './ship';
 import type { GameState, Inventory, ItemId, NpcRole, Rotation } from './types';
 import { dayOf, hourOf } from './time';
 
@@ -242,23 +242,27 @@ export class Simulation {
 
   /* ================= COMANDOS: construcción y reparación (construction.ts) ================= */
 
-  checkPlace(type: string, level: number, x: number, z: number, rot: Rotation): PlaceCheck & { missing: Record<ItemId, number> } {
+  checkPlace(type: string, level: number, x: number, z: number, rot: Rotation): construction.PlaceInfo {
     return construction.checkPlace(this, type, level, x, z, rot);
   }
   placeModule(type: string, level: number, x: number, z: number, rot: Rotation): ActionResult & { moduleId?: number } {
     return construction.placeModule(this, type, level, x, z, rot);
   }
-  checkDemolishModule(moduleId: number): { ok: boolean; reason: string | null; refund: Record<ItemId, number> } {
+  checkDemolishModule(moduleId: number): construction.DemolishCheck {
     return construction.checkDemolishModule(this, moduleId);
   }
   demolish(moduleId: number): ActionResult {
     return construction.demolish(this, moduleId);
   }
-  checkExpandHull(): { ok: boolean; reason: string | null; missing: Record<ItemId, number> } {
+  checkExpandHull(): ReturnType<typeof construction.checkExpandHull> {
     return construction.checkExpandHull(this);
   }
   expandHull(): ActionResult {
     return construction.expandHull(this);
+  }
+  /** Cancela la ampliación del casco en obras (devuelve lo pagado en una caja en la proa). */
+  cancelExpansion(): ActionResult {
+    return construction.cancelExpansion(this);
   }
   /** El jugador trabaja `minutes` minutos de juego en una obra (con martillo). */
   helpBuild(moduleId: number, minutes: number): ActionResult {

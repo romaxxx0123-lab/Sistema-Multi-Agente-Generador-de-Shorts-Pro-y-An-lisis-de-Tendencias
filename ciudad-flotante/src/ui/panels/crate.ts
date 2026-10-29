@@ -4,7 +4,7 @@
  */
 import type { UiEnv } from '../env';
 import { h } from '../vdom';
-import { gl } from '../widgets';
+import { gl, kbd } from '../widgets';
 import type { PanelView } from './index';
 import { transferHelp, transferView } from './transfer';
 
@@ -24,6 +24,7 @@ export function renderCrate(env: UiEnv, crateId: number): PanelView | null {
         canStore: true,
       }),
       transferHelp(),
+      h('div', { class: 'help-line' }, h('span', null, kbd('E'), ' sobre una caja: cogerlo todo si cabe'), h('span', null, kbd('Mantén'), ' ', kbd('E'), ' abrir la caja para elegir')),
     ],
     cls: 'pn-wide pn-auto',
   };

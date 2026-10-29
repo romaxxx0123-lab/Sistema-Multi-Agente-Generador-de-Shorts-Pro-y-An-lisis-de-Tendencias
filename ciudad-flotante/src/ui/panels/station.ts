@@ -540,6 +540,7 @@ function gardenBody(env: UiEnv, m: ModuleInstance): VNode {
     ),
     h('div', { class: 'plots' }, cards),
     h('div', { class: 'faint small' }, 'Las semillas se toman de tu inventario. Los cultivos beben de los depósitos del barco mientras crecen.'),
+    h('div', { class: 'help-line' }, h('span', null, kbd('E'), ' sobre un bancal: cosechar lo que esté listo o limpiar la plaga y las plantas secas'), h('span', null, kbd('Mantén'), ' ', kbd('E'), ' abrir este panel')),
   );
 }
 
@@ -582,8 +583,12 @@ export function demolishLossNote(env: UiEnv, m: ModuleInstance): VNode | null {
   return h('div', { class: 'note faint small demolish-loss' }, gl('trash'), `Si lo desmontas ahora, ${parts.join(' y ')}.`);
 }
 
-/** Atajos del depósito sin pasar por este panel (E bebe directamente; manteniendo E se abre el panel). */
-const TANK_SHORTCUTS: VInput[] = [h('span', null, kbd('E'), ' ante el depósito: beber un trago'), h('span', null, kbd('Mantén'), ' ', kbd('E'), ': abrir este panel')];
+/** Atajos del depósito sin pasar por este panel (los mismos que da el aviso de interacción). */
+const TANK_SHORTCUTS: VInput[] = [
+  h('span', null, kbd('E'), ' ante el depósito: beber'),
+  h('span', null, kbd('R'), ' llenar una botella'),
+  h('span', null, kbd('Mantén'), ' ', kbd('E'), ' abrir este panel'),
+];
 
 function tankBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;

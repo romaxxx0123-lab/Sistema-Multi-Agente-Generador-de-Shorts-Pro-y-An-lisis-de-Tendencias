@@ -58,7 +58,7 @@ import type { ActionResult, NpcTalk, Simulation } from './Simulation';
 import { harvest, plant, queueCraft, tendPlot } from './stations';
 import { hourOf } from './time';
 import type { ActiveEvent, Inventory, ItemId, ItemStack, LooseCrate, ModuleInstance, NpcActivity, NpcRole, NpcState, Vec3 } from './types';
-import { fuelMinutes, moduleHasSky, withArticle } from './utilities';
+import { fuelMinutes, isHealingBedPowered, moduleHasSky, withArticle } from './utilities';
 
 /* ------------------------------------------------------------------ */
 /* Parámetros de equilibrio                                            */
@@ -3045,7 +3045,8 @@ function inHealingBed(sim: Simulation, npc: NpcState): boolean {
   const id = td(npc)['restModuleId'];
   if (typeof id !== 'number') return false;
   const m = findModule(sim, id);
-  return !!m && !!moduleDef(m.type).healingBeds;
+  // La camilla solo cura más rápido si la enfermería tiene energía (igual que para el jugador).
+  return !!m && isHealingBedPowered(sim, m);
 }
 
 function nearFire(sim: Simulation, npc: NpcState): boolean {

@@ -350,7 +350,7 @@ export interface StartOptions {
 /* Nombres evocadores                                                  */
 /* ------------------------------------------------------------------ */
 
-const WRECK_SHIPS = ['Albatros', 'Estrella del Sur', 'Santa Inés', 'Marea Alta', 'Gaviota Gris', 'Libertad', 'Corazón de Roble', 'Brisa de Levante', 'San Telmo', 'La Esperanza', 'Viento Norte', 'Perla Negra'];
+const WRECK_SHIPS = ['Albatros', 'Estrella del Sur', 'Santa Inés', 'Marea Alta', 'Gaviota Gris', 'Libertad', 'Corazón de Roble', 'Brisa de Levante', 'San Telmo', 'Esperanza', 'Viento Norte', 'Perla Negra'];
 const MERCHANT_SHIPS = ['Rosa de los Vientos', 'Mercader de Sal', 'Fortuna', 'Tres Hermanas', 'Lucero del Alba', 'Ballena Azul'];
 const CAPTAINS = ['la capitana Ofelia', 'el capitán Baltasar', 'la capitana Remedios', 'el capitán Anselmo', 'la capitana Brígida', 'el capitán Severino'];
 const ISLANDS = ['Isla de las Palmas', 'Cayo Tortuga', 'Islote Verde', 'Isla de los Cocos', 'Isla del Coral', 'Peñón de las Gaviotas', 'Isla Bruma'];
@@ -471,7 +471,7 @@ function begin(sim: Simulation, ev: ActiveEvent, kind: NotifyKind, logText?: str
   const st = sim.state;
   st.events.active.push(ev);
   const type = ev.type as EventType;
-  if (!URGENT_TYPES.has(type) && ev.data['wakePlayer'] === undefined) ev.data['wakePlayer'] = false;
+  if (ev.data['wakePlayer'] === undefined) ev.data['wakePlayer'] = URGENT_TYPES.has(type);
   st.events.cooldowns[type] = st.time + (EVENT_COOLDOWN[type] ?? 0);
   sim.bus.emit('worldEventStarted', { eventId: ev.id, type: ev.type, title: ev.title });
   if (logText !== null) sim.log(logText ?? `${ev.title}. ${ev.description}`, kind, notify);
