@@ -487,7 +487,11 @@ export function stationStatus(sim: Simulation, moduleId: number): StationStatus 
     else if (kind === 'cocina' && !hasFuel(m)) {
       status = 'Sin combustible';
       speed = 0;
-    } else status = speed < 0.99 ? `Trabajando (${Math.round(speed * 100)} %)` : 'Trabajando';
+    } else {
+      // Porcentaje respecto al ritmo pleno de esta estación (con su mejora): lo que falta es energía o desgaste.
+      const rel = speed / workSpeed(m);
+      status = rel < 0.99 ? `Trabajando (${Math.round(rel * 100)} %)` : 'Trabajando';
+    }
   }
   let eta = 0;
   const jobs = m.queue.map((j, index) => {
@@ -771,7 +775,10 @@ export function viveroStatus(sim: Simulation, moduleId: number): ProducerStatus 
   else if (!m.on) status = agree(name, 'Apagado');
   else if (!viveroHasRoom(m)) status = 'Bandeja llena';
   else if (speed <= 0) status = 'Sin energía';
-  else status = speed < 0.99 ? `Criando (${Math.round(speed * 100)} %)` : 'Criando';
+  else {
+    const rel = speed / workSpeed(m);
+    status = rel < 0.99 ? `Criando (${Math.round(rel * 100)} %)` : 'Criando';
+  }
   return {
     stock,
     capacity,

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ITEMS } from '../src/data/items';
-import { BLUEPRINT_ORDER } from '../src/data/loot';
+import { BLUEPRINT_ORDER, TRADE_OFFERS } from '../src/data/loot';
 import { REGIONS } from '../src/data/regions';
 import { moduleDef } from '../src/data/modules';
 import { bedProp } from '../src/sim/actions';
@@ -1029,6 +1029,8 @@ describe('eventos: cada tipo se inicia y se resuelve', () => {
     h.plots[0]!.crop = 'hortaliza';
     for (const n of sim.state.npcs) n.needs.mood = 30;
     for (const type of events.EVENT_TYPES) {
+      // La llegada solo ocurre en Puerto Esperanza.
+      if (type === 'llegada') sim.state.voyage.regionId = 'esperanza';
       const ev = events.startEvent(sim, type);
       expect(ev, type).toBeTruthy();
       expect(ev!.title.length).toBeGreaterThan(3);
@@ -2022,5 +2024,912 @@ describe('QA: la cocinera y el fogón', () => {
     run(sim, 3);
     expect(Math.hypot(marina.pos.x - use.x, marina.pos.z - use.z)).toBeGreaterThan(0.5);
     expect(marina.task).toBe(task); // sin dejar lo que estaba haciendo
+  });
+});
+
+/* ================================================================== */
+/* RONDA DE CONTENIDO 2: grúa, radar, historia, relaciones, sala común */
+/* ================================================================== */
+
+const ALL_UNLOCKS = ['taller', 'energia', 'agua', 'enfermeria', 'solar', 'invernadero', 'motor', 'casco', 'acuicultura', 'grua', 'radar'];
+
+/** Coloca un módulo terminado en el primer sitio válido que cumpla `ok` (todos los planos conocidos). */
+function placeAt(sim: Simulation, type: string, level: number, ok?: (x: number, z: number) => boolean): ModuleInstance {
+  const ship = sim.state.ship;
+  for (let x = ship.length - 1; x >= 0; x--) {
+    for (let z = 0; z < ship.width; z++) {
+      if (ok && !ok(x, z)) continue;
+      for (const rot of [0, 1, 2, 3] as Rotation[]) {
+        if (!checkPlacement(ship, ALL_UNLOCKS, type, level, x, z, rot).ok) continue;
+        const m = instantiateModule(sim.nextId(), type, level, x, z, rot, 'active');
+        ship.modules.push(m);
+        sim.shipChanged();
+        return m;
+      }
+    }
+  }
+  throw new Error(`no cabe ${type} en el nivel ${level}`);
+}
+
+/** Generador con combustible en la bodega: energía para grúa, radar, vivero… */
+function powerUp(sim: Simulation): ModuleInstance {
+  const g = placeAt(sim, 'generador', 0);
+  addItem(g.fuelInv!, 'combustible', 8);
+  return g;
+}
+
+/** Fondeados y casi sin corriente: los restos de la prueba se quedan donde se ponen. */
+function anchorHere(sim: Simulation): void {
+  sim.state.voyage.anchoredUntil = 1e9;
+  sim.state.voyage.anchorReason = 'pruebas';
+  sim.state.voyage.speed = 0;
+}
+
+type CraneMod = ModuleInstance & { prodProgress?: number; prodTarget?: number | null };
+
+describe('grúa de rescate', () => {
+  function craneSetup(seed = 11) {
+    const sim = quiet(setup(seed));
+    sim.state.npcs = [];
+    sim.state.debris = [];
+    anchorHere(sim);
+    powerUp(sim);
+    const crane = placeAt(sim, 'grua', 1, (_x, z) => z === 0) as CraneMod;
+    sim.tick(1); // la red de energía ya la alimenta
+    const o = debris.gruaOrigin(sim, crane);
+    return { sim, crane, o };
+  }
+
+  it('rescata el resto más cercano de SU costado a ≤ 30 m cada 25 min: botín a su bandeja', () => {
+    const { sim, crane, o } = craneSetup();
+    expect(debris.gruaSide(sim, crane)).toBe(-1);
+    expect(debris.gruaRange(crane)).toBe(30);
+    const near = debris.spawnDebris(sim, 'tablones', { x: o.x, z: o.z - 12 }, { loot: [{ id: 'madera', qty: 3 }], lateral: 0 });
+    const farther = debris.spawnDebris(sim, 'caja', { x: o.x + 6, z: o.z - 20 }, { loot: [{ id: 'tela', qty: 2 }], lateral: 0 });
+    const otherSide = debris.spawnDebris(sim, 'barril', { x: o.x, z: -o.z + 12 }, { loot: [{ id: 'plastico', qty: 1 }], lateral: 0 });
+    const tooFar = debris.spawnDebris(sim, 'restos', { x: o.x, z: o.z - 45 }, { loot: [{ id: 'chatarra', qty: 2 }], lateral: 0 });
+    const alive = (d: { id: number }) => sim.state.debris.some((x) => x.id === d.id);
+    expect(debris.gruaStatus(sim, crane.id)!.phase).toBe('recargando');
+    expect(debris.gruaStatus(sim, crane.id)!.status).toMatch(/Recogiendo cable \(\d+ min\)/);
+    run(sim, 15);
+    expect(alive(near)).toBe(true); // aún recogiendo cable
+    for (let i = 0; i < 15 && alive(near); i++) run(sim, 1);
+    expect(alive(near)).toBe(false);
+    expect(countItem(crane.inventory, 'madera')).toBe(3);
+    expect(debris.gruaStatus(sim, crane.id)!.phase).toBe('izando'); // la carga sube a bordo
+    // El siguiente, 25 min después: el otro de su costado (no el de estribor ni el lejano).
+    run(sim, 20);
+    expect(alive(farther)).toBe(true);
+    run(sim, 12);
+    expect(alive(farther)).toBe(false);
+    expect(countItem(crane.inventory, 'tela')).toBe(2);
+    // Lo de estribor y lo que queda fuera de su alcance, nunca (quitando los restos que vayan llegando).
+    const keep = new Set([otherSide.id, tooFar.id]);
+    run(sim, 60, () => (sim.state.debris = sim.state.debris.filter((d) => keep.has(d.id))));
+    expect(alive(otherSide)).toBe(true);
+    expect(alive(tooFar)).toBe(true);
+    expect(debris.gruaStatus(sim, crane.id)!.phase).toBe('esperando');
+    expect(debris.gruaStatus(sim, crane.id)!.status).toBe('Esperando restos a su alcance');
+  });
+
+  it('mientras engancha expone su objetivo (para animar la pluma) y lo suelta al izarlo', () => {
+    const { sim, crane, o } = craneSetup();
+    const d = debris.spawnDebris(sim, 'barril', { x: o.x - 3, z: o.z - 10 }, { lateral: 0 });
+    let seen: debris.GruaTarget | null = null;
+    for (let i = 0; i < 40 && sim.state.debris.some((x) => x.id === d.id); i++) {
+      run(sim, 1);
+      const t = debris.gruaTarget(sim, crane.id);
+      if (t) {
+        seen = t;
+        expect(debris.gruaStatus(sim, crane.id)!.status).toMatch(/^Enganchando: barril/);
+      }
+    }
+    expect(seen?.debrisId).toBe(d.id);
+    expect(seen!.progress).toBeGreaterThanOrEqual(0);
+    expect(seen!.progress).toBeLessThanOrEqual(1);
+    expect(debris.gruaTarget(sim, crane.id)).toBeNull();
+  });
+
+  it('sin energía, apagada, averiada o con tormenta no trabaja (y lo dice)', () => {
+    const { sim, crane, o } = craneSetup();
+    const d = debris.spawnDebris(sim, 'tablones', { x: o.x, z: o.z - 10 }, { lateral: 0 });
+    crane.on = false;
+    run(sim, 45);
+    expect(sim.state.debris.some((x) => x.id === d.id)).toBe(true);
+    expect(debris.gruaStatus(sim, crane.id)!.status).toBe('Apagada');
+    crane.on = true;
+    crane.status = 'broken';
+    run(sim, 30);
+    expect(debris.gruaStatus(sim, crane.id)!.status).toBe('Averiada');
+    expect(sim.state.debris.some((x) => x.id === d.id)).toBe(true);
+    crane.status = 'active';
+    forceWeather(sim, 'tormenta');
+    sim.state.weather.remaining = 1e6;
+    run(sim, 45);
+    expect(debris.gruaStatus(sim, crane.id)!.phase).toBe('tormenta');
+    expect(sim.state.debris.some((x) => x.id === d.id)).toBe(true);
+  });
+
+  it('sube a bordo a los náufragos de una balsa (el evento se resuelve gracias a la grúa)', () => {
+    const { sim, crane, o } = craneSetup();
+    const ev = events.startEvent(sim, 'naufragos', { survivors: 2 })!;
+    const raft = sim.state.debris.find((d) => d.eventId === ev.id)!;
+    raft.pos = { x: o.x + 4, z: o.z - 9 };
+    const before = sim.state.npcs.length;
+    run(sim, 30);
+    expect(sim.state.npcs.length).toBe(before + 2);
+    expect(lastHistory(sim, 'naufragos')?.success).toBe(true);
+    expect(sim.state.log.some((l) => /gracias a la grúa/.test(l.text))).toBe(true);
+  });
+
+  it('la pluma larga (mejora) llega más lejos y trabaja más deprisa', () => {
+    const { sim, crane, o } = craneSetup();
+    crane.tier = 2;
+    expect(debris.gruaRange(crane)).toBeCloseTo(37.5);
+    const d = debris.spawnDebris(sim, 'tablones', { x: o.x, z: o.z - 35 }, { lateral: 0 });
+    run(sim, 18); // (25 − 4 + 3) / 1,6 ≈ 15 min
+    expect(sim.state.debris.some((x) => x.id === d.id)).toBe(false);
+  });
+
+  it('con la bandeja y los almacenes llenos solo rescata náufragos, y avisa', () => {
+    const { sim, crane, o } = craneSetup();
+    const fill = (inv: { slots: ({ id: string; qty: number } | null)[] }) => inv.slots.forEach((_, i) => (inv.slots[i] = { id: 'chatarra', qty: 50 }));
+    fill(crane.inventory!);
+    for (const m of storageModules(sim)) fill(m.inventory!);
+    const notes: string[] = [];
+    sim.bus.on('notify', (n) => notes.push(n.text));
+    const d = debris.spawnDebris(sim, 'tablones', { x: o.x, z: o.z - 10 }, { lateral: 0 });
+    run(sim, 45);
+    expect(sim.state.debris.some((x) => x.id === d.id)).toBe(true);
+    expect(debris.gruaStatus(sim, crane.id)!.phase).toBe('llena');
+    expect(notes.some((t) => /grúa.*llenos/.test(t))).toBe(true);
+    const ev = events.startEvent(sim, 'naufragos', { survivors: 1 })!;
+    sim.state.debris.find((x) => x.eventId === ev.id)!.pos = { x: o.x, z: o.z - 8 };
+    run(sim, 10);
+    expect(lastHistory(sim, 'naufragos')?.success).toBe(true);
+  });
+
+  it('el avance del ciclo se guarda con la partida', () => {
+    const { sim, crane } = craneSetup();
+    run(sim, 10);
+    const w = crane.prodProgress!;
+    expect(w).toBeGreaterThan(4);
+    const loaded = new Simulation(deserialize(serialize(sim.state)));
+    const c2 = loaded.state.ship.modules.find((m) => m.id === crane.id) as CraneMod;
+    expect(c2.prodProgress).toBeCloseTo(w);
+  });
+
+  it('los restos de un naufragio que iza la grúa cuentan para el rescate', () => {
+    const { sim, crane, o } = craneSetup();
+    const ev = events.startEvent(sim, 'naufragio', { blueprint: null, page: null, scripted: true })!;
+    sim.eventChoice(ev.id, 'rescatar');
+    const mine = sim.state.debris.filter((d) => d.eventId === ev.id);
+    mine[0]!.pos = { x: o.x, z: o.z - 7 };
+    run(sim, 30);
+    expect((ev.data as { collected: number }).collected).toBeGreaterThanOrEqual(1);
+    expect(crane.inventory!.slots.some((s) => !!s)).toBe(true);
+  });
+});
+
+describe('radar y radio', () => {
+  function radarSetup(seed = 11) {
+    const sim = quiet(setup(seed));
+    powerUp(sim);
+    const radar = placeAt(sim, 'radar', 2);
+    sim.tick(1);
+    return { sim, radar };
+  }
+
+  it('con el radar en marcha los avistamientos se anuncian antes y duran 60 min más', () => {
+    const plain = quiet(setup(3));
+    const wreck0 = events.startEvent(plain, 'naufragio')!;
+    const s0 = plain.state.voyage.sightings.find((s) => s.eventId === wreck0.id)!;
+    expect(wreck0.endsAt! - plain.state.time).toBeCloseTo(events.SIGHTING_WINDOW);
+
+    const { sim } = radarSetup(3);
+    expect(events.radarActive(sim)).toBe(true);
+    const wreck = events.startEvent(sim, 'naufragio')!;
+    const s = sim.state.voyage.sightings.find((x) => x.eventId === wreck.id)!;
+    expect(wreck.endsAt! - sim.state.time).toBeCloseTo(events.SIGHTING_WINDOW + events.RADAR_EXTRA_MIN);
+    expect(s.expiresAt - sim.state.time).toBeCloseTo(events.SIGHTING_WINDOW + events.RADAR_EXTRA_MIN);
+    expect(s.x).toBeGreaterThan(s0.x + 100); // más lejos: se ve antes de tenerlo a la vista
+    expect(sim.state.log.at(-1)!.text).toMatch(/El radar detecta un naufragio/);
+    const isla = events.startEvent(sim, 'isla')!;
+    expect(isla.endsAt! - sim.state.time).toBeCloseTo(events.SIGHTING_WINDOW + 30 + events.RADAR_EXTRA_MIN);
+    const merc = events.startEvent(sim, 'mercante')!;
+    expect(merc.endsAt! - sim.state.time).toBeCloseTo(events.MERCHANT_MIN + events.RADAR_EXTRA_MIN);
+    expect(merc.description).toMatch(/tres horas/);
+    const raftEv = events.startEvent(sim, 'naufragos')!;
+    const raft = sim.state.debris.find((d) => d.eventId === raftEv.id)!;
+    expect(raft.pos.x).toBeGreaterThan(debris.hullBounds(sim).bowX + 48 + events.RADAR_RAFT_AHEAD - 1);
+  });
+
+  it('apagado o sin energía, el radar no adelanta nada', () => {
+    const { sim, radar } = radarSetup(3);
+    radar.on = false;
+    sim.tick(1);
+    expect(events.radarActive(sim)).toBe(false);
+    const ev = events.startEvent(sim, 'naufragio')!;
+    expect(ev.endsAt! - sim.state.time).toBeCloseTo(events.SIGHTING_WINDOW);
+  });
+
+  it('cada pocas horas llega un mensaje de radio al diario (solo con el radar en marcha)', () => {
+    const { sim, radar } = radarSetup(5);
+    run(sim, 2 * MINUTES_PER_DAY);
+    const radio = sim.state.log.filter((l) => l.text.startsWith('Radio:'));
+    expect(radio.length).toBeGreaterThanOrEqual(3);
+    expect(radio.length).toBeLessThanOrEqual(10);
+    radar.on = false;
+    const n = sim.state.log.filter((l) => l.text.startsWith('Radio:')).length;
+    run(sim, MINUTES_PER_DAY);
+    // (el diario guarda las últimas 120 entradas: se cuenta por texto nuevo)
+    expect(sim.state.log.filter((l) => l.text.startsWith('Radio:') && l.at > sim.state.time - MINUTES_PER_DAY + 1).length).toBe(0);
+    expect(n).toBeGreaterThan(0);
+  });
+
+  it('los precios que anuncia la radio los trae el próximo mercante', () => {
+    const { sim } = radarSetup(8);
+    let msg = '';
+    for (let i = 0; i < 60 && !/mercante anuncia/.test(msg); i++) msg = events.radioMessage(sim);
+    expect(msg).toMatch(/^Radio: un mercante anuncia que, por estas aguas, cambia .+ por .+\./);
+    const rumoured = events.rumouredOffers(sim);
+    expect(rumoured.length).toBeGreaterThan(0);
+    const ev = events.startEvent(sim, 'mercante')!;
+    const offers = events.tradeOffers(sim, ev.id);
+    for (const i of rumoured) {
+      const o = TRADE_OFFERS[i]!;
+      expect(offers.some((x) => JSON.stringify(x.get) === JSON.stringify(o.get) && JSON.stringify(x.give) === JSON.stringify(o.give))).toBe(true);
+    }
+    expect(events.rumouredOffers(sim)).toEqual([]);
+  });
+
+  it('las pistas del cuaderno dicen la verdad: dónde aparecen las hojas o la luz verde', () => {
+    const { sim } = radarSetup(9);
+    const story = sim.state.story!;
+    let hint = '';
+    for (let i = 0; i < 80 && !/cuaderno del Albatros/.test(hint); i++) hint = events.radioMessage(sim);
+    expect(hint).toMatch(/por estas aguas/); // la hoja 2 es de Aguas Templadas
+    sim.state.voyage.regionId = 'sargazos';
+    story.pages = [2, 3, 4, 5, 6, 7];
+    hint = '';
+    story.revealed = true;
+    for (let i = 0; i < 80 && !/luz verde/.test(hint); i++) hint = events.radioMessage(sim);
+    expect(hint).toMatch(/Puerto Esperanza existe/);
+  });
+});
+
+describe('historia: hojas del cuaderno del Albatros', () => {
+  it('siguiente hoja: en orden, primero la de esta región, sin repetir las leídas o a bordo', () => {
+    const sim = quiet(setup());
+    expect(sim.state.story).toEqual({ pages: [], revealed: false, arrived: false });
+    expect(events.nextStoryPage(sim)?.n).toBe(2); // Aguas Templadas
+    addItem(mod(sim, 'almacen').inventory!, 'pagina_2', 1);
+    expect(events.nextStoryPage(sim)?.n).toBe(3);
+    expect(events.nextStoryPage(sim, true)).toBeNull(); // aquí ya no queda ninguna
+    sim.state.story!.pages.push(3);
+    expect(events.nextStoryPage(sim)?.n).toBe(4);
+    spawnCrate(sim, RAIL, [{ id: 'pagina_4', qty: 1 }]);
+    expect(events.nextStoryPage(sim)?.n).toBe(5);
+    debris.spawnDebris(sim, 'cofre', { x: 0, z: 20 }, { loot: [{ id: 'pagina_5', qty: 1 }] });
+    expect(events.nextStoryPage(sim)?.n).toBe(6);
+    // En el Mar de las Tormentas sale antes la suya (6) aunque falte la 2.
+    const fresh = quiet(setup());
+    fresh.state.voyage.regionId = 'tormentas';
+    expect(events.nextStoryPage(fresh)?.n).toBe(6);
+    fresh.state.story!.pages = [2, 3, 4, 5, 6, 7];
+    expect(events.nextStoryPage(fresh)).toBeNull();
+  });
+
+  it('probabilidad: mayor en su región, sube con los días sin hojas y se enfría tras una', () => {
+    const sim = quiet(setup());
+    const p2 = events.nextStoryPage(sim)!;
+    const here = events.pageChance(sim, p2, 'cofre');
+    expect(here).toBeCloseTo(events.PAGE_CHANCE.cofre);
+    sim.state.voyage.regionId = 'archipielago';
+    expect(events.pageChance(sim, p2, 'cofre')).toBeCloseTo(events.PAGE_CHANCE.cofre * events.PAGE_OFF_REGION);
+    sim.state.voyage.regionId = 'templadas';
+    sim.state.time += 3 * MINUTES_PER_DAY;
+    expect(events.pageChance(sim, p2, 'cofre')).toBeCloseTo(events.PAGE_CHANCE.cofre + 3 * events.PAGE_DROUGHT_PER_DAY);
+    sim.state.time += 30 * MINUTES_PER_DAY;
+    expect(events.pageChance(sim, p2, 'cofre')).toBeCloseTo(events.PAGE_CHANCE.cofre + events.PAGE_DROUGHT_MAX);
+    sim.state.events.cooldowns['pagina'] = sim.state.time + 60;
+    expect(events.pageChance(sim, p2, 'estructura')).toBe(0);
+  });
+
+  it('guion: el naufragio del día 5 guarda en el cofre el plano y la siguiente hoja', () => {
+    const sim = quiet(setup());
+    const step = events.SCRIPT.find((s) => s.id === 'dia5-naufragio')!;
+    expect(step.opts?.page).toBe('next');
+    expect(events.SCRIPT.find((s) => s.id === 'dia1-naufragio')!.opts?.page).toBeNull();
+    const ev = events.startEvent(sim, 'naufragio', { ...step.opts, scripted: true })!;
+    expect((ev.data as { page: string }).page).toBe('pagina_2');
+    expect(events.nextStoryPage(sim)?.n).toBe(3); // la 2 ya está prometida
+    sim.eventChoice(ev.id, 'rescatar');
+    const chest = sim.state.debris.find((d) => d.eventId === ev.id && d.kind === 'cofre')!;
+    expect(chest.loot.some((l) => l.id === 'pagina_2')).toBe(true);
+    expect(chest.loot.some((l) => l.id === BLUEPRINT_ORDER[0])).toBe(true);
+    expect(ev.objectives.some((o) => /plano y una hoja del cuaderno/.test(o.text))).toBe(true);
+    debris.collectDebrisFor(sim, chest.id, 'player', RAIL);
+    expect(countItem(sim.state.player.inventory, 'pagina_2')).toBe(1);
+  });
+
+  it('naufragios al azar: hoja en el cofre en torno al 35 % en su región (menos fuera)', () => {
+    let here = 0;
+    let away = 0;
+    for (let i = 0; i < 80; i++) {
+      const a = quiet(setup(300 + i));
+      if ((events.startEvent(a, 'naufragio')!.data as { page: string | null }).page) here++;
+      const b = quiet(setup(300 + i));
+      b.state.voyage.regionId = 'archipielago'; // ninguna hoja es de aquí
+      if ((events.startEvent(b, 'naufragio')!.data as { page: string | null }).page) away++;
+    }
+    expect(here).toBeGreaterThan(14);
+    expect(here).toBeLessThan(44);
+    expect(away).toBeLessThan(here);
+  });
+
+  it('expediciones a islas y estructuras pueden traer una hoja (a los almacenes, con su frase)', () => {
+    let found = 0;
+    for (let i = 0; i < 8; i++) {
+      const sim = quiet(setup(40 + i));
+      sim.state.time = at(3, 9);
+      sim.state.events.cooldowns['pagina'] = sim.state.time - 20 * MINUTES_PER_DAY; // mucho sin hojas
+      const ev = events.startEvent(sim, i % 2 ? 'estructura' : 'isla')!;
+      expect(sim.eventChoice(ev.id, 'expedicion').ok).toBe(true);
+      run(sim, 200);
+      if (storageTotal(sim, 'pagina_2') > 0) {
+        found++;
+        expect(sim.state.log.some((l) => /hoja del cuaderno del Albatros \(pág\. 2\)/.test(l.text))).toBe(true);
+      }
+    }
+    expect(found).toBeGreaterThanOrEqual(3);
+  });
+
+  it('un mercante puede ofrecer la siguiente hoja (barata) y no se repite', () => {
+    let offered = 0;
+    for (let i = 0; i < 12; i++) {
+      const sim = quiet(setup(70 + i));
+      sim.state.events.cooldowns['pagina'] = sim.state.time - 20 * MINUTES_PER_DAY;
+      const ev = events.startEvent(sim, 'mercante')!;
+      const offers = events.tradeOffers(sim, ev.id);
+      expect(offers.length).toBe(4);
+      const k = offers.findIndex((o) => o.get['pagina_2']);
+      if (k < 0) continue;
+      offered++;
+      expect(offers[k]!.give).toEqual(events.PAGE_PRICE);
+      expect(ev.description).toMatch(/hoja del cuaderno del Albatros \(pág\. 2\)/);
+      expect(events.nextStoryPage(sim)?.n).toBe(3);
+      addItem(sim.state.player.inventory, 'madera', 10);
+      expect(sim.trade(ev.id, k).ok).toBe(true);
+      expect(countItem(sim.state.player.inventory, 'pagina_2')).toBe(1);
+    }
+    expect(offered).toBeGreaterThanOrEqual(4);
+  });
+
+  it('un cofre a la deriva puede traer la hoja de su región (solo la de esa región)', () => {
+    const sim = quiet(setup(12));
+    sim.state.voyage.regionId = 'cementerio';
+    let withPage = 0;
+    let cofres = 0;
+    for (let i = 0; i < 400 && cofres < 30; i++) {
+      sim.state.debris = [];
+      sim.state.events.cooldowns['pagina'] = sim.state.time - 20 * MINUTES_PER_DAY;
+      const d = debris.spawnAmbientDebris(sim);
+      if (d?.kind !== 'cofre') continue;
+      cofres++;
+      const page = d.loot.find((l) => l.id.startsWith('pagina_'));
+      if (page) {
+        withPage++;
+        expect(page.id).toBe('pagina_4');
+      }
+    }
+    expect(cofres).toBeGreaterThan(10);
+    expect(withPage).toBeGreaterThan(0);
+    // En una región sin hojas pendientes, nunca.
+    sim.state.story!.pages = [4];
+    for (let i = 0; i < 200; i++) {
+      sim.state.debris = [];
+      const d = debris.spawnAmbientDebris(sim);
+      expect(d?.loot.some((l) => l.id.startsWith('pagina_')) ?? false).toBe(false);
+    }
+  });
+});
+
+describe('historia: llegada a Puerto Esperanza', () => {
+  function arriveSetup() {
+    const sim = quiet(setup(21));
+    sim.state.time = at(9, 5) + 30; // de madrugada
+    sim.state.voyage.regionId = 'esperanza';
+    sim.state.story!.pages = [1, 2, 3, 4, 5];
+    sim.state.story!.revealed = true;
+    return sim;
+  }
+
+  it('al amanecer: final del cuaderno, dos vecinos se unen y abre el mercado del muelle', () => {
+    const sim = arriveSetup();
+    const started: string[] = [];
+    sim.bus.on('worldEventStarted', (e) => started.push(e.type));
+    const crew = sim.state.npcs.length;
+    run(sim, 20);
+    expect(sim.state.story!.arrived).toBe(false); // aún es de noche
+    runUntil(sim, at(9, 6) + 2);
+    expect(sim.state.story!.arrived).toBe(true);
+    expect(started).toContain('llegada');
+    expect(lastHistory(sim, 'llegada')?.success).toBe(true);
+    // Diario: la llegada y el epílogo.
+    expect(sim.state.log.some((l) => l.text.includes('Al amanecer aparece la luz verde'))).toBe(true);
+    expect(sim.state.log.some((l) => l.text.includes('Tu ciudad flotante ya no está sola'))).toBe(true);
+    // Dos habitantes nuevos, descansados.
+    expect(sim.state.npcs.length).toBe(crew + 2);
+    for (const n of sim.state.npcs.slice(-2)) expect(n.needs.health).toBe(100);
+    expect(sim.state.log.some((l) => /del puerto piden un sitio a bordo\. Se unen a la tripulación/.test(l.text))).toBe(true);
+    // Mercado especial: seis ofertas generosas durante 6 h, con los planos que falten.
+    const market = sim.state.events.active.find((e) => e.type === 'mercante')!;
+    expect(market.title).toBe('Mercado de Puerto Esperanza');
+    expect(market.endsAt! - sim.state.time).toBeGreaterThan(events.ARRIVAL_MARKET_MIN - 5);
+    const offers = events.tradeOffers(sim, market.id);
+    expect(offers.length).toBe(events.PORT_OFFER_COUNT);
+    expect(offers.some((o) => o.get[BLUEPRINT_ORDER[0]!])).toBe(true);
+    // La pantalla de final tiene sus datos.
+    const s = events.arrivalSummary(sim)!;
+    expect(s.title).toBe('Puerto Esperanza');
+    expect(s.paragraphs.length).toBe(2);
+    expect(s.epilogue).toMatch(/seguir navegando/);
+    expect(s.pagesRead).toBe(5);
+    expect(s.pagesTotal).toBe(7);
+    expect(s.newcomers.length).toBe(2);
+    expect(s.crew).toEqual(expect.arrayContaining(s.newcomers));
+    expect(s.marketEventId).toBe(market.id);
+    expect(s.day).toBe(9);
+    // No se repite y la partida sigue.
+    run(sim, 120);
+    expect(started.filter((t) => t === 'llegada').length).toBe(1);
+  });
+
+  it('el mercado del muelle: comercio y cierre con sus propios textos', () => {
+    const sim = arriveSetup();
+    runUntil(sim, at(9, 7));
+    const market = sim.state.events.active.find((e) => e.type === 'mercante')!;
+    const offers = events.tradeOffers(sim, market.id);
+    const o = offers[0]!;
+    for (const [id, q] of Object.entries(o.give)) addItem(sim.state.player.inventory, id, q);
+    expect(sim.trade(market.id, 0).ok).toBe(true);
+    expect(sim.state.log.some((l) => l.text.startsWith('Trato en el mercado de Puerto Esperanza'))).toBe(true);
+    runUntil(sim, market.endsAt! + 2);
+    expect(sim.state.log.some((l) => /El mercado del muelle recoge sus puestos tras 1 trato/.test(l.text))).toBe(true);
+  });
+
+  it('con el jugador dormido espera a que despierte; sobrevive a guardar y cargar', () => {
+    const sim = arriveSetup();
+    sim.state.time = at(9, 10);
+    sim.state.player.sleeping = { moduleId: null, bed: 0, until: null };
+    events.tickEvents(sim, 1);
+    expect(sim.state.story!.arrived).toBe(false);
+    sim.state.player.sleeping = null;
+    events.tickEvents(sim, 1);
+    expect(sim.state.story!.arrived).toBe(true);
+    const loaded = new Simulation(deserialize(serialize(sim.state)));
+    expect(loaded.state.story!.arrived).toBe(true);
+    expect(events.arrivalSummary(loaded)?.title).toBe('Puerto Esperanza');
+    expect(events.canStartEvent(loaded, 'llegada')).toBe(false);
+  });
+
+  it('fuera de Puerto Esperanza no hay llegada ni pantalla de final', () => {
+    const sim = quiet(setup());
+    expect(events.canStartEvent(sim, 'llegada')).toBe(false);
+    expect(events.startEvent(sim, 'llegada')).toBeNull();
+    expect(events.arrivalSummary(sim)).toBeNull();
+    // El director nunca la saca por su cuenta.
+    sim.state.voyage.regionId = 'esperanza';
+    expect(events.eventWeights(sim).llegada).toBeUndefined();
+  });
+});
+
+describe('relaciones entre habitantes', () => {
+  function pair(seed = 11) {
+    const sim = quiet(setup(seed));
+    return { sim, marina: npcById(sim, 'npc1'), tomas: npcById(sim, 'npc2') };
+  }
+
+  it('afinidad simétrica y limitada; etiquetas concordadas y lista para la interfaz', () => {
+    const { sim, marina, tomas } = pair();
+    expect(npc.relationBetween(marina, tomas)).toBe(0);
+    expect(npc.npcRelations(sim, marina)).toEqual([]);
+    expect(npc.npcRelations(sim, marina, true)).toEqual([{ id: 'npc2', name: 'Tomás', value: 0, label: 'Se conocen poco' }]);
+    npc.adjustRelation(sim, marina, tomas, 45);
+    expect(npc.relationBetween(tomas, marina)).toBe(45);
+    expect(npc.npcRelations(sim, marina)).toEqual([{ id: 'npc2', name: 'Tomás', value: 45, label: 'Amigo' }]);
+    expect(npc.npcRelations(sim, tomas)[0]!.label).toBe('Amiga');
+    npc.adjustRelation(sim, marina, tomas, 500);
+    expect(npc.relationBetween(marina, tomas)).toBe(100);
+    expect(npc.relationLabel(20, tomas)).toBe('Se llevan bien');
+    expect(npc.relationLabel(0, tomas)).toBeNull();
+    expect(npc.relationLabel(-20, tomas)).toBe('Roces');
+    expect(npc.relationLabel(-40, tomas)).toBe('No se soportan');
+    const lucia = npc.spawnSurvivor(sim, { name: 'Lucía', quiet: true })!;
+    npc.adjustRelation(sim, marina, lucia, -60);
+    const list = npc.npcRelations(sim, marina);
+    expect(list.map((r) => r.label)).toEqual(['Amigo', 'No se soportan']); // de la mejor a la peor
+  });
+
+  it('juntos: los amigos se animan y los rivales se amargan (despiertos y cerca)', () => {
+    const { sim, marina, tomas } = pair();
+    Object.assign(marina.pos, { x: 0, y: LEVEL_H, z: 0 });
+    Object.assign(tomas.pos, { x: 2, y: LEVEL_H, z: 0 });
+    marina.activity = 'idle';
+    tomas.activity = 'idle';
+    npc.adjustRelation(sim, marina, tomas, 50);
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Está con su amigo Tomás', value: npc.FRIEND_MOOD });
+    expect(npc.npcMoodFactors(sim, tomas)).toContainEqual({ label: 'Está con su amiga Marina', value: npc.FRIEND_MOOD });
+    tomas.activity = 'sleeping';
+    expect(npc.npcMoodFactors(sim, marina).some((f) => /amigo/.test(f.label))).toBe(false);
+    tomas.activity = 'idle';
+    tomas.pos.x = 30;
+    expect(npc.npcMoodFactors(sim, marina).some((f) => /amigo/.test(f.label))).toBe(false);
+    tomas.pos.x = 2;
+    npc.adjustRelation(sim, marina, tomas, -110);
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Tiene cerca a Tomás, con quien no se soporta', value: npc.RIVAL_MOOD });
+    const sum = npc.npcMoodFactors(sim, marina).reduce((a, f) => a + f.value, 0);
+    expect(npc.npcMoodTarget(sim, marina)).toBe(Math.max(0, Math.min(100, sum)));
+  });
+
+  it('la muerte de un amigo duele más y deja luto', () => {
+    const { sim, marina, tomas } = pair();
+    const lucia = npc.spawnSurvivor(sim, { name: 'Lucía', quiet: true })!;
+    npc.adjustRelation(sim, marina, tomas, 70);
+    for (const n of sim.state.npcs) n.needs.mood = 80;
+    tomas.needs.health = 0.01;
+    tomas.sick = true;
+    sim.tick(1);
+    expect(sim.state.npcs.includes(tomas)).toBe(false);
+    expect(marina.needs.mood).toBeLessThan(lucia.needs.mood - npc.FRIEND_GRIEF + 1);
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Llora la muerte de su amigo Tomás', value: npc.GRIEF_MOOD });
+    expect(npc.npcMoodFactors(sim, lucia).some((f) => /Llora/.test(f.label))).toBe(false);
+    expect(sim.state.log.some((l) => l.text === 'Marina llora a Tomás más que nadie: eran grandes amigos.')).toBe(true);
+    expect(marina.relations?.['npc2']).toBeUndefined();
+    expect(sim.talkTo('npc1')!.lines).toContain('Echo mucho de menos a Tomás…');
+    sim.state.time += (npc.GRIEF_HOURS + 1) * 60;
+    expect(npc.npcMoodFactors(sim, marina).some((f) => /Llora/.test(f.label))).toBe(false);
+  });
+
+  it('discutir baja la afinidad; mediar la recupera en parte; si se enquista, peor', () => {
+    const { sim, marina, tomas } = pair();
+    marina.needs.mood = 30;
+    tomas.needs.mood = 30;
+    const ev = events.startEvent(sim, 'discusion')!;
+    expect(npc.relationBetween(marina, tomas)).toBe(events.ARGUE_RELATION);
+    expect(sim.npcOption('npc1', 'mediar').ok).toBe(true);
+    expect(npc.relationBetween(marina, tomas)).toBe(events.ARGUE_RELATION + events.MEDIATE_RELATION);
+    expect(lastHistory(sim, 'discusion')?.success).toBe(true);
+    sim.state.events.cooldowns['discusion'] = 0;
+    marina.needs.mood = 30;
+    tomas.needs.mood = 30;
+    const ev2 = events.startEvent(sim, 'discusion')!;
+    expect(ev2).not.toBe(ev);
+    expect(npc.relationBetween(marina, tomas)).toBe(events.ARGUE_RELATION * 2 + events.MEDIATE_RELATION);
+    runUntil(sim, ev2.endsAt! - 1);
+    const r0 = npc.relationBetween(marina, tomas);
+    run(sim, 2);
+    expect(lastHistory(sim, 'discusion')?.success).toBe(false);
+    expect(npc.relationBetween(marina, tomas)).toBeCloseTo(r0 + events.FESTER_RELATION, 1);
+  });
+
+  it('los rivales discuten aunque no estén tan desanimados, y el director lo saca más', () => {
+    const { sim, marina, tomas } = pair();
+    const lucia = npc.spawnSurvivor(sim, { name: 'Lucía', quiet: true })!;
+    for (const n of sim.state.npcs) n.needs.mood = 60;
+    sim.state.time = at(3, 12);
+    expect(events.canStartEvent(sim, 'discusion')).toBe(false);
+    const base = events.eventWeights(sim).discusion;
+    npc.adjustRelation(sim, tomas, lucia, -60);
+    expect(events.rivalPairs(sim).length).toBe(1);
+    expect(events.canStartEvent(sim, 'discusion')).toBe(true);
+    const w = events.eventWeights(sim).discusion!;
+    expect(w).toBeGreaterThan(0);
+    if (base) expect(w).toBeCloseTo(base * events.RIVAL_ARGUE_FACTOR);
+    const ev = events.startEvent(sim, 'discusion')!;
+    expect((ev.data as { npcIds: string[] }).npcIds.sort()).toEqual([tomas.id, lucia.id].sort());
+    expect(ev.description).toMatch(/no se soportan/);
+    expect((ev.data as { npcIds: string[] }).npcIds).not.toContain(marina.id);
+  });
+
+  it('charlar suele acercarles (a veces acaba en roce) y los amigos hablan de sus amigos', () => {
+    const { sim, marina, tomas } = pair(17);
+    for (const n of sim.state.npcs) n.role = 'libre';
+    const said: string[] = [];
+    let changed = false;
+    runUntil(sim, at(1, 18));
+    run(sim, 3 * MINUTES_PER_DAY, () => {
+      for (const n of sim.state.npcs) {
+        n.needs.hunger = Math.max(n.needs.hunger, 60);
+        n.needs.thirst = Math.max(n.needs.thirst, 60);
+        if (n.say && said.at(-1) !== n.say.text) said.push(n.say.text);
+      }
+      if (npc.relationBetween(marina, tomas) !== 0) changed = true;
+    });
+    expect(changed).toBe(true);
+    npc.adjustRelation(sim, marina, tomas, 80);
+    const before = said.length;
+    run(sim, 2 * MINUTES_PER_DAY, () => {
+      for (const n of sim.state.npcs) {
+        n.needs.hunger = Math.max(n.needs.hunger, 60);
+        n.needs.thirst = Math.max(n.needs.thirst, 60);
+        if (n.say && said.at(-1) !== n.say.text) said.push(n.say.text);
+      }
+    });
+    expect(said.slice(before).some((t) => /Tomás|Marina/.test(t))).toBe(true);
+  });
+
+  it('compartir mesa acerca un poco', () => {
+    const { sim, marina, tomas } = pair();
+    const now = sim.state.time;
+    for (const [n, x] of [[marina, 0], [tomas, 1.2]] as const) {
+      Object.assign(n.pos, { x, y: LEVEL_H, z: 4 });
+      n.carry = { id: 'conserva', qty: 1 };
+      n.activity = 'eating';
+      n.task = { kind: 'comer', until: now + 0.5, data: { phase: 'act', prio: 45, deadline: 1e12, stage: 'mesa', seatKey: null } };
+    }
+    run(sim, 2);
+    expect(npc.relationBetween(marina, tomas)).toBeCloseTo(npc.MEAL_RELATION, 1); // (menos lo que se enfría en 2 min)
+  });
+
+  it('sin trato, la afinidad se enfría poco a poco (también la de quien está fuera)', () => {
+    const { sim, marina, tomas } = pair();
+    npc.adjustRelation(sim, marina, tomas, 10);
+    for (const n of [marina, tomas]) {
+      n.awayUntil = 1e9;
+      n.activity = 'away';
+    }
+    run(sim, MINUTES_PER_DAY);
+    expect(npc.relationBetween(marina, tomas)).toBeCloseTo(10 - npc.RELATION_DECAY_PER_DAY, 1);
+    expect(npc.relationBetween(tomas, marina)).toBeCloseTo(npc.relationBetween(marina, tomas), 5);
+  });
+
+  it('en la conversación cuentan con quién se llevan bien y con quién no', () => {
+    const { sim, marina, tomas } = pair();
+    const lucia = npc.spawnSurvivor(sim, { name: 'Lucía', quiet: true })!;
+    npc.adjustRelation(sim, marina, tomas, 60);
+    npc.adjustRelation(sim, marina, lucia, -60);
+    const lines = sim.talkTo('npc1')!.lines;
+    expect(lines.some((l) => /Tomás/.test(l) && /maravilla|uña y carne|no sería lo mismo/.test(l))).toBe(true);
+    expect(lines.some((l) => /Lucía/.test(l) && /No soporto|no hay manera/.test(l))).toBe(true);
+    expect(lines.some((l) => /mejor ni me la nombres|no hay manera/.test(l))).toBe(true);
+  });
+});
+
+describe('sala común', () => {
+  function salaSetup(seed = 11) {
+    const sim = quiet(setup(seed));
+    const sala = placeAt(sim, 'sala_comun', 1);
+    for (const n of sim.state.npcs) n.role = 'libre';
+    return { sim, sala };
+  }
+  function keepFed(sim: Simulation) {
+    for (const n of sim.state.npcs) {
+      n.needs.hunger = Math.max(n.needs.hunger, 70);
+      n.needs.thirst = Math.max(n.needs.thirst, 70);
+      n.needs.energy = Math.max(n.needs.energy, 60);
+    }
+  }
+
+  it('en su rato libre prefieren ir allí: se sientan en el sofá y el confort se nota en el ánimo', () => {
+    const { sim, sala } = salaSetup();
+    runUntil(sim, at(1, 18));
+    let seated = false;
+    let inLounge = 0;
+    run(sim, 200, () => {
+      keepFed(sim);
+      for (const n of sim.state.npcs) {
+        const d = n.task?.data as { job?: string; phase?: string; seatKey?: string } | undefined;
+        if (n.task?.kind === 'ocio' && d?.job === 'sala' && d.phase === 'act') {
+          inLounge++;
+          expect(n.task.targetModuleId).toBe(sala.id);
+          if (d.seatKey && npc.isSeated(n)) {
+            const seat = npc.seatPose(sim, d.seatKey)!;
+            expect(seat.kind).toBe('sofa');
+            expect(Math.hypot(n.pos.x - seat.x, n.pos.z - seat.z)).toBeLessThan(1e-6);
+            expect(sim.npcStatus(n.id)).toMatch(/sala común/);
+            seated = true;
+          }
+        }
+      }
+    });
+    expect(inLounge).toBeGreaterThan(30);
+    expect(seated).toBe(true);
+    const comfort = moduleDef('sala_comun').comfort!;
+    const someone = sim.state.npcs.find((n) => npc.npcMoodFactors(sim, n).some((f) => f.label === 'Ha pasado un rato en la sala común'))!;
+    expect(npc.npcMoodFactors(sim, someone)).toContainEqual({ label: 'Ha pasado un rato en la sala común', value: npc.COMFORT_MOOD * comfort });
+  });
+
+  it('la sala mejorada (más confort) anima más', () => {
+    const { sim, sala } = salaSetup();
+    sala.tier = 2;
+    runUntil(sim, at(1, 18));
+    run(sim, 200, () => keepFed(sim));
+    const f = sim.state.npcs.flatMap((n) => npc.npcMoodFactors(sim, n)).find((x) => x.label === 'Ha pasado un rato en la sala común');
+    expect(f?.value).toBe(npc.COMFORT_MOOD * 6);
+  });
+
+  it('juegan juntos a la mesa de juegos y se llevan mejor', () => {
+    const { sim, sala } = salaSetup(4);
+    const lucia = npc.spawnSurvivor(sim, { name: 'Lucía', quiet: true, role: 'libre' })!;
+    lucia.needs = { hunger: 90, thirst: 90, energy: 90, mood: 70, health: 100 };
+    runUntil(sim, at(1, 18));
+    let together = false;
+    let status = '';
+    run(sim, 6 * 60, () => {
+      keepFed(sim);
+      const players = sim.state.npcs.filter((n) => n.task?.kind === 'ocio' && (n.task.data as { game?: boolean; phase?: string }).game && (n.task.data as { phase?: string }).phase === 'act' && n.task.targetModuleId === sala.id);
+      if (players.length >= 2) {
+        together = true;
+        status = sim.npcStatus(players[0]!.id);
+        expect(players[0]!.activity).toBe('socializing');
+      }
+    });
+    expect(together).toBe(true);
+    expect(status).toMatch(/^Jugando a las cartas con /);
+    const rels = sim.state.npcs.flatMap((a) => sim.state.npcs.filter((b) => b !== a).map((b) => npc.relationBetween(a, b)));
+    expect(rels.some((v) => v > 0)).toBe(true);
+  });
+
+  it('las plazas del sofá están sobre el mueble, mirando a su frente', () => {
+    const { sim, sala } = salaSetup();
+    const sofa = sim.layout.props.find((p) => p.moduleId === sala.id && p.kind === 'sofa')!;
+    const seats = npc.loungeSeats(sim);
+    expect(seats.length).toBe(npc.SOFA_SEATS.length);
+    for (const s of seats) {
+      expect(s.yaw).toBeCloseTo(sofa.yaw);
+      expect(Math.hypot(s.x - sofa.x, s.z - sofa.z)).toBeLessThan(sofa.hx + 0.2);
+      expect(s.moduleId).toBe(sala.id);
+    }
+    expect(npc.seatPose(sim, `${sofa.key}@9`)).toBeNull();
+    expect(npc.seatPose(sim, 'no-existe')).toBeNull();
+  });
+});
+
+describe('confort de camarotes, dormitorios y comedor (con mejoras)', () => {
+  it('cama: camarote 4 + 2 × confort, dormitorio 2 + 2 × confort; las mejoras suben el ánimo', () => {
+    const sim = quiet(setup());
+    const marina = npcById(sim, 'npc1');
+    const dorm = mod(sim, 'dormitorio');
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Tiene litera en el dormitorio', value: 4 });
+    dorm.tier = 2;
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Tiene litera en el dormitorio con taquillas', value: 8 });
+    const cam = placeAt(sim, 'camarote', 1);
+    npc.assignBeds(sim);
+    expect(marina.bed?.moduleId).toBe(cam.id);
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Duerme en un camarote propio', value: 10 });
+    cam.tier = 2;
+    expect(npc.npcMoodFactors(sim, marina)).toContainEqual({ label: 'Duerme en un camarote acogedor', value: 14 });
+  });
+
+  it('comedor: 2 × confort − 1 tras comer allí (más con la mejora)', () => {
+    for (const tier of [1, 2]) {
+      const sim = quiet(setup());
+      const comedor = placeAt(sim, 'comedor', 1);
+      comedor.tier = tier;
+      const marina = npcById(sim, 'npc1');
+      sim.state.npcs = [marina];
+      runUntil(sim, at(1, 13) + 50);
+      marina.needs.hunger = 60;
+      let f: { label: string; value: number } | undefined;
+      run(sim, 90, () => (f ??= npc.npcMoodFactors(sim, marina).find((x) => x.label === 'Ha comido en el comedor')));
+      expect(f?.value).toBe(tier === 1 ? 5 : 9);
+    }
+  });
+});
+
+describe('módulos nuevos en la IA de los habitantes', () => {
+  it('el cocinero lleva el pescado crudo que sobra al ahumadero (paga con los almacenes) y el ahumado acaba en el almacén', () => {
+    const sim = quiet(setup());
+    const ahu = placeAt(sim, 'ahumadero', 1);
+    const alm = mod(sim, 'almacen');
+    addItem(alm.inventory!, 'pescado_crudo', 7);
+    addItem(alm.inventory!, 'conserva', 10); // no hace falta cocinar: sobra crudo
+    const player0 = countItem(sim.state.player.inventory, 'conserva');
+    const fishBefore = storageTotal(sim, 'pescado_crudo');
+    runUntil(sim, at(1, 9));
+    let queued = false;
+    run(sim, 240, () => {
+      keepPlayer(sim);
+      if (ahu.queue.some((j) => j.recipeId === 'ahumar' && j.by === 'npc')) queued = true;
+    });
+    expect(queued).toBe(true);
+    expect(storageTotal(sim, 'pescado_crudo')).toBeLessThanOrEqual(fishBefore - 3);
+    expect(countItem(sim.state.player.inventory, 'conserva')).toBe(player0); // nunca el inventario del jugador
+    // El ahumado (de la bandeja) termina en el almacén, donde la tripulación lo come.
+    expect(storageTotal(sim, 'pescado_ahumado') + countItem(ahu.inventory, 'pescado_ahumado')).toBeGreaterThanOrEqual(3);
+    run(sim, 240, () => keepPlayer(sim));
+    expect(countItem(ahu.inventory, 'pescado_ahumado')).toBeLessThan(3);
+  });
+
+  it('no se lleva el pescado que el fogón necesita ni la última leña', () => {
+    const sim = quiet(setup());
+    const ahu = placeAt(sim, 'ahumadero', 1);
+    removeEverywhere(sim, 'pescado_crudo');
+    addItem(mod(sim, 'almacen').inventory!, 'pescado_crudo', 4); // 3 por tanda + 2 de reserva > 4
+    addItem(mod(sim, 'almacen').inventory!, 'conserva', 10);
+    runUntil(sim, at(1, 9));
+    run(sim, 180, () => keepPlayer(sim));
+    expect(ahu.queue.length).toBe(0);
+    expect(countItem(ahu.inventory, 'pescado_ahumado')).toBe(0);
+  });
+
+  it('alguien vacía las bandejas del vivero y de la grúa en el almacén', () => {
+    const sim = quiet(setup());
+    powerUp(sim);
+    const viv = placeAt(sim, 'vivero', 0);
+    const grua = placeAt(sim, 'grua', 1, (_x, z) => z === 0);
+    addItem(viv.inventory!, 'pescado_crudo', 4);
+    addItem(grua.inventory!, 'madera', 6);
+    addItem(grua.inventory!, 'cuerda', 2);
+    const pesc = npc.spawnSurvivor(sim, { name: 'Bruno', role: 'pescador', quiet: true })!;
+    const rec = npc.spawnSurvivor(sim, { name: 'Inés', role: 'recolector', quiet: true })!;
+    for (const n of [pesc, rec]) n.needs = { hunger: 90, thirst: 90, energy: 90, mood: 70, health: 100 };
+    const fish0 = storageTotal(sim, 'pescado_crudo');
+    const wood0 = storageTotal(sim, 'madera');
+    runUntil(sim, at(1, 9));
+    const jobs = new Set<string>();
+    run(sim, 180, () => {
+      keepPlayer(sim);
+      for (const n of [pesc, rec]) {
+        const d = n.task?.data as { job?: string } | undefined;
+        if (d?.job === 'bandeja') jobs.add(`${n.name}:${sim.npcStatus(n.id)}`);
+      }
+    });
+    expect(countItem(grua.inventory, 'madera')).toBe(0);
+    expect(countItem(viv.inventory, 'pescado_crudo')).toBeLessThan(4);
+    expect(storageTotal(sim, 'madera')).toBeGreaterThanOrEqual(wood0 + 6 - 3); // (algo de leña pudo ir al fogón)
+    expect(storageTotal(sim, 'pescado_crudo') + countItem(viv.inventory, 'pescado_crudo')).toBeGreaterThanOrEqual(fish0);
+    expect([...jobs].some((j) => /bandeja de la grúa/.test(j))).toBe(true);
+    expect([...jobs].some((j) => /bandeja del vivero/.test(j))).toBe(true);
+  });
+
+  it('el mecánico repara también la grúa, el vivero y el radar', () => {
+    const sim = quiet(setup());
+    powerUp(sim);
+    const radar = placeAt(sim, 'radar', 2);
+    const viv = placeAt(sim, 'vivero', 0);
+    for (const m of [radar, viv]) {
+      m.status = 'broken';
+      m.condition = 20;
+      m.brokenReason = 'Pruebas';
+    }
+    addItem(mod(sim, 'almacen').inventory!, 'pieza_mecanica', 2);
+    runUntil(sim, at(1, 9));
+    run(sim, 300, () => keepPlayer(sim));
+    expect(radar.status).toBe('active');
+    expect(viv.status).toBe('active');
+    expect(radar.condition).toBeGreaterThanOrEqual(95);
+  });
+
+  it('las averías de las máquinas nuevas tienen su motivo y su texto («el radar»)', () => {
+    const sim = quiet(setup());
+    powerUp(sim);
+    const radar = placeAt(sim, 'radar', 2);
+    const ev = events.startEvent(sim, 'averia', { moduleId: radar.id })!;
+    expect(ev.title).toBe('Avería: Radar');
+    const reason = (ev.data as { reason: string }).reason;
+    expect(['La antena se ha desalineado con el viento', 'Una válvula de la radio se ha fundido']).toContain(reason);
+    expect(ev.description).toMatch(/en el radar\. El radar no funcionará hasta repararlo\./);
+    const grua = placeAt(sim, 'grua', 1, (_x, z) => z === 0);
+    const ev2 = events.startEvent(sim, 'averia', { moduleId: grua.id, scripted: true });
+    expect(ev2 ?? null).toBeNull(); // ya hay una avería activa
+    sim.state.events.active = [];
+    const ev3 = events.startEvent(sim, 'averia', { moduleId: grua.id })!;
+    expect(ev3.description).toMatch(/la grúa de rescate\. La grúa de rescate no funcionará hasta repararla\./);
+  });
+
+  it('comen pescado ahumado (comida lista, no hace falta cocinarlo)', () => {
+    const sim = quiet(setup());
+    const marina = npcById(sim, 'npc1');
+    sim.state.npcs = [marina];
+    emptyFood(sim);
+    addItem(mod(sim, 'almacen').inventory!, 'pescado_ahumado', 3);
+    marina.needs.hunger = 20;
+    run(sim, 60);
+    expect(storageTotal(sim, 'pescado_ahumado')).toBe(2);
+    expect(marina.needs.hunger).toBeGreaterThan(30);
+    expect(npc.FOOD_PREFERENCE.indexOf('pescado_ahumado')).toBeLessThan(npc.FOOD_PREFERENCE.indexOf('conserva'));
   });
 });

@@ -712,12 +712,15 @@ export interface UpgradeCheck {
   buildTime: number;
 }
 
-/** Definición de la mejora que está en obras en el módulo (null si no hay o ya no es válida). */
+/**
+ * Definición de la mejora que está en obras en el módulo, o null si no hay o ya no es válida (solo
+ * vale la del nivel siguiente: un guardado dañado nunca hace saltar niveles).
+ */
 export function activeUpgrade(m: ModuleInstance): UpgradeDef | null {
   const u = m.upgrade;
   if (!u || typeof u !== 'object') return null;
   const to = finite(u.toTier);
-  if (to <= moduleTier(m)) return null;
+  if (to !== moduleTier(m) + 1) return null;
   return moduleDef(m.type).upgrades?.find((x) => x.tier === to) ?? null;
 }
 
@@ -772,11 +775,12 @@ export function cancelUpgrade(sim: Simulation, moduleId: number): ActionResult {
     return fail('No hay ninguna mejora en obras');
   }
   m.upgrade = null;
+  // Quien ayudaba (o iba a ayudar) en la obra la deja.
   for (const npc of sim.state.npcs) {
-    if (npc.activity !== 'building' || npc.task?.targetModuleId !== m.id) continue;
+    if (npc.task?.targetModuleId !== m.id || (npc.activity !== 'building' && npc.task.kind !== 'construir')) continue;
     npc.task = null;
     npc.path = [];
-    npc.activity = 'idle';
+    if (npc.activity !== 'away') npc.activity = 'idle';
   }
   let allFit = true;
   for (const [id, q] of Object.entries(up.cost)) allFit = giveToPlayer(sim, id, q, true) && allFit;

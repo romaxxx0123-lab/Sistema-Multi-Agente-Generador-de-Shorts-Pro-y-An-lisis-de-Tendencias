@@ -1,5 +1,6 @@
 /**
- * [AGENTE sim-life] DIRECTOR DE EVENTOS, INCENDIOS, EXPEDICIONES Y COMERCIO (docs/SISTEMAS.md §10).
+ * [AGENTE sim-life] DIRECTOR DE EVENTOS, INCENDIOS, EXPEDICIONES Y COMERCIO (docs/SISTEMAS.md §10,
+ * §14 radar y §15 hilo narrativo).
  *
  * - Director: cada 150–300 min tira dados con los pesos de la región (`eventWeights`), respetando
  *   enfriamientos por tipo, día mínimo (contado en horas jugadas: el «día 2» empieza 24 h después de
@@ -28,6 +29,17 @@
  * - Cada evento emite `worldEventStarted` / `worldEventEnded`, deja entrada en el diario y queda en
  *   `events.history`.
  * - Comandos: `eventChoice`, `trade`, `extinguish` (cubo de agua de mar, lo devuelve vacío).
+ * - Radar (`isRadarActive`): los avistamientos (naufragio, isla, estructura, mercante) se anuncian
+ *   `RADAR_EXTRA_MIN` antes (más lejos) y duran otro tanto más; las balsas se detectan más lejos; y
+ *   cada 6–12 h llega un mensaje de radio al diario (charla de otros barcos, pistas del cuaderno o
+ *   precios de mercante, que el próximo mercante cumple).
+ * - Hilo narrativo (data/story.ts): las hojas 2–7 del cuaderno del Albatros aparecen en cofres de
+ *   naufragio (la del día 5, garantizada), estructuras, islas, cofres a la deriva y mercantes, en
+ *   orden y preferentemente en su región, sin repetir las leídas o a bordo (`nextStoryPage`,
+ *   `rollStoryPage`). Al entrar en Puerto Esperanza, el evento 'llegada' (`arrivalSummary` para la
+ *   pantalla de final): dos vecinos se unen y el mercado del muelle abre seis horas.
+ * - Discusiones: los rivales (relaciones de npc.ts) discuten antes y más a menudo; discutir, mediar o
+ *   dejar que se enquiste cambia su afinidad.
  *
  * Todo el estado vive en `state.events` (serializable); el azar sale de `sim.rng`.
  */

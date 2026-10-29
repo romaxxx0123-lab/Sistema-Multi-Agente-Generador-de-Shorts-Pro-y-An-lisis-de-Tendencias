@@ -2042,7 +2042,14 @@ describe('mejoras de instalaciones', () => {
     const npc = makeNpc('npcK', 'Luis', 'libre', 'tranquilo', { x: 0, y: 3.2, z: 0 }, 5, 1);
     npc.activity = 'building';
     npc.task = { kind: 'construir', targetModuleId: cocina.id };
-    sim.state.npcs.push(npc);
+    // Otro va de camino a la obra; un tercero cocina en la misma cocina (ese sigue a lo suyo).
+    const walker = makeNpc('npcW', 'Eva', 'libre', 'tranquila', { x: 0, y: 3.2, z: 0 }, 6, 1);
+    walker.activity = 'walking';
+    walker.task = { kind: 'construir', targetModuleId: cocina.id };
+    const cook = makeNpc('npcC', 'Marta', 'cocinero', 'tranquila', { x: 0, y: 3.2, z: 0 }, 7, 1);
+    cook.activity = 'working';
+    cook.task = { kind: 'cocinar', targetModuleId: cocina.id };
+    sim.state.npcs.push(npc, walker, cook);
     expect(sim.cancelUpgrade(cocina.id)).toEqual({ ok: true, msg: 'Mejora cancelada: Cocina de hierro. Recuperas 4× Placa de metal, 6× Tornillería, 6× Chatarra' });
     expect(cocina.upgrade).toBeNull();
     expect(moduleTier(cocina)).toBe(1);
@@ -2052,6 +2059,9 @@ describe('mejoras de instalaciones', () => {
     expect(countItem(pinv, 'chatarra')).toBe(6);
     expect(npc.task).toBeNull();
     expect(npc.activity).toBe('idle');
+    expect(walker.task).toBeNull();
+    expect(cook.task).toEqual({ kind: 'cocinar', targetModuleId: cocina.id });
+    expect(cook.activity).toBe('working');
     expect(sim.cancelUpgrade(cocina.id)).toEqual({ ok: false, msg: 'No hay ninguna mejora en obras' });
     expect(sim.cancelUpgrade(31337).ok).toBe(false);
 
@@ -2074,6 +2084,11 @@ describe('mejoras de instalaciones', () => {
     expect(sim.constructionStatus(almacen.id)).toBeNull();
     construction.tickConstruction(sim, 1);
     expect(almacen.upgrade).toBeNull();
+    // Nunca se saltan niveles (del 1 al 3 sin pasar por el 2).
+    almacen.upgrade = { toTier: 3, progress: 0.99 };
+    construction.tickConstruction(sim, 60);
+    expect(almacen.upgrade).toBeNull();
+    expect(moduleTier(almacen)).toBe(1);
     almacen.upgrade = { toTier: 2, progress: Number.NaN };
     construction.tickConstruction(sim, 4.5);
     expect(almacen.upgrade!.progress).toBeCloseTo(0.1, 9);
@@ -2260,6 +2275,10 @@ describe('mejoras: estaciones y huerto', () => {
     expect(sim.queueCraft(taller.id, 'pieza_mecanica').ok).toBe(true);
     sim.tick(0.5);
     expect(stations.stationStatus(sim, taller.id)!.speed).toBeCloseTo(1.6, 9);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Trabajando');
+    taller.condition = 40;
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Trabajando (70 %)');
+    taller.condition = 100;
     run(sim, 18, undefined, 0.5);
     expect(countItem(taller.inventory, 'pieza_mecanica')).toBe(0);
     run(sim, 0.5, undefined, 0.5);
@@ -2433,6 +2452,12 @@ describe('vivero de peces', () => {
     upgrade(sim, viv);
     expect(moduleDisplayName(viv)).toBe('Vivero con aireadores');
     expect(stations.viveroMinutesPerFish(viv)).toBeCloseTo(150 / 1.6, 9);
+    sim.tick(0.5);
+    expect(stations.viveroStatus(sim, viv.id)).toMatchObject({ status: 'Criando', speed: 1.6 });
+    // Con la máquina dañada (×0,7) el porcentaje es respecto a su propio ritmo pleno.
+    viv.condition = 40;
+    expect(stations.viveroStatus(sim, viv.id)!.status).toBe('Criando (70 %)');
+    viv.condition = 100;
     const n0 = countItem(viv.inventory, 'pescado_crudo');
     const p0 = prodProgress(viv) ?? 0;
     run(sim, 100);

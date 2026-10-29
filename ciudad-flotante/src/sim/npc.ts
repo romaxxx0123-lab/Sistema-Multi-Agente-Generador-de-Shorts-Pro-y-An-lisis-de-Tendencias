@@ -35,9 +35,20 @@
  * cae y puede contagiarse a quien esté al lado. Rasgos y puestos concuerdan con el género del nombre
  * (`NAME_GENDER`, `npcTraitName`, `npcRoleName`).
  *
+ * Relaciones (docs/SISTEMAS.md §16): afinidad simétrica −100..100 por pareja (`npc.relations`).
+ * Charlar la sube (o, de mal humor, la baja), compartir mesa y sala común también; discutir la baja
+ * (events.ts). Amigos (≥ 40): ánimo al estar juntos y luto si uno muere; rivales (≤ −40): ánimo
+ * negativo cerca y más discusiones. Sin trato se enfría (1 punto por día). `npcRelations` para la UI.
+ *
+ * Sala común: en su rato libre prefieren ir allí (sofá, leer o jugar a la mesa de juegos con quien
+ * se apunte); el ánimo lo nota según su confort (`moduleStat`, igual que camarotes, dormitorios y
+ * comedor). Módulos nuevos: el cocinero lleva al ahumadero el pescado crudo que sobra; las bandejas
+ * del vivero, la grúa y el ahumadero se vacían en el almacén; el mecánico repara también vivero,
+ * grúa y radar.
+ *
  * Estado transitorio (no se guarda; se reconstruye al cargar): próxima decisión, recuerdos cortos
- * para el ánimo (última comida caliente, comedor, charla), control de atascos y la máscara de
- * zonas alcanzables de la rejilla. Todo el azar sale de `sim.rng`.
+ * para el ánimo (última comida caliente, comedor, charla, sala común, luto), control de atascos y la
+ * máscara de zonas alcanzables de la rejilla. Todo el azar sale de `sim.rng`.
  */
 import { clamp } from '../core/math';
 import { ITEMS } from '../data/items';
@@ -51,6 +62,7 @@ import { COLLECT_RANGE, driftSpeed, fishingMultiplier, hullBounds, rollCatch } f
 import { activeEvent, burningModules, discussionOf, distanceToModule, isBreakdownTarget, mediateDiscussion, npcCollectDebris, onFishCaught, onNpcCured, onNpcDied, startEvent } from './events';
 import { depositToStorage, findModule, itemName, payInventories, pruneCrates, spawnCrate, storageModules } from './helpers';
 import { addItem, countIn, countItem, missingFor, removeItem, spaceFor, takeFromSlot } from './inventory';
+import { moduleDisplayName, moduleStat } from './moduleStats';
 import { NAV_RES, type NavGrid, type NavPoint } from './nav';
 import { makeNpc } from './newGame';
 import { cellAtPoint, cellCenter, levelOfY, levelY, moduleCells, moduleCenter, type PropInstance } from './ship';
@@ -146,9 +158,58 @@ export const GRAVE_HEALTH = 35;
 const GRAVE_REARM = 55;
 
 /** Comida por orden de preferencia (los habitantes toman la mejor disponible). */
-export const FOOD_PREFERENCE: readonly ItemId[] = ['guiso', 'sopa', 'pescado_asado', 'conserva', 'fruta', 'hortaliza', 'pescado_crudo'];
+export const FOOD_PREFERENCE: readonly ItemId[] = ['guiso', 'sopa', 'pescado_asado', 'pescado_ahumado', 'conserva', 'fruta', 'hortaliza', 'pescado_crudo'];
 const COOKED_FOOD = new Set(['guiso', 'sopa', 'pescado_asado']);
-const READY_FOOD = ['guiso', 'sopa', 'pescado_asado', 'conserva', 'fruta'];
+const READY_FOOD = ['guiso', 'sopa', 'pescado_asado', 'pescado_ahumado', 'conserva', 'fruta'];
+
+/* Relaciones entre habitantes (afinidad −100..100 por pareja, simétrica, en `npc.relations`) */
+/** Desde aquí son amigos; hasta aquí, rivales que no se soportan. */
+export const FRIEND_AT = 40;
+export const RIVAL_AT = -40;
+/** Por encima, «se llevan bien»; por debajo, «roces». */
+export const GOOD_AT = 15;
+export const BAD_AT = -15;
+/** Afinidad que da una buena charla (con un hablador, algo más). */
+export const CHAT_RELATION = 5;
+export const CHAT_TALKER_BONUS = 2;
+/** Una charla de mal humor o con alguien con quien hay roces puede acabar mal. */
+export const CHAT_FRICTION = -4;
+/** Compartir mesa en una comida y un rato juntos en la sala común. */
+export const MEAL_RELATION = 2;
+export const LOUNGE_RELATION = 3;
+/** Sin trato, la afinidad vuelve poco a poco a cero (puntos por día). */
+export const RELATION_DECAY_PER_DAY = 1;
+/** Juntos: mismo nivel y a menos de esta distancia (m), los dos despiertos. */
+export const TOGETHER_RANGE = 8;
+/** Ánimo por tener cerca a un amigo (o a varios) y por tener cerca a un rival. */
+export const FRIEND_MOOD = 4;
+export const FRIENDS_MOOD = 6;
+export const RIVAL_MOOD = -5;
+/** Pena extra (ánimo) al morir un amigo, y luto que se nota en el ánimo durante un tiempo. */
+export const FRIEND_GRIEF = 15;
+export const GRIEF_MOOD = -8;
+export const GRIEF_HOURS = 48;
+
+/* Sala común */
+/** Plazas del sofá: desplazamiento a lo largo del mueble (x local, m) y hacia su frente. */
+export const SOFA_SEATS: readonly number[] = [-0.55, 0.55];
+export const SOFA_SEAT_FORWARD = 0.1;
+/** Puestos alrededor de la mesa de juegos (uno por lado) y distancia a su centro (m). */
+export const GAME_SPOTS = 4;
+export const GAME_REACH = 1.2;
+/** El rato en la sala común se nota en el ánimo durante estas horas: 2 puntos por punto de confort. */
+export const LOUNGE_MOOD_HOURS = 6;
+export const COMFORT_MOOD = 2;
+
+/* Módulos de producción */
+/** Pescado crudo de una tanda del ahumadero y el que el cocinero reserva para el fogón. */
+export const SMOKE_KEEP_RAW = 2;
+/** Tandas en cola como mucho en el ahumadero. */
+export const SMOKE_QUEUE_MAX = 2;
+/** Módulos con bandeja de producción que alguien vacía al almacén, y el puesto al que le toca. */
+export const TRAY_MODULES: Readonly<Record<string, NpcRole>> = { vivero: 'pescador', grua: 'recolector', ahumadero: 'cocinero' };
+/** Unidades en la bandeja a partir de las que quien tiene el puesto la vacía (el resto, si no hay nada mejor). */
+export const TRAY_PICKUP_UNITS = 3;
 
 /** Prioridades de las tareas. */
 const PRIO = {
@@ -258,7 +319,22 @@ const LINES = {
     fruta: '¡Qué fruta más dulce!',
     hortaliza: 'Verdura cruda… algo es algo.',
     pescado_crudo: 'Crudo… no es lo ideal.',
+    pescado_ahumado: 'Ahumado y salado, como en los puertos de antes.',
   } as Record<string, string>,
+  /** Con un amigo ({nombre}). */
+  friendChat: ['¡Contigo da gusto charlar, {nombre}!', '{nombre}, eres de lo mejor de este barco.', '¿Te acuerdas, {nombre}, de aquella tormenta?', '¡Ja, ja! {nombre}, no cambies nunca.'],
+  /** Una charla que acaba mal. */
+  friction: ['Bah, contigo no se puede hablar.', 'Mejor lo dejamos aquí.', 'Siempre tienes que llevar razón, ¿eh?'],
+  /** Pensando en su amigo o su rival ({amigo} / {rival}). */
+  aboutFriend: ['Luego le cuento esto a {amigo}.', 'A ver si {amigo} se viene un rato a charlar.', 'Menos mal que está {amigo} a bordo.'],
+  aboutRival: ['Mientras {rival} no me hable, todo irá bien.', '¿Has visto lo que ha hecho {rival}? Típico.', 'Con {rival} cerca no hay quien esté tranquilo.'],
+  /** Sala común. */
+  sofa: ['Qué cómodo es este sofá.', 'Aquí se está de maravilla.', 'Cinco minutos más y me levanto.'],
+  read: ['Este libro está lleno de mapas antiguos.', 'Escucha esto: «El mar no tiene caminos, solo estelas».', 'Una novela de piratas, ¡qué emoción!'],
+  game: ['¡Te toca!', '¡Dominó!', 'Esta mano es mía.', '¿Otra partida?', 'No hagas trampas, que te veo.'],
+  solitaire: ['Un solitario, mientras alguien se anima.', '¿Nadie se apunta a una partida?'],
+  smoke: ['Al humo con ellos: mañana tendremos ahumado.', 'Un poco de leña y paciencia.', 'El ahumado aguanta lo que le echen.'],
+  newcomer: ['¡Qué ganas tenía de conocer vuestro barco!', 'Llevo años viendo llegar barcos-hogar. Hoy me subo a uno.', 'Contad conmigo para lo que haga falta.'],
   trait: {
     grunon: ['Siempre me toca lo peor.', 'Este barco cruje demasiado.', 'En mis tiempos esto se hacía mejor.'],
     optimista: ['¡Hoy va a ser un gran día!', 'Saldremos de esta, seguro.', '¡Qué suerte tenemos de estar aquí!'],
@@ -281,6 +357,13 @@ interface NpcMemo {
   emergencyAt: number;
   ateCookedAt: number;
   comedorAt: number;
+  /** Confort del comedor donde comió por última vez. */
+  comedorComfort: number;
+  /** Último rato en la sala común y su confort. */
+  loungeAt: number;
+  loungeComfort: number;
+  /** Luto por un amigo muerto (nombre, género y hasta cuándo se nota en el ánimo). */
+  grief: { name: string; female: boolean; until: number } | null;
   chatAt: number;
   greetAt: number;
   chatterAt: number;
@@ -370,6 +453,10 @@ function memoOf(sim: Simulation, npc: NpcState): NpcMemo {
       emergencyAt: t,
       ateCookedAt: -Infinity,
       comedorAt: -Infinity,
+      comedorComfort: 3,
+      loungeAt: -Infinity,
+      loungeComfort: 0,
+      grief: null,
       chatAt: -Infinity,
       greetAt: -Infinity,
       chatterAt: t + sim.rng.range(10, 60),
@@ -455,6 +542,118 @@ export function npcIntro(npc: NpcState): string {
 
 function traitOf(npc: NpcState): TraitDef {
   return TRAITS[npc.trait] ?? { id: npc.trait, name: npc.trait, desc: '' };
+}
+
+/** «Lucía», «Lucía y Hugo», «Lucía, Hugo y Vera». */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Relaciones entre habitantes                                         */
+/* ------------------------------------------------------------------ */
+
+/** Afinidad de `a` con `b` (−100..100; 0 si aún no se conocen). Es simétrica. */
+export function relationBetween(a: Pick<NpcState, 'relations'>, b: Pick<NpcState, 'id'>): number {
+  const v = a.relations?.[b.id];
+  return typeof v === 'number' && Number.isFinite(v) ? clamp(v, -100, 100) : 0;
+}
+
+/** Cambia la afinidad entre dos habitantes (en los dos sentidos, limitada a −100..100). */
+export function adjustRelation(_sim: Simulation, a: NpcState, b: NpcState, delta: number): void {
+  if (a.id === b.id || !Number.isFinite(delta) || delta === 0) return;
+  const v = Math.round(clamp(relationBetween(a, b) + delta, -100, 100) * 100) / 100;
+  (a.relations ??= {})[b.id] = v;
+  (b.relations ??= {})[a.id] = v;
+}
+
+/** Etiqueta de una afinidad («Amiga», «Se llevan bien», «Roces», «No se soportan») o null si es neutra. */
+export function relationLabel(value: number, other: Pick<NpcState, 'name'>): string | null {
+  if (value >= FRIEND_AT) return isFemaleNpc(other) ? 'Amiga' : 'Amigo';
+  if (value >= GOOD_AT) return 'Se llevan bien';
+  if (value <= RIVAL_AT) return 'No se soportan';
+  if (value <= BAD_AT) return 'Roces';
+  return null;
+}
+
+/** Una relación de un habitante para la interfaz. */
+export interface NpcRelation {
+  id: string;
+  name: string;
+  value: number;
+  label: string;
+}
+
+/**
+ * Relaciones de un habitante con el resto de la tripulación, de la mejor a la peor: solo las que
+ * tienen etiqueta (con `includeNeutral`, también las neutras, como «Se conocen poco»).
+ */
+export function npcRelations(sim: Simulation, npc: NpcState, includeNeutral = false): NpcRelation[] {
+  const out: NpcRelation[] = [];
+  for (const o of sim.state.npcs) {
+    if (o.id === npc.id) continue;
+    const value = Math.round(relationBetween(npc, o));
+    const label = relationLabel(value, o) ?? (includeNeutral ? 'Se conocen poco' : null);
+    if (label) out.push({ id: o.id, name: o.name, value, label });
+  }
+  return out.sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+}
+
+/** Mejor amigo (≥ `FRIEND_AT`) y peor rival (≤ `RIVAL_AT`) a bordo. */
+function closestTies(sim: Simulation, npc: NpcState): { friend: NpcState | null; rival: NpcState | null } {
+  let friend: NpcState | null = null;
+  let rival: NpcState | null = null;
+  for (const o of sim.state.npcs) {
+    if (o.id === npc.id) continue;
+    const v = relationBetween(npc, o);
+    if (v >= FRIEND_AT && (!friend || v > relationBetween(npc, friend))) friend = o;
+    if (v <= RIVAL_AT && (!rival || v < relationBetween(npc, rival))) rival = o;
+  }
+  return { friend, rival };
+}
+
+/** ¿Están juntos? Mismo nivel, cerca y los dos despiertos y a bordo. */
+function together(a: NpcState, b: NpcState): boolean {
+  return (
+    isPresent(a) && isPresent(b) && a.activity !== 'sleeping' && b.activity !== 'sleeping' && Math.abs(a.pos.y - b.pos.y) < 1.5 && Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) <= TOGETHER_RANGE
+  );
+}
+
+/** Frases de ocio que mencionan a su amigo o a su rival (vacío si no tiene). */
+function tieLines(sim: Simulation, npc: NpcState): string[] {
+  const { friend, rival } = closestTies(sim, npc);
+  const out: string[] = [];
+  if (friend) out.push(...LINES.aboutFriend.map((l) => l.replace('{amigo}', friend.name)));
+  if (rival) out.push(...LINES.aboutRival.map((l) => l.replace('{rival}', rival.name)));
+  return out;
+}
+
+/** Sin trato, la afinidad vuelve despacio a cero; se olvida a quien ya no está a bordo. */
+function decayRelations(sim: Simulation, npc: NpcState, dt: number): void {
+  const rel = npc.relations;
+  if (!rel) return;
+  const step = (RELATION_DECAY_PER_DAY * dt) / (24 * 60);
+  for (const id of Object.keys(rel)) {
+    const v = rel[id];
+    if (typeof v !== 'number' || !Number.isFinite(v) || !sim.state.npcs.some((n) => n.id === id)) {
+      delete rel[id];
+      continue;
+    }
+    rel[id] = Math.abs(v) <= step ? 0 : v - Math.sign(v) * step;
+  }
+}
+
+/**
+ * Resultado de una charla entre dos habitantes: casi siempre suma afinidad (algo más con un
+ * hablador); de mal humor, con un gruñón o con roces previos puede acabar mal.
+ */
+function chatOutcome(sim: Simulation, a: NpcState, b: NpcState): number {
+  let friction = a.needs.mood < 35 || b.needs.mood < 35 ? 0.35 : 0.05;
+  if (a.trait === 'grunon' || b.trait === 'grunon') friction += 0.15;
+  if (relationBetween(a, b) <= BAD_AT) friction += 0.2;
+  if (sim.rng.chance(friction)) return CHAT_FRICTION;
+  return CHAT_RELATION + (a.trait === 'hablador' || b.trait === 'hablador' ? CHAT_TALKER_BONUS : 0);
 }
 
 function td(npc: NpcState): TaskData {
@@ -847,7 +1046,7 @@ function ensureOnNav(sim: Simulation, npc: NpcState): void {
   if (isOnReachableNav(sim, npc.pos)) return;
   if (isSeated(npc)) {
     const key = td(npc)['seatKey'];
-    if (sim.layout.props.some((p) => p.key === key && p.kind === 'silla')) return; // la silla sigue ahí
+    if (typeof key === 'string' && seatPose(sim, key)) return; // la silla (o el sofá) sigue ahí
     td(npc)['seated'] = false;
   }
   const p = snapReachable(sim, npc.pos, 6) ?? snapReachable(sim, sim.collision.safeSpawn(), 8);
@@ -976,7 +1175,7 @@ function startPlan(sim: Simulation, npc: NpcState, plan: Plan): boolean {
   // Nadie se planta encima de otro: si el sitio está cogido, el hueco libre más cercano. Las
   // camas y las sillas son de uno solo (las reparte su propia reserva) y la vista los coloca.
   let target = plan.target;
-  const ownSpot = typeof data['seatKey'] === 'string' || (plan.kind === 'dormir' && data['bed'] === true) || plan.kind === 'descansar';
+  const ownSpot = typeof data['seatKey'] === 'string' || typeof data['spotKey'] === 'string' || (plan.kind === 'dormir' && data['bed'] === true) || plan.kind === 'descansar';
   if (target && !ownSpot) target = freeSpotNear(sim, npc, target);
   if (!target || dist2(npc.pos, target) < 0.35) {
     if (target) npc.task.targetPos = { ...target };
@@ -1095,19 +1294,20 @@ function arrive(sim: Simulation, npc: NpcState): void {
 }
 
 /**
- * Si la tarea reservó una silla, el habitante da el último paso hasta ella (las sillas no tienen
- * colisión, pero la rejilla de navegación no siempre llega a menos de 1,3 m por las mesas).
+ * Si la tarea reservó un asiento (silla o plaza del sofá), el habitante da el último paso hasta él
+ * (las sillas no tienen colisión y el sofá sí, pero la rejilla de navegación no llega a menos de
+ * 1,3 m por las mesas o el propio mueble).
  */
 function sitDown(sim: Simulation, npc: NpcState): void {
   const d = td(npc);
   const key = d['seatKey'];
   if (typeof key !== 'string') return;
-  const chair = sim.layout.props.find((p) => p.key === key && p.kind === 'silla');
-  if (!chair || Math.hypot(chair.x - npc.pos.x, chair.z - npc.pos.z) > 2.5 || Math.abs(chair.y - npc.pos.y) > 0.5) return;
+  const seat = seatPose(sim, key);
+  if (!seat || Math.hypot(seat.x - npc.pos.x, seat.z - npc.pos.z) > 2.5 || Math.abs(seat.y - npc.pos.y) > 0.5) return;
   d['standPos'] = { x: npc.pos.x, y: npc.pos.y, z: npc.pos.z };
   d['seated'] = true;
-  npc.pos = { x: chair.x, y: chair.y, z: chair.z };
-  npc.yaw = chair.yaw;
+  npc.pos = { x: seat.x, y: seat.y, z: seat.z };
+  npc.yaw = seat.yaw;
 }
 
 /** ¿Está sentado en una silla (fuera de la rejilla de navegación)? */
@@ -1210,9 +1410,34 @@ function onActStart(sim: Simulation, npc: NpcState): void {
           abortTask(sim, npc, job, 30);
           return;
         }
+      } else if (job === 'ahumar') {
+        // Tres pescados y leña de los almacenes, al humo (paga con los almacenes, nunca con el jugador).
+        const k = findModule(sim, t.targetModuleId ?? -1);
+        if (!k || !queueCraft(sim, k.id, 'ahumar', 1, { by: 'npc' }).ok) {
+          abortTask(sim, npc, 'ahumar', 30);
+          return;
+        }
+        if (sim.rng.chance(0.6)) sayFrom(sim, npc, LINES.smoke);
+      } else if (job === 'bandeja') {
+        // Coge una pila de la bandeja (la que quepa en los almacenes) para llevarla al almacén.
+        const m = findModule(sim, t.targetModuleId ?? -1);
+        const inv = m?.inventory;
+        const i = inv ? inv.slots.findIndex((x) => !!x && storageRoom(sim, x.id) > 0) : -1;
+        const sl = i >= 0 ? inv!.slots[i]! : null;
+        const got = sl ? takeFromSlot(inv!, i, Math.min(sl.qty, storageRoom(sim, sl.id))) : null;
+        if (!got) {
+          // Otro se adelantó o ya no cabe nada en los almacenes: no es un fallo.
+          memoOf(sim, npc).blocked['bandeja'] = sim.state.time + 30;
+          finishTask(sim, npc);
+          return;
+        }
+        npc.carry = got;
       }
       return;
     }
+    case 'ocio':
+      if (d.job === 'sala') startLounge(sim, npc);
+      return;
     case 'apagar': {
       const m = findModule(sim, t.targetModuleId ?? -1);
       const stage = (d.stage as string | undefined) ?? 'sofocar';
@@ -1535,6 +1760,182 @@ function freeSeat(sim: Simulation, npc: NpcState): { pos: Vec3; key: string; com
   return best;
 }
 
+/* ---- Asientos (sillas y sofá) y sala común ---- */
+
+/** Dónde se sienta quien reserva un asiento: una silla (`key` del mueble) o una plaza del sofá (`key@i`). */
+export interface SeatPose {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  moduleId: number;
+  kind: 'silla' | 'sofa';
+}
+
+/** Posición y orientación de un asiento por su clave (null si el mueble ya no existe). */
+export function seatPose(sim: Simulation, key: string): SeatPose | null {
+  const at = key.indexOf('@');
+  const base = at >= 0 ? key.slice(0, at) : key;
+  const prop = sim.layout.props.find((p) => p.key === base);
+  if (!prop) return null;
+  if (prop.kind === 'silla' && at < 0) return { x: prop.x, y: prop.y, z: prop.z, yaw: prop.yaw, moduleId: prop.moduleId, kind: 'silla' };
+  if (prop.kind !== 'sofa' || at < 0) return null;
+  const off = SOFA_SEATS[Number(key.slice(at + 1))];
+  if (off === undefined) return null;
+  // Eje largo del mueble (x local) y su frente (−z local), en coordenadas del barco.
+  const ax = Math.cos(prop.yaw);
+  const az = -Math.sin(prop.yaw);
+  const fx = -Math.sin(prop.yaw);
+  const fz = -Math.cos(prop.yaw);
+  return { x: prop.x + ax * off + fx * SOFA_SEAT_FORWARD, y: prop.y, z: prop.z + az * off + fz * SOFA_SEAT_FORWARD, yaw: prop.yaw, moduleId: prop.moduleId, kind: 'sofa' };
+}
+
+/** Plazas de los sofás de la sala común (para la vista: se sientan como en una silla). */
+export function loungeSeats(sim: Simulation): (SeatPose & { key: string })[] {
+  const out: (SeatPose & { key: string })[] = [];
+  for (const p of sim.layout.props) {
+    if (p.kind !== 'sofa') continue;
+    SOFA_SEATS.forEach((_, i) => {
+      const key = `${p.key}@${i}`;
+      const s = seatPose(sim, key);
+      if (s) out.push({ ...s, key });
+    });
+  }
+  return out;
+}
+
+/** Asientos y puestos de juego reservados por otros habitantes. */
+function reservedSpots(sim: Simulation, npc: NpcState): Set<string> {
+  const taken = new Set<string>();
+  for (const n of sim.state.npcs) {
+    if (n.id === npc.id) continue;
+    const d = n.task?.data as TaskData | undefined;
+    if (typeof d?.['seatKey'] === 'string') taken.add(d['seatKey'] as string);
+    if (typeof d?.['spotKey'] === 'string') taken.add(d['spotKey'] as string);
+  }
+  return taken;
+}
+
+/** Salas comunes en uso (terminadas, sin fuego). */
+function loungeModules(sim: Simulation): ModuleInstance[] {
+  return sim.state.ship.modules.filter((m) => m.type === 'sala_comun' && m.status === 'active' && m.fire <= 0);
+}
+
+/** Plaza libre del sofá de una sala común y el punto desde el que se sienta. */
+function freeSofaSeat(sim: Simulation, npc: NpcState, m: ModuleInstance): { key: string; stand: Vec3 } | null {
+  const taken = reservedSpots(sim, npc);
+  for (const p of propsOf(sim, m.id)) {
+    if (p.kind !== 'sofa') continue;
+    for (let i = 0; i < SOFA_SEATS.length; i++) {
+      const key = `${p.key}@${i}`;
+      if (taken.has(key)) continue;
+      const seat = seatPose(sim, key);
+      if (!seat) continue;
+      const fx = -Math.sin(seat.yaw);
+      const fz = -Math.cos(seat.yaw);
+      const stand = snapReachable(sim, { x: seat.x + fx * 0.9, y: seat.y, z: seat.z + fz * 0.9 }, 1.2);
+      if (stand && Math.hypot(stand.x - seat.x, stand.z - seat.z) <= 1.8) return { key, stand };
+    }
+  }
+  return null;
+}
+
+/** Puestos alrededor de una mesa de juegos (alcanzables), con la orientación hacia la mesa. */
+function gameSpots(sim: Simulation, m: ModuleInstance): { key: string; pos: Vec3; yaw: number }[] {
+  const out: { key: string; pos: Vec3; yaw: number }[] = [];
+  for (const p of propsOf(sim, m.id)) {
+    if (p.kind !== 'mesa_juegos') continue;
+    for (let i = 0; i < GAME_SPOTS; i++) {
+      const a = p.yaw + (i * Math.PI * 2) / GAME_SPOTS;
+      const want = { x: p.x - Math.sin(a) * GAME_REACH, y: p.y, z: p.z - Math.cos(a) * GAME_REACH };
+      const pos = snapReachable(sim, want, 0.6);
+      if (!pos || Math.hypot(pos.x - want.x, pos.z - want.z) > 0.6) continue;
+      out.push({ key: `${p.key}@${i}`, pos, yaw: yawTo(pos, p) });
+    }
+  }
+  return out;
+}
+
+/** Quién está jugando ya en la mesa de juegos de una sala (por puesto reservado y en su sitio). */
+function playersAt(sim: Simulation, m: ModuleInstance, except?: NpcState): NpcState[] {
+  return sim.state.npcs.filter((n) => {
+    if (n === except || !isPresent(n) || n.task?.kind !== 'ocio') return false;
+    const d = td(n);
+    return d.job === 'sala' && d['game'] === true && n.task.targetModuleId === m.id;
+  });
+}
+
+/**
+ * Ocio en la sala común: jugar a la mesa de juegos (si ya hay alguien, o con quien se apunte) o
+ * sentarse en el sofá a leer o descansar. Null si no hay sala, sitio libre o modo de llegar.
+ */
+function loungePlan(sim: Simulation, npc: NpcState): Plan | null {
+  if (blocked(sim, npc, 'sala')) return null;
+  const rooms = loungeModules(sim).sort((a, b) => dist2(npc.pos, moduleCenter(a, sim.state.ship.width)) - dist2(npc.pos, moduleCenter(b, sim.state.ship.width)));
+  for (const m of rooms) {
+    const taken = reservedSpots(sim, npc);
+    const spots = gameSpots(sim, m).filter((s) => !taken.has(s.key));
+    const playing = playersAt(sim, m, npc).length;
+    const wantsGame = spots.length > 0 && (playing > 0 || (!!chatPartner(sim, npc) && sim.rng.chance(0.5)));
+    if (wantsGame) {
+      const s = spots[0]!;
+      return { kind: 'ocio', prio: PRIO.ocio, target: s.pos, moduleId: m.id, data: { job: 'sala', game: true, spotKey: s.key, faceYaw: s.yaw, anim: 'jugar' }, duration: sim.rng.range(25, 45) };
+    }
+    const seat = freeSofaSeat(sim, npc, m);
+    if (seat) {
+      const read = sim.rng.chance(0.4);
+      return { kind: 'ocio', prio: PRIO.ocio, target: seat.stand, moduleId: m.id, data: { job: 'sala', seatKey: seat.key, read }, duration: sim.rng.range(25, 50) };
+    }
+    if (spots.length) {
+      const s = spots[0]!;
+      return { kind: 'ocio', prio: PRIO.ocio, target: s.pos, moduleId: m.id, data: { job: 'sala', game: true, spotKey: s.key, faceYaw: s.yaw, anim: 'jugar' }, duration: sim.rng.range(20, 35) };
+    }
+  }
+  return null;
+}
+
+/** Empieza el rato en la sala: el confort se nota en el ánimo, y quien juega solo invita a alguien. */
+function startLounge(sim: Simulation, npc: NpcState): void {
+  const t = npc.task!;
+  const d = td(npc);
+  const m = findModule(sim, t.targetModuleId ?? -1);
+  const mem = memoOf(sim, npc);
+  mem.loungeAt = sim.state.time;
+  mem.loungeComfort = m ? moduleStat(m, 'comfort') : 0;
+  if (!m || d['game'] !== true) {
+    if (sim.rng.chance(0.5)) sayFrom(sim, npc, d['read'] ? LINES.read : LINES.sofa);
+    return;
+  }
+  if (playersAt(sim, m, npc).length) {
+    if (sim.rng.chance(0.5)) sayFrom(sim, npc, LINES.game);
+    return;
+  }
+  // Solo en la mesa: invita a quien esté libre cerca a una partida.
+  const p = chatPartner(sim, npc);
+  if (p && (!p.task || p.task.kind === 'ocio') && !isSeated(p)) {
+    const taken = reservedSpots(sim, p);
+    taken.add(d['spotKey'] as string);
+    const spot = gameSpots(sim, m).find((s) => !taken.has(s.key));
+    if (spot && startPlan(sim, p, { kind: 'ocio', prio: PRIO.ocio, target: spot.pos, moduleId: m.id, data: { job: 'sala', game: true, spotKey: spot.key, faceYaw: spot.yaw, anim: 'jugar' }, duration: Math.max(10, (t.until ?? sim.state.time) - sim.state.time) })) {
+      say(sim, npc, `¿Una partida, ${p.name}?`);
+      return;
+    }
+  }
+  sayFrom(sim, npc, LINES.solitaire);
+}
+
+/** Termina el rato en la sala: el ánimo lo recuerda y se llevan mejor con quien estaba allí. */
+function endLounge(sim: Simulation, npc: NpcState): void {
+  const t = npc.task;
+  if (!t || t.kind !== 'ocio' || td(npc).job !== 'sala' || td(npc).phase !== 'act') return;
+  const mem = memoOf(sim, npc);
+  mem.loungeAt = sim.state.time;
+  for (const o of sim.state.npcs) {
+    if (o === npc || !isPresent(o) || o.task?.kind !== 'ocio' || o.task.targetModuleId !== t.targetModuleId) continue;
+    if (td(o).job === 'sala' && td(o).phase === 'act') adjustRelation(sim, npc, o, LOUNGE_RELATION);
+  }
+}
+
 function pickUpFood(sim: Simulation, npc: NpcState): void {
   const d = td(npc);
   const src = sourceOf(sim, d);
@@ -1578,7 +1979,21 @@ function finishEating(sim: Simulation, npc: NpcState): void {
   }
   mem.lastMealAt = sim.state.time;
   if (COOKED_FOOD.has(c.id)) mem.ateCookedAt = sim.state.time;
-  if (d['comedor']) mem.comedorAt = sim.state.time;
+  if (d['comedor']) {
+    mem.comedorAt = sim.state.time;
+    const seat = typeof d['seatKey'] === 'string' ? seatPose(sim, d['seatKey'] as string) : null;
+    const room = seat ? findModule(sim, seat.moduleId) : undefined;
+    mem.comedorComfort = room ? moduleStat(room, 'comfort') : mem.comedorComfort;
+  }
+  // Compartir mesa acerca: quien sigue comiendo a su lado se lleva un poco mejor con él.
+  if (d.stage === 'mesa') {
+    for (const o of sim.state.npcs) {
+      if (o === npc || !isPresent(o) || o.task?.kind !== 'comer') continue;
+      const od = td(o);
+      if (od.stage !== 'mesa' || od.phase !== 'act' || Math.abs(o.pos.y - npc.pos.y) > 1 || dist2(o.pos, npc.pos) > 3) continue;
+      adjustRelation(sim, npc, o, MEAL_RELATION);
+    }
+  }
   const line = LINES.eat[c.id];
   if (line && sim.rng.chance(0.6)) say(sim, npc, line);
   if (c.id === 'pescado_crudo' && !npc.sick && sim.rng.chance(RAW_FISH_SICK)) {
@@ -1808,7 +2223,8 @@ function planTakesCarry(plan: Plan): boolean {
     (plan.kind === 'beber' && plan.data?.stage === 'botella') ||
     (plan.kind === 'apagar' && plan.data?.stage === 'coger') ||
     job === 'coger_cubo' ||
-    job === 'ordenar'
+    job === 'ordenar' ||
+    job === 'bandeja'
   );
 }
 
@@ -1888,11 +2304,77 @@ function storePlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
   return { kind: 'trabajar', prio, target: spot, moduleId: m.id, data: { job: 'guardar', matchesRole: false }, duration: 2 };
 }
 
+/* ---- Bandejas de producción (vivero, grúa, ahumadero) al almacén ---- */
+
+/** Unidades en la bandeja de un módulo que caben ya en los almacenes. */
+function trayUnits(sim: Simulation, m: ModuleInstance): number {
+  let n = 0;
+  for (const sl of m.inventory?.slots ?? []) if (sl && storageRoom(sim, sl.id) > 0) n += sl.qty;
+  return n;
+}
+
+/**
+ * Vaciar la bandeja de un módulo de producción en el almacén (a por una pila, y luego a guardarla
+ * con `storePlan`). `mine`: solo las bandejas de su puesto (pescador → vivero, recolector → grúa,
+ * cocinero → ahumadero) a partir de `TRAY_PICKUP_UNITS`; si no, cualquiera con algo dentro.
+ */
+function trayPlan(sim: Simulation, npc: NpcState, prio: number, mine: boolean): Plan | null {
+  if (blocked(sim, npc, 'bandeja')) return null;
+  const storm = stormNow(sim);
+  let best: { m: ModuleInstance; units: number } | null = null;
+  for (const m of sim.state.ship.modules) {
+    const role = TRAY_MODULES[m.type];
+    if (!role || !m.inventory || m.status === 'construction' || m.fire > 0) continue;
+    if (mine && role !== npc.role) continue;
+    if (storm && moduleHasSky(sim, m)) continue;
+    const units = trayUnits(sim, m);
+    if (units <= 0 || (mine && units < TRAY_PICKUP_UNITS && m.inventory.slots.some((x) => !x))) continue;
+    if (sim.state.npcs.some((n) => n.id !== npc.id && (n.task?.data as TaskData | undefined)?.['trayId'] === m.id)) continue;
+    if (!best || units > best.units) best = { m, units };
+  }
+  if (!best) return null;
+  const t = workTarget(sim, best.m);
+  if (!t) return null;
+  const matches = TRAY_MODULES[best.m.type] === npc.role;
+  return { kind: 'trabajar', prio, target: t.pos, moduleId: best.m.id, data: { job: 'bandeja', trayId: best.m.id, matchesRole: matches, faceYaw: t.faceYaw }, duration: 2 };
+}
+
+/* ---- Ahumadero ---- */
+
+/** Ahumadero operativo con sitio en la cola. */
+function smokehouse(sim: Simulation): ModuleInstance | null {
+  return sim.state.ship.modules.find((m) => m.type === 'ahumadero' && m.status === 'active' && m.fire <= 0 && m.queue.length < SMOKE_QUEUE_MAX) ?? null;
+}
+
+/**
+ * El cocinero lleva el pescado crudo que sobra al ahumadero (3 pescados + 1 de leña por tanda,
+ * pagados con los almacenes): reserva un par para el fogón si este puede cocinar y no se gasta la
+ * madera que el fogón necesita para seguir encendido.
+ */
+function smokePlan(sim: Simulation, npc: NpcState): Plan | null {
+  if (stormNow(sim) || blocked(sim, npc, 'ahumar')) return null;
+  const k = smokehouse(sim);
+  const r = RECIPES['ahumar'];
+  if (!k || !r) return null;
+  const stove = kitchen(sim);
+  const stoveOk = !!stove && (fuelMinutes(stove) > 0 || !!fuelInStorage(sim, stove));
+  const raw = storageCount(sim, 'pescado_crudo');
+  if (raw < (r.inputs['pescado_crudo'] ?? 3) + (stoveOk ? SMOKE_KEEP_RAW : 0)) return null;
+  // Si el fogón vive de la madera de los almacenes, que le quede para una carga.
+  const woodForStove = stove && fuelMinutes(stove) < 45 && storageCount(sim, 'combustible') === 0 ? 3 : 0;
+  if (storageCount(sim, 'madera') < (r.inputs['madera'] ?? 0) + woodForStove) return null;
+  if (Object.keys(missingFor(storageInvs(sim), r.inputs)).length) return null;
+  const t = workTarget(sim, k, ['ahumadero']);
+  if (!t) return null;
+  return { kind: 'trabajar', prio: PRIO.trabajar, target: t.pos, moduleId: k.id, data: { job: 'ahumar', recipe: r.id, anim: 'cocinar', faceYaw: t.faceYaw }, duration: 6 / workMult(sim, npc) };
+}
+
 function cookPlan(sim: Simulation, npc: NpcState): Plan | null {
   const k = kitchen(sim);
-  if (!k) return null;
+  // Sin cocina (o sin llegar al fogón), aún puede ahumar.
+  if (!k) return smokePlan(sim, npc) ?? trayPlan(sim, npc, PRIO.trabajar, true);
   const stove = stoveSpot(sim, k);
-  if (!stove) return null;
+  if (!stove) return smokePlan(sim, npc) ?? trayPlan(sim, npc, PRIO.trabajar, true);
   // Sin agua a bordo, lo primero es destilar agua de mar.
   if (waterScarce(sim)) {
     const w = waterPlan(sim, npc, PRIO.trabajar);
@@ -1907,6 +2389,9 @@ function cookPlan(sim: Simulation, npc: NpcState): Plan | null {
     const r = chooseRecipe(sim);
     if (r) return { kind: 'trabajar', prio: PRIO.trabajar, target: stove.pos, moduleId: k.id, data: { job: 'cocinar', recipe: r, anim: 'cocinar', faceYaw: stove.faceYaw }, duration: 25 / wm };
   }
+  // El pescado crudo que sobra, al ahumadero; y el ahumado ya listo, de su bandeja al almacén.
+  const smoke = smokePlan(sim, npc) ?? trayPlan(sim, npc, PRIO.trabajar, true);
+  if (smoke) return smoke;
   if (k.queue.length > 0 && fuelMinutes(k) > 0) {
     return { kind: 'trabajar', prio: PRIO.trabajar, target: stove.pos, moduleId: k.id, data: { job: 'vigilar', anim: 'cocinar', faceYaw: stove.faceYaw }, duration: 30 };
   }
@@ -2212,11 +2697,13 @@ function workPlan(sim: Simulation, npc: NpcState): Plan | null {
       p = mechanicPlan(sim, npc) ?? buildPlan(sim, npc);
       break;
     case 'pescador':
-      // Con la despensa bien surtida de pescado, rescata restos en vez de seguir pescando.
-      p = storageCount(sim, 'pescado_crudo') < presentCount(sim) * FISH_STOCK_CAP_PER_NPC + 4 ? fishPlan(sim, npc) : null;
+      // Primero el pescado del vivero, al almacén. Con la despensa bien surtida de pescado, rescata
+      // restos en vez de seguir pescando.
+      p = trayPlan(sim, npc, PRIO.trabajar, true) ?? (storageCount(sim, 'pescado_crudo') < presentCount(sim) * FISH_STOCK_CAP_PER_NPC + 4 ? fishPlan(sim, npc) : null);
       break;
     case 'recolector':
-      p = hookPlan(sim, npc);
+      // Lo que la grúa ha subido a su bandeja, al almacén; y si no, al gancho.
+      p = trayPlan(sim, npc, PRIO.trabajar, true) ?? hookPlan(sim, npc);
       break;
     default:
       p = buildPlan(sim, npc);
@@ -2234,7 +2721,7 @@ function workPlan(sim: Simulation, npc: NpcState): Plan | null {
       return f;
     }
   }
-  p = tidyPlan(sim, npc, PRIO.relleno);
+  p = tidyPlan(sim, npc, PRIO.relleno) ?? trayPlan(sim, npc, PRIO.relleno, false);
   if (p) return p;
   if (npc.role === 'libre' || npc.role === 'pescador') return hookPlan(sim, npc);
   return null;
@@ -2267,18 +2754,26 @@ function leisurePlan(sim: Simulation, npc: NpcState): Plan {
   }
   const weights: Record<string, number> = { quieto: 1 };
   const partner = chatPartner(sim, npc);
-  if (partner && !blocked(sim, npc, 'charlar')) weights['charlar'] = npc.trait === 'hablador' ? 6 : 3;
+  if (partner && !blocked(sim, npc, 'charlar')) weights['charlar'] = (npc.trait === 'hablador' ? 6 : 3) + (relationBetween(npc, partner) >= FRIEND_AT ? 2 : 0);
   weights['sentarse'] = 2;
   if (!storm && !night) {
     weights['mirar'] = 2;
     weights['pasear'] = 2;
   }
+  // La sala común es el sitio preferido para el rato libre (también con tormenta: está a cubierto).
+  if (loungeModules(sim).length && !blocked(sim, npc, 'sala')) weights['sala'] = 7;
   const pick = sim.rng.weighted(weights) ?? 'quieto';
   switch (pick) {
+    case 'sala': {
+      const p = loungePlan(sim, npc);
+      if (p) return p;
+      memoOf(sim, npc).blocked['sala'] = sim.state.time + 30; // llena o sin paso: otra cosa un rato
+      break;
+    }
     case 'charlar': {
       const p = partner!;
       const near = snapReachable(sim, { x: p.pos.x + Math.sin(sim.rng.range(0, 6.28)) * 1.1, y: p.pos.y, z: p.pos.z + Math.cos(sim.rng.range(0, 6.28)) * 1.1 }, 2) ?? snapReachable(sim, p.pos, 2);
-      if (near) return { kind: 'charlar', prio: PRIO.ocio, target: near, data: { partner: p.id }, duration: sim.rng.range(12, 20) };
+      if (near) return { kind: 'charlar', prio: PRIO.ocio, target: near, data: { partner: p.id, lead: true }, duration: sim.rng.range(12, 20) };
       break;
     }
     case 'sentarse': {
@@ -2306,19 +2801,26 @@ function leisurePlan(sim: Simulation, npc: NpcState): Plan {
   return { kind: 'ocio', prio: PRIO.ocio, target: null, data: { job: 'quieto' }, duration: sim.rng.range(6, 14) };
 }
 
-/** Alguien con quien charlar: presente, despierto y sin nada urgente, a menos de 25 m. */
+/**
+ * Alguien con quien charlar: presente, despierto y sin nada urgente, a menos de 25 m. Se busca antes
+ * a los amigos (cuentan como si estuvieran más cerca) y nunca a un rival.
+ */
 function chatPartner(sim: Simulation, npc: NpcState): NpcState | null {
   let best: NpcState | null = null;
-  let bestD = 25;
+  let bestScore = Infinity;
   for (const n of sim.state.npcs) {
     if (n.id === npc.id || !isPresent(n)) continue;
     if (n.activity === 'sleeping' || n.activity === 'walking') continue;
     const k = n.task?.kind;
     if (k && k !== 'ocio') continue;
     if (Math.abs(n.pos.y - npc.pos.y) > 1.5) continue;
+    const rel = relationBetween(npc, n);
+    if (rel <= RIVAL_AT) continue;
     const d = dist2(n.pos, npc.pos);
-    if (d < bestD) {
-      bestD = d;
+    if (d >= 25) continue;
+    const score = d - rel / 8;
+    if (score < bestScore) {
+      bestScore = score;
       best = n;
     }
   }
@@ -2833,6 +3335,13 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
       const other = sim.state.npcs.find((n) => n.id === d['partner']);
       if (!other || !isPresent(other) || other.activity === 'sleeping' || now >= until) {
         const mem = memoOf(sim, npc);
+        // Quien propuso la charla hace balance (una vez por charla): casi siempre se llevan mejor.
+        const talked = now - (until - ((d['duration'] as number | undefined) ?? 0));
+        if (d['lead'] && other && talked >= 5) {
+          const delta = chatOutcome(sim, npc, other);
+          adjustRelation(sim, npc, other, delta);
+          if (delta < 0) sayFrom(sim, npc, LINES.friction);
+        }
         mem.chatAt = now;
         mem.blocked['charlar'] = now + 90;
         finishTask(sim, npc);
@@ -2846,7 +3355,11 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
           startPlan(sim, other, { kind: 'charlar', prio: PRIO.ocio, target: null, data: { partner: npc.id }, duration: Math.max(3, until - now) });
         }
       }
-      if (sim.rng.chance(0.08 * dt)) sayFrom(sim, npc, npc.trait === 'hablador' ? [...LINES.chat, ...(LINES.trait['hablador'] ?? [])] : LINES.chat);
+      if (sim.rng.chance(0.08 * dt)) {
+        const friend = relationBetween(npc, other) >= FRIEND_AT;
+        const pool = friend ? [...LINES.friendChat.map((l) => l.replace('{nombre}', other.name)), ...LINES.chat] : npc.trait === 'hablador' ? [...LINES.chat, ...(LINES.trait['hablador'] ?? [])] : LINES.chat;
+        sayFrom(sim, npc, pool);
+      }
       return;
     }
     case 'discutir': {
@@ -2862,13 +3375,41 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
       return;
     }
     case 'ocio':
+      if (d.job === 'sala') {
+        tickLounge(sim, npc, now >= until);
+        return;
+      }
       npc.activity = npc.injured ? 'injured' : 'idle';
       if (now >= until) finishTask(sim, npc);
-      else if (d.job !== 'reposo') chatter(sim, npc, [...LINES.leisure, ...(LINES.trait[npc.trait] ?? [])]);
+      else if (d.job !== 'reposo') chatter(sim, npc, [...LINES.leisure, ...(LINES.trait[npc.trait] ?? []), ...tieLines(sim, npc)]);
       return;
     default:
       if (now >= until) finishTask(sim, npc);
   }
+}
+
+/**
+ * Un rato en la sala común: en el sofá (leyendo o descansando) o jugando a la mesa (charlando con
+ * los demás jugadores, o haciendo un solitario si no hay nadie).
+ */
+function tickLounge(sim: Simulation, npc: NpcState, done: boolean): void {
+  const t = npc.task!;
+  const d = td(npc);
+  const m = findModule(sim, t.targetModuleId ?? -1);
+  if (done || !m || m.status !== 'active' || m.fire > 0) {
+    endLounge(sim, npc);
+    finishTask(sim, npc);
+    return;
+  }
+  if (d['game'] === true) {
+    const others = playersAt(sim, m, npc).filter((o) => td(o).phase === 'act');
+    npc.activity = others.length ? 'socializing' : 'idle';
+    if (d.faceYaw !== undefined) npc.yaw = d.faceYaw;
+    chatter(sim, npc, others.length ? LINES.game : LINES.solitaire);
+    return;
+  }
+  npc.activity = 'idle';
+  chatter(sim, npc, d['read'] ? LINES.read : [...LINES.sofa, ...tieLines(sim, npc)]);
 }
 
 /** Minutos de pesca (sin modificadores) entre capturas de un habitante. */
@@ -2986,7 +3527,8 @@ function tickWork(sim: Simulation, npc: NpcState, dt: number): void {
       memoOf(sim, npc).blocked['botellas'] = now + 120;
       break;
     }
-    case 'ordenar': {
+    case 'ordenar':
+    case 'bandeja': {
       const next = storePlan(sim, npc, d.prio);
       finishTask(sim, npc);
       if (!next || !startPlan(sim, npc, next)) {
@@ -3080,13 +3622,31 @@ export function npcMoodFactors(sim: Simulation, npc: NpcState): MoodFactor[] {
     if (value) out.push({ label, value });
   };
   add(`Carácter: ${npcTraitName(npc).toLowerCase()}`, tr.moodBias ?? 0);
+  // La cama y el comedor cuentan según su confort (las mejoras lo suben): camarote 4 + 2 × confort,
+  // dormitorio 2 + 2 × confort, comedor 2 × confort − 1, sala común 2 × confort.
   const home = npc.task?.kind === 'descansar' ? ((td(npc)['homeBed'] as { moduleId: number } | null) ?? null) : npc.bed;
-  const homeType = home ? findModule(sim, home.moduleId)?.type : undefined;
-  if (homeType === 'camarote') add('Duerme en un camarote propio', 10);
-  else if (homeType === 'dormitorio') add('Tiene litera en el dormitorio', 4);
+  const homeMod = home ? findModule(sim, home.moduleId) : undefined;
+  if (homeMod?.type === 'camarote') add(`Duerme en ${homeMod.tier && homeMod.tier > 1 ? `un ${moduleDisplayName(homeMod).toLowerCase()}` : 'un camarote propio'}`, 4 + COMFORT_MOOD * moduleStat(homeMod, 'comfort'));
+  else if (homeMod?.type === 'dormitorio') add(`Tiene litera en el ${homeMod.tier && homeMod.tier > 1 ? moduleDisplayName(homeMod).toLowerCase() : 'dormitorio'}`, 2 + COMFORT_MOOD * moduleStat(homeMod, 'comfort'));
   else if (!home) add('No tiene cama', -15);
   if (now - mem.ateCookedAt < 8 * 60) add('Ha comido caliente', 8);
-  if (now - mem.comedorAt < 8 * 60) add('Ha comido en el comedor', 5);
+  if (now - mem.comedorAt < 8 * 60) add('Ha comido en el comedor', COMFORT_MOOD * mem.comedorComfort - 1);
+  if (now - mem.loungeAt < LOUNGE_MOOD_HOURS * 60 && mem.loungeComfort > 0) add('Ha pasado un rato en la sala común', COMFORT_MOOD * mem.loungeComfort);
+  // Amigos y rivales cerca (los dos despiertos, en el mismo nivel).
+  if (isPresent(npc) && npc.activity !== 'sleeping') {
+    const friends: NpcState[] = [];
+    let rival: NpcState | null = null;
+    for (const o of sim.state.npcs) {
+      if (o.id === npc.id || !together(npc, o)) continue;
+      const v = relationBetween(npc, o);
+      if (v >= FRIEND_AT) friends.push(o);
+      else if (v <= RIVAL_AT && (!rival || v < relationBetween(npc, rival))) rival = o;
+    }
+    if (friends.length === 1) add(`Está con ${isFemaleNpc(friends[0]!) ? 'su amiga' : 'su amigo'} ${friends[0]!.name}`, FRIEND_MOOD);
+    else if (friends.length > 1) add(`Está con sus amig${friends.every(isFemaleNpc) ? 'as' : 'os'}`, FRIENDS_MOOD);
+    if (rival) add(`Tiene cerca a ${rival.name}, con quien no se soporta`, RIVAL_MOOD);
+  }
+  if (mem.grief && now < mem.grief.until) add(`Llora la muerte de ${mem.grief.female ? 'su amiga' : 'su amigo'} ${mem.grief.name}`, GRIEF_MOOD);
   if (stormNow(sim)) add((tr.stormFear ?? 1) > 1 ? 'La tormenta le aterra' : 'La tormenta le inquieta', -10 * (tr.stormFear ?? 1));
   if (n.hunger < 30) add('Tiene hambre', -15);
   if (n.thirst < 30) add('Tiene sed', -15);
@@ -3232,8 +3792,20 @@ function killNpc(sim: Simulation, npc: NpcState): void {
   for (const m of st.ship.modules) m.beds.forEach((o, i) => (o === npc.id ? (m.beds[i] = null) : null));
   st.npcs = st.npcs.filter((n) => n.id !== npc.id);
   lifeMemo(sim).npcs.delete(npc.id);
-  for (const o of st.npcs) o.needs.mood = clamp(o.needs.mood - 20, 0, 100);
+  // Luto: todos lo sienten; sus amigos, mucho más (y durante días).
+  const friends = st.npcs.filter((o) => relationBetween(o, npc) >= FRIEND_AT);
+  for (const o of st.npcs) {
+    const friend = friends.includes(o);
+    o.needs.mood = clamp(o.needs.mood - 20 - (friend ? FRIEND_GRIEF : 0), 0, 100);
+    if (friend) memoOf(sim, o).grief = { name: npc.name, female: isFemaleNpc(npc), until: st.time + GRIEF_HOURS * 60 };
+    if (o.relations) delete o.relations[npc.id];
+  }
   sim.log(`${npc.name} ${DEATH_TEXT[mem.lastHarm] ?? DEATH_TEXT['heridas']}. La tripulación está de luto.`, 'danger');
+  if (friends.length) {
+    const amig = [npc, ...friends].every((n) => isFemaleNpc(n)) ? 'amigas' : 'amigos';
+    sim.log(`${joinNames(friends.map((f) => f.name))} ${friends.length > 1 ? 'lloran' : 'llora'} a ${npc.name} más que nadie: eran grandes ${amig}.`, 'warn', false);
+    for (const f of friends) say(sim, f, `No puedo creer que ${npc.name} ya no esté…`, 10);
+  }
   sim.bus.emit('sfx', { name: 'muerte', x: npc.pos.x, y: npc.pos.y + 1, z: npc.pos.z });
   onNpcDied(sim, npc);
 }
@@ -3318,7 +3890,8 @@ function pickRole(sim: Simulation): NpcRole {
 
 export interface SurvivorOptions {
   pos?: Vec3;
-  origin?: 'balsa' | 'isla' | 'estructura' | 'otro';
+  /** De dónde viene: náufragos (balsa), una isla, una estructura, vecinos de Puerto Esperanza (puerto)… */
+  origin?: 'balsa' | 'isla' | 'estructura' | 'puerto' | 'otro';
   role?: NpcRole;
   name?: string;
   /**
@@ -3361,10 +3934,12 @@ export function spawnSurvivor(sim: Simulation, opts: SurvivorOptions = {}): NpcS
   const pos = near?.pos ?? snapReachable(sim, opts.pos ?? sim.collision.safeSpawn(), 6) ?? sim.collision.safeSpawn();
   const npc = makeNpc(`npc${sim.nextId()}`, name, role, trait, { ...pos }, sim.rng.int(0, 9999), sim.day);
   npc.yaw = near ? near.yaw + Math.PI : sim.rng.range(-Math.PI, Math.PI);
-  npc.needs = { hunger: 35, thirst: 25, energy: 40, mood: 55, health: 70 };
+  // Un náufrago llega agotado; un vecino del puerto, descansado y con ganas.
+  const fromPort = opts.origin === 'puerto';
+  npc.needs = fromPort ? { hunger: 85, thirst: 85, energy: 85, mood: 75, health: 100 } : { hunger: 35, thirst: 25, energy: 40, mood: 55, health: 70 };
   st.npcs.push(npc);
   assignBeds(sim);
-  say(sim, npc, sim.rng.pick(LINES.rescued), 8);
+  say(sim, npc, sim.rng.pick(fromPort ? LINES.newcomer : LINES.rescued), 8);
   memoOf(sim, npc).nextDecideAt = st.time + 3;
   if (!opts.quiet) sim.log(survivorJoinText([npc]), 'good');
   return npc;
@@ -3440,6 +4015,8 @@ export function tickNpcs(sim: Simulation, dt: number): void {
     }
     greet(sim, npc);
   }
+  // Las relaciones se enfrían sin trato (también las de quien está de expedición: siguen simétricas).
+  for (const npc of st.npcs) decayRelations(sim, npc, dt);
   alertRafts(sim);
   lm.rev = rev;
 }
@@ -3487,7 +4064,7 @@ export function npcStatusText(sim: Simulation, npc: NpcState): string {
   const d = t ? td(npc) : null;
   const go = d?.phase === 'go';
   const mod = t?.targetModuleId !== undefined ? findModule(sim, t.targetModuleId) : undefined;
-  const at = mod ? withArticle(moduleDef(mod.type).name) : 'el barco';
+  const at = mod ? withArticle(mod.type === 'radar' ? 'Radar' : moduleDisplayName(mod)) : 'el barco';
   switch (t?.kind) {
     case 'dormir':
       return go ? 'Va a dormir' : 'Durmiendo';
@@ -3525,6 +4102,12 @@ export function npcStatusText(sim: Simulation, npc: NpcState): string {
           return go ? 'Va a la cocina' : 'Cocinando';
         case 'asar':
           return go ? 'Va a asar un pescado' : 'Asando pescado';
+        case 'ahumar':
+          return go ? 'Lleva pescado al ahumadero' : 'Ahumando pescado';
+        case 'bandeja': {
+          const of = at.startsWith('el ') ? `del ${at.slice(3)}` : `de ${at}`;
+          return go ? `Va a vaciar la bandeja ${of}` : `Vacía la bandeja ${of}`;
+        }
         case 'ordenar':
           return 'Recoge una caja de cubierta';
         case 'guardar':
@@ -3560,6 +4143,14 @@ export function npcStatusText(sim: Simulation, npc: NpcState): string {
       }
     case 'ocio':
       switch (d?.job) {
+        case 'sala': {
+          if (go) return 'Va a la sala común';
+          if (d['game'] === true) {
+            const others = mod ? playersAt(sim, mod, npc).filter((o) => td(o).phase === 'act') : [];
+            return others.length ? `Jugando a las cartas con ${joinNames(others.map((o) => o.name))}` : 'Haciendo un solitario en la sala común';
+          }
+          return d['read'] ? 'Leyendo en la sala común' : 'Descansando en el sofá de la sala común';
+        }
         case 'sentarse':
           return 'Descansando un rato';
         case 'mirar':
@@ -3652,6 +4243,12 @@ export function talkTo(sim: Simulation, npcId: string): NpcTalk | null {
   if (!npc.bed) lines.push('No tengo cama. El suelo de la bodega está frío y duro.');
   if (npc.sick) lines.push('Me encuentro fatal… un botiquín o la enfermería me vendrían de maravilla.');
   if (npc.injured) lines.push('Me hice daño y aún me duele. Un vendaje me ayudaría.');
+  // Amigos y rivales a bordo.
+  const ties = closestTies(sim, npc);
+  if (ties.friend) lines.push(hashPick([`Me llevo de maravilla con ${ties.friend.name}.`, `${ties.friend.name} y yo somos uña y carne.`, `Sin ${ties.friend.name}, este barco no sería lo mismo.`], key));
+  if (ties.rival && ties.rival.id !== disc?.other) lines.push(hashPick([`No soporto a ${ties.rival.name}: mejor ni me ${isFemaleNpc(ties.rival) ? 'la' : 'lo'} nombres.`, `Con ${ties.rival.name} no hay manera de entenderse.`], key));
+  const mem0 = memoOf(sim, npc);
+  if (mem0.grief && st.time < mem0.grief.until) lines.push(`Echo mucho de menos a ${mem0.grief.name}…`);
   lines.push(...petitionLines(sim, npc));
   if (lines.length <= 2 && n.mood >= 60) lines.push(hashPick(LINES.trait[npc.trait] ?? LINES.leisure, key));
   if (n.mood < 30) lines.push('La verdad, el ánimo por aquí está por los suelos.');

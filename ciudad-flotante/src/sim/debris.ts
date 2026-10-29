@@ -16,6 +16,11 @@
  * - Pesca: `fishBiteDelay` (8–22 s ÷ región.fishMult ÷ 2,5 con banco de peces) y `catchFish`
  *   (85 % pescado —20 % dos—, 6 % chatarra, 4 % tela, 3 % conserva, 2 % cuerda).
  * - `fillBucket`: cubo vacío → cubo de agua de mar (desde la borda).
+ * - Grúa de rescate (docs/SISTEMAS.md §14): con `isGruaReady`, cada `GRUA_CYCLE_MIN` minutos de
+ *   trabajo (÷ ritmo: mejora, energía y desgaste) lanza el gancho al resto más cercano de SU costado a
+ *   ≤ `GRUA_RANGE` m (las balsas primero: sube a los náufragos a bordo) y lo iza: botín a su bandeja →
+ *   almacenes → caja junto a ella. Con tormenta se recoge. `gruaTarget` / `gruaStatus` para la vista
+ *   y la interfaz. Un cofre a la deriva puede traer una hoja del cuaderno de su región.
  *
  * Todo el azar sale de `sim.rng`.
  */
