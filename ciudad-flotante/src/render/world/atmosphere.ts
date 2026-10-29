@@ -74,6 +74,12 @@ export interface Atmosphere {
   sunDisk: number;
   moonColor: THREE.Color;
   moonDisk: number;
+  /**
+   * Visibilidad de los destellos del sol/luna sobre el mar (0..1): sin disco visible (cielo
+   * cubierto, niebla) el agua no puede reflejarlo. No depende de la altura del sol: el camino de
+   * destellos del ocaso sigue vivo con el sol ya en el horizonte.
+   */
+  glint: number;
   /** Fase lunar 0..1 (0 nueva, 0,5 llena). */
   moonPhase: number;
   /** Luz direccional (sol o luna). */
@@ -113,6 +119,7 @@ export function createAtmosphere(): Atmosphere {
     sunDisk: 1,
     moonColor: new THREE.Color(),
     moonDisk: 0,
+    glint: 1,
     moonPhase: 0.5,
     lightDir: new THREE.Vector3(0, 1, 0),
     lightColor: new THREE.Color(),
@@ -277,6 +284,7 @@ export function computeAtmosphere(time: number, region: RegionColors, w: Weather
   out.moonColor.copy(C.moonDisk);
   const moonUp = smoothstep(-0.05, 0.08, out.moonDir.y);
   out.moonDisk = moonUp * (1 - day) * (1 - overcast * 0.9) * (1 - fog * 0.85);
+  out.glint = clamp((1 - 0.94 * overcast) * (1 - 0.85 * fog), 0, 1);
   const sunInt = 3.1 * sunVis * (1 - 0.72 * overcast) * (1 - 0.35 * storm) * (1 - 0.55 * fog);
   const moonInt = 1.05 * (1 - smoothstep(-0.36, -0.2, e)) * (0.45 + 0.55 * illum) * moonUp * (1 - 0.75 * overcast);
   if (e > -0.2) {
@@ -304,6 +312,9 @@ export function computeAtmosphere(time: number, region: RegionColors, w: Weather
   out.waterDeep.copy(region.waterDeep);
   out.waterShallow.lerp(C.stormWater, storm * 0.5 + overcast * 0.15);
   out.waterDeep.lerp(tmpB.copy(C.stormWater).multiplyScalar(0.6), storm * 0.45 + overcast * 0.1);
+  // Con niebla la luz es difusa y el mar pierde saturación: se agrisa hacia la bruma.
+  out.waterShallow.lerp(tmpB.copy(out.fogColor).multiplyScalar(0.62), fog * 0.4);
+  out.waterDeep.lerp(tmpB.copy(out.fogColor).multiplyScalar(0.3), fog * 0.3);
   out.foam.copy(C.foam);
 
   // --- Nubes ---

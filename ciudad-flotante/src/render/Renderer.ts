@@ -334,9 +334,11 @@ export class Renderer {
     this.ocean.sync(this.waves, this.shipRoot.matrixWorld, crest);
     // Destellos del sol (o de la luna) en las facetas: el pico de Blinn-Phong se normaliza con la
     // intensidad de la luz para que el reflejo sea un camino de destellos (no una mancha blanca)
-    // tanto a mediodía como al ocaso o con luna; casi nada con el cielo cubierto.
+    // tanto a mediodía como al ocaso o con luna. Sin disco visible (nubes, niebla) no hay
+    // destellos: `uGlint` apaga todo el término, también el Fresnel rasante (ver ocean.ts).
     const peak = ((0.5 * this.ocean.material.shininess + 1) / Math.PI) * Math.max(0.3, atm.lightIntensity);
-    this.ocean.material.specular.setScalar(THREE.MathUtils.clamp(2 / peak, 0, 0.5) * (1 - atm.overcast * 0.85));
+    this.ocean.material.specular.setScalar(THREE.MathUtils.clamp(2 / peak, 0, 0.5));
+    u.uGlint.value = atm.glint;
 
     // --- Lluvia y relámpagos ---
     this.rain.updateCover(layout, this.hull);

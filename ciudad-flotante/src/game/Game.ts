@@ -227,8 +227,9 @@ export class Game implements GameContext {
       return;
     }
     if (inp.pressed('Escape')) {
-      if (this._mode === 'build') this.setMode('play');
-      else if (ui.panelOpen) ui.closePanel();
+      if (this._mode === 'build') {
+        if (!this.build.cancel()) this.setMode('play');
+      } else if (ui.panelOpen) ui.closePanel();
       else if (this.paused) {
         this.paused = false;
         ui.hideMenus();
@@ -314,6 +315,7 @@ export class Game implements GameContext {
     this.npcView.sync(st, dt, hide, camera);
     this.debrisView.sync(st, dt, (x, z) => this.renderer.waterHeight(x, z));
     this.renderer.update(st, layout, dt, camera);
+    if (this._mode === 'play') this.interaction.lateUpdate();
     this.renderer.render(camera);
     ui.update(dt);
     this.audio.update(dt);

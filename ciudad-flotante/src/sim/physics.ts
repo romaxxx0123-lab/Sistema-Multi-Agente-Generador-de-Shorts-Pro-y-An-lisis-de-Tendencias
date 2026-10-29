@@ -90,7 +90,9 @@ export class ShipCollision {
   resolve(x: number, z: number, footY: number, radius = PLAYER_RADIUS, height = PLAYER_HEIGHT): { x: number; z: number } {
     let px = x;
     let pz = z;
-    const y0 = footY + 0.08;
+    // Lo que no supera la altura de un escalón no bloquea (p. ej. el remate de la pared del nivel
+    // inferior al final de una rampa: sin esto no se puede coronar ninguna escalera).
+    const y0 = footY + STEP_HEIGHT;
     const y1 = footY + height;
     for (let iter = 0; iter < 3; iter++) {
       let moved = false;

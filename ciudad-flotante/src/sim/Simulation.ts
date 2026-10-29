@@ -330,6 +330,16 @@ export class Simulation {
   tradeOffers(eventId: number) {
     return events.tradeOffers(this, eventId);
   }
+  /** Factores del ánimo de un habitante (etiquetas en español y puntos). */
+  npcMoodFactors(npcId: string) {
+    const n = this.state.npcs.find((x) => x.id === npcId);
+    return n ? npc.npcMoodFactors(this, n) : [];
+  }
+  /** Estado de un evento activo ("Quedan 45 min", "En curso"…). */
+  eventStatus(eventId: number): string {
+    const e = events.eventById(this, eventId);
+    return e ? events.eventStatusText(this, e) : '';
+  }
   /** Texto corto de lo que hace un habitante ahora. */
   npcStatus(npcId: string): string {
     const n = this.state.npcs.find((x) => x.id === npcId);

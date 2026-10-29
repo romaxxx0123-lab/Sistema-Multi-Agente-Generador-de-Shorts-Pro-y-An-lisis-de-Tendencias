@@ -24,7 +24,7 @@ import {
   weatherStationModel,
   wreckModel,
 } from '../src/render/world/models';
-import { axisCoords, buildOceanGeometry, OCEAN_GRID, withoutPointLights } from '../src/render/world/ocean';
+import { axisCoords, buildOceanGeometry, Ocean, OCEAN_GRID, withoutPointLights } from '../src/render/world/ocean';
 import { Rain } from '../src/render/world/rain';
 import { MAX_PITCH, MAX_ROLL, ShipMotion } from '../src/render/world/shipMotion';
 import { MERCHANT_STATION_X, SightingsView } from '../src/render/world/sightings';
@@ -246,6 +246,15 @@ describe('atmósfera', () => {
     expect(b.hemiIntensity).toBeGreaterThan(a.hemiIntensity + 0.5);
   });
 
+  it('sin disco visible no hay destellos en el mar (pero sí al ocaso con cielo limpio)', () => {
+    const storm = at(16, { cloudiness: 1, rain: 1, fog: 0.3, wind: 1, flash: 0 });
+    const fog = at(10, { cloudiness: 0.6, rain: 0, fog: 0.85, wind: 0.15, flash: 0 });
+    expect(at(12).glint).toBeGreaterThan(0.9);
+    expect(at(19).glint).toBeGreaterThan(0.9);
+    expect(storm.glint).toBeLessThan(0.06);
+    expect(fog.glint).toBeLessThan(0.2);
+  });
+
   it('la fase lunar recorre el ciclo', () => {
     const p0 = moonPhase(0);
     const p1 = moonPhase(1440 * 14.76);
@@ -278,6 +287,27 @@ describe('malla del océano', () => {
     const opens = (out.match(/#if/g) ?? []).length;
     const closes = (out.match(/#endif/g) ?? []).length;
     expect(opens).toBe(closes);
+  });
+
+  it('el shader del mar engancha todos sus trozos en el material de three.js', () => {
+    const ocean = new Ocean('baja');
+    const lib = THREE.ShaderLib.phong;
+    const shader = { uniforms: THREE.UniformsUtils.clone(lib.uniforms), vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
+    ocean.material.onBeforeCompile(shader as never, null as never);
+    const fsrc = shader.fragmentShader;
+    // cada sustitución debe haber encontrado su #include (si three.js cambia, la prueba avisa)
+    expect(fsrc).toContain('uniform float uGlint;');
+    expect(fsrc).toContain('ocHullHW(ocLocal.x)');
+    expect(fsrc).toContain('diffuseColor.rgb = wc;');
+    expect(fsrc).toContain('material.specularStrength = 1.0 - ocFoam * 0.85;');
+    expect(fsrc).toContain('reflectedLight.directSpecular *= uGlint;');
+    expect(fsrc).toContain('outgoingLight = mix(outgoingLight, ocSky');
+    expect(fsrc).not.toContain('NUM_POINT_LIGHTS; i ++');
+    expect(shader.vertexShader).toContain('vec3 dsp = gerstner(gW, hRaw);');
+    expect(shader.uniforms).toHaveProperty('uGlint');
+    // el especular se apaga ANTES de sumarse a la luz de salida
+    expect(fsrc.indexOf('directSpecular *= uGlint')).toBeLessThan(fsrc.indexOf('vec3 outgoingLight'));
+    ocean.dispose();
   });
 
   it('más resolución con más calidad', () => {

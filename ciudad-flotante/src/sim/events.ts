@@ -7,11 +7,15 @@
  * - Guion inicial garantizado (`SCRIPT`): día 1 13:00 naufragio con el primer plano pendiente
  *   (`BLUEPRINT_ORDER`), día 2 10:00 náufragos, día 3 11:00 mercante, día 3 16:00 naufragio con el
  *   siguiente plano y día 4 10:00 isla.
- * - 13 tipos de evento con título, descripción, objetivos, opciones y consecuencias físicas reales:
- *   tormenta (daños por hora a módulos expuestos, fugas, rayos), naufragio (fondeo y restos ricos con
- *   cofre), isla y estructura (expediciones de habitantes que vuelven con botín a los almacenes),
- *   náufragos (balsa que hay que enganchar), avería, incendio (crece, quema condición y contenido, se
- *   propaga), banco de peces, mercante (4 ofertas), plaga, fuga, enfermedad y discusión.
+ * - 13 tipos de evento con título, descripción, objetivos, opciones y consecuencias físicas reales
+ *   (lo que dice cada texto ocurre de verdad):
+ *   tormenta (daños por hora a módulos expuestos, fugas, rayos y golpes de mar que hieren a quien
+ *   siga en cubierta), naufragio (fondeo y restos ricos con cofre), isla y estructura (expediciones
+ *   de habitantes que vuelven con botín a los almacenes), náufragos (balsa que hay que enganchar),
+ *   avería (máquina parada, o estructura que sigue cediendo con el oleaje hasta repararla), incendio
+ *   (crece, quema condición y contenido, se propaga), banco de peces, mercante (4 ofertas), plaga,
+ *   fuga, enfermedad y discusión (el mal ambiente baja el ánimo de toda la tripulación).
+ * - El director evita repetir el último tipo de evento (`REPEAT_FACTOR`).
  * - Cada evento emite `worldEventStarted` / `worldEventEnded`, deja entrada en el diario y queda en
  *   `events.history`.
  * - Comandos: `eventChoice`, `trade`, `extinguish` (cubo de agua de mar, lo devuelve vacío).
@@ -31,7 +35,8 @@ import { collectDebrisFor, hullBounds, playerSlotOf, rollLoot, spawnDebris } fro
 import { depositToStorage, findModule, giveToPlayer, itemName, payInventories, shipCount, spawnCrate, stacksText } from './helpers';
 import { consume, countItem, missingFor } from './inventory';
 import { availableForExpedition, npcAdj, onNpcEventEnded, returnFromExpedition, sendOnExpedition, spawnSurvivor } from './npc';
-import { cellMin, levelOfY, moduleCells, moduleCenter } from './ship';
+import { damagePlayer } from './needs';
+import { cellAtPoint, cellMin, levelOfY, moduleCells, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
 import { clockText, dayOf, hourOf } from './time';
 import { markTutorial } from './tutorial';
@@ -165,6 +170,14 @@ export const STORM_LEAK_CHANCE = 0.3;
 export const STORM_LIGHTNING_PER_HOUR = 0.02;
 /** Duración máxima de la fase de daños tras la tormenta (min). */
 export const STORM_REPAIR_WINDOW = 12 * 60;
+/** Probabilidad por hora (× ola/2,6) de que un golpe de mar alcance a quien esté en cubierta abierta. */
+export const STORM_WAVE_HIT_PER_HOUR = 0.35;
+/** Daño de un golpe de mar al jugador. */
+export const STORM_WAVE_DAMAGE: readonly [number, number] = [6, 12];
+/** Salud que pierde un habitante derribado por un golpe de mar (queda herido). */
+export const STORM_WAVE_NPC_DAMAGE = 15;
+/** Una avería estructural empeora con el oleaje: condición perdida por hora y metro de ola. */
+export const STRUCTURAL_DECAY_PER_HOUR_PER_M = 0.8;
 
 /* Fuego */
 export const FIRE_START = 25;
@@ -552,7 +565,7 @@ function startWreck(sim: Simulation, opts: StartOptions): ActiveEvent {
   let blueprint: string | null = null;
   if (opts.blueprint === 'next' || (opts.blueprint === undefined && sim.rng.chance(0.35))) blueprint = nextBlueprint(sim);
   const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
-  const hint = blueprint ? ' Entre los restos asoma un cofre metálico bien cerrado.' : ' Quizá quede algo de valor entre los restos.';
+  const hint = blueprint ? ' Entre los restos flota un cofre metálico bien cerrado.' : ' Quizá quede algo de valor entre los restos.';
   const ev = newEvent(sim, 'naufragio', 'Naufragio a la vista', `Por ${sideName(side)} asoma el casco destrozado del «${ship}», escorado y medio hundido.${hint}`);
   const b = hullBounds(sim);
   const s = addSighting(sim, ev, 'naufragio', `Restos del «${ship}»`, side, b.bowX + 220, sim.rng.range(70, 105), SIGHTING_WINDOW);
@@ -728,7 +741,7 @@ function startRaft(sim: Simulation, opts: StartOptions): ActiveEvent {
   const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
   const b = hullBounds(sim);
   const who = survivors === 1 ? 'una persona agita' : `${survivors === 2 ? 'dos' : 'tres'} personas agitan`;
-  const ev = newEvent(sim, 'naufragos', 'Náufragos a la deriva', `Una balsa improvisada se acerca por ${sideName(side)}: ${who} los brazos pidiendo ayuda. Si pasa de largo, los perderemos.`);
+  const ev = newEvent(sim, 'naufragos', 'Náufragos a la deriva', `Una balsa improvisada se acerca por ${sideName(side)}: ${who} los brazos pidiendo ayuda. Si pasa de largo, ${survivors === 1 ? 'la' : 'los'} perderemos.`);
   const anchored = isAnchored(sim);
   const x = anchored ? sim.rng.range(b.sternX + 6, b.bowX + 10) : b.bowX + sim.rng.range(48, 60);
   const raft = spawnDebris(sim, 'balsa', { x, z: side * (b.halfW + sim.rng.range(5, 11)) }, { survivors, eventId: ev.id, lateral: 0 });
@@ -1057,7 +1070,9 @@ function startSickness(sim: Simulation, opts: StartOptions): ActiveEvent | null 
   if (!n) {
     const cands = presentNpcs(sim).filter((nn) => !nn.sick && !nn.injured);
     if (!cands.length) return null;
-    n = sim.rng.pick(cands);
+    // Al azar, pero no se ensaña con quien aún no se ha repuesto (evita rachas mortales).
+    const healthy = cands.filter((nn) => nn.needs.health >= 60);
+    n = sim.rng.pick(healthy.length ? healthy : cands);
   }
   if (!n) return null;
   n.sick = true;
@@ -1234,6 +1249,36 @@ function stormPending(sim: Simulation, d: StormData): ModuleInstance[] {
   return out;
 }
 
+/** ¿El punto está en una cubierta a cielo abierto (donde rompen las olas)? */
+function onOpenDeckAt(sim: Simulation, p: Vec3): boolean {
+  if (levelOfY(p.y) < 1) return false;
+  const c = cellAtPoint(sim.layout, p.x, p.y, p.z);
+  return !!c && c.walkable && !c.indoor;
+}
+
+/**
+ * Un golpe de mar barre la cubierta: el jugador pierde salud y los habitantes que sigan fuera
+ * quedan heridos. `p` = probabilidad de que alcance a cada uno en este paso.
+ */
+export function stormWaveHits(sim: Simulation, p: number): void {
+  const st = sim.state;
+  const pl = st.player;
+  if (pl.alive && !pl.sleeping && onOpenDeckAt(sim, pl.pos) && sim.rng.chance(p)) {
+    const dmg = sim.rng.int(STORM_WAVE_DAMAGE[0], STORM_WAVE_DAMAGE[1]);
+    sim.notify(`¡Un golpe de mar te derriba contra la borda! (−${dmg} salud) Ponte a cubierto`, 'danger');
+    sim.bus.emit('sfx', { name: 'golpe_mar', x: pl.pos.x, y: pl.pos.y + 1, z: pl.pos.z });
+    damagePlayer(sim, dmg, 'Un golpe de mar te arrojó por la borda en plena tormenta');
+  }
+  for (const n of st.npcs) {
+    if (n.awayUntil !== null || n.activity === 'away' || n.injured || !onOpenDeckAt(sim, n.pos)) continue;
+    if (!sim.rng.chance(p)) continue;
+    n.injured = true;
+    n.needs.health = clamp(n.needs.health - STORM_WAVE_NPC_DAMAGE, 1, 100);
+    sim.bus.emit('sfx', { name: 'golpe_mar', x: n.pos.x, y: n.pos.y + 1, z: n.pos.z });
+    sim.log(`Un golpe de mar derriba a ${n.name}: está ${npcAdj(n, 'herido')} y necesita reposo.`, 'warn');
+  }
+}
+
 function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
   const st = sim.state;
   const d = dataOf<StormData>(ev);
@@ -1274,6 +1319,8 @@ function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
       const c = moduleCenter(m, st.ship.width);
       sim.bus.emit('sfx', { name: 'golpe_mar', x: c.x, y: c.y + 1, z: c.z });
     }
+    // Golpes de mar contra quien siga a la intemperie (por eso el objetivo es ponerse a cubierto).
+    stormWaveHits(sim, 1 - Math.pow(1 - STORM_WAVE_HIT_PER_HOUR * wave, hours));
     // Rayos sobre lo más alto del barco.
     if (sim.rng.chance(1 - Math.pow(1 - STORM_LIGHTNING_PER_HOUR, hours))) {
       const exposed = st.ship.modules.filter((m) => isExposed(sim, m) && isFlammable(m) && m.fire <= 0);
@@ -1349,6 +1396,16 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       if (!m) endEvent(sim, ev, false, 'El módulo averiado se ha desmontado.', 'info');
       else if (m.status === 'active' && m.condition >= REPAIR_THRESHOLD) {
         endEvent(sim, ev, true, d.structural ? `${capitalize(withArticle(moduleDef(m.type).name))} vuelve a estar en buen estado.` : `${capitalize(withArticle(moduleDef(m.type).name))} vuelve a estar en marcha.`, 'good');
+      } else if (d.structural && m.status === 'active' && m.condition > 0) {
+        // La estructura debilitada sigue cediendo con el oleaje hasta que se repare.
+        const loss = STRUCTURAL_DECAY_PER_HOUR_PER_M * Math.max(0, st.weather.waveHeight) * (dt / 60);
+        m.condition = Math.max(0, m.condition - loss);
+        if (m.condition <= 0) {
+          m.status = 'broken';
+          m.brokenReason = d.reason;
+          m.powered = false;
+          sim.log(`${capitalize(withArticle(moduleDef(m.type).name))} ha cedido del todo: hay que repararl${isFeminineName(moduleDef(m.type).name) ? 'a' : 'o'} cuanto antes.`, 'danger');
+        }
       }
       return;
     }
@@ -1427,6 +1484,29 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
 /* Director y guion                                                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Tipo del último evento que empezó (sin contar la tormenta, que la trae el clima). Se deduce de
+ * los enfriamientos guardados (`inicio = cooldown − EVENT_COOLDOWN`), sin estado extra.
+ */
+export function lastStartedType(sim: Simulation): EventType | null {
+  let best: EventType | null = null;
+  let bestAt = -Infinity;
+  for (const type of EVENT_TYPES) {
+    if (type === 'tormenta') continue;
+    const cd = sim.state.events.cooldowns[type];
+    if (cd === undefined || !Number.isFinite(cd)) continue;
+    const startedAt = cd - EVENT_COOLDOWN[type];
+    if (startedAt > bestAt) {
+      bestAt = startedAt;
+      best = type;
+    }
+  }
+  return best;
+}
+
+/** Peso del tipo que acaba de salir (variedad: no el mismo evento dos veces seguidas). */
+export const REPEAT_FACTOR = 0.35;
+
 /** Pesos actuales de cada tipo para el director (0 = imposible ahora) más el de calma. */
 export function eventWeights(sim: Simulation): Partial<Record<EventType | 'calma', number>> {
   const st = sim.state;
@@ -1435,6 +1515,7 @@ export function eventWeights(sim: Simulation): Partial<Record<EventType | 'calma
   const h = hourOf(st.time);
   const night = h >= 22 || h < 6;
   const crises = st.events.active.filter((e) => CRISIS_TYPES.has(e.type as EventType)).length;
+  const last = lastStartedType(sim);
   const out: Partial<Record<EventType | 'calma', number>> = { calma: CALM_WEIGHT };
   for (const type of EVENT_TYPES) {
     if (type === 'tormenta') continue; // la trae el clima
@@ -1450,6 +1531,7 @@ export function eventWeights(sim: Simulation): Partial<Record<EventType | 'calma
     if (!canStartEvent(sim, type)) continue;
     if (night && SIGHTING_TYPES.has(type)) w *= NIGHT_SIGHTING_FACTOR;
     if (night && CRISIS_TYPES.has(type)) w *= NIGHT_CRISIS_FACTOR;
+    if (type === last) w *= REPEAT_FACTOR;
     if (w > 0) out[type] = w;
   }
   return out;

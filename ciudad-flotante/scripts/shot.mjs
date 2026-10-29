@@ -54,7 +54,7 @@ let server = null;
 let base = opts.url;
 if (!base) {
   const { createServer } = await import('vite');
-  server = await createServer({ root: resolve(dirname(new URL(import.meta.url).pathname), '..'), server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
+  server = await createServer({ root: resolve(dirname(new URL(import.meta.url).pathname), '..'), server: { port: 0, host: '127.0.0.1', hmr: false }, logLevel: 'error' });
   await server.listen();
   const addr = server.httpServer.address();
   base = `http://127.0.0.1:${addr.port}/`;

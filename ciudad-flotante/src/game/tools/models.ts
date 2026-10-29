@@ -31,6 +31,8 @@ export interface ItemModel {
   anchors: Map<string, THREE.Object3D>;
   /** Pose de la mano para este objeto (espacio de la cámara). */
   pose: { x: number; y: number; z: number; rx: number; ry: number; rz: number };
+  /** Giro del antebrazo respecto al puño (para que no atraviese objetos colgantes como el cubo). */
+  armRot: { x: number; y: number; z: number };
 }
 
 type Build = (b: GeoBuilder) => void;
@@ -152,6 +154,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
   const parts = new Map<string, THREE.Object3D>();
   const anchors = new Map<string, THREE.Object3D>();
   let pose = { ...DEFAULT_POSE };
+  const armRot = { x: 0, y: 0, z: 0 };
   const add = (name: string, build: Build): THREE.Mesh => {
     const m = meshOf(build, mat, name);
     group.add(m);
@@ -223,7 +226,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       break;
     }
     case 'cana': {
-      pose = { x: 0.26, y: -0.3, z: -0.46, rx: 0.5, ry: -0.1, rz: 0.06 };
+      pose = { x: 0.25, y: -0.33, z: -0.5, rx: -0.38, ry: -0.12, rz: 0.08 };
       add('cana', (b) => {
         // mango de corcho y caña en dos tramos (más fina hacia la punta)
         b.cylinderBetween(0, -0.13, 0.06, 0, 0.06, -0.03, 0.022, 7, '#c9a36a');
@@ -257,7 +260,11 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     }
     case 'cubo':
     case 'cubo_agua': {
-      pose = { x: 0.26, y: -0.13, z: -0.52, rx: 0.08, ry: -0.3, rz: 0.04 };
+      pose = { x: 0.33, y: -0.14, z: -0.62, rx: 0.38, ry: -0.55, rz: 0.06 };
+      group.scale.setScalar(0.82);
+      // El antebrazo sale hacia la derecha, por encima del cubo, en vez de hacia abajo.
+      armRot.z = 1.2;
+      armRot.x = 0.25;
       add('cubo', (b) => {
         // asa (en el puño) y brazos del asa hasta el borde
         b.cylinderBetween(-0.06, 0, 0, 0.06, 0, 0, 0.007, 4, STEEL_DARK);
@@ -269,14 +276,14 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
         b.cylinder(0, -0.2, 0, 0.13, 0.133, 0.025, 10, STEEL_DARK, { capTop: false, capBottom: false });
         // interior oscuro (visto desde arriba)
         b.push();
-        b.translate(0, -0.15, 0);
+        b.translate(0, -0.162, 0);
         b.rotateX(-Math.PI / 2);
         b.disc(0, 0, 0, 0.135, 10, '#5a3a22');
         b.pop();
       });
       const water = add('agua', (b) => {
         b.push();
-        b.translate(0, -0.165, 0);
+        b.translate(0, -0.152, 0);
         b.rotateX(-Math.PI / 2);
         b.disc(0, 0, 0, 0.128, 10, '#2a9d8f');
         b.disc(0.02, -0.02, 0.001, 0.05, 6, '#5ec4b6');
@@ -393,7 +400,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       }
     }
   }
-  return { group, parts, anchors, pose };
+  return { group, parts, anchors, pose, armRot };
 }
 
 /** Materiales y piezas (montones, rollos, placas…). */

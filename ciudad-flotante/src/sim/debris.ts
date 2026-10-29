@@ -4,7 +4,8 @@
  * - Los restos aparecen por delante de la proa (x ≈ proa + 60 m) a 3–26 m del costado, a razón de
  *   `región.debrisPerHour` (proceso de Poisson con `sim.rng`), con su botín ya tirado (`DEBRIS_LOOT`).
  *   Derivan hacia popa a `VISUAL_DRIFT × velocidad / 6` m/min más una corriente suave, de modo que con
- *   el barco fondeado quedan casi quietos. Como máximo `MAX_DEBRIS` restos "normales" a la vez (los de
+ *   el barco fondeado quedan casi quietos (entonces aparecen lejos por el costado y la corriente los
+ *   acerca despacio). Como máximo `MAX_DEBRIS` restos "normales" a la vez (los de
  *   un naufragio o una balsa de náufragos no cuentan). Se eliminan al quedar muy atrás de la popa.
  * - `collectDebris` (gancho del jugador) y `collectDebrisFor` (también lo usan los habitantes
  *   recolectores): botín al jugador (cajas a sus pies si no cabe) o a los almacenes; las balsas suben
@@ -48,6 +49,9 @@ export const SEA_CURRENT = 0.12;
 export const HULL_CLEARANCE = 1.6;
 /** Ritmo de aparición con el barco fondeado (fracción del normal). */
 const ANCHORED_SPAWN_FACTOR = 0.3;
+/** Fondeados: distancia al costado a la que aparecen (m) y corriente lateral hacia el casco (m/min). */
+export const ANCHORED_SIDE: readonly [number, number] = [18, 30];
+export const ANCHORED_INFLOW: readonly [number, number] = [0.06, 0.14];
 /** Alcance real del gancho (generoso, ver SISTEMAS.md §9). */
 export const COLLECT_RANGE = HOOK_RANGE + 6;
 /** Tiempo de picada (minutos de juego = segundos reales) sin modificadores. */
@@ -187,15 +191,24 @@ function ambientCount(sim: Simulation): number {
   return n;
 }
 
-/** Hace aparecer un resto normal de la región, por delante de la proa (o junto al barco fondeado). */
+/**
+ * Hace aparecer un resto normal de la región por delante de la proa. Con el barco fondeado apenas
+ * hay deriva longitudinal, así que aparecen lejos por el costado (18–30 m) y la corriente los
+ * acerca despacio hacia el casco: llegan flotando en vez de surgir junto a la borda.
+ */
 export function spawnAmbientDebris(sim: Simulation): Debris | null {
   if (ambientCount(sim) >= MAX_DEBRIS || sim.state.debris.length >= MAX_DEBRIS_TOTAL) return null;
   const region = regionOf(sim);
   const kind = (sim.rng.weighted(region.debrisWeights) ?? 'tablones') as DebrisKind;
   const b = hullBounds(sim);
   const side = sim.rng.chance(0.5) ? 1 : -1;
+  if (isAnchored(sim)) {
+    const z = side * (b.halfW + sim.rng.range(ANCHORED_SIDE[0], ANCHORED_SIDE[1]));
+    const x = sim.rng.range(b.sternX + 2, b.bowX + 30);
+    return spawnDebris(sim, kind, { x, z }, { lateral: -side * sim.rng.range(ANCHORED_INFLOW[0], ANCHORED_INFLOW[1]) });
+  }
   const z = side * (b.halfW + sim.rng.range(DEBRIS_SIDE[0], DEBRIS_SIDE[1]));
-  const x = isAnchored(sim) ? sim.rng.range(b.sternX - 4, b.bowX + 40) : b.bowX + sim.rng.range(DEBRIS_SPAWN_AHEAD[0], DEBRIS_SPAWN_AHEAD[1]);
+  const x = b.bowX + sim.rng.range(DEBRIS_SPAWN_AHEAD[0], DEBRIS_SPAWN_AHEAD[1]);
   return spawnDebris(sim, kind, { x, z });
 }
 

@@ -9,6 +9,7 @@
  *  - espuma por cara (varying `flat`): crestas con viento, costados, ola de proa, brazos de
  *    Kelvin y estela de la hélice; con ruido que viaja con el agua,
  *  - reflejo del cielo con Fresnel, contraluz en crestas y manchas de sargazo (región),
+ *  - destellos del sol/luna acotados y apagados con el cielo cubierto (`uGlint`),
  *  - máscara: no se dibuja dentro del casco (la bodega está por debajo de la flotación).
  *
  * La malla se traslada en −x con el desplazamiento del agua (módulo una celda): así los vértices
@@ -196,6 +197,7 @@ uniform vec3 uSunCol;
 uniform float uReflect;
 uniform float uSSS;
 uniform float uDrift;
+uniform float uGlint;
 varying vec3 vOcWorld;
 varying float vWake;
 flat varying float vFoam;
@@ -259,6 +261,22 @@ const FRAG_REFLECT = /* glsl */ `
 `;
 
 /**
+ * Destellos del sol/luna en las facetas. El Blinn-Phong de three.js usa un Fresnel de Schlick con
+ * f90 = 1 fijo: a contraluz rasante (ola empinada entre la cámara y el sol) el término crece hasta
+ * ~50× el f0 normalizado y una faceta entera se volvía blanca, incluso bajo un cielo de tormenta.
+ * Aquí se escala TODO el especular con la visibilidad del disco (`uGlint`: nubes y niebla lo
+ * apagan) y se comprime con una rodilla suave por encima de 1 (máx. 2): el camino de destellos
+ * del ocaso se conserva, pero ninguna faceta "se enciende".
+ */
+const FRAG_GLINT = /* glsl */ `
+{
+  reflectedLight.directSpecular *= uGlint;
+  float ocM = max(max(reflectedLight.directSpecular.r, reflectedLight.directSpecular.g), reflectedLight.directSpecular.b);
+  if (ocM > 1.0) reflectedLight.directSpecular *= (2.0 - 1.0 / ocM) / ocM;
+}
+`;
+
+/**
  * Copia del bloque de luces de three.js sin las luces puntuales: las lámparas interiores del
  * barco (pool de luces, sin sombras) no deben iluminar el mar a través del casco y las paredes.
  * Si el formato del bloque cambiase, se devuelve sin tocar.
@@ -294,6 +312,8 @@ export class Ocean {
     uHull: { value: new THREE.Vector4(-20, 27, 0, 0) },
     uWake: { value: new THREE.Vector4(1, 8.3, 8.3, 0) },
     uDrift: { value: 0 },
+    /** Visibilidad de los destellos especulares (0 cielo cubierto … 1 disco limpio). */
+    uGlint: { value: 1 },
     uNoiseT: { value: 0 },
     uAmp: { value: 0.3 },
     uCrest: { value: 0.2 },
@@ -333,10 +353,11 @@ export class Ocean {
         // La espuma flota casi plana: se suaviza su normal para que no se vea a "baldosas" con mar gruesa.
         .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ocFoam * 0.8));')
         .replace('#include <lights_phong_fragment>', '#include <lights_phong_fragment>\nmaterial.specularStrength = 1.0 - ocFoam * 0.85;')
+        .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${FRAG_GLINT}`)
         .replace('#include <opaque_fragment>', `${FRAG_REFLECT}\n#include <opaque_fragment>`)
         .replace('#include <lights_fragment_begin>', withoutPointLights(THREE.ShaderChunk.lights_fragment_begin));
     };
-    this.material.customProgramCacheKey = () => 'ciudad-flotante-oceano-v2';
+    this.material.customProgramCacheKey = () => 'ciudad-flotante-oceano-v3';
     this.mesh = new THREE.Mesh(buildOceanGeometry(this.spec), this.material);
     this.mesh.name = 'oceano';
     this.mesh.frustumCulled = false;

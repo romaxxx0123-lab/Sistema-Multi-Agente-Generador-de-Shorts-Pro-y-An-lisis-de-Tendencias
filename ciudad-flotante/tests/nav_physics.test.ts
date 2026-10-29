@@ -63,6 +63,23 @@ describe('física', () => {
     expect(b.pos.y).toBeLessThan(0.6);
   });
 
+  it('sube de la bodega a cubierta por la escalera', () => {
+    // Escalera de bodega en (7,2): se entra desde (7,1) en la bodega y se sale a (7,3) en cubierta.
+    const start = cellCenter(7, 1, s.ship.width);
+    const b = body(start.x, 0, start.z);
+    for (let i = 0; i < 300; i++) col.move(b, 0, 3, 1 / 60, false);
+    expect(b.pos.y).toBeCloseTo(LEVEL_H, 2);
+    expect(b.pos.z).toBeGreaterThan(cellCenter(7, 3, s.ship.width).z - 2);
+  });
+
+  it('sube de cubierta al techo del camarote por la escalera del puente', () => {
+    // Escalera en (4,0), entrada por el este desde (5,0), salida al oeste en el nivel 2 (3,0).
+    const start = cellCenter(5, 0, s.ship.width);
+    const b = body(start.x, LEVEL_H, start.z);
+    for (let i = 0; i < 300; i++) col.move(b, -3, 0, 1 / 60, false);
+    expect(b.pos.y).toBeCloseTo(2 * LEVEL_H, 2);
+  });
+
   it('las paredes bloquean', () => {
     // Desde cubierta hacia el almacén (celda 3,3) por un lado sin puerta: x=3 celda, pared sur con puerta en el centro.
     const c = cellCenter(4, 3, s.ship.width);

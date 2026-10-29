@@ -154,7 +154,7 @@ function rate(aim: Aim, c: Candidate, walls: readonly AABB[], inside = false): {
   const t = inside ? null : rayAabb(aim.eye, aim.dir, hitBox, FOCUS_RAY);
   if (t !== null) {
     const point = { x: aim.eye.x + aim.dir.x * t, y: aim.eye.y + aim.dir.y * t, z: aim.eye.z + aim.dir.z * t };
-    if (segmentBlocked(aim.eye, point, walls)) return null;
+    if (occluded(aim.eye, point, c.box, walls)) return null;
     return { score: 0.02 * t, point, direct: true };
   }
   const ctr = centerOf(c.box);
@@ -164,8 +164,17 @@ function rate(aim: Aim, c: Candidate, walls: readonly AABB[], inside = false): {
   const point = closestOnAabb(onRay, c.box);
   const ang = angleTo(aim.eye, aim.dir, point);
   if (ang > FOCUS_CONE) return null;
-  if (segmentBlocked(aim.eye, point, walls)) return null;
+  if (occluded(aim.eye, point, c.box, walls)) return null;
   return { score: 0.25 + ang + c.dist * 0.02, point, direct: false };
+}
+
+/**
+ * ¿Hay una pared entre el ojo y el objeto? Se comprueba hasta el punto de la superficie y hasta
+ * el centro del objeto: los muebles pegados a una pared asoman por su grosor y, sin lo segundo,
+ * se podrían usar desde el otro lado.
+ */
+function occluded(eye: V3, point: V3, box: AABB, walls: readonly AABB[]): boolean {
+  return segmentBlocked(eye, point, walls) || segmentBlocked(eye, centerOf(box), walls);
 }
 
 const sameLevel = (aim: Aim, y: number): boolean => Math.abs(y - aim.pos.y) <= SAME_LEVEL_DY;
@@ -400,6 +409,8 @@ export interface RailInfo {
   edgeZ: number;
   /** Distancia en planta al borde. */
   edgeDist: number;
+  /** La posición vale (cubierta a cielo abierto junto a la borda), mire hacia donde mire. */
+  posOk: boolean;
 }
 
 /**
@@ -430,11 +441,10 @@ export function railFacing(sim: Simulation, pos: V3, dir: V3): RailInfo {
   }
   const base = { nx: best.nx, nz: best.nz, edgeX: best.ex, edgeZ: best.ez, edgeDist: Math.max(0, best.d) };
   const why = railBlocker(sim, pos);
-  if (why) return { ok: false, reason: why, ...base };
+  if (why) return { ok: false, reason: why, posOk: false, ...base };
   const facing = hx * best.nx + hz * best.nz;
-  if (facing < 0.3) return { ok: false, reason: 'Mira hacia el agua', ...base };
-  if (dir.y > 0.45) return { ok: false, reason: 'Mira hacia el agua', ...base };
-  return { ok: true, reason: null, ...base };
+  if (facing < 0.3 || dir.y > 0.45) return { ok: false, reason: 'Mira hacia el agua', posOk: true, ...base };
+  return { ok: true, reason: null, posOk: true, ...base };
 }
 
 /** ¿Puede lanzar el gancho desde aquí? (cubierta a cielo abierto). */

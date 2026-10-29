@@ -333,8 +333,10 @@ function densifyRamps(pts: Vec3[], nav: NavGrid, start: Vec3 | null = null): Vec
       for (let k = 1; k < n; k++) {
         const t = k / n;
         const q = { x: prev.x + (p.x - prev.x) * t, y: 0, z: prev.z + (p.z - prev.z) * t };
-        const loc = nav.locate({ x: q.x, y: prev.y + (p.y - prev.y) * t, z: q.z });
-        q.y = loc ? nav.worldOf(loc).y : prev.y + (p.y - prev.y) * t;
+        // Pista de altura: la última emitida (continuidad), no la interpolación lineal.
+        const hint = out.length ? out[out.length - 1]!.y : prev.y;
+        const loc = nav.locate({ x: q.x, y: hint, z: q.z });
+        q.y = loc ? nav.worldOf(loc).y : hint;
         out.push(q);
       }
     }

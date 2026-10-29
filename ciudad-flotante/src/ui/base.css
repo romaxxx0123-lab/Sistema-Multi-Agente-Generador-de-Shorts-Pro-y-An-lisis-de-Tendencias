@@ -208,11 +208,3 @@ body {
   scrollbar-color: rgba(232, 220, 192, 0.3) transparent;
 }
 
-.hud-stub {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  padding: 8px 12px;
-  background: var(--panel-bg);
-  border-radius: var(--radius-sm);
-}
