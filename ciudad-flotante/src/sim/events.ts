@@ -2,19 +2,28 @@
  * [AGENTE sim-life] DIRECTOR DE EVENTOS, INCENDIOS, EXPEDICIONES Y COMERCIO (docs/SISTEMAS.md §10).
  *
  * - Director: cada 150–300 min tira dados con los pesos de la región (`eventWeights`), respetando
- *   enfriamientos por tipo, día mínimo, condiciones previas (p. ej. una plaga necesita algo plantado)
- *   y un peso de "calma". De noche los avistamientos son raros y nunca hay más de dos crisis a la vez.
+ *   enfriamientos por tipo, día mínimo (contado en horas jugadas: el «día 2» empieza 24 h después de
+ *   zarpar, no a medianoche, así que la primera noche no trae crisis), condiciones previas (p. ej.
+ *   una plaga necesita algo plantado) y un peso de "calma". De noche, o mientras el jugador duerme,
+ *   no se avista nada, y nunca hay más de dos crisis a la vez.
+ * - Solo despiertan al jugador las emergencias (tormenta, incendio, náufragos): el resto de eventos
+ *   que empiezan mientras duerme quedan anotados en el diario (`data.wakePlayer = false`).
  * - Guion inicial garantizado (`SCRIPT`): día 1 13:00 naufragio con el primer plano pendiente
- *   (`BLUEPRINT_ORDER`), día 2 10:00 náufragos, día 3 11:00 mercante, día 3 16:00 naufragio con el
- *   siguiente plano y día 4 10:00 isla.
+ *   (`BLUEPRINT_ORDER`), día 2 10:00 náufragos, día 3 11:00 mercante, día 4 10:00 isla y día 5
+ *   16:00 naufragio con el siguiente plano. Los avistamientos del guion esperan a que el jugador
+ *   esté despierto.
  * - 13 tipos de evento con título, descripción, objetivos, opciones y consecuencias físicas reales
  *   (lo que dice cada texto ocurre de verdad):
- *   tormenta (daños por hora a módulos expuestos, fugas, rayos y golpes de mar que hieren a quien
- *   siga en cubierta), naufragio (fondeo y restos ricos con cofre), isla y estructura (expediciones
- *   de habitantes que vuelven con botín a los almacenes), náufragos (balsa que hay que enganchar),
- *   avería (máquina parada, o estructura que sigue cediendo con el oleaje hasta repararla), incendio
- *   (crece, quema condición y contenido, se propaga), banco de peces, mercante (4 ofertas), plaga,
- *   fuga, enfermedad y discusión (el mal ambiente baja el ánimo de toda la tripulación).
+ *   tormenta (daños por hora a módulos expuestos, más cuanto más se ha jugado; fugas, rayos y golpes
+ *   de mar que hieren a quien siga en cubierta; luego una fase de daños de 12 h como mucho),
+ *   naufragio (fondeo y restos con cofre; se leva el ancla al rescatarlo todo), isla y estructura
+ *   (expediciones de habitantes que vuelven con botín a los almacenes), náufragos (balsa que hay que
+ *   enganchar; fondeados, se acerca a remo hasta el alcance del gancho), avería (máquina parada, o
+ *   estructura que sigue cediendo con el oleaje; objetivos por pasos y, a las 24 h, un apaño del
+ *   mecánico que la deja al 40 %), incendio (crece, quema condición y contenido, se propaga; los
+ *   habitantes lo combaten a cubos o, sin cubos, muy despacio), banco de peces, mercante (4
+ *   ofertas), plaga, fuga, enfermedad (solo se cura con tratamiento; sin él la salud cae y puede
+ *   contagiarse) y discusión (el mal ambiente baja el ánimo de toda la tripulación).
  * - El director evita repetir el último tipo de evento (`REPEAT_FACTOR`).
  * - Cada evento emite `worldEventStarted` / `worldEventEnded`, deja entrada en el diario y queda en
  *   `events.history`.
@@ -29,20 +38,20 @@ import { BLUEPRINT_ORDER, TRADE_OFFERS } from '../data/loot';
 import { moduleDef } from '../data/modules';
 import { REGIONS, START_REGION } from '../data/regions';
 import { wake } from './actions';
-import { CELL, MINUTES_PER_DAY } from './constants';
+import { CELL, MINUTES_PER_DAY, START_HOUR } from './constants';
 import { REPAIR_THRESHOLD, repairNeeds } from './construction';
 import { collectDebrisFor, hullBounds, playerSlotOf, rollLoot, spawnDebris } from './debris';
 import { depositToStorage, findModule, giveToPlayer, itemName, payInventories, shipCount, spawnCrate, stacksText } from './helpers';
 import { consume, countItem, missingFor } from './inventory';
-import { availableForExpedition, npcAdj, onNpcEventEnded, returnFromExpedition, sendOnExpedition, spawnSurvivor } from './npc';
+import { availableForExpedition, isFemaleNpc, npcAdj, onNpcEventEnded, returnFromExpedition, sendOnExpedition, spawnSurvivor, survivorJoinText } from './npc';
 import { damagePlayer } from './needs';
-import { cellAtPoint, cellMin, levelOfY, moduleCells, moduleCenter } from './ship';
+import { cellAtPoint, cellMin, isIndoorAt, levelOfY, moduleCells, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
-import { clockText, dayOf, hourOf } from './time';
+import { clockText, hourOf } from './time';
 import { markTutorial } from './tutorial';
 import type { ActiveEvent, Debris, DebrisKind, EventObjective, ItemId, ItemStack, ModuleInstance, NpcState, Sighting, Vec3 } from './types';
 import { capitalize, hasFuel, isFeminineName, machineRunning, moduleHasSky, withArticle } from './utilities';
-import { anchorShip, isAnchored } from './voyage';
+import { anchorShip, isAnchored, weighAnchor } from './voyage';
 import { forceWeather } from './weather';
 
 /* ------------------------------------------------------------------ */
@@ -114,7 +123,11 @@ export const EVENT_COOLDOWN: Record<EventType, number> = {
   estructura: 900,
 };
 
-/** Día a partir del cual el director puede sacar cada tipo (el guion no lo respeta). */
+/**
+ * Día a partir del cual el director puede sacar cada tipo (el guion no lo respeta). Se cuenta en
+ * horas jugadas, no por el calendario: el día D empieza (D − 1) × 24 h después de zarpar (ver
+ * `playedHours`), así que el «día 2» no llega a medianoche, en plena primera noche.
+ */
 export const EVENT_MIN_DAY: Record<EventType, number> = {
   tormenta: 1,
   naufragio: 1,
@@ -128,7 +141,7 @@ export const EVENT_MIN_DAY: Record<EventType, number> = {
   fuga: 2,
   enfermedad: 3,
   discusion: 2,
-  estructura: 3,
+  estructura: 6,
 };
 
 /** Intervalo entre tiradas del director (min). */
@@ -144,6 +157,11 @@ const SIGHTING_TYPES = new Set<EventType>(['naufragio', 'isla', 'mercante', 'est
 const NIGHT_SIGHTING_FACTOR = 0;
 /** Crisis a bordo: nunca más de MAX_CRISES a la vez. */
 const CRISIS_TYPES = new Set<EventType>(['averia', 'incendio', 'fuga', 'plaga', 'enfermedad', 'discusion']);
+/**
+ * Emergencias que sí despiertan al jugador (la tormenta y el fuego, además, los detecta needs.ts;
+ * una balsa de náufragos pasa de largo en minutos). El resto se anota en el diario sin despertarle.
+ */
+const URGENT_TYPES = new Set<EventType>(['tormenta', 'incendio', 'naufragos']);
 const MAX_CRISES = 2;
 /** De noche hay menos crisis (casi todo está parado). */
 const NIGHT_CRISIS_FACTOR = 0.4;
@@ -155,8 +173,8 @@ export const SCRIPT: readonly { id: string; day: number; hour: number; type: Eve
   { id: 'dia1-naufragio', day: 1, hour: 13, type: 'naufragio', opts: { blueprint: 'next' } },
   { id: 'dia2-naufragos', day: 2, hour: 10, type: 'naufragos', opts: { survivors: 1 } },
   { id: 'dia3-mercante', day: 3, hour: 11, type: 'mercante' },
-  { id: 'dia3-naufragio', day: 3, hour: 16, type: 'naufragio', opts: { blueprint: 'next' } },
   { id: 'dia4-isla', day: 4, hour: 10, type: 'isla' },
+  { id: 'dia5-naufragio', day: 5, hour: 16, type: 'naufragio', opts: { blueprint: 'next' } },
 ];
 /** Un paso del guion que se pasa más de esto (p. ej. una partida cargada) se descarta. */
 const SCRIPT_STALE_MIN = 36 * 60;
@@ -164,6 +182,7 @@ const SCRIPT_STALE_MIN = 36 * 60;
 const SCRIPT_HOURS: readonly [number, number] = [7, 20];
 
 /* Tormenta */
+/** Probabilidad por hora (× ola/2,6 × `stormDamageFactor`) de que cada módulo expuesto sufra daños. */
 export const STORM_DAMAGE_CHANCE_PER_HOUR = 0.25;
 export const STORM_DAMAGE: readonly [number, number] = [10, 30];
 export const STORM_LEAK_CHANCE = 0.3;
@@ -179,11 +198,11 @@ export const STORM_WAVE_NPC_DAMAGE = 15;
 /** Una avería estructural empeora con el oleaje: condición perdida por hora y metro de ola. */
 export const STRUCTURAL_DECAY_PER_HOUR_PER_M = 0.8;
 
-/* Fuego */
-export const FIRE_START = 25;
-export const FIRE_GROWTH_PER_HOUR = 6;
+/* Fuego (una amenaza real: los habitantes sin cubos apenas lo frenan; ver npc.ts FIREFIGHT_RATE) */
+export const FIRE_START = 40;
+export const FIRE_GROWTH_PER_HOUR = 9;
 /** Condición que quema un fuego al 100 % por hora (proporcional a la intensidad). */
-export const FIRE_BURN_PER_HOUR = 20;
+export const FIRE_BURN_PER_HOUR = 30;
 export const FIRE_SPREAD_ABOVE = 60;
 export const FIRE_SPREAD_CHANCE_PER_HOUR = 0.2;
 /** Lo que apaga un cubo de agua de mar. */
@@ -201,6 +220,26 @@ const BURNABLE_CATEGORIES = new Set(['comida', 'semilla', 'plano', 'ropa', 'medi
 /* Expediciones */
 export const ISLAND_EXPEDITION_MIN = 180;
 export const STRUCTURE_EXPEDITION_MIN = 120;
+/** Probabilidad de que la sala de control de una estructura guarde el siguiente plano. */
+export const STRUCTURE_BLUEPRINT_CHANCE = 0.5;
+
+/* Naufragios */
+/** Probabilidad de que un naufragio que no es del guion lleve un plano en el cofre. */
+export const WRECK_BLUEPRINT_CHANCE = 0.15;
+/** Restos que deja un pecio al fondear junto a él (el primero, el cofre). */
+export const WRECK_DEBRIS_COUNT: readonly [number, number] = [5, 8];
+/** Multiplicador del botín de los restos de un pecio. */
+export const WRECK_RICHNESS = 1.2;
+
+/* Averías */
+/** Pasadas estas horas sin reparar una avería, el mecánico (o quien haya) hace un apaño. */
+export const BREAKDOWN_PATCH_MIN = 24 * 60;
+/** Condición en la que deja la máquina (o la estructura) ese apaño. */
+export const BREAKDOWN_PATCH_CONDITION = 40;
+
+/* Enfermedad */
+/** Si la salud del enfermo cae por debajo de esto, el evento se da por perdido: ha empeorado. */
+export const SICKNESS_WORSE_HEALTH = 40;
 
 /* Otros */
 export const SIGHTING_WINDOW = 120;
@@ -210,6 +249,8 @@ export const PEST_DEADLINE_MIN = 24 * 60;
 export const ARGUMENT_MIN = 40;
 export const DISCUSSION_MAX_MIN = 8 * 60;
 export const RAFT_ANCHOR_MIN = 45;
+/** Motivo del fondeo para esperar a una balsa (se leva el ancla al rescatarla). */
+const RAFT_ANCHOR_REASON = 'esperar a la balsa de náufragos';
 export const WRECK_ANCHOR_MIN = 60;
 
 const fail = (msg: string): ActionResult => ({ ok: false, msg });
@@ -251,6 +292,8 @@ interface BreakdownData {
   moduleId: number;
   structural: boolean;
   reason: string;
+  /** Minuto en que el mecánico hace un apaño si nadie la ha reparado (partidas antiguas: inicio + 24 h). */
+  patchAt?: number;
 }
 interface FireData {
   modules: number[];
@@ -384,6 +427,24 @@ export function nextBlueprint(sim: Simulation): ItemId | null {
   return null;
 }
 
+/** Horas jugadas desde que zarpamos (el día 1 a las `START_HOUR`). */
+export function playedHours(sim: Simulation): number {
+  return Math.max(0, (sim.state.time - START_HOUR * 60) / 60);
+}
+
+/** ¿Ha pasado ya el día mínimo de un tipo, contado en horas jugadas? */
+export function minDayReached(sim: Simulation, type: EventType): boolean {
+  return playedHours(sim) >= (EVENT_MIN_DAY[type] - 1) * 24;
+}
+
+/**
+ * Las tormentas castigan más cuanto más se ha jugado: × min(1,5; 0,5 + días jugados / 10). Al
+ * principio, la mitad de daños; hacia el día 10, lo normal; desde el día 10, un 50 % más.
+ */
+export function stormDamageFactor(sim: Simulation): number {
+  return Math.min(1.5, 0.5 + playedHours(sim) / 24 / 10);
+}
+
 /* ------------------------------------------------------------------ */
 /* Ciclo de vida                                                       */
 /* ------------------------------------------------------------------ */
@@ -396,11 +457,15 @@ function obj(text: string, done = false): EventObjective {
   return { text, done };
 }
 
-/** Registra el evento: lista activa, enfriamiento, bus y diario. */
+/**
+ * Registra el evento: lista activa, enfriamiento, bus y diario. Los que no son emergencias no
+ * despiertan al jugador (`data.wakePlayer = false`, lo respeta needs.ts): quedan en el diario.
+ */
 function begin(sim: Simulation, ev: ActiveEvent, kind: NotifyKind, logText?: string | null, notify = true): ActiveEvent {
   const st = sim.state;
   st.events.active.push(ev);
   const type = ev.type as EventType;
+  if (!URGENT_TYPES.has(type) && ev.data['wakePlayer'] === undefined) ev.data['wakePlayer'] = false;
   st.events.cooldowns[type] = st.time + (EVENT_COOLDOWN[type] ?? 0);
   sim.bus.emit('worldEventStarted', { eventId: ev.id, type: ev.type, title: ev.title });
   if (logText !== null) sim.log(logText ?? `${ev.title}. ${ev.description}`, kind, notify);
@@ -509,6 +574,13 @@ export function canStartEvent(sim: Simulation, type: EventType): boolean {
  * Devuelve el evento o null si no se pudo.
  */
 export function startEvent(sim: Simulation, type: EventType, opts: StartOptions = {}): ActiveEvent | null {
+  // Una enfermedad concreta (pescado crudo, contagio) abre su propio evento aunque ya haya otro
+  // enfermo: cada uno tiene su tratamiento. El director sigue sacando como mucho una a la vez.
+  if (type === 'enfermedad' && opts.npcId !== undefined && sim.state.player.alive) {
+    const n = sim.state.npcs.find((nn) => nn.id === opts.npcId);
+    const has = sim.state.events.active.some((e) => e.type === 'enfermedad' && dataOf<SicknessData>(e).npcId === opts.npcId);
+    return n && !n.sick && !has ? startSickness(sim, opts) : null;
+  }
   if (!canStartEvent(sim, type)) return null;
   switch (type) {
     case 'tormenta':
@@ -549,7 +621,7 @@ function startStorm(sim: Simulation): ActiveEvent {
   const ev = newEvent(sim, 'tormenta', 'Tormenta', 'Olas de varios metros barren la cubierta y el viento aúlla en la jarcia. Todo lo que esté a la intemperie sufrirá.');
   const d: StormData = { phase: 'activa', damaged: [], strikes: 0 };
   ev.data = d as unknown as Record<string, unknown>;
-  ev.objectives = [obj('Ponte a cubierto: el oleaje barre la cubierta'), obj('Aguanta hasta que amaine')];
+  refreshObjectives(sim, ev);
   ev.data['wakePlayer'] = true;
   // weather.ts ya anuncia la tormenta en el diario: aquí solo se registra.
   begin(sim, ev, 'danger', null);
@@ -563,7 +635,7 @@ function startWreck(sim: Simulation, opts: StartOptions): ActiveEvent {
   const st = sim.state;
   const ship = sim.rng.pick(WRECK_SHIPS);
   let blueprint: string | null = null;
-  if (opts.blueprint === 'next' || (opts.blueprint === undefined && sim.rng.chance(0.35))) blueprint = nextBlueprint(sim);
+  if (opts.blueprint === 'next' || (opts.blueprint === undefined && sim.rng.chance(WRECK_BLUEPRINT_CHANCE))) blueprint = nextBlueprint(sim);
   const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
   const hint = blueprint ? ' Entre los restos flota un cofre metálico bien cerrado.' : ' Quizá quede algo de valor entre los restos.';
   const ev = newEvent(sim, 'naufragio', 'Naufragio a la vista', `Por ${sideName(side)} asoma el casco destrozado del «${ship}», escorado y medio hundido.${hint}`);
@@ -582,16 +654,22 @@ function startWreck(sim: Simulation, opts: StartOptions): ActiveEvent {
 
 const WRECK_DEBRIS: Partial<Record<DebrisKind, number>> = { restos: 4, caja: 3, barril: 2, bidon: 2, tablones: 2, red: 1 };
 
+/** Motivo del fondeo junto a un pecio (para levar anclas al terminar el rescate). */
+function wreckAnchorReason(d: WreckData): string {
+  return `rescate de los restos del «${d.ship}»`;
+}
+
 function rescueWreck(sim: Simulation, ev: ActiveEvent): ActionResult {
   const st = sim.state;
   const d = dataOf<WreckData>(ev);
-  anchorShip(sim, WRECK_ANCHOR_MIN, `rescate de los restos del «${d.ship}»`);
+  // anchorShip ya deja en el diario «Echamos el ancla: rescate de los restos del «X»».
+  anchorShip(sim, WRECK_ANCHOR_MIN, wreckAnchorReason(d));
   const b = hullBounds(sim);
-  const n = sim.rng.int(8, 12);
+  const n = sim.rng.int(WRECK_DEBRIS_COUNT[0], WRECK_DEBRIS_COUNT[1]);
   for (let i = 0; i < n; i++) {
     const chest = i === 0;
     const kind: DebrisKind = chest ? 'cofre' : ((sim.rng.weighted(WRECK_DEBRIS) ?? 'restos') as DebrisKind);
-    const loot = rollLoot(sim, kind, chest ? 1 : 1.5);
+    const loot = rollLoot(sim, kind, chest ? 1 : WRECK_RICHNESS);
     if (chest && d.blueprint) loot.unshift({ id: d.blueprint, qty: 1 });
     // Alrededor del barco, del lado del pecio (algunos al otro lado, arrastrados por la corriente).
     const side = sim.rng.chance(0.8) ? d.side : -d.side;
@@ -602,13 +680,14 @@ function rescueWreck(sim: Simulation, ev: ActiveEvent): ActionResult {
   d.phase = 'rescate';
   d.total = n;
   ev.stage = 1;
+  ev.title = `Rescate del «${d.ship}»`;
+  ev.description = `Fondeados junto al pecio del «${d.ship}»: ${n} restos flotan alrededor del barco. Rescátalos con el gancho antes de levar anclas.`;
   ev.endsAt = st.time + WRECK_ANCHOR_MIN + 30;
   ev.choices = [];
   const s = sightingOf(sim, d.sightingId);
   if (s) s.expiresAt = Math.max(s.expiresAt, st.time + WRECK_ANCHOR_MIN + 40);
   refreshObjectives(sim, ev);
-  sim.log(`Echamos el ancla junto al «${d.ship}»: ${n} restos flotan alrededor del barco. ¡Usa el gancho!`, 'info');
-  return { ok: true, msg: 'Fondeamos junto al pecio: rescata los restos con el gancho antes de levar anclas' };
+  return { ok: true, msg: `${n} restos flotan alrededor del barco: ¡rescátalos con el gancho antes de levar anclas!` };
 }
 
 /* ---- Isla y estructura (expediciones) ---- */
@@ -639,7 +718,7 @@ function startExpeditionSighting(sim: Simulation, type: 'isla' | 'estructura'): 
   ev.objectives = [obj('Decide en el timón: enviar una expedición o seguir rumbo')];
   const block = expeditionBlocker(sim);
   ev.choices = [
-    { id: 'expedicion', label: `${type === 'isla' ? 'Fondear y enviar una expedición' : 'Enviar una expedición'} (${minutes / 60} h)`, enabled: !block, ...(block ? { reason: block } : {}) },
+    { id: 'expedicion', label: `Fondear y enviar una expedición (${minutes / 60} h)`, enabled: !block, ...(block ? { reason: block } : {}) },
     { id: 'seguir', label: 'Seguir rumbo', enabled: true },
   ];
   return begin(sim, ev, 'info', type === 'isla' ? `Tierra a la vista: ${name}. Podemos fondear y enviar una expedición.` : `Avistamos ${name}. Una expedición podría registrarla.`);
@@ -658,15 +737,22 @@ function launchExpedition(sim: Simulation, ev: ActiveEvent): ActionResult {
   d.npcIds = team.map((n) => n.id);
   d.returnAt = returnAt;
   ev.stage = 1;
-  ev.endsAt = returnAt + 120; // margen de seguridad: el regreso cierra el evento antes
+  ev.endsAt = returnAt; // la cuenta atrás del HUD es la de la vuelta
   ev.choices = [];
   anchorShip(sim, d.minutes, ev.type === 'isla' ? `expedición a ${d.name}` : 'expedición a la estructura');
   const names = listNames(team.map((n) => n.name));
   ev.objectives = [obj(`${names} ${team.length > 1 ? 'exploran' : 'explora'} ${ev.type === 'isla' ? d.name : 'la estructura'} (vuelta hacia las ${clockText(returnAt)})`)];
   const s = sightingOf(sim, d.sightingId);
   if (s) s.expiresAt = Math.max(s.expiresAt, returnAt + 40);
-  sim.log(`${names} ${team.length > 1 ? 'bajan' : 'baja'} en el bote hacia ${ev.type === 'isla' ? d.name : d.name}. Volverán hacia las ${clockText(returnAt)}.`, 'info');
+  sim.log(`${names} ${team.length > 1 ? 'bajan' : 'baja'} en el bote hacia ${d.name}. ${team.length > 1 ? 'Volverán' : 'Volverá'} hacia las ${clockText(returnAt)}.`, 'info');
   return { ok: true, msg: `La expedición parte: ${names}` };
+}
+
+/** «Taller mecánico» para el plano «Plano: Taller mecánico». */
+function blueprintTitle(id: ItemId): string {
+  const name = itemName(id);
+  const i = name.indexOf(':');
+  return i >= 0 ? name.slice(i + 1).trim() : name;
 }
 
 function finishExpedition(sim: Simulation, ev: ActiveEvent): void {
@@ -677,38 +763,40 @@ function finishExpedition(sim: Simulation, ev: ActiveEvent): void {
     if (n) back.push(n);
   }
   for (const n of back) returnFromExpedition(sim, n);
+  // Botín, sumado por objeto (nunca «3× Componentes … 2× Componentes»).
   const loot: ItemStack[] = [];
   const add = (id: ItemId, qty: number): void => {
-    if (qty > 0) loot.push({ id, qty });
+    if (qty <= 0) return;
+    const s = loot.find((x) => x.id === id);
+    if (s) s.qty += qty;
+    else loot.push({ id, qty });
   };
+  /** Frases completas que siguen al botín (cada una con su punto final). */
   const extra: string[] = [];
   const crew = Math.max(1, back.length);
+  const plural = back.length > 1;
+  let blueprint: ItemId | null = null;
   if (ev.type === 'isla') {
     add('madera', sim.rng.int(6, 12) * crew);
     add('fruta', sim.rng.int(4, 8) * crew);
     add('fibra', sim.rng.int(3, 6));
     add(sim.rng.chance(0.6) ? 'semilla_hortaliza' : 'semilla_lino', sim.rng.int(1, 3));
     if (sim.rng.chance(0.25)) {
-      const bp = nextBlueprint(sim);
-      if (bp) {
-        add(bp, 1);
-        extra.push(`¡y un ${itemName(bp)} encontrado en una cabaña abandonada!`);
-      }
+      blueprint = nextBlueprint(sim);
+      if (blueprint) extra.push(`En una cabaña abandonada ${plural ? 'encontraron' : 'encontró'} un plano: «${blueprintTitle(blueprint)}».`);
     }
   } else {
     add('componentes', sim.rng.int(1, 3));
     add('placa_metal', sim.rng.int(2, 4));
     add('chatarra', sim.rng.int(4, 8));
     add('tornillos', sim.rng.int(3, 6));
-    const bp = nextBlueprint(sim);
-    if (bp) {
-      add(bp, 1);
-      extra.push(`¡y un ${itemName(bp)} en la sala de control!`);
-    } else add('componentes', 2);
+    if (sim.rng.chance(STRUCTURE_BLUEPRINT_CHANCE)) blueprint = nextBlueprint(sim);
+    if (blueprint) extra.push(`En la sala de control ${plural ? 'encontraron' : 'encontró'} un plano: «${blueprintTitle(blueprint)}».`);
+    else add('componentes', 2);
   }
-  // Todo a los almacenes; lo que no cabe, a una caja en cubierta junto a la borda.
+  // Todo a los almacenes (el plano también); lo que no cabe, a una caja en cubierta junto a la borda.
   const left: ItemStack[] = [];
-  for (const s of loot) {
+  for (const s of blueprint ? [...loot, { id: blueprint, qty: 1 }] : loot) {
     const l = depositToStorage(sim, s.id, s.qty);
     if (l > 0) left.push({ id: s.id, qty: l });
   }
@@ -721,15 +809,21 @@ function finishExpedition(sim: Simulation, ev: ActiveEvent): void {
     const hurt = sim.rng.pick(back);
     hurt.injured = true;
     hurt.needs.health = Math.max(15, hurt.needs.health - 35);
-    extra.push(`${hurt.name} vuelve ${npcAdj(hurt, 'herido')} y necesita reposo`);
+    extra.push(`${hurt.name} vuelve ${npcAdj(hurt, 'herido')} y necesita reposo.`);
   }
   if (sim.rng.chance(ev.type === 'isla' ? 0.15 : 0.05)) {
     const at = back[0]?.pos;
-    const n = spawnSurvivor(sim, { ...(at ? { pos: at } : {}), origin: ev.type === 'isla' ? 'isla' : 'estructura' });
-    if (n) extra.push(`${n.name}, ${ev.type === 'isla' ? `que sobrevivía ${npcAdj(n, 'solo')} en la isla desde hacía meses` : 'que se refugiaba allí'}, se une a la tripulación`);
+    const n = spawnSurvivor(sim, { ...(at ? { pos: at } : {}), origin: ev.type === 'isla' ? 'isla' : 'estructura', quiet: true });
+    if (n) {
+      const story = ev.type === 'isla' ? `sobrevivía ${npcAdj(n, 'solo')} en la isla desde hacía meses` : 'se refugiaba en la estructura';
+      const withThem = !back.length ? 'en el bote' : plural ? (back.every(isFemaleNpc) ? 'con ellas' : 'con ellos') : isFemaleNpc(back[0]!) ? 'con ella' : 'con él';
+      extra.push(`${n.name} ${story} y viene ${withThem}. ${survivorJoinText([n])}`);
+    }
   }
   const who = back.length ? listNames(back.map((n) => n.name)) : 'La expedición';
-  const text = `${who} ${back.length > 1 ? 'vuelven' : 'vuelve'} de ${ev.type === 'isla' ? d.name : 'la estructura'} con ${stacksText(loot)}${left.length ? ' (parte no cabía en los almacenes: está en una caja en cubierta)' : ''}.${extra.length ? ' ' + capitalize(extra.join('. ')) + '.' : ''}`;
+  const where = ev.type === 'isla' ? d.name : 'la estructura';
+  const stored = left.length ? ' (parte no cabía en los almacenes: está en una caja en cubierta)' : '';
+  const text = `${who} ${plural ? 'vuelven' : 'vuelve'} de ${where} con ${stacksText(loot)}${stored}.${extra.length ? ` ${extra.join(' ')}` : ''}`;
   sim.bus.emit('sfx', { name: 'expedicion_vuelve' });
   endEvent(sim, ev, true, text, 'good');
 }
@@ -754,18 +848,77 @@ function startRaft(sim: Simulation, opts: StartOptions): ActiveEvent {
 
 /* ---- Avería ---- */
 
+/** Fuentes de energía en marcha (generadores y paneles). */
+function powerSources(sim: Simulation): ModuleInstance[] {
+  return sim.state.ship.modules.filter((m) => m.status === 'active' && (moduleDef(m.type).powerGen ?? 0) > 0);
+}
+
+/**
+ * ¿Averiar este módulo dejaría al barco sin salida? Sin ningún repuesto a bordo, el taller (que
+ * fabrica las piezas mecánicas), la única fuente de energía (sin ella el taller no trabaja) o el
+ * banco de trabajo (que fabrica los kits) bloquearían su propia reparación. El director no los
+ * elige entonces (el guion y las pruebas sí pueden, con `moduleId`).
+ */
+function wouldDeadlock(sim: Simulation, m: ModuleInstance): boolean {
+  const { part } = repairNeeds(m.type);
+  if (shipCount(sim, part) > 0) return false;
+  if (m.type === 'taller' || m.type === 'banco_trabajo') return true;
+  return (moduleDef(m.type).powerGen ?? 0) > 0 && powerSources(sim).length <= 1;
+}
+
+/**
+ * Objetivos por pasos para reparar un módulo (GDD §9: conseguir la herramienta, conseguir o
+ * fabricar el repuesto y reparar), marcados según lo que ya hay: la herramienta en el inventario
+ * del jugador y el repuesto en el inventario o en los almacenes. Dicen dónde se consigue cada cosa.
+ */
+function repairObjectives(sim: Simulation, m: ModuleInstance, finalText: string): EventObjective[] {
+  const { tool, part } = repairNeeds(m.type);
+  const fixed = m.status === 'active' && m.condition >= REPAIR_THRESHOLD && !m.leak;
+  const hasTool = countItem(sim.state.player.inventory, tool) > 0;
+  const hasPart = shipCount(sim, part) > 0;
+  const toolText = tool === 'martillo' ? 'Consigue un martillo (banco de trabajo)' : 'Consigue una llave inglesa (banco de trabajo)';
+  const partText =
+    part === 'pieza_mecanica'
+      ? 'Consigue una pieza mecánica (taller con energía, pieza improvisada en el banco, pecios o mercantes)'
+      : 'Consigue un kit de reparación (banco de trabajo)';
+  return [obj(toolText, fixed || hasTool), obj(partText, fixed || hasPart), obj(finalText, fixed)];
+}
+
+/**
+ * Pasadas 24 h sin reparar una avería, el mecánico (o quien haya a bordo) hace un apaño: la
+ * máquina vuelve a funcionar (o la estructura deja de ceder) al 40 % y el evento se cierra como
+ * fracaso parcial. Queda pendiente una reparación de verdad, que el mecánico hará en cuanto tenga
+ * repuestos.
+ */
+function patchBreakdown(sim: Simulation, ev: ActiveEvent, m: ModuleInstance): void {
+  const d = dataOf<BreakdownData>(ev);
+  const crew = presentNpcs(sim).filter((n) => !n.injured && n.needs.health > 30);
+  const who = crew.find((n) => n.role === 'mecanico') ?? crew[0];
+  if (!who) {
+    d.patchAt = sim.state.time + 120; // nadie en condiciones: se vuelve a intentar más tarde
+    return;
+  }
+  const name = moduleDef(m.type).name;
+  m.status = 'active';
+  m.brokenReason = null;
+  m.condition = Math.max(m.condition, BREAKDOWN_PATCH_CONDITION);
+  const what = d.structural ? `${capitalize(withArticle(name))} aguantará` : `${capitalize(withArticle(name))} vuelve a funcionar`;
+  endEvent(sim, ev, false, `${who.name} hace un apaño provisional: ${what}, pero al ${BREAKDOWN_PATCH_CONDITION} %. Hará falta repararl${isFeminineName(name) ? 'a' : 'o'} de verdad.`, 'warn');
+}
+
 function startBreakdown(sim: Simulation, opts: StartOptions): ActiveEvent | null {
   const st = sim.state;
   let m: ModuleInstance | undefined = opts.moduleId !== undefined ? findModule(sim, opts.moduleId) : undefined;
   if (!m) {
-    const machines = st.ship.modules.filter((mm) => mm.status === 'active' && mm.fire <= 0 && moduleDef(mm.type).machine);
+    const ok = (mm: ModuleInstance) => mm.status === 'active' && mm.fire <= 0 && !wouldDeadlock(sim, mm);
+    const machines = st.ship.modules.filter((mm) => ok(mm) && moduleDef(mm.type).machine);
     if (machines.length) {
       const weights: Record<string, number> = {};
       for (const mm of machines) weights[String(mm.id)] = machineRunning(sim, mm) ? 3 : 1;
       const pick = sim.rng.weighted(weights);
       m = machines.find((mm) => String(mm.id) === pick) ?? machines[0];
     } else {
-      const structures = st.ship.modules.filter((mm) => mm.status === 'active' && mm.type !== 'escalera' && mm.fire <= 0);
+      const structures = st.ship.modules.filter((mm) => ok(mm) && mm.type !== 'escalera' && !moduleDef(mm.type).machine);
       if (!structures.length) return null;
       m = sim.rng.pick(structures);
     }
@@ -789,12 +942,11 @@ function startBreakdown(sim: Simulation, opts: StartOptions): ActiveEvent | null
     m.powered = false;
     m.condition = Math.min(m.condition, 40);
   }
-  const { tool, part } = repairNeeds(m.type);
   const pron = isFeminineName(name) ? 'la' : 'lo';
   const ev = newEvent(sim, 'averia', `Avería: ${name}`, `${reason} en ${withArticle(name)}. ${structural ? 'La estructura está debilitada y seguirá empeorando con el oleaje.' : `${capitalize(withArticle(name))} no funcionará hasta reparar${pron}.`}`);
-  const d: BreakdownData = { moduleId: m.id, structural, reason };
+  const d: BreakdownData = { moduleId: m.id, structural, reason, patchAt: st.time + BREAKDOWN_PATCH_MIN };
   ev.data = d as unknown as Record<string, unknown>;
-  ev.objectives = [obj(`Repara ${withArticle(name)} con ${tool === 'martillo' ? 'martillo' : 'llave inglesa'} y ${part === 'kit_reparacion' ? 'kit de reparación' : 'pieza mecánica'}`)];
+  ev.objectives = repairObjectives(sim, m, `Repara ${withArticle(name)}`);
   const c = moduleCenter(m, st.ship.width);
   sim.bus.emit('sfx', { name: 'averia', x: c.x, y: c.y + 1, z: c.z });
   return begin(sim, ev, 'warn', `Avería: ${reason.charAt(0).toLowerCase()}${reason.slice(1)} en ${withArticle(name)}.`);
@@ -1057,7 +1209,7 @@ function startLeak(sim: Simulation, opts: StartOptions): ActiveEvent | null {
   const ev = newEvent(sim, 'fuga', 'Fuga en el depósito', 'Una junta ha reventado y el agua potable se escapa a chorro (unos 6 litros por hora). Hay que sellarla cuanto antes.');
   const d: LeakData = { moduleId: m.id };
   ev.data = d as unknown as Record<string, unknown>;
-  ev.objectives = [obj('Sella la fuga con martillo y kit de reparación')];
+  ev.objectives = repairObjectives(sim, m, 'Sella la fuga del depósito');
   const c = moduleCenter(m, sim.state.ship.width);
   sim.bus.emit('sfx', { name: 'fuga', x: c.x, y: c.y + 1, z: c.z });
   return begin(sim, ev, 'warn', '¡Fuga en el depósito de agua! Repárala con martillo y kit de reparación.');
@@ -1076,12 +1228,19 @@ function startSickness(sim: Simulation, opts: StartOptions): ActiveEvent | null 
   }
   if (!n) return null;
   n.sick = true;
-  const ev = newEvent(sim, 'enfermedad', `${n.name} ha enfermado`, `${n.name} tiene fiebre y escalofríos${opts.cause ? ` (${opts.cause})` : ''}. Pierde salud poco a poco: necesita un botiquín o reposo en la enfermería.`);
+  const cause = opts.cause ? ` (${opts.cause})` : '';
+  const pron = isFemaleNpc(n) ? 'la' : 'lo';
+  const ev = newEvent(
+    sim,
+    'enfermedad',
+    `${n.name} ha enfermado`,
+    `${n.name} tiene fiebre y escalofríos${cause}. Sin tratamiento no se cura: pierde salud poco a poco y puede contagiar a quien tenga cerca. Necesita un botiquín, una camilla en la enfermería o guardar cama.`,
+  );
   const d: SicknessData = { npcId: n.id, name: n.name };
   ev.data = d as unknown as Record<string, unknown>;
   ev.data['wakePlayer'] = false;
-  ev.objectives = [obj(`Cura a ${n.name}: dale un botiquín o que repose en la enfermería`)];
-  return begin(sim, ev, 'warn', `${n.name} ha enfermado${opts.cause ? ` (${opts.cause})` : ''}. Un botiquín o la enfermería le curarán.`);
+  ev.objectives = [obj(`Cura a ${n.name}: dale un botiquín o que repose en la enfermería o en su cama`)];
+  return begin(sim, ev, 'warn', `${n.name} ha enfermado${cause}. Un botiquín, la enfermería o guardar cama ${pron} curarán.`);
 }
 
 /* ---- Discusión ---- */
@@ -1127,24 +1286,34 @@ export function mediateDiscussion(sim: Simulation, npcId: string): ActionResult 
 /* Ganchos desde otros sistemas                                        */
 /* ------------------------------------------------------------------ */
 
-/** Un resto con evento ha sido rescatado (por el jugador o un habitante). */
-export function onDebrisCollected(sim: Simulation, d: Debris, by: 'player' | 'npc', survivorNames: string[]): void {
+/**
+ * Un resto con evento ha sido rescatado (por el jugador o un habitante). `survivors`: los náufragos
+ * que suben a bordo (ya creados en silencio: este aviso único cuenta el rescate y quién se une).
+ */
+export function onDebrisCollected(sim: Simulation, d: Debris, by: 'player' | 'npc', survivors: NpcState[]): void {
   if (d.eventId === undefined) return;
   const ev = eventById(sim, d.eventId);
   if (!ev) return;
   if (ev.type === 'naufragos') {
     const data = dataOf<RaftData>(ev);
     data.rescued = true;
-    const names = survivorNames.length ? listNames(survivorNames) : 'Los náufragos';
+    // Si fondeamos para esperarla, ya no hace falta seguir parados.
+    if (isAnchored(sim) && sim.state.voyage.anchorReason === RAFT_ANCHOR_REASON) weighAnchor(sim, true);
+    const many = survivors.length > 1;
+    const names = survivors.length ? listNames(survivors.map((n) => n.name)) : 'Los náufragos';
     const rescuer = by === 'player' ? '' : ' gracias a la tripulación';
-    endEvent(sim, ev, true, `${names} ya ${survivorNames.length > 1 ? 'están' : 'está'} a salvo a bordo${rescuer}. ${survivorNames.length > 1 ? 'Cuentan que llevaban' : 'Cuenta que llevaba'} días a la deriva.`, 'good');
+    const join = survivors.length ? ` ${survivorJoinText(survivors)}` : '';
+    endEvent(sim, ev, true, `${names} ya ${many ? 'están' : 'está'} a salvo a bordo${rescuer}. ${many ? 'Cuentan que llevaban' : 'Cuenta que llevaba'} días a la deriva.${join}`, 'good');
   } else if (ev.type === 'naufragio') {
     const data = dataOf<WreckData>(ev);
     data.collected++;
     if (d.kind === 'cofre') data.chestCollected = true;
     refreshObjectives(sim, ev);
     if (data.collected + data.lost >= data.total && data.total > 0) {
-      endEvent(sim, ev, true, `Hemos rescatado todo lo aprovechable del «${data.ship}».`, 'good');
+      // Rescatado todo: se leva el ancla en el acto (no hace falta esperar a que venza el fondeo).
+      const anchoredHere = isAnchored(sim) && sim.state.voyage.anchorReason === wreckAnchorReason(data);
+      if (anchoredHere) weighAnchor(sim, true);
+      endEvent(sim, ev, true, `Hemos rescatado todo lo aprovechable del «${data.ship}».${anchoredHere ? ' Levamos anclas y seguimos rumbo.' : ''}`, 'good');
     }
   }
 }
@@ -1171,10 +1340,20 @@ export function onNpcDied(sim: Simulation, npc: NpcState): void {
   }
 }
 
-/** Un habitante se ha curado (botiquín, enfermería o por sí solo). */
-export function onNpcCured(sim: Simulation, npc: NpcState): void {
+/** Cómo se ha curado un habitante (siempre con tratamiento: la enfermedad no se pasa sola). */
+export type CureMethod = 'botiquin' | 'medicina' | 'enfermeria' | 'cama';
+
+const CURE_TEXT: Record<CureMethod, string> = {
+  botiquin: 'gracias al botiquín',
+  medicina: 'gracias a la medicina',
+  enfermeria: 'tras reposar en la enfermería',
+  cama: 'tras guardar cama',
+};
+
+/** Un habitante se ha curado: el evento de su enfermedad se cierra con éxito. */
+export function onNpcCured(sim: Simulation, npc: NpcState, how: CureMethod): void {
   for (const ev of [...sim.state.events.active]) {
-    if (ev.type === 'enfermedad' && dataOf<SicknessData>(ev).npcId === npc.id) endEvent(sim, ev, true, `${npc.name} se ha recuperado de la enfermedad.`, 'good');
+    if (ev.type === 'enfermedad' && dataOf<SicknessData>(ev).npcId === npc.id) endEvent(sim, ev, true, `${npc.name} se ha recuperado de la enfermedad ${CURE_TEXT[how]}.`, 'good');
   }
 }
 
@@ -1221,14 +1400,34 @@ function refreshObjectives(sim: Simulation, ev: ActiveEvent): void {
     }
     case 'tormenta': {
       const d = dataOf<StormData>(ev);
-      if (d.phase !== 'danos') return;
+      if (d.phase === 'activa') {
+        ev.objectives = [obj('Ponte a cubierto: el oleaje barre la cubierta', playerSheltered(sim)), obj('Aguanta hasta que amaine')];
+        return;
+      }
       const left = stormPending(sim, d).length;
       ev.objectives = [obj(left ? `Repara los daños de la tormenta (${left} ${left === 1 ? 'pendiente' : 'pendientes'})` : 'Repara los daños de la tormenta', left === 0)];
+      return;
+    }
+    case 'averia': {
+      const d = dataOf<BreakdownData>(ev);
+      const m = findModule(sim, d.moduleId);
+      if (m) ev.objectives = repairObjectives(sim, m, `Repara ${withArticle(moduleDef(m.type).name)}`);
+      return;
+    }
+    case 'fuga': {
+      const m = findModule(sim, dataOf<LeakData>(ev).moduleId);
+      if (m) ev.objectives = repairObjectives(sim, m, 'Sella la fuga del depósito');
       return;
     }
     default:
       return;
   }
+}
+
+/** ¿El jugador está a cubierto (en un interior: camarote, cocina, bodega…)? */
+function playerSheltered(sim: Simulation): boolean {
+  const p = sim.state.player;
+  return p.alive && isIndoorAt(sim.layout, p.pos.x, p.pos.y, p.pos.z);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1279,6 +1478,17 @@ export function stormWaveHits(sim: Simulation, p: number): void {
   }
 }
 
+/** «la cocina (55 %) y el puente (71 %)»: módulos con desperfectos leves que conviene reparar. */
+function damageList(mods: ModuleInstance[]): string {
+  const parts = mods.map((m) => `${withArticle(moduleDef(m.type).name)} (${Math.round(m.condition)} %)`);
+  return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+}
+
+/** Módulos dañados por la tormenta que aún no están del todo bien (aunque no sean graves). */
+function stormLightDamage(sim: Simulation, d: StormData): ModuleInstance[] {
+  return d.damaged.map((id) => findModule(sim, id)).filter((m): m is ModuleInstance => !!m && m.status !== 'construction' && m.condition < REPAIR_THRESHOLD);
+}
+
 function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
   const st = sim.state;
   const d = dataOf<StormData>(ev);
@@ -1287,16 +1497,25 @@ function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
       d.phase = 'danos';
       ev.stage = 1;
       if (!stormPending(sim, d).length) {
-        endEvent(sim, ev, true, d.damaged.length ? 'La tormenta ha pasado y los daños ya están reparados.' : 'La tormenta ha pasado: el barco la ha capeado sin daños graves.', 'good');
+        // Nada grave: tres casos, y el texto dice la verdad sobre cada uno.
+        const light = stormLightDamage(sim, d);
+        let text: string;
+        if (!d.damaged.length) text = 'La tormenta ha pasado: el barco la ha capeado sin daños.';
+        else if (light.length) text = `La tormenta ha pasado. Daños leves en ${damageList(light)}: repára${light.length === 1 ? (isFeminineName(moduleDef(light[0]!.type).name) ? 'la' : 'lo') : 'los'} cuando puedas.`;
+        else text = 'La tormenta ha pasado y los daños ya están reparados.';
+        endEvent(sim, ev, true, text, 'good');
         return;
       }
+      ev.title = 'Daños de la tormenta';
+      ev.description = 'La tormenta ha amainado, pero ha dejado el barco maltrecho. Repara lo más dañado antes de que vuelva a arreciar.';
       ev.endsAt = st.time + STORM_REPAIR_WINDOW;
       refreshObjectives(sim, ev);
       return;
     }
+    refreshObjectives(sim, ev); // «Ponte a cubierto» se marca al estar en un interior
     const hours = dt / 60;
     const wave = clamp(st.weather.waveHeight / 2.6, 0, 1.5);
-    const p = 1 - Math.pow(1 - STORM_DAMAGE_CHANCE_PER_HOUR * wave, hours);
+    const p = 1 - Math.pow(1 - clamp(STORM_DAMAGE_CHANCE_PER_HOUR * wave * stormDamageFactor(sim), 0, 1), hours);
     for (const m of st.ship.modules) {
       if (!isExposed(sim, m) || !sim.rng.chance(p)) continue;
       const dmg = sim.rng.int(STORM_DAMAGE[0], STORM_DAMAGE[1]);
@@ -1337,15 +1556,24 @@ function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
   }
   // Fase de daños.
   if (st.weather.kind === 'tormenta') {
-    // Vuelve a arreciar.
-    d.phase = 'activa';
-    ev.stage = 0;
-    ev.endsAt = null;
-    ev.objectives = [obj('Ponte a cubierto: el oleaje barre la cubierta'), obj('Aguanta hasta que amaine')];
+    // Llega otra tormenta antes de reparar lo de la anterior: se cierra esta y empieza otra (con su
+    // propio aviso de evento nuevo).
+    const left = stormPending(sim, d).length;
+    endEvent(sim, ev, false, `Vuelve a arreciar antes de reparar los daños de la tormenta anterior (${left} sin reparar).`, 'warn');
+    startStorm(sim);
     return;
   }
   refreshObjectives(sim, ev);
-  if (!stormPending(sim, d).length) endEvent(sim, ev, true, 'Hemos reparado los daños de la tormenta. El barco vuelve a estar en orden.', 'good');
+  if (!stormPending(sim, d).length) {
+    const light = stormLightDamage(sim, d);
+    endEvent(sim, ev, true, light.length ? `Hemos reparado los daños graves de la tormenta. Quedan desperfectos leves en ${damageList(light)}.` : 'Hemos reparado los daños de la tormenta. El barco vuelve a estar en orden.', 'good');
+    return;
+  }
+  // Pasadas las 12 h, el evento se da por cerrado: lo que siga roto lo atenderá el mecánico.
+  if (ev.endsAt !== null && st.time >= ev.endsAt) {
+    const left = stormPending(sim, d);
+    endEvent(sim, ev, false, `Han pasado horas desde la tormenta y siguen sin reparar ${damageList(left)}: el barco tendrá que aguantar así.`, 'warn');
+  }
 }
 
 function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
@@ -1380,8 +1608,8 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
         if (now >= (ev.endsAt ?? Infinity)) endEvent(sim, ev, false, ev.type === 'isla' ? `${d.name} se pierde en el horizonte.` : 'La estructura queda atrás, envuelta en misterio.', 'info');
         return;
       }
-      if (d.returnAt !== null && now >= d.returnAt) finishExpedition(sim, ev);
-      else if (now >= (ev.endsAt ?? Infinity)) finishExpedition(sim, ev);
+      // La vuelta (`returnAt`, que es también `endsAt`) cierra el evento.
+      if (now >= (d.returnAt ?? ev.endsAt ?? Infinity)) finishExpedition(sim, ev);
       return;
     }
     case 'naufragos': {
@@ -1396,6 +1624,8 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       if (!m) endEvent(sim, ev, false, 'El módulo averiado se ha desmontado.', 'info');
       else if (m.status === 'active' && m.condition >= REPAIR_THRESHOLD) {
         endEvent(sim, ev, true, d.structural ? `${capitalize(withArticle(moduleDef(m.type).name))} vuelve a estar en buen estado.` : `${capitalize(withArticle(moduleDef(m.type).name))} vuelve a estar en marcha.`, 'good');
+      } else if (now >= (d.patchAt ?? ev.startedAt + BREAKDOWN_PATCH_MIN) && m.fire <= 0) {
+        patchBreakdown(sim, ev, m);
       } else if (d.structural && m.status === 'active' && m.condition > 0) {
         // La estructura debilitada sigue cediendo con el oleaje hasta que se repare.
         const loss = STRUCTURAL_DECAY_PER_HOUR_PER_M * Math.max(0, st.weather.waveHeight) * (dt / 60);
@@ -1407,6 +1637,7 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
           sim.log(`${capitalize(withArticle(moduleDef(m.type).name))} ha cedido del todo: hay que repararl${isFeminineName(moduleDef(m.type).name) ? 'a' : 'o'} cuanto antes.`, 'danger');
         }
       }
+      if (st.events.active.includes(ev)) refreshObjectives(sim, ev);
       return;
     }
     case 'incendio': {
@@ -1437,7 +1668,9 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       refreshObjectives(sim, ev);
       const pending = pestPending(sim, d);
       if (!pending.length) {
-        endEvent(sim, ev, true, 'La plaga está controlada: los bancales se recuperan.', 'good');
+        // Desmontar el huerto no es controlar la plaga: se va con él (resultado neutro).
+        if (d.plots.some((p) => !findModule(sim, p.moduleId))) endEvent(sim, ev, null, 'El huerto afectado se ha desmontado y la plaga se ha ido con él.', 'info');
+        else endEvent(sim, ev, true, 'La plaga está controlada: los bancales se recuperan.', 'good');
         return;
       }
       if (now >= (ev.endsAt ?? Infinity)) {
@@ -1455,6 +1688,7 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       const m = findModule(sim, d.moduleId);
       if (!m) endEvent(sim, ev, false, 'El depósito con la fuga se ha desmontado.', 'info');
       else if (!m.leak) endEvent(sim, ev, true, 'Fuga sellada: el depósito ya no pierde agua.', 'good');
+      else refreshObjectives(sim, ev);
       return;
     }
     case 'enfermedad': {
@@ -1462,6 +1696,10 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       const n = st.npcs.find((nn) => nn.id === d.npcId);
       if (!n) endEvent(sim, ev, false);
       else if (!n.sick) endEvent(sim, ev, true, `${n.name} se ha recuperado de la enfermedad.`, 'good');
+      else if (n.needs.health < SICKNESS_WORSE_HEALTH) {
+        // Nadie le ha atendido a tiempo: la enfermedad se agrava (sigue enfermo hasta que le curen).
+        endEvent(sim, ev, false, `${n.name} ha empeorado: sin tratamiento, la enfermedad se ha agravado. Necesita un botiquín o la enfermería cuanto antes.`, 'danger');
+      }
       return;
     }
     case 'discusion': {
@@ -1511,9 +1749,10 @@ export const REPEAT_FACTOR = 0.35;
 export function eventWeights(sim: Simulation): Partial<Record<EventType | 'calma', number>> {
   const st = sim.state;
   const region = REGIONS[st.voyage.regionId] ?? REGIONS[START_REGION]!;
-  const day = dayOf(st.time);
   const h = hourOf(st.time);
   const night = h >= 22 || h < 6;
+  // Mientras el jugador duerme no se avista nada: el avistamiento pasaría de largo sin que se entere.
+  const asleep = !!st.player.sleeping;
   const crises = st.events.active.filter((e) => CRISIS_TYPES.has(e.type as EventType)).length;
   const last = lastStartedType(sim);
   const out: Partial<Record<EventType | 'calma', number>> = { calma: CALM_WEIGHT };
@@ -1524,12 +1763,12 @@ export function eventWeights(sim: Simulation): Partial<Record<EventType | 'calma
     const extra = EXTRA_WEIGHTS[type];
     if (extra && region.eventWeights[type] === undefined) w = extra.regions[region.id] ?? extra.base;
     if (w <= 0) continue;
-    if (day < EVENT_MIN_DAY[type]) continue;
+    if (!minDayReached(sim, type)) continue;
     if ((st.events.cooldowns[type] ?? -Infinity) > st.time) continue;
     if (CRISIS_TYPES.has(type) && crises >= MAX_CRISES) continue;
     if (scriptedSoon(sim, type)) continue;
     if (!canStartEvent(sim, type)) continue;
-    if (night && SIGHTING_TYPES.has(type)) w *= NIGHT_SIGHTING_FACTOR;
+    if ((night || asleep) && SIGHTING_TYPES.has(type)) w *= NIGHT_SIGHTING_FACTOR;
     if (night && CRISIS_TYPES.has(type)) w *= NIGHT_CRISIS_FACTOR;
     if (type === last) w *= REPEAT_FACTOR;
     if (w > 0) out[type] = w;
@@ -1559,6 +1798,7 @@ function runScript(sim: Simulation): void {
     if (activeEvent(sim, step.type)) continue; // se aplaza hasta que acabe el anterior
     const h = hourOf(st.time);
     if (h < SCRIPT_HOURS[0] || h >= SCRIPT_HOURS[1]) continue; // de noche no se avista nada
+    if (st.player.sleeping && SIGHTING_TYPES.has(step.type)) continue; // espera a que el jugador despierte
     const ev = startEvent(sim, step.type, { ...(step.opts ?? {}), scripted: true });
     if (ev) st.events.scripted.push(step.id);
   }
@@ -1631,9 +1871,11 @@ export function eventChoice(sim: Simulation, eventId: number, choiceId: string):
       break;
     }
     case 'naufragos:fondear':
-      anchorShip(sim, RAFT_ANCHOR_MIN, 'esperar a la balsa de náufragos');
+      // Con el barco parado, los náufragos reman hacia el costado hasta ponerse a tiro del gancho
+      // (debris.ts, `RAFT_APPROACH_SPEED`).
+      anchorShip(sim, RAFT_ANCHOR_MIN, RAFT_ANCHOR_REASON);
       ev.choices = [];
-      res = { ok: true, msg: 'Echamos el ancla: la balsa se acercará despacio. ¡Prepara el gancho!' };
+      res = { ok: true, msg: 'Echamos el ancla: los náufragos reman hacia el costado. ¡Prepara el gancho en la borda!' };
       break;
     case 'mercante:comerciar': {
       const d = dataOf<MerchantData>(ev);

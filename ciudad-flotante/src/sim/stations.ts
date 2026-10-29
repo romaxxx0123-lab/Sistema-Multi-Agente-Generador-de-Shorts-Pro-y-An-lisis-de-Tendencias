@@ -41,6 +41,7 @@ import {
   hasFuel,
   hasGrowLamps,
   isFeminineName,
+  isPluralName,
   markWarned,
   moduleHasSky,
   repairNeeds,
@@ -245,7 +246,11 @@ export function nearestSpot(sim: Simulation, pos: Vec3, ok: (p: Vec3) => boolean
         }
       }
     }
-    if (best) return { x: best.x, y: best.y, z: best.z };
+    if (best) {
+      // Altura exacta de la superficie (la rejilla guarda alturas en coma flotante de 32 bits).
+      const g = sim.collision.groundAt(best.x, best.z, best.y + 0.05);
+      return { x: best.x, y: g !== null && Math.abs(g - best.y) < 0.05 ? g : best.y, z: best.z };
+    }
   }
   return null;
 }
@@ -294,6 +299,10 @@ function storeProducts(sim: Simulation, m: ModuleInstance, items: ItemStack[]): 
     }
   }
   return where;
+}
+
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
 function sfxAt(sim: Simulation, name: string, m: ModuleInstance): void {
@@ -408,9 +417,22 @@ export function cancelCraft(sim: Simulation, moduleId: number, jobIndex: number)
 
 /** Velocidad actual de una estación (0 = parada). No tiene en cuenta el combustible. */
 function stationSpeed(sim: Simulation, m: ModuleInstance, kind: StationKind): number {
-  if (m.status !== 'active' || m.fire > 0) return 0;
-  if (kind === 'taller') return m.powered ? sim.state.utilities.power.satisfaction * conditionFactor(m) : 0;
+  if (m.fire > 0) return 0;
+  if (m.status === 'broken') return workIndex(m) >= 0 ? 1 : 0;
+  if (m.status !== 'active') return 0;
+  if (kind === 'taller') return m.on && m.powered ? sim.state.utilities.power.satisfaction * conditionFactor(m) : 0;
   return 1;
+}
+
+/**
+ * Trabajo de la cola que avanza ahora: el primero si la estación funciona; si es una estructura
+ * averiada, el primero que sea su propio repuesto (`craftableWhileBroken`). -1 si ninguno.
+ */
+function workIndex(m: ModuleInstance): number {
+  if (!m.queue.length) return -1;
+  if (m.status === 'active') return 0;
+  if (m.status !== 'broken') return -1;
+  return m.queue.findIndex((j) => craftableWhileBroken(m, RECIPES[j.recipeId]));
 }
 
 /** Estado de una estación para la UI (cola con progreso y tiempo restante). */
@@ -422,8 +444,11 @@ export function stationStatus(sim: Simulation, moduleId: number): StationStatus 
   let status = 'En espera';
   const name = moduleDef(m.type).name;
   if (m.status === 'construction') status = 'En obras';
-  else if (m.status === 'broken') status = agree(name, 'averiado').replace(/^./, (c) => c.toUpperCase());
-  else if (m.fire > 0) status = '¡Ardiendo!';
+  else if (m.status === 'broken') {
+    status = agree(name, 'Averiado');
+    if (speed > 0 && m.fire <= 0) status += ': fabricando su repuesto';
+  } else if (m.fire > 0) status = '¡Ardiendo!';
+  else if (kind === 'taller' && !m.on) status = agree(name, 'Apagado');
   else if (m.queue.length) {
     if (kind === 'taller' && speed <= 0) status = 'Sin energía';
     else if (kind === 'cocina' && !hasFuel(m)) {
@@ -480,16 +505,28 @@ function finishJob(sim: Simulation, m: ModuleInstance, kind: StationKind, r: Rec
 function tickStation(sim: Simulation, m: ModuleInstance, kind: StationKind, dt: number): void {
   let lit = false;
   const speed = m.queue.length ? stationSpeed(sim, m, kind) : 0;
-  if (kind === 'taller' && m.queue.length && m.status === 'active' && m.fire <= 0) {
-    if (speed > 0) clearWarn(sim, `workshop:${m.id}`);
-    else warnOnce(sim, `workshop:${m.id}`, 'El taller no tiene energía: el trabajo está en pausa hasta que la haya', 'warn');
+  if (kind === 'taller' && m.status === 'active' && m.fire <= 0) {
+    // Apagado con el interruptor no es lo mismo que sin energía: cada caso, su aviso.
+    if (!m.queue.length || speed > 0) {
+      clearWarn(sim, `workshop:${m.id}`);
+      clearWarn(sim, `workshop-off:${m.id}`);
+    } else if (!m.on) {
+      clearWarn(sim, `workshop:${m.id}`);
+      const name = moduleDef(m.type).name;
+      warnOnce(sim, `workshop-off:${m.id}`, `${withArticle(name, true)} está ${agree(name, 'apagado')}: enciénde${isFeminineName(name) ? 'la' : 'lo'} para seguir trabajando`, 'warn');
+    } else {
+      clearWarn(sim, `workshop-off:${m.id}`);
+      warnOnce(sim, `workshop:${m.id}`, 'El taller no tiene energía: el trabajo está en pausa hasta que la haya', 'warn');
+    }
   }
   let time = dt;
-  while (speed > 0 && time > 1e-9 && m.queue.length) {
-    const job = m.queue[0] as Job;
+  while (speed > 0 && time > 1e-9) {
+    const idx = workIndex(m);
+    if (idx < 0) break;
+    const job = m.queue[idx] as Job;
     const r = RECIPES[job.recipeId];
     if (!r) {
-      m.queue.shift(); // receta desconocida (guardado de otra versión)
+      m.queue.splice(idx, 1); // receta desconocida (guardado de otra versión)
       continue;
     }
     const need = Math.max(0, (r.time - job.progress) / speed);
@@ -507,7 +544,7 @@ function tickStation(sim: Simulation, m: ModuleInstance, kind: StationKind, dt: 
     job.progress += work * speed;
     time -= work;
     if (job.progress >= r.time - 1e-9) {
-      m.queue.shift();
+      m.queue.splice(m.queue.indexOf(job), 1);
       finishJob(sim, m, kind, r, job);
     }
   }
@@ -524,6 +561,18 @@ export function plotLight(sim: Simulation, m: ModuleInstance): number {
   if (moduleHasSky(sim, m)) return NIGHT_GROWTH + (1 - NIGHT_GROWTH) * daylight(sim.state.time);
   if (hasGrowLamps(sim, m) && m.on && m.powered) return sim.state.utilities.power.satisfaction;
   return 0;
+}
+
+/**
+ * Por qué un huerto no recibe luz ahora mismo (null si la recibe): sin el plano de lámparas en un
+ * interior, lámparas apagadas o sin energía.
+ */
+export function plotLightIssue(sim: Simulation, m: ModuleInstance): string | null {
+  if (m.status !== 'active' || moduleHasSky(sim, m)) return null;
+  if (!hasGrowLamps(sim, m)) return `aquí no llega el sol y falta el ${blueprintName('invernadero')}`;
+  if (!m.on) return 'las lámparas de cultivo están apagadas';
+  if (!m.powered || sim.state.utilities.power.satisfaction <= 0) return 'las lámparas de cultivo no tienen energía';
+  return null;
 }
 
 function resetPlot(p: PlotState): void {
@@ -590,7 +639,10 @@ export function plotStatus(sim: Simulation, moduleId: number, plot: number): str
   const parts = [`${name}: ${Math.floor(p.growth * 100)} %`];
   if (p.pest) parts.push('¡plaga!');
   if (p.dryHours > 0.05) parts.push(`sin agua ${p.dryHours.toFixed(1)} h`);
-  if (plotLight(sim, m) <= 0) parts.push('sin luz');
+  if (plotLight(sim, m) <= 0) {
+    const issue = plotLightIssue(sim, m);
+    parts.push(issue ? `sin luz: ${issue}` : 'sin luz');
+  }
   return parts.join(' · ');
 }
 
@@ -603,7 +655,7 @@ export function tickStations(sim: Simulation, dt: number): void {
   for (const m of sim.state.ship.modules) {
     const kind = STATION_OF_MODULE[m.type];
     if (kind) {
-      if (m.status === 'active') tickStation(sim, m, kind, dt);
+      if (m.status === 'active' || (m.status === 'broken' && workIndex(m) >= 0)) tickStation(sim, m, kind, dt);
       else if (kind === 'cocina') m.powered = false;
     }
     if (m.plots.length) tickPlots(sim, m, dt);
@@ -639,14 +691,18 @@ export function plant(sim: Simulation, moduleId: number, plot: number, seed: Ite
   }
   const npc = actor.by === 'npc';
   const invs = npc ? payInventories(sim, false) : [sim.state.player.inventory];
-  if (!consume(invs, { [seed]: 1 })) return fail(`No tienes ${itemName(seed)}`);
+  if (!consume(invs, { [seed]: 1 })) return fail(`No tienes ${lowerFirst(itemName(seed))}`);
   resetPlot(p);
   p.crop = cropId;
   if (!npc) markTutorial(sim, 'plantar');
   sfxAt(sim, 'plantar', m);
   let msg = `Plantas ${crop.name.toLowerCase()}`;
+  // Si no va a crecer, se dice por qué (y qué hacer).
+  const issue = plotLightIssue(sim, m);
+  const many = isPluralName(crop.name);
+  if (issue === 'las lámparas de cultivo están apagadas') msg += `. Enciende las lámparas de cultivo para que ${many ? 'crezcan' : 'crezca'}`;
+  else if (issue) msg += `. No ${many ? 'crecerán' : 'crecerá'}: ${issue}`;
   if (sim.state.utilities.waterL <= 0.5) msg += '. ¡Ojo: los depósitos están vacíos y necesitarán agua!';
-  else if (!moduleHasSky(sim, m) && !m.on) msg += '. Enciende las lámparas de cultivo para que crezcan';
   return { ok: true, msg };
 }
 
@@ -680,7 +736,7 @@ export function harvest(sim: Simulation, moduleId: number, plot: number, actor: 
       const l = depositToStorage(sim, s.id, s.qty);
       if (l > 0) left.push({ id: s.id, qty: l });
     }
-    if (left.length) spawnCrate(sim, moduleCenter(m, sim.state.ship.width), left, 'Cosecha');
+    if (left.length) spawnCrate(sim, safeDropPoint(sim, moduleCenter(m, sim.state.ship.width)), left, 'Cosecha');
   } else {
     let allFit = true;
     for (const s of items) allFit = giveToPlayer(sim, s.id, s.qty, true) && allFit;

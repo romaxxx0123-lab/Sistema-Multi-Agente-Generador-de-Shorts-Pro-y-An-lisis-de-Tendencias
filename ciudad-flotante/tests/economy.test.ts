@@ -13,7 +13,10 @@ import { HULL_EXPANSION, moduleDef } from '../src/data/modules';
 import { RECIPES, recipesFor } from '../src/data/recipes';
 import { MINUTES_PER_DAY, SHIP_MAX_LENGTH, SHIP_START_LENGTH } from '../src/sim/constants';
 import * as construction from '../src/sim/construction';
+import * as events from '../src/sim/events';
 import { addItem, countItem, createInventory } from '../src/sim/inventory';
+import { AGENT_RADIUS } from '../src/sim/nav';
+import { PLAYER_RADIUS } from '../src/sim/physics';
 import { createNewGame, makeNpc } from '../src/sim/newGame';
 import { getCell, moduleCenter } from '../src/sim/ship';
 import { Simulation } from '../src/sim/Simulation';
@@ -116,7 +119,7 @@ describe('red eléctrica', () => {
     expect(u.power.satisfaction).toBe(1);
     expect(u.power.capacityKWh).toBe(0);
     expect(u.water.capacityL).toBe(120 + 20);
-    expect(u.waterL).toBeCloseTo(60, 5);
+    expect(u.waterL).toBeCloseTo(90, 5); // agua inicial
   });
 
   it('el generador quema combustible de su ranura y alimenta la potabilizadora', () => {
@@ -149,8 +152,9 @@ describe('red eléctrica', () => {
     expect(gen.fuelBurn).toBeCloseTo(39.5, 5);
 
     const w1 = u.waterL;
+    expect(u.water.capacityL - w1).toBeGreaterThan(moduleDef('potabilizadora').waterGen!); // hay hueco
     run(sim, 60);
-    expect(u.waterL - w1).toBeCloseTo(18, 1); // 18 L/h a plena potencia
+    expect(u.waterL - w1).toBeCloseTo(moduleDef('potabilizadora').waterGen!, 1); // L/h a plena potencia
     expect(countItem(gen.fuelInv, 'madera')).toBe(0);
     expect(gen.fuelBurn).toBeCloseTo(80 - 60.5, 5);
 
@@ -276,7 +280,7 @@ describe('red eléctrica', () => {
     expect(pot.powered).toBe(true);
     const before = u.waterL;
     sim.tick(0.5);
-    expect(u.waterL - before).toBeCloseTo((18 * u.power.satisfaction * 0.5) / 60, 6);
+    expect(u.waterL - before).toBeCloseTo((moduleDef('potabilizadora').waterGen! * u.power.satisfaction * 0.5) / 60, 6);
   });
 
   it('una máquina dañada (condición < 50) rinde un 30 % menos', () => {
@@ -362,7 +366,8 @@ describe('red de agua', () => {
     const cell = getCell(sim.layout, col.level, col.x, col.z)!;
     expect(cell.sky).toBe(true);
     expect(utilities.moduleHasSky(sim, col)).toBe(true);
-    // Un huerto en la bodega es interior.
+    // Un huerto en la bodega es interior (con el plano de lámparas se puede construir allí).
+    sim.state.unlocks.push('invernadero');
     give(sim, MATERIALS);
     const h = build(sim, 'huerto', 0, 0, 0);
     expect(utilities.moduleHasSky(sim, h)).toBe(false);
@@ -890,19 +895,24 @@ describe('huerto', () => {
 
   it('huerto interior: necesita lámparas (plano) y energía', () => {
     const { sim } = setup();
-    sim.state.unlocks.push('energia');
+    sim.state.unlocks.push('energia', 'invernadero');
     give(sim, MATERIALS);
     give(sim, { semilla_hortaliza: 4 });
     const h = build(sim, 'huerto', 0, 0, 0);
+    // Huerto interior de una partida guardada sin el plano: plantar explica por qué no se puede.
+    sim.state.unlocks = sim.state.unlocks.filter((k) => k !== 'invernadero');
     expect(sim.plant(h.id, 0, 'semilla_hortaliza').msg).toMatch(/no llega la luz.*Lámparas de cultivo/);
     expect(sim.togglePower(h.id).ok).toBe(false);
     sim.state.unlocks.push('invernadero');
-    expect(sim.plant(h.id, 0, 'semilla_hortaliza').ok).toBe(true);
+    const first = sim.plant(h.id, 0, 'semilla_hortaliza');
+    expect(first.ok).toBe(true);
+    // Sin ninguna fuente de energía, avisa de que no crecerán.
+    expect(first.msg).toBe('Plantas hortalizas. No crecerán: las lámparas de cultivo no tienen energía');
     expect(sim.plant(h.id, 1, 'semilla_hortaliza').ok).toBe(true);
     run(sim, 60);
     expect(sim.state.utilities.power.demand).toBeCloseTo(2 * utilities.GROW_LAMP_KW, 6);
     expect(h.plots[0]!.growth).toBe(0); // sin energía
-    expect(stations.plotStatus(sim, h.id, 0)).toMatch(/sin luz/);
+    expect(stations.plotStatus(sim, h.id, 0)).toMatch(/sin luz: las lámparas de cultivo no tienen energía/);
 
     const gen = build(sim, 'generador', 0, 4, 0);
     addItem(gen.fuelInv!, 'combustible', 1);
@@ -1099,11 +1109,14 @@ describe('construcción', () => {
     // Cocina con cola pagada y leña.
     const cocina = mod(sim, 'cocina');
     sim.queueCraft(cocina.id, 'pescado_asado', 2);
+    // Leña del fogón (la cocinera puede haber gastado alguna mientras tanto) + despensa + reembolso.
+    const woodInside = countItem(cocina.fuelInv, 'madera') + countItem(cocina.inventory, 'madera');
+    expect(woodInside).toBeGreaterThan(0);
     const n0 = sim.state.crates.length;
     expect(sim.demolish(cocina.id).ok).toBe(true);
     const cc = sim.state.crates[n0]!;
     expect(countItem(cc.inventory, 'pescado_crudo')).toBe(2);
-    expect(countItem(cc.inventory, 'madera')).toBe(3 + 5);
+    expect(countItem(cc.inventory, 'madera')).toBe(woodInside + Math.floor(moduleDef('cocina').cost.madera! * construction.DEMOLISH_REFUND));
     expect(countItem(cc.inventory, 'hortaliza')).toBe(2);
   });
 
@@ -1154,10 +1167,17 @@ describe('ampliación del casco', () => {
     const { sim } = setup();
     expect(sim.checkExpandHull().reason).toMatch(/Plano: Ampliación del casco/);
     sim.state.unlocks.push('casco');
-    const chk = sim.checkExpandHull();
+    const chk = construction.checkExpandHull(sim);
     expect(chk.ok).toBe(false);
     expect(chk.reason).toMatch(/^Faltan:/);
-    expect(chk.missing).toEqual({ madera: 6, placa_metal: 12, tornillos: 16 });
+    // Coste base la primera vez (× (1 + 0 ampliaciones)); se paga con lo que hay en los almacenes.
+    expect(chk.cost).toEqual(HULL_EXPANSION.cost);
+    const stored = (id: string) => sim.state.ship.modules.reduce((n, m) => n + countItem(m.inventory, id), 0);
+    expect(chk.missing).toEqual({
+      madera: HULL_EXPANSION.cost.madera! - stored('madera'),
+      placa_metal: HULL_EXPANSION.cost.placa_metal! - stored('placa_metal'),
+      tornillos: HULL_EXPANSION.cost.tornillos! - stored('tornillos'),
+    });
     give(sim, HULL_EXPANSION.cost);
     expect(sim.checkExpandHull().ok).toBe(true);
     const r = sim.expandHull();
@@ -1165,16 +1185,18 @@ describe('ampliación del casco', () => {
     expect(sim.state.ship.expansion).toEqual({ progress: 0 });
     expect(sim.expandHull().msg).toMatch(/Ya hay una ampliación/);
 
-    expect(sim.helpBuild(-1, 30).msg).toBe('Ampliación del casco: 25 %');
+    const T = HULL_EXPANSION.buildTime;
+    const p1 = (30 * construction.PLAYER_HELP_RATE) / T;
+    expect(sim.helpBuild(-1, 30).msg).toBe(`Ampliación del casco: ${Math.floor(p1 * 100)} %`);
     const npc = makeNpc('npcB', 'Bea', 'libre', 'alegre', { x: 0, y: 3.2, z: 0 }, 1, 1);
     npc.activity = 'building';
     npc.task = { kind: 'construir', targetModuleId: -1 };
     sim.state.npcs.push(npc);
     construction.tickConstruction(sim, 40);
-    expect(sim.state.ship.expansion!.progress).toBeCloseTo(0.25 + (40 * 1.75) / 240, 9);
+    expect(sim.state.ship.expansion!.progress).toBeCloseTo(p1 + (40 * 1.75) / T, 9);
     sim.state.npcs = [];
 
-    run(sim, 120, undefined, 10);
+    run(sim, T, undefined, 10);
     expect(sim.state.ship.expansion).toBeNull();
     expect(sim.state.ship.length).toBe(SHIP_START_LENGTH + 2);
     expect(sim.state.ship.hullTier).toBe(1);
@@ -1185,6 +1207,28 @@ describe('ampliación del casco', () => {
     // Se puede construir en la nueva sección.
     expect(sim.checkPlace('deposito', 1, 11, 0, 0).ok).toBe(true);
     expect(sim.helpBuild(-1, 5).ok).toBe(false);
+
+    // La segunda ampliación cuesta el doble (× (1 + 1)).
+    const next = construction.checkExpandHull(sim);
+    for (const [id, q] of Object.entries(HULL_EXPANSION.cost)) expect(next.cost[id]).toBe(q * 2);
+    expect(construction.hullExpansionCost(sim)).toEqual(next.cost);
+  });
+
+  it('cancelar la ampliación devuelve lo pagado (con el coste escalado) en una caja transitable', () => {
+    const { sim } = setup();
+    sim.state.unlocks.push('casco');
+    sim.state.ship.hullTier = 2; // ya se amplió dos veces (el casco no crece en esta prueba)
+    const cost = construction.hullExpansionCost(sim);
+    for (const [id, q] of Object.entries(HULL_EXPANSION.cost)) expect(cost[id]).toBe(q * 3);
+    give(sim, cost);
+    expect(sim.expandHull().ok).toBe(true);
+    for (const id of Object.keys(cost)) expect(countItem(sim.state.player.inventory, id)).toBe(0);
+    expect(construction.cancelExpansion(sim).ok).toBe(true);
+    expect(sim.state.ship.expansion).toBeNull();
+    const crate = sim.state.crates.at(-1)!;
+    for (const [id, q] of Object.entries(cost)) expect(countItem(crate.inventory, id)).toBe(q);
+    expect(stations.isValidDropPoint(sim, crate.pos)).toBe(true);
+    expect(construction.cancelExpansion(sim).ok).toBe(false);
   });
 
   it('expone las celdas y el punto de trabajo de la ampliación', () => {
@@ -1211,7 +1255,7 @@ describe('ampliación del casco', () => {
 /* ------------------------------------------------------------------ */
 
 describe('desgaste y reparación', () => {
-  it('las máquinas funcionando pierden 1 punto cada 12 h y se averían a 0', () => {
+  it('las máquinas funcionando pierden 1 punto cada 8 h y se averían a 0', () => {
     const { sim, notes } = setup();
     sim.state.unlocks.push('energia', 'agua');
     give(sim, MATERIALS);
@@ -1222,7 +1266,8 @@ describe('desgaste y reparación', () => {
     const empty = () => {
       sim.state.utilities.waterL = 0;
     };
-    run(sim, 12 * 60, empty);
+    expect(construction.WEAR_HOURS_PER_POINT).toBe(8);
+    run(sim, 8 * 60, empty);
     expect(gen.condition).toBeCloseTo(99, 2);
     expect(pot.condition).toBeCloseTo(99, 2);
     expect(banco.condition).toBe(100); // no es una máquina
@@ -1458,5 +1503,336 @@ describe('integridad', () => {
     expect(construction.durationText(90)).toBe('1 h 30 min');
     expect(construction.durationText(240)).toBe('4 h');
     for (const r of Object.values(RECIPES)) expect(r.name.length).toBeGreaterThan(2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Regresiones de la ronda de QA 1                                     */
+/* ------------------------------------------------------------------ */
+
+describe('regresiones QA 1 (economía)', () => {
+  it('[13/32] un huerto donde no llega el sol necesita el plano de lámparas: se rechaza sin cobrar', () => {
+    const { sim } = setup();
+    give(sim, MATERIALS);
+    const wood = countItem(sim.state.player.inventory, 'madera');
+    const c = sim.checkPlace('huerto', 0, 0, 0, 0);
+    expect(c.ok).toBe(false);
+    expect(c.reason).toBe('En interior necesita el Plano: Lámparas de cultivo');
+    expect(sim.placeModule('huerto', 0, 0, 0, 0)).toMatchObject({ ok: false, msg: 'En interior necesita el Plano: Lámparas de cultivo' });
+    expect(countItem(sim.state.player.inventory, 'madera')).toBe(wood);
+    expect(sim.state.ship.modules.some((m) => m.type === 'huerto')).toBe(false);
+    // A cielo abierto, sin avisos.
+    const deck = construction.checkPlace(sim, 'huerto', 1, 8, 0, 0);
+    expect(deck.ok).toBe(true);
+    expect(deck.warning).toBeNull();
+    // Con el plano se puede en la bodega, avisando del consumo de las lámparas.
+    sim.state.unlocks.push('invernadero');
+    const hold = construction.checkPlace(sim, 'huerto', 0, 0, 0, 0);
+    expect(hold.ok).toBe(true);
+    expect(hold.warning).toBe('En interior crece con lámparas de cultivo: consumirán hasta 0,6 kW');
+  });
+
+  it('[13/32] plantar avisa de por qué no crecerá (lámparas apagadas o sin energía)', () => {
+    const { sim } = setup();
+    sim.state.unlocks.push('invernadero', 'energia');
+    give(sim, MATERIALS);
+    give(sim, { semilla_hortaliza: 2, semilla_lino: 1 });
+    const h = build(sim, 'huerto', 0, 0, 0);
+    expect(sim.togglePower(h.id).msg).toBe('Lámparas de cultivo apagadas');
+    sim.tick(0.5);
+    expect(sim.plant(h.id, 0, 'semilla_hortaliza').msg).toBe('Plantas hortalizas. Enciende las lámparas de cultivo para que crezcan');
+    expect(sim.plant(h.id, 1, 'semilla_lino').msg).toBe('Plantas lino. Enciende las lámparas de cultivo para que crezca');
+    expect(stations.plotStatus(sim, h.id, 0)).toBe('Hortalizas: 0 % · sin luz: las lámparas de cultivo están apagadas');
+    sim.togglePower(h.id);
+    sim.tick(0.5);
+    expect(sim.plant(h.id, 2, 'semilla_hortaliza').msg).toBe('Plantas hortalizas. No crecerán: las lámparas de cultivo no tienen energía');
+    // Con energía ya no hay aviso.
+    const gen = build(sim, 'generador', 0, 4, 0);
+    addItem(gen.fuelInv!, 'combustible', 1);
+    sim.tick(0.5);
+    expect(stations.plotLightIssue(sim, h)).toBeNull();
+    expect(sim.plant(h.id, 3, 'semilla_hortaliza').msg).toBe('No tienes semillas de hortaliza');
+  });
+
+  it('[14] terminar una escalera con el jugador o un habitante dentro no los tira a la bodega', () => {
+    const { sim } = setup(7, { npcs: true });
+    sim.state.npcs = sim.state.npcs.slice(0, 1);
+    const npc = sim.state.npcs[0]!;
+    // Escalera de la cubierta al techo de la cocina; jugador y habitante en su mitad alta.
+    const r = sim.placeModule('escalera', 1, 2, 2, 0);
+    expect(r.ok, r.msg).toBe(true);
+    sim.state.player.pos = { x: -10, y: 3.2, z: 3 };
+    npc.pos = { x: -11, y: 3.2, z: 3.5 };
+    npc.activity = 'building';
+    npc.task = { kind: 'construir', targetModuleId: r.moduleId! };
+    expect(sim.helpBuild(r.moduleId!, 30).msg).toBe('Obra terminada: Escalera');
+    const p = sim.state.player.pos;
+    expect(p.y).toBeGreaterThan(4); // sobre la rampa, no en la bodega
+    expect(sim.collision.groundAt(p.x, p.z, p.y)).toBeCloseTo(p.y, 6);
+    expect(stations.standsOn(sim, p, PLAYER_RADIUS)).toBe(true);
+    expect(Math.hypot(p.x + 10, p.z - 3)).toBeLessThan(1);
+    expect(npc.pos.y).toBeGreaterThan(4);
+    expect(stations.standsOn(sim, npc.pos, AGENT_RADIUS)).toBe(true);
+  });
+
+  it('[14] una escalera nueva desde la bodega bajo el jugador lo deja en la cubierta, junto al hueco', () => {
+    const { sim } = setup();
+    const r = sim.placeModule('escalera', 0, 5, 1, 0);
+    expect(r.ok, r.msg).toBe(true);
+    sim.state.player.pos = { x: 2, y: 3.2, z: -2 }; // centro de la celda (5,1) de la cubierta
+    expect(sim.helpBuild(r.moduleId!, 30).msg).toBe('Obra terminada: Escalera');
+    expect(getCell(sim.layout, 1, 5, 1)!.kind).toBe('stairHigh');
+    const p = sim.state.player.pos;
+    expect(p.y).toBeCloseTo(3.2, 6);
+    expect(sim.collision.cellOf(p)!.kind).toBe('deck');
+    expect(stations.standsOn(sim, p, PLAYER_RADIUS)).toBe(true);
+    expect(Math.hypot(p.x - 2, p.z + 2)).toBeLessThan(3);
+    // Quien está bien donde está no se mueve.
+    const r2 = sim.placeModule('camarote', 1, 6, 3, 0);
+    sim.state.player.pos = { x: 5, y: 3.2, z: 1 };
+    sim.helpBuild(r2.moduleId!, 30);
+    expect(sim.state.player.pos).toEqual({ x: 5, y: 3.2, z: 1 });
+  });
+
+  it('[15] la confirmación de desmontar un depósito o una batería dice cuánto se perdería', () => {
+    const { sim } = setup();
+    const u = sim.state.utilities;
+    const dep = mod(sim, 'deposito');
+    u.waterL = 60;
+    const chk = sim.checkDemolishModule(dep.id) as construction.DemolishCheck;
+    expect(chk.ok).toBe(true);
+    expect(chk.waterLossL).toBeCloseTo(40, 6);
+    expect(chk.waterCapacityAfterL).toBe(20);
+    expect(chk.batteryLossKWh).toBe(0);
+    expect(chk.losses).toEqual(['Se perderán 40 L de agua: la capacidad baja a 20 L']);
+    u.waterL = 15; // cabe en el colector: no se pierde nada
+    expect(construction.checkDemolishModule(sim, dep.id)).toMatchObject({ waterLossL: 0, losses: [] });
+
+    sim.state.unlocks.push('energia');
+    give(sim, MATERIALS);
+    const bat = build(sim, 'bateria', 0, 2, 0);
+    u.batteryKWh = 20;
+    const b = construction.checkDemolishModule(sim, bat.id);
+    expect(b.batteryLossKWh).toBeCloseTo(20, 6);
+    expect(b.batteryCapacityAfterKWh).toBe(0);
+    expect(b.losses).toEqual(['Se perderán 20 kWh de las baterías: no quedará ninguna batería']);
+    // El aviso previo coincide con lo que pasa al desmontar.
+    expect(sim.demolish(bat.id).msg).toMatch(/Se pierden 20 kWh de las baterías/);
+    // Una obra sin terminar no guarda nada.
+    const r = sim.placeModule('deposito', 1, 9, 3, 0);
+    expect(construction.checkDemolishModule(sim, r.moduleId!)).toMatchObject({ waterLossL: 0, batteryLossKWh: 0, losses: [] });
+  });
+
+  it('[31] la enfermería solo cura más rápido con energía y solo consume con alguien en una camilla', () => {
+    const { sim } = setup();
+    sim.state.unlocks.push('enfermeria', 'energia');
+    give(sim, MATERIALS);
+    const enf = build(sim, 'enfermeria', 0, 1, 3, 0);
+    build(sim, 'bateria', 0, 2, 0);
+    const u = sim.state.utilities;
+    u.batteryKWh = 0;
+    sim.tick(0.5);
+    // Vacía: no consume (ni avisa de que falta energía).
+    expect(u.power.demand).toBe(0);
+    expect(utilities.isHealingBedPowered(sim, enf)).toBe(false);
+    expect(utilities.healingBedNote(sim, enf)).toBe('Sin energía: cura como una cama normal');
+    // Alguien en una camilla: pide 0,3 kW y, sin ninguna fuente, no cura más rápido.
+    sim.state.player.sleeping = { moduleId: enf.id, bed: 0, until: null };
+    sim.tick(0.5);
+    expect(u.power.demand).toBeCloseTo(0.3, 6);
+    expect(utilities.isHealingBedPowered(sim, enf)).toBe(false);
+    // Con las baterías cargadas, sí.
+    u.batteryKWh = 20;
+    sim.tick(0.5);
+    expect(enf.powered).toBe(true);
+    expect(utilities.isHealingBedPowered(sim, enf)).toBe(true);
+    expect(utilities.healingBedNote(sim, enf)).toBeNull();
+    // Apagada con el interruptor o averiada: cama normal.
+    expect(sim.togglePower(enf.id).msg).toBe('Enfermería apagada');
+    sim.tick(0.5);
+    expect(utilities.isHealingBedPowered(sim, enf)).toBe(false);
+    expect(utilities.healingBedNote(sim, enf)).toBe('Apagada: cura como una cama normal');
+    sim.togglePower(enf.id);
+    enf.status = 'broken';
+    sim.tick(0.5);
+    expect(utilities.isHealingBedPowered(sim, enf)).toBe(false);
+    expect(utilities.healingBedNote(sim, enf)).toBe('Averiada: cura como una cama normal');
+    // Una cama normal nunca es «camilla con energía».
+    expect(utilities.isHealingBedPowered(sim, mod(sim, 'camarote'))).toBe(false);
+  });
+
+  it('[43] una avería del banco de baterías no borra la carga: la conserva y la entrega al repararlo', () => {
+    const { sim, notes } = setup();
+    sim.state.unlocks.push('energia', 'agua');
+    give(sim, { ...MATERIALS, llave_inglesa: 1, pieza_mecanica: 1 });
+    const bat = build(sim, 'bateria', 0, 2, 0);
+    const pot = build(sim, 'potabilizadora', 0, 3, 0);
+    const u = sim.state.utilities;
+    u.batteryKWh = 20;
+    sim.togglePower(pot.id); // sin consumo para medir la carga exacta
+    sim.tick(0.5);
+    expect(u.batteryKWh).toBeCloseTo(20, 6);
+    events.startEvent(sim, 'averia', { moduleId: bat.id, scripted: true });
+    expect(bat.status).toBe('broken');
+    sim.togglePower(pot.id);
+    u.waterL = 0;
+    run(sim, 30);
+    expect(u.batteryKWh).toBeCloseTo(20, 6); // ni se pierde ni se gasta
+    expect(u.power.capacityKWh).toBe(25);
+    expect(bat.powered).toBe(false);
+    expect(pot.powered).toBe(false); // averiada no entrega energía
+    expect(texts(notes, /^El banco de baterías no funciona: conserva 20 kWh, pero no dará energía hasta repararlo$/)).toHaveLength(1);
+    expect(sim.repair(bat.id)).toEqual({ ok: true, msg: 'Banco de baterías reparado' });
+    sim.tick(0.5);
+    expect(pot.powered).toBe(true);
+    expect(u.batteryKWh).toBeGreaterThan(19.9);
+    expect(u.batteryKWh).toBeLessThan(20);
+  });
+
+  it('[44] el taller apagado con el interruptor dice «Apagado», no «Sin energía»', () => {
+    const { sim, notes } = setup();
+    sim.state.unlocks.push('taller', 'energia');
+    give(sim, MATERIALS);
+    const taller = build(sim, 'taller', 1, 8, 2, 0);
+    build(sim, 'bateria', 0, 2, 0);
+    const u = sim.state.utilities;
+    u.batteryKWh = 25;
+    expect(sim.queueCraft(taller.id, 'pieza_mecanica').ok).toBe(true);
+    sim.tick(0.5);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Trabajando');
+    sim.togglePower(taller.id);
+    sim.tick(0.5);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Apagado');
+    expect(texts(notes, /^El taller mecánico está apagado: enciéndelo para seguir trabajando$/)).toHaveLength(1);
+    expect(texts(notes, /no tiene energía/)).toHaveLength(0);
+    sim.togglePower(taller.id);
+    sim.tick(0.5);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Trabajando');
+    // Encendido pero sin energía: ahora sí «Sin energía».
+    u.batteryKWh = 0;
+    sim.tick(0.5);
+    sim.tick(0.5);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Sin energía');
+    expect(texts(notes, /^El taller no tiene energía/)).toHaveLength(1);
+  });
+
+  it('[20] los encargos del jugador pasan delante de los de los habitantes (que conservan su avance)', () => {
+    const { sim } = setup();
+    const cocina = mod(sim, 'cocina');
+    addItem(cocina.inventory!, 'pescado_crudo', 4);
+    addItem(cocina.inventory!, 'hortaliza', 2);
+    addItem(cocina.inventory!, 'agua_potable', 2);
+    expect(stations.queueCraft(sim, cocina.id, 'guiso', 1, { by: 'npc' }).ok).toBe(true);
+    sim.tick(5);
+    expect(cocina.queue[0]!.progress).toBeCloseTo(5, 6);
+    expect(stations.queueCraft(sim, cocina.id, 'pescado_asado', 1, { by: 'npc' }).ok).toBe(true);
+    expect(sim.queueCraft(cocina.id, 'pescado_asado', 2).ok).toBe(true);
+    const st = stations.stationStatus(sim, cocina.id)!;
+    expect(st.jobs.map((j) => `${j.recipe.id}${j.byNpc ? '*' : ''}`)).toEqual(['pescado_asado', 'pescado_asado', 'guiso*', 'pescado_asado*']);
+    // El primer pescado del jugador sale en 8 min, no tras el guiso.
+    run(sim, 8, undefined, 1);
+    expect(countItem(cocina.inventory, 'pescado_asado')).toBe(1);
+    expect(cocina.queue.find((j) => j.recipeId === 'guiso')!.progress).toBeCloseTo(5, 6);
+    // Un segundo encargo del jugador va detrás del suyo, pero delante de los de habitantes.
+    expect(sim.queueCraft(cocina.id, 'pescado_asado').ok).toBe(true);
+    expect(stations.stationStatus(sim, cocina.id)!.jobs.map((j) => j.byNpc)).toEqual([false, false, true, true]);
+  });
+
+  it('[7/9] con el taller averiado y sin piezas, el banco improvisa la pieza y repairInfo lo dice', () => {
+    const { sim } = setup();
+    sim.state.unlocks.push('taller');
+    give(sim, { ...MATERIALS, llave_inglesa: 1 });
+    const taller = build(sim, 'taller', 1, 8, 2, 0);
+    events.startEvent(sim, 'averia', { moduleId: taller.id, scripted: true });
+    expect(taller.status).toBe('broken');
+    expect(sim.queueCraft(taller.id, 'pieza_mecanica').ok).toBe(false);
+    expect(sim.repairInfo(taller.id).reason).toBe('Necesitas una pieza mecánica: improvísala en el banco de trabajo');
+    const banco = mod(sim, 'banco_trabajo');
+    const q = sim.queueCraft(banco.id, 'pieza_improvisada');
+    expect(q.ok, q.msg).toBe(true);
+    run(sim, RECIPES.pieza_improvisada!.time + 1, undefined, 10);
+    expect(countItem(banco.inventory, 'pieza_mecanica')).toBe(1);
+    expect(sim.repairInfo(taller.id).ok).toBe(true);
+    expect(sim.repair(taller.id).ok).toBe(true);
+    expect(taller.status).toBe('active');
+  });
+
+  it('[9] con el único generador averiado, la pista no manda al taller sin energía', () => {
+    const { sim } = setup();
+    sim.state.unlocks.push('taller', 'energia');
+    give(sim, { ...MATERIALS, llave_inglesa: 1 });
+    build(sim, 'taller', 1, 8, 2, 0);
+    const gen = build(sim, 'generador', 0, 1, 0);
+    addItem(gen.fuelInv!, 'combustible', 1);
+    sim.tick(0.5);
+    expect(construction.partSourceHint(sim, 'pieza_mecanica')).toBe('fabrícala en el taller o improvísala en el banco de trabajo');
+    events.startEvent(sim, 'averia', { moduleId: gen.id, scripted: true });
+    sim.tick(0.5);
+    expect(sim.repairInfo(gen.id).reason).toBe('Necesitas una pieza mecánica: improvísala en el banco de trabajo');
+    // Sin banco ni taller útiles: pecios y mercantes.
+    mod(sim, 'banco_trabajo').fire = 10;
+    expect(construction.partSourceHint(sim, 'pieza_mecanica')).toBe('búscala en los pecios o cámbiala a un mercante');
+  });
+
+  it('[7] un banco de trabajo roto aún puede clavar el kit que lo repara (y nada más)', () => {
+    const { sim } = setup();
+    const banco = mod(sim, 'banco_trabajo');
+    banco.status = 'broken';
+    banco.brokenReason = 'Las juntas del suelo ceden';
+    banco.condition = 0;
+    expect(sim.queueCraft(banco.id, 'tornillos').msg).toBe('El banco de trabajo está averiado (las juntas del suelo ceden): repáralo primero');
+    expect(sim.repairInfo(banco.id).reason).toBe('Necesitas un kit de reparación: fabrícalo en el banco de trabajo');
+    give(sim, { madera: 3, tornillos: 2, cuerda: 1 });
+    const recs = sim.stationRecipes(banco.id);
+    expect(recs.find((r) => r.recipe.id === 'kit_reparacion')!.canCraft).toBe(true);
+    expect(recs.find((r) => r.recipe.id === 'martillo')!.reason).toMatch(/repáralo primero/);
+    expect(sim.queueCraft(banco.id, 'kit_reparacion').ok).toBe(true);
+    expect(stations.stationStatus(sim, banco.id)!.status).toBe('Averiado: fabricando su repuesto');
+    run(sim, RECIPES.kit_reparacion!.time + 1, undefined, 5);
+    expect(countItem(banco.inventory, 'kit_reparacion')).toBe(1);
+    expect(sim.repair(banco.id).ok).toBe(true);
+    expect(banco.status).toBe('active');
+  });
+
+  it('[34] una caja nunca queda sobre el hueco de una escalera nueva ni dentro de un mueble', () => {
+    const { sim } = setup();
+    give(sim, { madera: 10 });
+    expect(sim.demolish(mod(sim, 'almacen').id).ok).toBe(true);
+    const crate = sim.state.crates[0]!;
+    expect(crate.pos).toEqual({ x: -6, y: 3.2, z: 6 }); // centro de la celda (3,3)
+    const r = sim.placeModule('escalera', 0, 3, 3, 3);
+    expect(r.ok, r.msg).toBe(true);
+    sim.helpBuild(r.moduleId!, 30);
+    expect(getCell(sim.layout, 1, 3, 3)!.kind).toBe('stairHigh');
+    expect(stations.isValidDropPoint(sim, crate.pos)).toBe(true);
+    expect(sim.collision.cellOf(crate.pos)!.kind).toBe('deck');
+    expect(sim.collision.groundAt(crate.pos.x, crate.pos.z, crate.pos.y + 0.05)).toBeCloseTo(crate.pos.y, 9);
+    expect(Math.hypot(crate.pos.x + 6, crate.pos.z - 6)).toBeLessThan(4);
+
+    // safeDropPoint respeta un punto válido y corrige uno sobre el hueco o dentro de un mueble.
+    const good = { ...crate.pos };
+    expect(stations.safeDropPoint(sim, good)).toEqual(good);
+    const fogon = sim.layout.props.find((p) => p.kind === 'fogon')!;
+    for (const bad of [{ x: -6, y: 3.2, z: 6 }, { x: fogon.x, y: 3.2, z: fogon.z }]) {
+      expect(stations.isValidDropPoint(sim, bad)).toBe(false);
+      const fixed = stations.safeDropPoint(sim, bad);
+      expect(stations.isValidDropPoint(sim, fixed)).toBe(true);
+      expect(Math.hypot(fixed.x - bad.x, fixed.z - bad.z)).toBeLessThan(4);
+    }
+  });
+
+  it('[46] textos de la economía con buena concordancia', () => {
+    const { sim, notes } = setup();
+    sim.state.unlocks.push('energia', 'agua');
+    give(sim, MATERIALS);
+    const gen = build(sim, 'generador', 0, 1, 0);
+    build(sim, 'potabilizadora', 0, 3, 0);
+    sim.state.utilities.waterL = 0;
+    gen.fuelBurn = 1.2; // poco más de un minuto y nada en la ranura
+    sim.tick(0.5);
+    expect(texts(notes, /^Al generador le queda combustible para un minuto$/)).toHaveLength(1);
+    expect(utilities.agree('Enfermería', 'Apagado')).toBe('Apagada');
+    expect(utilities.agree('Taller mecánico', 'Apagado')).toBe('Apagado');
+    expect(utilities.agree('Lámparas de cultivo', 'apagado')).toBe('apagadas');
   });
 });

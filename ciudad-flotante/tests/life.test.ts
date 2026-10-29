@@ -454,7 +454,7 @@ describe('habitantes: diálogo y comandos', () => {
     marina.needs.hunger = 10;
     const talk = sim.talkTo('npc1')!;
     expect(talk.name).toBe('Marina');
-    expect(talk.roleName).toBe('Cocinero/a');
+    expect(talk.roleName).toBe('Cocinera'); // concordado con el habitante (no «Cocinero/a»)
     expect(talk.trait).toBe('Optimista');
     expect(talk.lines.length).toBeGreaterThanOrEqual(2);
     expect(talk.lines.some((l) => /hambre/i.test(l))).toBe(true);
@@ -743,8 +743,8 @@ describe('eventos: cada tipo se inicia y se resuelve', () => {
     expect(sim.eventChoice(ev.id, 'rescatar').ok).toBe(true);
     expect(sim.state.voyage.anchoredUntil).toBeGreaterThan(sim.state.time);
     const wreck = sim.state.debris.filter((d) => d.eventId === ev.id);
-    expect(wreck.length).toBeGreaterThanOrEqual(8);
-    expect(wreck.length).toBeLessThanOrEqual(12);
+    expect(wreck.length).toBeGreaterThanOrEqual(events.WRECK_DEBRIS_COUNT[0]);
+    expect(wreck.length).toBeLessThanOrEqual(events.WRECK_DEBRIS_COUNT[1]);
     expect(wreck.some((d) => d.kind === 'cofre' && d.loot.some((l) => l.id === BLUEPRINT_ORDER[0]))).toBe(true);
     expect(sim.state.tutorial.done).toContain('timon');
     for (const d of wreck) debris.collectDebrisFor(sim, d.id, 'player', RAIL);
@@ -815,9 +815,12 @@ describe('eventos: cada tipo se inicia y se resuelve', () => {
     run(loaded, events.STRUCTURE_EXPEDITION_MIN);
     expect(npcById(loaded, id).awayUntil).toBeNull();
     expect(lastHistory(loaded, 'estructura')?.success).toBe(true);
-    // La estructura trae componentes y el plano pendiente.
+    // La estructura trae componentes y, la mitad de las veces, el plano pendiente (y se dice).
     expect(storageTotal(loaded, 'componentes')).toBeGreaterThan(0);
-    expect(storageTotal(loaded, BLUEPRINT_ORDER[0]!) + loaded.state.crates.reduce((a, c) => a + countItem(c.inventory, BLUEPRINT_ORDER[0]!), 0)).toBe(1);
+    const bp = storageTotal(loaded, BLUEPRINT_ORDER[0]!) + loaded.state.crates.reduce((a, c) => a + countItem(c.inventory, BLUEPRINT_ORDER[0]!), 0);
+    expect(bp).toBeLessThanOrEqual(1);
+    const back = loaded.state.log.filter((l) => /vuelven? de la estructura/.test(l.text)).pop()!;
+    expect(/sala de control/.test(back.text)).toBe(bp === 1);
   });
 
   it('náufragos: el gancho sube a bordo al superviviente, que se une y recibe cama', () => {
@@ -917,10 +920,14 @@ describe('eventos: cada tipo se inicia y se resuelve', () => {
     expect(offers.length).toBe(4);
     expect(sim.state.voyage.sightings.some((s) => s.kind === 'mercante' && s.eventId === ev.id)).toBe(true);
     const o = offers[0]!;
-    const r0 = sim.trade(ev.id, 0);
-    if (!o.canAfford) expect(r0.msg).toMatch(/faltan/i);
-    for (const [id, q] of Object.entries(o.give)) addItem(sim.state.player.inventory, id, q);
     const gets = Object.entries(o.get).map(([id]) => [id, countItem(sim.state.player.inventory, id)] as const);
+    if (!o.canAfford) {
+      // Sin lo que pide, no hay trato (y dice qué falta); con ello, sí.
+      const r0 = sim.trade(ev.id, 0);
+      expect(r0.ok).toBe(false);
+      expect(r0.msg).toMatch(/faltan/i);
+      for (const [id, q] of Object.entries(o.give)) addItem(sim.state.player.inventory, id, q);
+    }
     expect(sim.trade(ev.id, 0).ok).toBe(true);
     for (const [id, before] of gets) expect(countItem(sim.state.player.inventory, id)).toBeGreaterThan(before);
     expect(sim.trade(ev.id, 0).ok).toBe(false);
@@ -1037,7 +1044,7 @@ describe('eventos: cada tipo se inicia y se resuelve', () => {
 /* ------------------------------------------------------------------ */
 
 describe('director y guion inicial', () => {
-  it('guion: naufragio con planos en orden, náufragos, mercante e isla', () => {
+  it('guion: naufragio con planos en orden, náufragos, mercante, isla y otro naufragio el día 5', () => {
     const sim = setup(5);
     sim.state.events.nextRollAt = 1e12; // solo el guion
     const log: { type: string; at: number; ev: ActiveEvent }[] = [];
@@ -1053,14 +1060,16 @@ describe('director y guion inicial', () => {
     sim.eventChoice(first.ev.id, 'rescatar');
     for (const d of sim.state.debris.filter((x) => x.eventId === first.ev.id)) debris.collectDebrisFor(sim, d.id, 'player', RAIL);
     expect(countItem(sim.state.player.inventory, BLUEPRINT_ORDER[0]!)).toBe(1);
-    runUntil(sim, at(4, 10) + 2);
+    runUntil(sim, at(5, 16) + 2);
     const scripted = log.filter((l) => l.type !== 'tormenta' && l.type !== 'incendio' && l.type !== 'enfermedad');
     const seq = scripted.map((l) => `${l.type}@${Math.floor(l.at)}`);
     expect(seq).toContain(`naufragos@${at(2, 10)}`);
     expect(seq).toContain(`mercante@${at(3, 11)}`);
-    expect(seq).toContain(`naufragio@${at(3, 16)}`);
     expect(seq).toContain(`isla@${at(4, 10)}`);
-    const second = scripted.find((l) => l.type === 'naufragio' && l.at >= at(3, 16))!;
+    expect(seq).toContain(`naufragio@${at(5, 16)}`);
+    // El segundo plano garantizado llega el día 5 (ritmo de progresión), no el 3.
+    expect(seq).not.toContain(`naufragio@${at(3, 16)}`);
+    const second = scripted.find((l) => l.type === 'naufragio' && l.at >= at(5, 16))!;
     expect((second.ev.data as { blueprint: string }).blueprint).toBe(BLUEPRINT_ORDER[1]);
     expect(sim.state.events.scripted).toEqual(expect.arrayContaining(events.SCRIPT.map((s) => s.id)));
   });
@@ -1162,14 +1171,17 @@ describe('habitantes: subsistencia', () => {
     tomas.needs.hunger = 30;
     let roasted = false;
     let ateRaw = false;
+    let minFish = Infinity;
     run(sim, 120, () => {
       if (mod(sim, 'cocina').queue.some((j) => j.recipeId === 'pescado_asado')) roasted = true;
       if (tomas.carry?.id === 'pescado_crudo') ateRaw = true;
+      minFish = Math.min(minFish, storageTotal(sim, 'pescado_crudo'));
     });
     expect(roasted).toBe(true);
     expect(ateRaw).toBe(false);
     expect(tomas.needs.hunger).toBeGreaterThan(45);
-    expect(storageTotal(sim, 'pescado_crudo')).toBeLessThan(3);
+    // El pescado del asado sale del almacén (luego puede volver a pescar y reponerlo).
+    expect(minFish).toBeLessThan(3);
     // Nunca paga con el inventario del jugador.
     expect(countItem(sim.state.player.inventory, 'pescado_crudo')).toBe(0);
   });
@@ -1452,5 +1464,541 @@ describe('mar y director: detalles', () => {
     const w = events.eventWeights(sim);
     expect(w.banco_peces).toBeCloseTo(region.eventWeights['banco_peces']! * events.REPEAT_FACTOR, 5);
     expect(w.naufragio).toBeCloseTo(region.eventWeights['naufragio']!, 5);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Correcciones de la ronda de QA (fix-life)                           */
+/* ------------------------------------------------------------------ */
+
+/** Coloca un módulo terminado SIN validar (para recrear barcos que la validación ya no permite). */
+function forceModule(sim: Simulation, type: string, level: number, x: number, z: number, rot: Rotation = 0): ModuleInstance {
+  const m = instantiateModule(sim.nextId(), type, level, x, z, rot, 'active');
+  sim.state.ship.modules.push(m);
+  sim.shipChanged();
+  return m;
+}
+
+/** Un tick sin tocar las necesidades del jugador (para pruebas con el jugador dormido). */
+function tickRaw(sim: Simulation, minutes: number): void {
+  for (let i = 0; i < minutes; i++) {
+    const n = sim.state.player.needs;
+    n.hunger = Math.max(n.hunger, 80);
+    n.thirst = Math.max(n.thirst, 80);
+    sim.tick(1);
+  }
+}
+
+describe('QA: necesidades de los habitantes', () => {
+  it('[1] agotado y muerto de sed bebe antes de volver a la cama (sin bucle «Va a beber» / «Va a dormir»)', () => {
+    const sim = quiet(setup(1));
+    removeEverywhere(sim, 'agua_potable'); // el agua, solo en el depósito de la bodega
+    runUntil(sim, at(1, 10));
+    const tomas = npcById(sim, 'npc2');
+    Object.assign(tomas.needs, { energy: 14, thirst: 9, hunger: 70, health: 100 });
+    let drankAt = -1;
+    let slept = false;
+    run(sim, 120, () => {
+      if (drankAt < 0 && tomas.needs.thirst > 40) drankAt = sim.state.time;
+      if (drankAt > 0 && tomas.task?.kind === 'dormir') slept = true;
+    });
+    expect(drankAt).toBeGreaterThan(0);
+    expect(drankAt - at(1, 10)).toBeLessThanOrEqual(60);
+    expect(slept).toBe(true); // y después, a la cama
+    expect(tomas.needs.health).toBe(100);
+  });
+
+  it('[1] agotado y hambriento come antes de dormir', () => {
+    const sim = quiet(setup(1));
+    runUntil(sim, at(1, 10));
+    const tomas = npcById(sim, 'npc2');
+    Object.assign(tomas.needs, { energy: 13, thirst: 70, hunger: 9, health: 100 });
+    run(sim, 90);
+    expect(tomas.needs.hunger).toBeGreaterThan(30);
+  });
+
+  it('[2] si la comida preferida está donde no se llega, comen la siguiente; si no llegan a ninguna, lo dicen', () => {
+    const sim = quiet(setup(1));
+    // Un depósito tapa el paso al almacén de la bodega (la validación actual ya no lo permite).
+    forceModule(sim, 'deposito', 0, 7, 1, 0);
+    const hold = forceModule(sim, 'almacen', 0, 0, 1, 0);
+    const c = moduleCenter(hold, sim.state.ship.width);
+    expect(npc.isOnReachableNav(sim, { x: c.x, y: c.y, z: c.z })).toBe(false); // precondición
+    emptyFood(sim);
+    const deck = mod(sim, 'almacen');
+    addItem(hold.inventory!, 'conserva', 20); // preferida, pero inalcanzable
+    addItem(deck.inventory!, 'fruta', 10);
+    const marina = npcById(sim, 'npc1');
+    marina.needs.hunger = 20;
+    run(sim, 120);
+    expect(marina.needs.hunger).toBeGreaterThan(40);
+    expect(countItem(deck.inventory, 'fruta')).toBeLessThan(10);
+    expect(countItem(hold.inventory, 'conserva')).toBe(20);
+    // Ahora solo queda comida donde no se llega: la queja lo dice (y no «no queda comida»).
+    deck.inventory!.slots = deck.inventory!.slots.map((s) => (s?.id === 'fruta' ? null : s));
+    sim.state.crates = [];
+    const notes: string[] = [];
+    sim.bus.on('notify', (n) => notes.push(n.text));
+    for (const n of sim.state.npcs) {
+      n.needs.hunger = 20;
+      n.lastComplaintAt = -1e9;
+      n.carry = null;
+    }
+    run(sim, 30);
+    expect(notes.some((t) => /No llego a la comida del almacén/.test(t))).toBe(true);
+    expect(notes.some((t) => /No queda comida/.test(t))).toBe(false);
+    expect(sim.talkTo('npc1')!.lines.some((l) => /no llego a la comida/i.test(l))).toBe(true);
+  });
+
+  it('[29] la enfermedad no se pasa sola: sin cama ni tratamiento la salud cae y el evento fracasa', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9));
+    // Sin camas: duerme en el suelo (no es «guardar cama») y no se cura.
+    sim.state.ship.modules = sim.state.ship.modules.filter((m) => m.type !== 'dormitorio' && m.type !== 'camarote');
+    sim.shipChanged();
+    sim.state.npcs = sim.state.npcs.filter((n) => n.id === 'npc1');
+    const marina = npcById(sim, 'npc1');
+    events.startEvent(sim, 'enfermedad', { npcId: 'npc1' });
+    run(sim, 30 * 60);
+    expect(marina.sick).toBe(true);
+    expect(marina.needs.health).toBeLessThan(events.SICKNESS_WORSE_HEALTH);
+    expect(lastHistory(sim, 'enfermedad')?.success).toBe(false);
+    expect(sim.state.log.some((l) => /Marina ha empeorado/.test(l.text))).toBe(true);
+  });
+
+  it('[29] guardando cama se cura (éxito) y lo dice; y puede contagiar a quien tenga al lado', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9));
+    const marina = npcById(sim, 'npc1');
+    const tomas = npcById(sim, 'npc2');
+    events.startEvent(sim, 'enfermedad', { npcId: 'npc1' });
+    // Contagio: con Tomás pegado a ella durante muchas horas, acaba enfermando y abre su propio evento.
+    Object.assign(tomas.pos, marina.pos);
+    npc.spreadSickness(sim, marina, 500);
+    expect(tomas.sick).toBe(true);
+    const evs = sim.state.events.active.filter((e) => e.type === 'enfermedad');
+    expect(evs.length).toBe(2);
+    expect(evs.some((e) => /contagio de Marina/.test(e.description))).toBe(true);
+    // Se curan con reposo: éxito «tras guardar cama».
+    run(sim, 3 * MINUTES_PER_DAY, () => {
+      if (!marina.sick && !tomas.sick) return;
+    });
+    const cured = sim.state.log.filter((l) => /se ha recuperado de la enfermedad (tras guardar cama|tras reposar)/.test(l.text));
+    expect(cured.length).toBeGreaterThanOrEqual(1);
+    expect(sim.state.events.history.filter((h) => h.type === 'enfermedad').every((h) => h.success !== null)).toBe(true);
+  });
+});
+
+describe('QA: director y sueño', () => {
+  it('[5] el día mínimo se cuenta en horas jugadas: la primera noche no trae crisis', () => {
+    const sim = quiet(setup());
+    sim.state.time = at(2, 0.5); // ya es «día 2» en el calendario, pero solo van 17,5 h jugadas
+    let w = events.eventWeights(sim);
+    for (const t of ['averia', 'incendio', 'fuga', 'plaga', 'discusion', 'enfermedad']) expect(w[t as events.EventType], t).toBeUndefined();
+    expect(events.playedHours(sim)).toBeCloseTo(17.5, 5);
+    sim.state.time = at(2, 7) + 1; // 24 h jugadas
+    w = events.eventWeights(sim);
+    expect(w.averia).toBeGreaterThan(0);
+    expect(w.estructura).toBeUndefined(); // la estructura, a partir del día 6 (120 h)
+    sim.state.time = at(6, 7) + 1;
+    w = events.eventWeights(sim);
+    expect(w.estructura).toBeGreaterThan(0);
+  });
+
+  it('[5] mientras el jugador duerme no se avista nada y las crisis no urgentes no le despiertan', () => {
+    const sim = quiet(setup());
+    sim.state.time = at(3, 21);
+    sim.state.player.sleeping = { moduleId: mod(sim, 'camarote').id, bed: 0, until: null };
+    sim.state.player.needs.energy = 40;
+    const w = events.eventWeights(sim);
+    for (const t of ['naufragio', 'isla', 'mercante', 'naufragos', 'estructura']) expect(w[t as events.EventType], t).toBeUndefined();
+    tickRaw(sim, 2);
+    const ev = events.startEvent(sim, 'averia')!;
+    expect(ev.data['wakePlayer']).toBe(false);
+    tickRaw(sim, 5);
+    expect(sim.state.player.sleeping).not.toBeNull();
+    expect(sim.state.log.some((l) => l.text.startsWith('Avería'))).toBe(true); // queda en el diario
+    // Una emergencia sí le despierta.
+    events.startEvent(sim, 'incendio', { moduleId: mod(sim, 'almacen').id });
+    tickRaw(sim, 1);
+    expect(sim.state.player.sleeping).toBeNull();
+  });
+
+  it('[5] el guion espera a que el jugador despierte para los avistamientos', () => {
+    const sim = quiet(setup());
+    sim.state.events.scripted = events.SCRIPT.filter((s) => s.id !== 'dia1-naufragio').map((s) => s.id);
+    runUntil(sim, at(1, 12.9));
+    sim.state.player.sleeping = { moduleId: mod(sim, 'camarote').id, bed: 0, until: null };
+    tickRaw(sim, 30);
+    expect(events.activeEvent(sim, 'naufragio')).toBeUndefined();
+    sim.state.player.sleeping = null;
+    tickRaw(sim, 2);
+    expect(events.activeEvent(sim, 'naufragio')).toBeDefined();
+  });
+
+  it('[8] ritmo de progresión: menos planos y restos en los naufragios', () => {
+    expect(events.SCRIPT.find((s) => s.type === 'naufragio' && s.id !== 'dia1-naufragio')?.day).toBe(5);
+    expect(events.WRECK_BLUEPRINT_CHANCE).toBeCloseTo(0.15);
+    expect(events.STRUCTURE_BLUEPRINT_CHANCE).toBeCloseTo(0.5);
+    expect(events.EVENT_MIN_DAY.estructura).toBe(6);
+    expect(events.WRECK_DEBRIS_COUNT).toEqual([5, 8]);
+    // En 60 naufragios al azar, el plano aparece en torno al 15 %.
+    let withBp = 0;
+    for (let i = 0; i < 60; i++) {
+      const sim = quiet(setup(100 + i));
+      const ev = events.startEvent(sim, 'naufragio')!;
+      if ((ev.data as { blueprint: string | null }).blueprint) withBp++;
+    }
+    expect(withBp).toBeGreaterThan(1);
+    expect(withBp).toBeLessThan(20);
+  });
+
+  it('[23] el daño de las tormentas escala con el tiempo jugado', () => {
+    const sim = quiet(setup());
+    sim.state.time = at(1, 7);
+    expect(events.stormDamageFactor(sim)).toBeCloseTo(0.5, 5);
+    sim.state.time = at(6, 7);
+    expect(events.stormDamageFactor(sim)).toBeCloseTo(1, 5);
+    sim.state.time = at(30, 7);
+    expect(events.stormDamageFactor(sim)).toBeCloseTo(1.5, 5);
+  });
+});
+
+describe('QA: tormentas', () => {
+  function stormWithDamage(sim: Simulation, conditions: Record<string, number>): ActiveEvent {
+    forceWeather(sim, 'tormenta', 300, true);
+    run(sim, 1);
+    const ev = onlyActive(sim, 'tormenta');
+    const d = ev.data as { damaged: number[] };
+    for (const [type, c] of Object.entries(conditions)) {
+      const m = mod(sim, type);
+      m.condition = c;
+      if (!d.damaged.includes(m.id)) d.damaged.push(m.id);
+    }
+    return ev;
+  }
+
+  it('[11][25] la fase de daños termina a las 12 h aunque no se repare (fracaso) y el HUD no se queda en «Quedan 0 min»', () => {
+    const sim = quiet(setup());
+    sim.state.npcs = []; // nadie repara
+    stormWithDamage(sim, { cocina: 30 });
+    forceWeather(sim, 'despejado', 3000, true);
+    run(sim, 2);
+    const ev = onlyActive(sim, 'tormenta');
+    expect(ev.stage).toBe(1);
+    expect(ev.title).toBe('Daños de la tormenta');
+    expect(events.eventStatusText(sim, ev)).toMatch(/Quedan 1[12] h/);
+    run(sim, events.STORM_REPAIR_WINDOW);
+    expect(events.activeEvent(sim, 'tormenta')).toBeUndefined();
+    expect(lastHistory(sim, 'tormenta')?.success).toBe(false);
+    expect(sim.state.log.some((l) => /siguen sin reparar la cocina/.test(l.text))).toBe(true);
+    expect(mod(sim, 'cocina').condition).toBe(30); // los daños siguen ahí
+  });
+
+  it('[11] otra tormenta durante la fase de daños cierra la anterior y empieza una nueva (con su aviso)', () => {
+    const sim = quiet(setup());
+    sim.state.npcs = [];
+    const old = stormWithDamage(sim, { cocina: 30 });
+    forceWeather(sim, 'despejado', 120, true);
+    run(sim, 2);
+    expect(old.stage).toBe(1);
+    const started: string[] = [];
+    sim.bus.on('worldEventStarted', (e) => started.push(e.type));
+    forceWeather(sim, 'tormenta', 300, true);
+    run(sim, 2);
+    expect(started).toContain('tormenta');
+    const now = onlyActive(sim, 'tormenta');
+    expect(now.id).not.toBe(old.id);
+    expect(now.stage).toBe(0);
+    expect(events.eventById(sim, old.id)).toBeUndefined();
+  });
+
+  it('[26] al amainar no anuncia «daños ya reparados» si nadie ha reparado nada', () => {
+    const sim = quiet(setup());
+    sim.state.npcs = [];
+    stormWithDamage(sim, { cocina: 55, puente: 71 });
+    forceWeather(sim, 'despejado', 3000, true);
+    run(sim, 2);
+    expect(events.activeEvent(sim, 'tormenta')).toBeUndefined();
+    const text = sim.state.log.filter((l) => /tormenta ha pasado/.test(l.text)).pop()!.text;
+    expect(text).not.toMatch(/ya están reparados/);
+    expect(text).toMatch(/Daños leves en la cocina \(55 %\) y el puente \(71 %\)/);
+  });
+
+  it('[41] «Ponte a cubierto» se marca al estar en un interior', () => {
+    const sim = quiet(setup());
+    forceWeather(sim, 'tormenta', 300, true);
+    placePlayer(sim, RAIL);
+    run(sim, 2);
+    const ev = onlyActive(sim, 'tormenta');
+    expect(ev.objectives[0]!.done).toBe(false);
+    const c = moduleCenter(mod(sim, 'camarote'), sim.state.ship.width);
+    placePlayer(sim, { x: c.x, y: c.y, z: c.z });
+    run(sim, 1);
+    expect(ev.objectives[0]!.done).toBe(true);
+  });
+});
+
+describe('QA: averías', () => {
+  it('[7][9] sin piezas a bordo, el director no avería el taller ni la única fuente de energía', () => {
+    const sim = quiet(setup());
+    sim.state.time = at(3, 12);
+    const gen = addModule(sim, 'generador');
+    const taller = addModule(sim, 'taller');
+    removeEverywhere(sim, 'pieza_mecanica');
+    const picks = new Set<number>();
+    for (let i = 0; i < 30; i++) {
+      const ev = events.startEvent(sim, 'averia')!;
+      const m = sim.state.ship.modules.find((mm) => mm.id === (ev.data as { moduleId: number }).moduleId)!;
+      picks.add(m.id);
+      events.endEvent(sim, ev, null);
+      Object.assign(m, { status: 'active', condition: 100, brokenReason: null });
+    }
+    expect(picks.has(gen.id)).toBe(false);
+    expect(picks.has(taller.id)).toBe(false);
+    // Con una pieza de repuesto, sí pueden averiarse.
+    addItem(mod(sim, 'almacen').inventory!, 'pieza_mecanica', 1);
+    for (let i = 0; i < 30; i++) {
+      const ev = events.startEvent(sim, 'averia')!;
+      const m = sim.state.ship.modules.find((mm) => mm.id === (ev.data as { moduleId: number }).moduleId)!;
+      picks.add(m.id);
+      events.endEvent(sim, ev, null);
+      Object.assign(m, { status: 'active', condition: 100, brokenReason: null });
+    }
+    expect(picks.has(gen.id) || picks.has(taller.id)).toBe(true);
+  });
+
+  it('[7][9] taller averiado y sin piezas: el mecánico fabrica una pieza improvisada en el banco y lo repara', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9));
+    const taller = addModule(sim, 'taller');
+    removeEverywhere(sim, 'pieza_mecanica');
+    const alm = mod(sim, 'almacen').inventory!;
+    addItem(alm, 'placa_metal', 4);
+    addItem(alm, 'tornillos', 8);
+    addItem(alm, 'chatarra', 4);
+    const ev = events.startEvent(sim, 'averia', { moduleId: taller.id })!;
+    // Objetivos por pasos: herramienta, pieza (con dónde conseguirla) y reparar.
+    expect(ev.objectives.map((o) => o.text)).toEqual([
+      'Consigue una llave inglesa (banco de trabajo)',
+      'Consigue una pieza mecánica (taller con energía, pieza improvisada en el banco, pecios o mercantes)',
+      'Repara el taller mecánico',
+    ]);
+    expect(ev.objectives.every((o) => !o.done)).toBe(true);
+    addItem(sim.state.player.inventory, 'llave_inglesa', 1);
+    let improvised = false;
+    run(sim, 6 * 60, () => {
+      if (mod(sim, 'banco_trabajo').queue.some((j) => j.recipeId === 'pieza_improvisada')) improvised = true;
+    });
+    expect(improvised).toBe(true);
+    expect(taller.status).toBe('active');
+    expect(lastHistory(sim, 'averia')?.success).toBe(true);
+  });
+
+  it('[9][41] los objetivos de la avería se marcan según lo conseguido', () => {
+    const sim = quiet(setup());
+    sim.state.npcs = [];
+    const gen = addModule(sim, 'generador');
+    removeEverywhere(sim, 'pieza_mecanica');
+    const ev = events.startEvent(sim, 'averia', { moduleId: gen.id })!;
+    run(sim, 1);
+    expect(ev.objectives.map((o) => o.done)).toEqual([false, false, false]);
+    addItem(sim.state.player.inventory, 'llave_inglesa', 1);
+    run(sim, 1);
+    expect(ev.objectives.map((o) => o.done)).toEqual([true, false, false]);
+    addItem(mod(sim, 'almacen').inventory!, 'pieza_mecanica', 1);
+    run(sim, 1);
+    expect(ev.objectives.map((o) => o.done)).toEqual([true, true, false]);
+  });
+
+  it('[9] si en 24 h nadie la repara, el mecánico hace un apaño: máquina al 40 % y fracaso parcial', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9));
+    const gen = addModule(sim, 'generador');
+    removeEverywhere(sim, 'pieza_mecanica');
+    removeEverywhere(sim, 'chatarra');
+    removeEverywhere(sim, 'placa_metal');
+    removeEverywhere(sim, 'tornillos');
+    events.startEvent(sim, 'averia', { moduleId: gen.id });
+    run(sim, events.BREAKDOWN_PATCH_MIN - 10);
+    expect(gen.status).toBe('broken');
+    expect(events.activeEvent(sim, 'averia')).toBeDefined();
+    run(sim, 20);
+    expect(events.activeEvent(sim, 'averia')).toBeUndefined();
+    expect(gen.status).toBe('active');
+    expect(gen.condition).toBe(events.BREAKDOWN_PATCH_CONDITION);
+    expect(lastHistory(sim, 'averia')?.success).toBe(false);
+    expect(sim.state.log.some((l) => /Tomás hace un apaño provisional: el generador vuelve a funcionar, pero al 40 %/.test(l.text))).toBe(true);
+  });
+});
+
+describe('QA: incendios, náufragos, naufragios y expediciones', () => {
+  it('[28] sin cubos, los habitantes apenas frenan el fuego: tarda y deja daños', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 10));
+    const almacen = mod(sim, 'almacen');
+    events.startEvent(sim, 'incendio', { moduleId: almacen.id });
+    expect(almacen.fire).toBe(events.FIRE_START);
+    run(sim, 12);
+    expect(almacen.fire).toBeGreaterThan(20); // antes se apagaba solo en ~10 min
+    expect(sim.state.npcs.filter((n) => n.task?.kind === 'apagar').length).toBeLessThanOrEqual(npc.MAX_FIREFIGHTERS);
+    run(sim, 90);
+    expect(almacen.fire).toBe(0);
+    expect(almacen.condition).toBeLessThan(100);
+  });
+
+  it('[28] con cubos en el almacén van a por ellos, los llenan en la borda y los arrojan', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 10));
+    addItem(mod(sim, 'almacen').inventory!, 'cubo', 2);
+    const cocina = mod(sim, 'cocina');
+    events.startEvent(sim, 'incendio', { moduleId: cocina.id });
+    const stages = new Set<string>();
+    run(sim, 60, () => {
+      for (const n of sim.state.npcs) {
+        const st = (n.task?.data as { stage?: string } | undefined)?.stage;
+        if (n.task?.kind === 'apagar' && st) stages.add(st);
+      }
+    });
+    for (const s of ['coger', 'llenar', 'arrojar']) expect(stages.has(s), s).toBe(true);
+    expect(cocina.fire).toBe(0);
+    // Los cubos no se pierden: vuelven al almacén (o siguen en la mano de quien los lleva).
+    run(sim, 30);
+    const buckets = storageTotal(sim, 'cubo') + storageTotal(sim, 'cubo_agua') + sim.state.npcs.filter((n) => n.carry && /^cubo/.test(n.carry.id)).length;
+    expect(buckets).toBe(2);
+  });
+
+  it('[27][30] fondear para esperar la balsa la deja al alcance del gancho; al rescatarla se leva el ancla', () => {
+    const sim = quiet(setup());
+    sim.state.npcs = [];
+    const ev = events.startEvent(sim, 'naufragos', { survivors: 1 })!;
+    const raft = sim.state.debris.find((d) => d.eventId === ev.id)!;
+    expect(sim.eventChoice(ev.id, 'fondear').ok).toBe(true);
+    const b = debris.hullBounds(sim);
+    run(sim, 30);
+    expect(raft.pos.x).toBeLessThanOrEqual(b.bowX);
+    expect(Math.abs(raft.pos.z) - b.halfW).toBeLessThanOrEqual(15.01);
+    // Desde la borda de ese costado llega el gancho.
+    placePlayer(sim, { x: raft.pos.x, y: LEVEL_H, z: Math.sign(raft.pos.z) * (b.halfW - 0.4) });
+    const r = sim.collectDebris(raft.id);
+    expect(r.ok).toBe(true);
+    expect(sim.state.voyage.anchoredUntil).toBeNull();
+    expect(lastHistory(sim, 'naufragos')?.success).toBe(true);
+  });
+
+  it('[42] el rescate se anuncia una vez, con rasgo y puesto concordados', () => {
+    const sim = quiet(setup());
+    const ev = events.startEvent(sim, 'naufragos', { survivors: 1 })!;
+    const raft = sim.state.debris.find((d) => d.eventId === ev.id)!;
+    raft.pos.x = 2;
+    placePlayer(sim, RAIL);
+    const before = sim.state.log.length;
+    expect(sim.collectDebris(raft.id).ok).toBe(true);
+    const fresh = sim.state.log.slice(before).map((l) => l.text);
+    expect(fresh.length).toBe(1);
+    const newcomer = sim.state.npcs[2]!;
+    expect(fresh[0]).toContain(`${newcomer.name} se une a la tripulación ${npc.npcIntro(newcomer)}`);
+    expect(fresh[0]).not.toMatch(/\//);
+  });
+
+  it('[42] rasgos y puestos concuerdan con el género del nombre', () => {
+    const ines = { name: 'Inés', trait: 'hablador' } as NpcState;
+    const teo = { name: 'Teo', trait: 'gloton' } as NpcState;
+    expect(npc.npcTraitName(ines)).toBe('Habladora');
+    expect(npc.npcTraitName(teo)).toBe('Glotón');
+    expect(npc.npcRoleName(ines, 'pescador')).toBe('Pescadora');
+    expect(npc.npcRoleName(teo, 'pescador')).toBe('Pescador');
+    expect(npc.npcRoleName(ines, 'mecanico')).toBe('Mecánica');
+    expect(npc.npcRoleName(ines, 'libre')).toBe('Sin puesto');
+    for (const name of ['Marina', 'Lucía', 'Nora', 'Alma', 'Vera', 'Inés', 'Carla', 'Rocío', 'Julia', 'Sol', 'Olga', 'Aitana', 'Celia', 'Lola', 'Greta']) expect(npc.isFemaleNpc({ name }), name).toBe(true);
+    for (const name of ['Tomás', 'Iker', 'Bruno', 'Darío', 'Gael', 'Teo', 'Hugo', 'Elías', 'Mateo', 'Andrés', 'Simón', 'Ramiro', 'Joaquín', 'Fermín', 'Pablo']) expect(npc.isFemaleNpc({ name }), name).toBe(false);
+    const sim = quiet(setup());
+    const s = npc.spawnSurvivor(sim, { name: 'Inés', role: 'pescador' })!;
+    const text = sim.state.log[sim.state.log.length - 1]!.text;
+    expect(text).toBe(`Inés se une a la tripulación (${npc.npcTraitName(s).toLowerCase()}, pescadora).`);
+  });
+
+  it('[40] naufragio: título de rescate, un solo aviso de fondeo y se leva el ancla al rescatarlo todo', () => {
+    const sim = quiet(setup());
+    const ev = events.startEvent(sim, 'naufragio', { blueprint: 'next' })!;
+    const before = sim.state.log.length;
+    expect(sim.eventChoice(ev.id, 'rescatar').ok).toBe(true);
+    expect(sim.state.log.slice(before).filter((l) => /ancla/i.test(l.text)).length).toBe(1);
+    expect(ev.title).toMatch(/^Rescate del «/);
+    for (const d of sim.state.debris.filter((x) => x.eventId === ev.id)) debris.collectDebrisFor(sim, d.id, 'player', RAIL);
+    expect(events.activeEvent(sim, 'naufragio')).toBeUndefined();
+    expect(sim.state.voyage.anchoredUntil).toBeNull();
+    expect(sim.state.log[sim.state.log.length - 1]!.text).toMatch(/Levamos anclas/);
+  });
+
+  it('[37][38][39] expediciones: «Volverá» con una persona, cuenta atrás hasta la vuelta y botín sin repetir', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const sim = quiet(setup(seed));
+      runUntil(sim, at(1, 9));
+      const ev = events.startEvent(sim, 'estructura')!;
+      expect(ev.choices[0]!.label).toBe('Fondear y enviar una expedición (2 h)');
+      expect(sim.eventChoice(ev.id, 'expedicion').ok).toBe(true);
+      const d = ev.data as { returnAt: number; npcIds: string[] };
+      expect(d.npcIds.length).toBe(1);
+      expect(ev.endsAt).toBe(d.returnAt);
+      expect(events.eventStatusText(sim, ev)).toBe('Quedan 2 h');
+      expect(sim.state.log.some((l) => /Volverá hacia las/.test(l.text))).toBe(true);
+      expect(sim.state.log.some((l) => /Volverán/.test(l.text))).toBe(false);
+      run(sim, events.STRUCTURE_EXPEDITION_MIN + 2);
+      const text = sim.state.log.filter((l) => /vuelven? de la estructura/.test(l.text)).pop()!.text;
+      expect(text).not.toMatch(/!\./);
+      expect(text).not.toMatch(/¡y /);
+      const names = [...text.matchAll(/\d+× ([^,.(]+)/g)].map((m) => m[1]!.trim());
+      expect(new Set(names).size).toBe(names.length); // cada objeto, una sola vez
+      expect(names.some((n) => /^Plano/.test(n))).toBe(false); // el plano va en su propia frase
+    }
+  });
+
+  it('[36] la pesca concuerda en género con lo que sale enganchado', () => {
+    const sim = quiet(setup());
+    addItem(sim.state.player.inventory, 'cana', 1);
+    placePlayer(sim, RAIL);
+    let junk = '';
+    for (let i = 0; i < 300 && !junk; i++) {
+      const r = sim.catchFish();
+      if (!/pescado|captura/i.test(r.msg)) junk = r.msg;
+    }
+    expect(junk).toMatch(/^Algo se ha enganchado en el anzuelo: 1× /);
+    expect(junk).not.toMatch(/enredado/);
+  });
+
+  it('[47] desmontar el huerto con plaga no cuenta como plaga controlada', () => {
+    const sim = quiet(setup());
+    const huerto = addModule(sim, 'huerto');
+    addItem(sim.state.player.inventory, 'semilla_hortaliza', 2);
+    expect(plant(sim, huerto.id, 0, 'semilla_hortaliza').ok).toBe(true);
+    events.startEvent(sim, 'plaga');
+    sim.state.ship.modules = sim.state.ship.modules.filter((m) => m.id !== huerto.id);
+    sim.shipChanged();
+    run(sim, 1);
+    expect(events.activeEvent(sim, 'plaga')).toBeUndefined();
+    expect(lastHistory(sim, 'plaga')?.success).toBeNull();
+  });
+});
+
+describe('QA: la cocinera y el fogón', () => {
+  it('[20] cocina a un lado del fogón: deja libre su punto de uso, y se aparta si el jugador se acerca', () => {
+    const sim = quiet(setup());
+    const cocina = mod(sim, 'cocina');
+    const fogon = sim.layout.props.find((p) => p.moduleId === cocina.id && p.kind === 'fogon')!;
+    const use = sim.nav.standPoint(fogon)!;
+    runUntil(sim, at(1, 8));
+    const marina = npcById(sim, 'npc1');
+    let atStove = 0;
+    let onUse = 0;
+    run(sim, 150, () => {
+      const t = marina.task;
+      if (t?.kind === 'trabajar' && (t.data as { anim?: string }).anim === 'cocinar' && (t.data as { phase: string }).phase === 'act') {
+        atStove++;
+        if (Math.hypot(marina.pos.x - use.x, marina.pos.z - use.z) < 0.3) onUse++;
+      }
+    });
+    expect(atStove).toBeGreaterThan(0);
+    expect(onUse).toBe(0);
   });
 });

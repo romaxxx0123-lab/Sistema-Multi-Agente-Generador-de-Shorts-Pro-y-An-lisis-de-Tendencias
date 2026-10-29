@@ -109,12 +109,15 @@ const WATER_BOTTLE_RESERVE = 2;
 const RAW_FISH_SICK = 0.3;
 /**
  * Probabilidad por hora de curarse de una enfermedad. Solo se cura con tratamiento: en una camilla
- * de la enfermería (unas 4 h de media), guardando cama (unas 17 h) o con un botiquín (al instante).
- * Andando por ahí no se cura: pierde salud hasta que alguien le atienda.
+ * de la enfermería (unas 4 h de media), guardando cama (unas 12 h) o con un botiquín (al instante).
+ * Andando por ahí (sin cama, o sin parar de trabajar) no se cura: pierde salud hasta que alguien le
+ * atienda.
  */
 const CURE_PER_HOUR_INFIRMARY = 0.25;
-/** Guardando reposo en una cama normal. */
-const CURE_PER_HOUR_RESTING = 0.06;
+/** Guardando reposo en una cama normal (unas 12 h de media). */
+const CURE_PER_HOUR_RESTING = 0.08;
+/** En cama (o en la camilla) la enfermedad hace menos daño que andando por ahí. */
+const SICK_DAMAGE_RESTING = 0.4;
 /** Probabilidad por hora de contagiar a cada habitante que esté cerca (o duerma en la misma habitación). */
 export const CONTAGION_PER_HOUR = 0.03;
 /** Distancia (m) a la que se contagia la enfermedad. */
@@ -1203,9 +1206,10 @@ function onActStart(sim: Simulation, npc: NpcState): void {
     }
     case 'apagar': {
       const m = findModule(sim, t.targetModuleId ?? -1);
-      if (m) {
+      const stage = (d.stage as string | undefined) ?? 'sofocar';
+      if (m && (stage === 'sofocar' || stage === 'arrojar')) {
         npc.yaw = yawTo(npc.pos, moduleCenter(m, sim.state.ship.width));
-        sayFrom(sim, npc, LINES.firefight);
+        if (stage === 'sofocar') sayFrom(sim, npc, LINES.firefight);
       }
       return;
     }
@@ -1790,7 +1794,13 @@ function waterPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
 /** ¿La tarea recoge algo con las manos (y por tanto necesita tenerlas libres)? */
 function planTakesCarry(plan: Plan): boolean {
   const job = plan.kind === 'trabajar' ? plan.data?.job : undefined;
-  return (plan.kind === 'comer' && plan.data?.stage === 'recoger') || (plan.kind === 'beber' && plan.data?.stage === 'botella') || job === 'coger_cubo' || job === 'ordenar';
+  return (
+    (plan.kind === 'comer' && plan.data?.stage === 'recoger') ||
+    (plan.kind === 'beber' && plan.data?.stage === 'botella') ||
+    (plan.kind === 'apagar' && plan.data?.stage === 'coger') ||
+    job === 'coger_cubo' ||
+    job === 'ordenar'
+  );
 }
 
 /** ¿La tarea usa justo lo que lleva en la mano? */
@@ -1798,6 +1808,7 @@ function planUsesCarry(plan: Plan, id: ItemId): boolean {
   const job = plan.kind === 'trabajar' ? plan.data?.job : undefined;
   if (plan.kind === 'comer') return ITEMS[id]?.category === 'comida';
   if (plan.kind === 'beber') return id === 'agua_potable';
+  if (plan.kind === 'apagar') return id === 'cubo' || id === 'cubo_agua';
   if (job === 'llenar_cubo') return id === 'cubo';
   if (job === 'destilar') return id === 'cubo_agua';
   return job === 'guardar';
@@ -1962,37 +1973,65 @@ const PART_CHAIN: Record<string, { recipe: string; station: string }[]> = {
     { recipe: 'tornillos', station: 'banco_trabajo' },
   ],
   pieza_mecanica: [
+    // En el taller (con energía) sale más barata; si el taller no puede (averiado, sin energía o
+    // sin plano), el banco hace una improvisada: así una avería nunca bloquea su propia reparación.
     { recipe: 'pieza_mecanica', station: 'taller' },
+    { recipe: 'pieza_improvisada', station: 'banco_trabajo' },
     { recipe: 'placa_metal', station: 'banco_trabajo' },
     { recipe: 'tornillos', station: 'banco_trabajo' },
   ],
 };
 
+/** ¿Se está fabricando ya ese repuesto en alguna estación? */
+function partInProduction(sim: Simulation, part: string): boolean {
+  return sim.state.ship.modules.some((m) => m.queue.some((j) => (RECIPES[j.recipeId]?.outputs[part] ?? 0) > 0));
+}
+
 /**
  * El mecánico fabrica el repuesto que le falta con materiales de los almacenes (o el paso
- * intermedio: tornillería, placas). Devuelve null si no hay nada que pueda fabricar.
+ * intermedio que le falta a alguna receta que sí podría hacer: tornillería, placas). Solo cuenta
+ * las estaciones que pueden trabajar ahora (el taller necesita energía). Devuelve null si no hay
+ * nada que pueda fabricar.
  */
 function partsPlan(sim: Simulation, npc: NpcState, part: string): Plan | null {
   const chain = PART_CHAIN[part];
-  if (!chain) return null;
+  if (!chain || partInProduction(sim, part)) return null;
   const invs = storageInvs(sim);
-  for (const step of chain) {
-    const r = RECIPES[step.recipe];
-    if (!r || (r.unlock && !sim.state.unlocks.includes(r.unlock))) continue;
-    if (Object.keys(missingFor(invs, r.inputs)).length) continue;
-    // Solo si el paso sirve: la receta final, o un intermedio que de verdad falta.
-    if (step.recipe !== part) {
-      const final = RECIPES[chain[0]!.recipe];
-      const need = final ? missingFor(invs, final.inputs) : {};
-      if (!Object.keys(r.outputs).some((id) => need[id])) continue;
-    }
-    const station = sim.state.ship.modules.find(
-      (m) => m.type === step.station && m.status === 'active' && m.fire <= 0 && m.queue.length < 6 && !m.queue.some((j) => j.recipeId === r.id),
-    );
-    if (!station || blocked(sim, npc, `fabricar:${r.id}`)) continue;
+  const stationFor = (step: { recipe: string; station: string }) =>
+    sim.state.ship.modules.find(
+      (m) =>
+        m.type === step.station &&
+        m.status === 'active' &&
+        m.fire <= 0 &&
+        (step.station !== 'taller' || m.powered) &&
+        m.queue.length < 6 &&
+        !m.queue.some((j) => j.recipeId === step.recipe),
+    ) ?? null;
+  const plan = (r: string, station: ModuleInstance): Plan | null => {
+    if (blocked(sim, npc, `fabricar:${r}`)) return null;
     const t = workTarget(sim, station);
-    if (!t) continue;
-    return { kind: 'trabajar', prio: PRIO.trabajar, target: t.pos, moduleId: station.id, data: { job: 'fabricar', recipe: r.id, anim: 'reparar', faceYaw: t.faceYaw }, duration: 12 / workMult(sim, npc) };
+    return t ? { kind: 'trabajar', prio: PRIO.trabajar, target: t.pos, moduleId: station.id, data: { job: 'fabricar', recipe: r, anim: 'reparar', faceYaw: t.faceYaw }, duration: 12 / workMult(sim, npc) } : null;
+  };
+  // Recetas que dan el repuesto y que se pueden hacer ahora (desbloqueadas y con estación lista).
+  const finals = chain.filter((s) => {
+    const r = RECIPES[s.recipe];
+    return !!r && (r.outputs[part] ?? 0) > 0 && (!r.unlock || sim.state.unlocks.includes(r.unlock)) && !!stationFor(s);
+  });
+  for (const s of finals) {
+    if (Object.keys(missingFor(invs, RECIPES[s.recipe]!.inputs)).length) continue;
+    const p = plan(s.recipe, stationFor(s)!);
+    if (p) return p;
+  }
+  // Pasos intermedios: solo lo que de verdad le falta a alguna de esas recetas.
+  const need: Record<ItemId, number> = {};
+  for (const s of finals) Object.assign(need, missingFor(invs, RECIPES[s.recipe]!.inputs));
+  for (const s of chain) {
+    const r = RECIPES[s.recipe];
+    if (!r || (r.outputs[part] ?? 0) > 0 || (r.unlock && !sim.state.unlocks.includes(r.unlock))) continue;
+    if (!Object.keys(r.outputs).some((id) => need[id]) || Object.keys(missingFor(invs, r.inputs)).length) continue;
+    const st = stationFor(s);
+    const p = st ? plan(r.id, st) : null;
+    if (p) return p;
   }
   return null;
 }
@@ -2018,8 +2057,12 @@ function mechanicPlan(sim: Simulation, npc: NpcState): Plan | null {
   if (missingPart && npc.role === 'mecanico') {
     const craft = partsPlan(sim, npc, missingPart.part);
     if (craft) return craft;
-    const what = missingPart.part === 'pieza_mecanica' ? 'piezas mecánicas' : 'kits de reparación';
-    complain(sim, npc, `Necesito ${what} en el almacén para arreglar ${withArticle(moduleDef(missingPart.m.type).name)}.`, `${npc.name}: «Necesito ${what} en el almacén para reparar ${withArticle(moduleDef(missingPart.m.type).name)}»`);
+    if (!partInProduction(sim, missingPart.part)) {
+      const target = withArticle(moduleDef(missingPart.m.type).name);
+      const what = missingPart.part === 'pieza_mecanica' ? 'piezas mecánicas' : 'kits de reparación';
+      const how = missingPart.part === 'pieza_mecanica' ? 'chatarra, placas y tornillería para hacer una en el banco' : 'madera, tornillería y cuerda para hacer uno en el banco';
+      complain(sim, npc, `Necesito ${what} para arreglar ${target}, o ${how}.`, `${npc.name}: «Para reparar ${target} necesito ${what} en el almacén, o ${how}»`);
+    }
   }
   for (const g of sim.state.ship.modules) {
     if (g.type !== 'generador' || g.status !== 'active' || !g.on || g.fire > 0) continue;
@@ -2302,20 +2345,84 @@ function fireToFight(sim: Simulation, npc: NpcState): ModuleInstance | null {
   return best;
 }
 
-function firePlan(sim: Simulation, m: ModuleInstance): Plan | null {
-  // Punto alcanzable junto al fuego (dentro de la habitación o delante del equipo).
+/** Punto alcanzable junto al fuego (dentro de la habitación o delante del equipo). */
+function fireSpot(sim: Simulation, m: ModuleInstance): Vec3 | null {
   const spot = moduleSpot(sim, m)?.pos ?? null;
-  if (!spot || distanceToModule(sim, m, spot) > FIRE_REACH) {
-    // Buscar cualquier nodo alcanzable pegado a las celdas del módulo.
-    for (const c of moduleCells(m)) {
-      if (c.level !== m.level) continue;
-      const cc = cellCenter(c.x, c.z, sim.state.ship.width);
-      const p = snapReachable(sim, { x: cc.x, y: levelY(c.level), z: cc.z }, 4);
-      if (p && distanceToModule(sim, m, p) <= FIRE_REACH) return { kind: 'apagar', prio: PRIO.apagar, target: p, moduleId: m.id, duration: 999 };
-    }
-    return null;
+  if (spot && distanceToModule(sim, m, spot) <= FIRE_REACH) return spot;
+  // Cualquier nodo alcanzable pegado a las celdas del módulo.
+  for (const c of moduleCells(m)) {
+    if (c.level !== m.level) continue;
+    const cc = cellCenter(c.x, c.z, sim.state.ship.width);
+    const p = snapReachable(sim, { x: cc.x, y: levelY(c.level), z: cc.z }, 4);
+    if (p && distanceToModule(sim, m, p) <= FIRE_REACH) return p;
   }
-  return { kind: 'apagar', prio: PRIO.apagar, target: spot, moduleId: m.id, duration: 999 };
+  return null;
+}
+
+/** Almacén alcanzable con un cubo para el fuego (lleno primero; vacío solo si se puede ir a la borda). */
+function bucketSource(sim: Simulation, npc: NpcState): { m: ModuleInstance; id: ItemId; spot: Vec3 } | null {
+  for (const id of ['cubo_agua', 'cubo'] as const) {
+    if (id === 'cubo' && stormNow(sim)) continue; // con este oleaje nadie se asoma a la borda
+    const src = findSource(sim, id, npc.pos);
+    const spot = src?.m ? sourceSpot(sim, src) : null;
+    if (src?.m && spot) return { m: src.m, id, spot };
+  }
+  return null;
+}
+
+/**
+ * Siguiente paso contra el fuego. Con un cubo lleno en la mano, al fuego a arrojarlo; con uno
+ * vacío, a la borda a llenarlo; si hay cubos en los almacenes, a por uno; y si no, a sofocarlo a
+ * mano (mantas, pisotones), mucho más despacio. La tarea sigue apuntando al módulo en llamas.
+ */
+function firePlan(sim: Simulation, npc: NpcState, m: ModuleInstance): Plan | null {
+  const base = { kind: 'apagar' as const, prio: PRIO.apagar, moduleId: m.id };
+  const carry = npc.carry?.id;
+  if (carry === 'cubo_agua') {
+    const spot = fireSpot(sim, m);
+    return spot ? { ...base, target: spot, data: { stage: 'arrojar' }, duration: 1 } : null;
+  }
+  if (carry === 'cubo' && !stormNow(sim)) {
+    const rail = railSpotNear(sim, npc.pos.x, undefined, npc.pos.y);
+    if (rail) return { ...base, target: rail.pos, data: { stage: 'llenar', faceYaw: rail.yaw }, duration: 1 };
+  }
+  const b = carry === 'cubo' || blocked(sim, npc, 'cubo_fuego') ? null : bucketSource(sim, npc);
+  if (b) return { ...base, target: b.spot, data: { stage: 'coger', sourceId: b.m.id, bucket: b.id }, duration: 1 };
+  const spot = fireSpot(sim, m);
+  return spot ? { ...base, target: spot, data: { stage: 'sofocar' }, duration: 999 } : null;
+}
+
+/** Fin de un paso con cubo (cogerlo, llenarlo o arrojarlo) y encadenado del siguiente. */
+function fireStep(sim: Simulation, npc: NpcState, m: ModuleInstance, stage: string): void {
+  const d = td(npc);
+  const now = sim.state.time;
+  if (stage === 'coger') {
+    const src = findModule(sim, d['sourceId'] as number);
+    const id = d['bucket'] as ItemId;
+    const got = src ? takeFromStorage(sim, id, 1, src) : 0;
+    if (got) npc.carry = { id, qty: 1 };
+    else memoOf(sim, npc).blocked['cubo_fuego'] = now + 10; // otro se lo llevó: a mano, de momento
+  } else if (stage === 'llenar') {
+    if (npc.carry?.id === 'cubo') {
+      npc.carry = { id: 'cubo_agua', qty: npc.carry.qty };
+      sim.bus.emit('sfx', { name: 'llenar_cubo', x: npc.pos.x, y: npc.pos.y + 1, z: npc.pos.z });
+    }
+  } else if (stage === 'arrojar') {
+    if (npc.carry?.id === 'cubo_agua' && distanceToModule(sim, m, npc.pos) <= FIRE_REACH + 0.5) {
+      m.fire = Math.max(0, m.fire - NPC_BUCKET_EXTINGUISH);
+      npc.carry = { id: 'cubo', qty: npc.carry.qty };
+      const c = moduleCenter(m, sim.state.ship.width);
+      sim.bus.emit('sfx', { name: 'apagar', x: c.x, y: c.y + 1, z: c.z });
+      if (sim.rng.chance(0.4)) sayFrom(sim, npc, LINES.firefight);
+    }
+  }
+  if (!(m.fire > 0)) {
+    if (sim.rng.chance(0.5)) sayFrom(sim, npc, LINES.fireOut);
+    finishTask(sim, npc);
+    return;
+  }
+  const next = firePlan(sim, npc, m);
+  if (!next || !startPlan(sim, npc, next)) abortTask(sim, npc, `apagar:${m.id}`, 5);
 }
 
 /** Emergencias que se adelantan a la tarea en curso. */
@@ -2325,7 +2432,7 @@ function emergencyPlan(sim: Simulation, npc: NpcState): Plan | null {
   if (cur === 'partir' || cur === 'expedicion') return null;
   const fire = cur === 'apagar' ? null : fireToFight(sim, npc);
   if (fire) {
-    const p = firePlan(sim, fire);
+    const p = firePlan(sim, npc, fire);
     if (p) {
       const lugar = withArticle(moduleDef(fire.type).name);
       p.say = hashPick(LINES.fireAlarm, npc.id + fire.id).replace('{lugar}', lugar);
@@ -2334,7 +2441,7 @@ function emergencyPlan(sim: Simulation, npc: NpcState): Plan | null {
     memoOf(sim, npc).blocked[`apagar:${fire.id}`] = sim.state.time + 10;
   }
   if (cur === 'apagar') return null;
-  const desperate = (npc.needs.thirst < 12 && (cur === 'beber' || !!drinkPlan(sim, npc, 0))) || (npc.needs.hunger < 12 && (cur === 'comer' || !!bestFood(sim)));
+  const desperate = (npc.needs.thirst < 12 && (cur === 'beber' || !!drinkPlan(sim, npc, 0))) || (npc.needs.hunger < 12 && (cur === 'comer' || !!bestFood(sim, npc.pos)));
   if (stormNow(sim) && cur !== 'refugio' && !desperate && !isIndoorAt(sim, npc.pos)) {
     // ¿Va de camino a un interior? Entonces no hace falta cambiar.
     const tp = npc.task?.targetPos;
@@ -2438,29 +2545,38 @@ function decide(sim: Simulation, npc: NpcState): Plan | null {
   const add = (p: Plan | null) => {
     if (p) candidates.push(p);
   };
-  // Necesidades urgentes.
+  // Necesidades urgentes. `remedy`: hay con qué saciarlas ahora mismo (beber, destilar, comer).
+  let remedy = false;
   if (n.thirst < 20 && !blocked(sim, npc, 'beber')) {
     const p = drinkPlan(sim, npc, PRIO.beberUrgente);
     if (p) add(p);
     else {
       complainThirst(sim, npc);
       // Sin agua a bordo: a destilar agua de mar (si hay fogón y cubos, o con qué hacerlos).
-      add(waterPlan(sim, npc, PRIO.beber));
+      const w = waterPlan(sim, npc, PRIO.beber);
+      add(w);
+      remedy = !!w;
     }
+    remedy ||= !!p;
   }
   if (n.hunger < 25 && !blocked(sim, npc, 'comer')) {
     const p = eatPlan(sim, npc, PRIO.comerUrgente);
     if (p) add(p);
     else complainHunger(sim, npc);
+    remedy ||= !!p;
   }
   const sl = shouldSleep(sim, npc);
   if (sl) {
-    add(sleepPlan(sim, npc, sl.prio, sl.nap));
+    // Agotado pero con sed o hambre urgentes y algo a mano: primero beber o comer, luego a la cama.
+    // (Si no, se levanta para beber, a medio camino el agotamiento le devuelve a la cama, se vuelve
+    // a levantar… y muere de sed con los depósitos llenos.)
+    const prio = sl.prio === PRIO.dormirAgotado && remedy ? PRIO.beber - 1 : sl.prio;
+    add(sleepPlan(sim, npc, prio, sl.nap));
     if (!npc.bed && sl.prio === PRIO.dormir) complain(sim, npc, 'No tengo cama: dormiré en el suelo de la bodega.', `${npc.name}: «No tengo cama: necesitamos un camarote o un dormitorio»`);
   }
   if ((npc.sick || npc.injured) && !blocked(sim, npc, 'descansar')) {
     add(restPlan(sim, npc));
-    if (npc.sick && sim.rng.chance(0.3)) complain(sim, npc, sim.rng.pick(LINES.sick), `${npc.name} está ${npcAdj(npc, 'enfermo')}: un botiquín o la enfermería le curarían`);
+    if (npc.sick && sim.rng.chance(0.3)) complain(sim, npc, sim.rng.pick(LINES.sick), `${npc.name} está ${npcAdj(npc, 'enfermo')}: un botiquín, la enfermería o guardar cama ${isFemaleNpc(npc) ? 'la' : 'lo'} curarían`);
   }
   if (n.thirst < 45 && !blocked(sim, npc, 'beber')) add(drinkPlan(sim, npc, PRIO.beber));
   let starving = false;
@@ -2499,12 +2615,15 @@ function complain(sim: Simulation, npc: NpcState, line: string, notice?: string)
   }
 }
 
+/** Hay comida (o agua) a bordo pero donde no se llega: la queja lo dice, para que el jugador abra paso. */
 function complainHunger(sim: Simulation, npc: NpcState): void {
-  complain(sim, npc, sim.rng.pick(LINES.hungry), `${npc.name}: «No queda comida en los almacenes»`);
+  if (foodAboard(sim)) complain(sim, npc, 'No llego a la comida del almacén…', `${npc.name}: «No llego a la comida del almacén: algo bloquea el paso»`);
+  else complain(sim, npc, sim.rng.pick(LINES.hungry), `${npc.name}: «No queda comida en los almacenes»`);
 }
 
 function complainThirst(sim: Simulation, npc: NpcState): void {
-  complain(sim, npc, sim.rng.pick(LINES.thirsty), `${npc.name}: «No queda agua potable a bordo»`);
+  if (waterAboard(sim)) complain(sim, npc, 'No llego al agua…', `${npc.name}: «No llego al agua de los depósitos: algo bloquea el paso»`);
+  else complain(sim, npc, sim.rng.pick(LINES.thirsty), `${npc.name}: «No queda agua potable a bordo»`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2527,8 +2646,10 @@ function mustGetUpFor(sim: Simulation, npc: NpcState, below: number): boolean {
   const day = h >= 6 && h < 21;
   if (n.thirst < below && (!!drinkPlan(sim, npc, 0) || (day && !!waterPlan(sim, npc, 0)))) return true;
   if (n.hunger < below) {
-    if (bestFood(sim)) return true;
-    if (day && fit(npc) && !stormNow(sim)) return true; // a pescar
+    if (bestFood(sim, npc.pos)) return true;
+    // A pescar (con las fuerzas justas para tenerse en pie: si no, `survivalFishPlan` no lo deja y
+    // volvería a la cama en el acto).
+    if (day && fit(npc) && !stormNow(sim) && n.energy >= 15) return true;
   }
   return false;
 }
@@ -2628,6 +2749,16 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
       }
       return;
     case 'trabajar':
+      // Dando un paso a un lado (p. ej. para dejarle el fogón al jugador) sin dejar el trabajo.
+      if (npc.path.length) {
+        npc.activity = 'walking';
+        if (walk(sim, npc, dt, walkSpeed(npc))) {
+          npc.activity = workActivity(d);
+          if (d.faceYaw !== undefined) npc.yaw = d.faceYaw;
+        }
+        return;
+      }
+      stepAsideFromStove(sim, npc);
       tickWork(sim, npc, dt);
       return;
     case 'construir': {
@@ -2648,11 +2779,21 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
         finishTask(sim, npc);
         return;
       }
-      if (distanceToModule(sim, m, npc.pos) > FIRE_REACH + 0.5 || !fit(npc)) {
+      if (!fit(npc)) {
         abortTask(sim, npc, `apagar:${m.id}`, 5);
         return;
       }
       npc.activity = 'firefighting';
+      const stage = (d.stage as string | undefined) ?? 'sofocar';
+      if (stage !== 'sofocar') {
+        if (now >= until) fireStep(sim, npc, m, stage);
+        return;
+      }
+      if (distanceToModule(sim, m, npc.pos) > FIRE_REACH + 0.5) {
+        abortTask(sim, npc, `apagar:${m.id}`, 5);
+        return;
+      }
+      // Sin cubo: sofocarlo a mano es lento (y, mientras haya cubos a bordo, mejor ir a por uno).
       m.fire = Math.max(0, m.fire - FIREFIGHT_RATE * (traitOf(npc).braveryMult ?? 1) * dt);
       if (sim.rng.chance(0.02 * dt)) sayFrom(sim, npc, LINES.firefight);
       return;
@@ -2909,7 +3050,7 @@ export function npcMoodFactors(sim: Simulation, npc: NpcState): MoodFactor[] {
   const add = (label: string, value: number) => {
     if (value) out.push({ label, value });
   };
-  add(`Carácter: ${tr.name.toLowerCase()}`, tr.moodBias ?? 0);
+  add(`Carácter: ${npcTraitName(npc).toLowerCase()}`, tr.moodBias ?? 0);
   const home = npc.task?.kind === 'descansar' ? ((td(npc)['homeBed'] as { moduleId: number } | null) ?? null) : npc.bed;
   const homeType = home ? findModule(sim, home.moduleId)?.type : undefined;
   if (homeType === 'camarote') add('Duerme en un camarote propio', 10);
@@ -2957,7 +3098,7 @@ function tickNeedsOf(sim: Simulation, npc: NpcState, dt: number): void {
     mem.lastHarm = n.thirst <= 0 ? 'sed' : 'hambre';
   }
   if (npc.sick) {
-    dmg += NPC_RATES.sickDamagePerHour;
+    dmg += NPC_RATES.sickDamagePerHour * (sleeping && onBed(npc) ? SICK_DAMAGE_RESTING : 1);
     if (!(n.hunger <= 0 || n.thirst <= 0)) mem.lastHarm = 'enfermedad';
   }
   if (nearFire(sim, npc)) {
@@ -2976,16 +3117,42 @@ function tickNeedsOf(sim: Simulation, npc: NpcState, dt: number): void {
     npc.injured = false;
     say(sim, npc, 'Ya estoy mucho mejor.');
   }
-  const cureRate = healing ? CURE_PER_HOUR_INFIRMARY : sleeping && onBed(npc) ? CURE_PER_HOUR_RESTING : CURE_PER_HOUR_NATURAL;
-  if (npc.sick && sim.rng.chance(1 - Math.pow(1 - cureRate, h))) {
-    npc.sick = false;
-    say(sim, npc, '¡Por fin se me ha pasado la fiebre!');
-    onNpcCured(sim, npc);
+  // La enfermedad solo se cura con tratamiento: camilla de la enfermería o guardando cama (el
+  // botiquín la cura al instante desde el diálogo). Mientras tanto puede contagiar a quien esté cerca.
+  if (npc.sick) {
+    const resting = sleeping && onBed(npc);
+    const cureRate = healing ? CURE_PER_HOUR_INFIRMARY : resting ? CURE_PER_HOUR_RESTING : 0;
+    if (cureRate > 0 && sim.rng.chance(1 - Math.pow(1 - cureRate, h))) {
+      npc.sick = false;
+      say(sim, npc, '¡Por fin se me ha pasado la fiebre!');
+      onNpcCured(sim, npc, healing ? 'enfermeria' : 'cama');
+    } else spreadSickness(sim, npc, h);
   }
   // Ánimo.
   const target = npcMoodTarget(sim, npc);
   const delta = target - n.mood;
   n.mood = clamp(n.mood + Math.sign(delta) * Math.min(Math.abs(delta), NPC_RATES.moodPerHour * h), 0, 100);
+}
+
+/**
+ * Contagio leve: un enfermo puede pegárselo a quien esté a su lado o duerma en su misma habitación.
+ * El contagiado abre su propio evento de enfermedad (o, si ya hay uno, enferma igualmente y queda
+ * anotado en el diario).
+ */
+function spreadSickness(sim: Simulation, npc: NpcState, hours: number): void {
+  if (!isPresent(npc)) return;
+  const p = 1 - Math.pow(1 - CONTAGION_PER_HOUR, hours);
+  const room = npc.activity === 'sleeping' ? npc.task?.targetModuleId : undefined;
+  for (const o of sim.state.npcs) {
+    if (o === npc || o.sick || !isPresent(o)) continue;
+    const near = Math.abs(o.pos.y - npc.pos.y) < 1.5 && dist2(o.pos, npc.pos) < CONTAGION_RANGE;
+    const sameRoom = room !== undefined && o.activity === 'sleeping' && o.task?.targetModuleId === room;
+    if (!(near || sameRoom) || !sim.rng.chance(p)) continue;
+    if (!startEvent(sim, 'enfermedad', { npcId: o.id, cause: `contagio de ${npc.name}`, scripted: true })) {
+      o.sick = true;
+      sim.log(`${o.name} se ha contagiado de ${npc.name}: está ${npcAdj(o, 'enfermo')} y necesita reposo o un botiquín.`, 'warn');
+    }
+  }
 }
 
 /** Entrada de peligro en el diario: un habitante está grave y morirá si nadie hace nada. */
@@ -2994,15 +3161,21 @@ function warnGrave(sim: Simulation, npc: NpcState, cause: string): void {
   let text: string;
   switch (cause) {
     case 'hambre':
-      text = bestFood(sim)
+      text = bestFood(sim, npc.pos)
         ? `${name} está ${npcAdj(npc, 'desfallecido')} de hambre: necesita comer cuanto antes.`
-        : `${name} está ${npcAdj(npc, 'desfallecido')} de hambre y no queda comida en los almacenes. ¡Pesca o cocina algo ya!`;
+        : foodAboard(sim)
+          ? `${name} está ${npcAdj(npc, 'desfallecido')} de hambre y no llega a la comida del almacén: despeja el paso o llévale algo de comer.`
+          : `${name} está ${npcAdj(npc, 'desfallecido')} de hambre y no queda comida en los almacenes. ¡Pesca o cocina algo ya!`;
       break;
     case 'sed':
-      text = `${name} se muere de sed: hace falta agua en los depósitos o botellas en el almacén.`;
+      text = drinkPlan(sim, npc, 0)
+        ? `${name} se muere de sed: necesita beber cuanto antes.`
+        : waterAboard(sim)
+          ? `${name} se muere de sed y no llega al agua: despeja el paso al depósito o llévale una botella.`
+          : `${name} se muere de sed: hace falta agua en los depósitos o botellas en el almacén.`;
       break;
     case 'enfermedad':
-      text = `${name} empeora por momentos: necesita un botiquín o una camilla en la enfermería.`;
+      text = `${name} empeora por momentos: necesita un botiquín, una camilla en la enfermería o guardar cama.`;
       break;
     case 'fuego':
       text = `${name} sufre quemaduras graves: ¡apagad ese fuego!`;
@@ -3119,6 +3292,28 @@ export interface SurvivorOptions {
   origin?: 'balsa' | 'isla' | 'estructura' | 'otro';
   role?: NpcRole;
   name?: string;
+  /**
+   * Sin entrada propia en el diario: quien lo llama la integra en la suya (p. ej. el rescate de una
+   * balsa), para no repetir tres avisos casi iguales. Ver `survivorJoinText`.
+   */
+  quiet?: boolean;
+}
+
+/** Aviso de no tener cama (vacío si la tiene). */
+function noBedNote(npc: NpcState): string {
+  return npc.bed ? '' : ' No queda ninguna cama libre: construye un camarote o un dormitorio.';
+}
+
+/**
+ * «Inés se une a la tripulación (habladora, pescadora).» para uno o varios habitantes nuevos, con
+ * el aviso de cama si alguno no la tiene.
+ */
+export function survivorJoinText(npcs: NpcState[]): string {
+  if (!npcs.length) return '';
+  const beds = npcs.some((n) => !n.bed) ? ' No queda cama para todos: construye un camarote o un dormitorio.' : '';
+  if (npcs.length === 1) return `${npcs[0]!.name} se une a la tripulación ${npcIntro(npcs[0]!)}.${noBedNote(npcs[0]!)}`;
+  const who = npcs.map((n) => `${n.name} ${npcIntro(n)}`);
+  return `Se unen a la tripulación ${who.slice(0, -1).join(', ')} y ${who[who.length - 1]}.${beds}`;
 }
 
 /**
@@ -3142,9 +3337,7 @@ export function spawnSurvivor(sim: Simulation, opts: SurvivorOptions = {}): NpcS
   assignBeds(sim);
   say(sim, npc, sim.rng.pick(LINES.rescued), 8);
   memoOf(sim, npc).nextDecideAt = st.time + 3;
-  const t = TRAITS[trait];
-  const bedNote = npc.bed ? '' : ' No queda ninguna cama libre: construye un camarote o un dormitorio.';
-  sim.log(`${name} se une a la tripulación (${(t?.name ?? trait).toLowerCase()}, ${ROLES[role].name.toLowerCase()}).${bedNote}`, 'good');
+  if (!opts.quiet) sim.log(survivorJoinText([npc]), 'good');
   return npc;
 }
 
@@ -3273,7 +3466,16 @@ export function npcStatusText(sim: Simulation, npc: NpcState): string {
     case 'beber':
       return go ? 'Va a beber' : 'Bebiendo';
     case 'apagar':
-      return go ? `Corre a apagar el fuego en ${at}` : `Apagando el fuego en ${at}`;
+      switch (d?.stage) {
+        case 'coger':
+          return 'Va a por un cubo para el fuego';
+        case 'llenar':
+          return go ? 'Corre a la borda a llenar el cubo' : 'Llenando el cubo de agua de mar';
+        case 'arrojar':
+          return go ? `Corre al fuego con un cubo de agua` : `Echando agua al fuego en ${at}`;
+        default:
+          return go ? `Corre a apagar el fuego en ${at}` : `Sofocando el fuego en ${at}`;
+      }
     case 'refugio':
       return go ? 'Busca refugio' : 'Refugiado de la tormenta';
     case 'construir':
@@ -3396,7 +3598,7 @@ export function talkTo(sim: Simulation, npcId: string): NpcTalk | null {
   const lines: string[] = [];
   if (!isPresent(npc)) {
     lines.push(`${npc.name} está de expedición. Volverá hacia las ${npc.awayUntil !== null ? clock(npc.awayUntil) : '…'}.`);
-    return { npcId, name: npc.name, role: npc.role, roleName: ROLES[npc.role].name, trait: traitOf(npc).name, mood: npc.needs.mood, lines, options: [] };
+    return { npcId, name: npc.name, role: npc.role, roleName: npcRoleName(npc, npc.role), trait: npcTraitName(npc), mood: npc.needs.mood, lines, options: [] };
   }
   const r = (() => {
     let h = 0;
@@ -3412,8 +3614,8 @@ export function talkTo(sim: Simulation, npcId: string): NpcTalk | null {
     const other = st.npcs.find((o) => o.id === disc.other);
     lines.push(`No soporto a ${other?.name ?? 'ese'}. Lo de ${disc.topic} no tiene nombre.`);
   }
-  if (n.hunger < 30) lines.push(bestFood(sim) ? 'Tengo un hambre que me muero.' : 'Tengo hambre y no queda nada de comer en los almacenes.');
-  if (n.thirst < 30) lines.push(sim.state.utilities.waterL >= 1 || storageCount(sim, 'agua_potable') ? 'Necesito beber algo.' : 'Tengo sed y los depósitos están secos.');
+  if (n.hunger < 30) lines.push(bestFood(sim, npc.pos) ? 'Tengo un hambre que me muero.' : foodAboard(sim) ? 'Tengo hambre y no llego a la comida del almacén: algo bloquea el paso.' : 'Tengo hambre y no queda nada de comer en los almacenes.');
+  if (n.thirst < 30) lines.push(drinkPlan(sim, npc, 0) ? 'Necesito beber algo.' : waterAboard(sim) ? 'Tengo sed y no llego al agua: algo bloquea el paso.' : 'Tengo sed y los depósitos están secos.');
   if (n.energy < 20) lines.push(`Estoy ${npcAdj(npc, 'agotado')}: necesito dormir.`);
   if (!npc.bed) lines.push('No tengo cama. El suelo de la bodega está frío y duro.');
   if (npc.sick) lines.push('Me encuentro fatal… un botiquín o la enfermería me vendrían de maravilla.');
@@ -3445,9 +3647,9 @@ export function talkTo(sim: Simulation, npcId: string): NpcTalk | null {
   options.push({ id: 'dar', label: 'Darle algo del inventario', enabled: true });
   for (const role of Object.keys(ROLES) as NpcRole[]) {
     if (role === npc.role) continue;
-    options.push({ id: `rol:${role}`, label: `Puesto: ${ROLES[role].name}`, enabled: true });
+    options.push({ id: `rol:${role}`, label: `Puesto: ${npcRoleName(npc, role)}`, enabled: true });
   }
-  return { npcId, name: npc.name, role: npc.role, roleName: ROLES[npc.role].name, trait: traitOf(npc).name, mood: npc.needs.mood, lines, options };
+  return { npcId, name: npc.name, role: npc.role, roleName: npcRoleName(npc, npc.role), trait: npcTraitName(npc), mood: npc.needs.mood, lines, options };
 }
 
 function clock(t: number): string {
@@ -3482,7 +3684,7 @@ export function npcOption(sim: Simulation, npcId: string, optionId: string): Act
       npc.needs.health = clamp(npc.needs.health + 40, 0, 100);
       npc.needs.mood = clamp(npc.needs.mood + 5, 0, 100);
       say(sim, npc, '¡Gracias! Ya me siento mucho mejor.');
-      if (wasSick) onNpcCured(sim, npc);
+      if (wasSick) onNpcCured(sim, npc, 'botiquin');
       sim.bus.emit('sfx', { name: 'curar', x: npc.pos.x, y: npc.pos.y + 1, z: npc.pos.z });
       if (npc.task?.kind === 'descansar') finishTask(sim, npc);
       return { ok: true, msg: `Atiendes a ${npc.name} con el botiquín` };
@@ -3518,12 +3720,13 @@ export function setRole(sim: Simulation, npcId: string, role: NpcRole): ActionRe
   const npc = sim.state.npcs.find((n) => n.id === npcId);
   if (!npc) return fail('Ya no está a bordo');
   if (!ROLES[role]) return fail('Ese puesto no existe');
-  if (npc.role === role) return fail(`${npc.name} ya es ${ROLES[role].name.toLowerCase()}`);
+  const roleName = npcRoleName(npc, role).toLowerCase();
+  if (npc.role === role) return fail(role === 'libre' ? `${npc.name} ya no tiene puesto` : `${npc.name} ya es ${roleName}`);
   npc.role = role;
   if (npc.task?.kind === 'trabajar' || npc.task?.kind === 'construir') finishTask(sim, npc);
   memoOf(sim, npc).blocked = {};
-  if (isPresent(npc)) say(sim, npc, `¡Entendido! Ahora soy ${ROLES[role].name.toLowerCase()}.`);
-  return { ok: true, msg: `${npc.name} pasa a ser ${ROLES[role].name.toLowerCase()}` };
+  if (isPresent(npc)) say(sim, npc, role === 'libre' ? '¡Entendido! Echaré una mano donde haga falta.' : `¡Entendido! Ahora soy ${roleName}.`);
+  return { ok: true, msg: role === 'libre' ? `${npc.name} se queda sin puesto: ayudará donde haga falta` : `${npc.name} pasa a ser ${roleName}` };
 }
 
 /**
@@ -3569,7 +3772,7 @@ export function giveItem(sim: Simulation, npcId: string, slot: number): ActionRe
     if (c.cures) npc.sick = false;
     if (npc.injured && (c.cures || def.id === 'vendaje')) npc.injured = false;
     say(sim, npc, '¡Gracias! Ya me siento mejor.');
-    if (wasSick && !npc.sick) onNpcCured(sim, npc);
+    if (wasSick && !npc.sick) onNpcCured(sim, npc, def.id === 'botiquin' ? 'botiquin' : 'medicina');
     return { ok: true, msg: `${npc.name} se cura con ${def.name.toLowerCase()}` };
   }
   // Materiales, herramientas, semillas…: al almacén.

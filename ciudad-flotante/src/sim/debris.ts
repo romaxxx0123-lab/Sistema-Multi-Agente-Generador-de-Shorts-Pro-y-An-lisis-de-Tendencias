@@ -7,6 +7,9 @@
  *   el barco fondeado quedan casi quietos (entonces aparecen lejos por el costado y la corriente los
  *   acerca despacio). Como máximo `MAX_DEBRIS` restos "normales" a la vez (los de
  *   un naufragio o una balsa de náufragos no cuentan). Se eliminan al quedar muy atrás de la popa.
+ * - Una balsa con náufragos y el barco fondeado: los náufragos reman hacia el costado
+ *   (`RAFT_APPROACH_SPEED`) hasta quedar a la altura del casco y a menos de 15 m de la borda, al
+ *   alcance del gancho.
  * - `collectDebris` (gancho del jugador) y `collectDebrisFor` (también lo usan los habitantes
  *   recolectores): botín al jugador (cajas a sus pies si no cabe) o a los almacenes; las balsas suben
  *   a sus náufragos a bordo (`spawnSurvivor`) y cierran el evento asociado.
@@ -25,7 +28,7 @@ import { countItem } from './inventory';
 import { cellAtPoint, halfWidthM, levelOfY } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
 import { markTutorial } from './tutorial';
-import type { Debris, DebrisKind, ItemId, ItemStack, Vec2, Vec3 } from './types';
+import type { Debris, DebrisKind, ItemId, ItemStack, NpcState, Vec2, Vec3 } from './types';
 import { onDebrisCollected, onDebrisLost, onFishCaught, isFishBankActive } from './events';
 import { spawnSurvivor } from './npc';
 
@@ -54,6 +57,10 @@ export const ANCHORED_SIDE: readonly [number, number] = [18, 30];
 export const ANCHORED_INFLOW: readonly [number, number] = [0.06, 0.14];
 /** Alcance real del gancho (generoso, ver SISTEMAS.md §9). */
 export const COLLECT_RANGE = HOOK_RANGE + 6;
+/** Fondeados, los náufragos reman hacia el barco a esta velocidad (m/min = m por segundo real). */
+export const RAFT_APPROACH_SPEED = 3;
+/** Distancia máxima a la borda (m) a la que se quedan esperando el gancho (si ya están más cerca, no se alejan). */
+export const RAFT_WAIT_SIDE = 15;
 /** Tiempo de picada (minutos de juego = segundos reales) sin modificadores. */
 export const BITE_DELAY: readonly [number, number] = [8, 22];
 /** Divisor del tiempo de picada durante un banco de peces. */
@@ -230,9 +237,14 @@ export function tickDebris(sim: Simulation, dt: number): void {
   const b = hullBounds(sim);
   const drift = driftSpeed(sim);
   const minAbsZ = b.halfW + HULL_CLEARANCE;
+  const anchored = isAnchored(sim);
   for (const d of st.debris) {
     if (!Number.isFinite(d.pos.x) || !Number.isFinite(d.pos.z)) {
       d.pos.x = b.sternX - DEBRIS_REMOVE_BEHIND - 1; // se eliminará abajo
+      continue;
+    }
+    if (anchored && (d.survivors ?? 0) > 0) {
+      paddleTowardsShip(d, b, dt);
       continue;
     }
     const lateral = Number.isFinite(d.vel.z) ? clamp(d.vel.z, -0.3, 0.3) : 0;
@@ -256,6 +268,29 @@ export function tickDebris(sim: Simulation, dt: number): void {
     return keep;
   });
   for (const d of gone) onDebrisLost(sim, d);
+}
+
+/**
+ * Con el barco fondeado, los náufragos reman hacia el costado más cercano: hasta la altura del
+ * casco (popa + 4 … proa − 4) y a menos de `RAFT_WAIT_SIDE` m de la borda (al alcance del gancho),
+ * y ahí esperan.
+ */
+function paddleTowardsShip(d: Debris, b: { sternX: number; bowX: number; halfW: number }, dt: number): void {
+  const side = Math.sign(d.pos.z) || 1;
+  const tx = clamp(d.pos.x, b.sternX + 4, b.bowX - 4);
+  const tz = side * clamp(Math.abs(d.pos.z), b.halfW + HULL_CLEARANCE + 2, b.halfW + RAFT_WAIT_SIDE);
+  const dx = tx - d.pos.x;
+  const dz = tz - d.pos.z;
+  const dist = Math.hypot(dx, dz);
+  const step = Math.min(dist, RAFT_APPROACH_SPEED * dt);
+  if (dist > 1e-6) {
+    d.pos.x += (dx / dist) * step;
+    d.pos.z += (dz / dist) * step;
+  }
+  // Velocidad para la vista (la estela de la balsa); quieta al llegar.
+  const v = dt > 0 ? step / dt : 0;
+  d.vel.x = dist > 1e-6 ? (dx / dist) * v : 0;
+  d.vel.z = dist > 1e-6 ? (dz / dist) * v : 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -297,13 +332,15 @@ export function collectDebrisFor(sim: Simulation, debrisId: number, by: 'player'
     if (left.length) spawnCrate(sim, dropAt, left, 'Restos rescatados');
   }
 
-  const names: string[] = [];
+  // Los náufragos suben a bordo en silencio: el evento deja un único aviso con quién se une.
+  const rescued: NpcState[] = [];
   const survivors = Math.max(0, Math.floor(d.survivors ?? 0));
   for (let i = 0; i < survivors; i++) {
-    const npc = spawnSurvivor(sim, { pos: dropAt, origin: 'balsa' });
-    if (npc) names.push(npc.name);
+    const npc = spawnSurvivor(sim, { pos: dropAt, origin: 'balsa', quiet: true });
+    if (npc) rescued.push(npc);
   }
-  onDebrisCollected(sim, d, by, names);
+  const names = rescued.map((n) => n.name);
+  onDebrisCollected(sim, d, by, rescued);
 
   sim.bus.emit('sfx', { name: survivors > 0 ? 'rescate' : 'recoger_resto', x: d.pos.x, y: 1, z: d.pos.z });
   let msg: string;
@@ -380,7 +417,7 @@ export function catchFish(sim: Simulation): ActionResult {
   const note = fit ? '' : ' (inventario lleno: está en una caja a tus pies)';
   if (fish === 2) return { ok: true, msg: `¡Doble captura! 2× ${itemName(c.id)}${note}` };
   if (fish === 1) return { ok: true, msg: `¡Pescas un pescado!${note}` };
-  return { ok: true, msg: `Sacas del agua ${c.qty}× ${itemName(c.id)} enredado en el anzuelo${note}` };
+  return { ok: true, msg: `Algo se ha enganchado en el anzuelo: ${c.qty}× ${itemName(c.id)}${note}` };
 }
 
 /* ------------------------------------------------------------------ */
