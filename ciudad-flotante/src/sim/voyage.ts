@@ -7,14 +7,19 @@
  * - Distancia en millas: `velocidad × dt / 60`.
  * - A `ROUTE_CHOICE_MILES` del final de la región se ofrecen las regiones siguientes
  *   (`nextChoices`) y se avisa de que hay que elegir rumbo en el timón. Al llegar se entra en
- *   `chosenNext ?? nextChoices[0]` con entrada de diario.
+ *   `chosenNext` o, si nadie fijó el rumbo, en la que elige el piloto (`autopilotTarget`), con
+ *   entrada de diario.
+ * - El peligro escala con la progresión: durante los primeros `DANGER_GATE_DAYS` días jugados no
+ *   se ofrecen regiones de peligro ≥ `DANGER_GATE` si hay alternativa (si todas las salidas lo son,
+ *   se ofrece volver a una región vecina más tranquila), y el piloto busca las aguas más
+ *   tranquilas. Después, sin rumbo fijado, el barco sigue la corriente (la primera salida).
  * - Fondeo: al pasar `anchoredUntil` se levan anclas.
  * - Avistamientos (los crea events.ts): derivan hacia popa y desaparecen al caducar.
  */
 import { approach } from '../core/math';
 import { moduleDef } from '../data/modules';
 import { REGIONS, START_REGION, type RegionDef } from '../data/regions';
-import { CRUISE_SPEED, VISUAL_DRIFT } from './constants';
+import { CRUISE_SPEED, MINUTES_PER_DAY, START_HOUR, VISUAL_DRIFT } from './constants';
 import type { ActionResult, Simulation } from './Simulation';
 import { markTutorial } from './tutorial';
 
@@ -24,6 +29,10 @@ export const ROUTE_CHOICE_MILES = 10;
 export const SHIP_ACCEL = 1;
 /** Bonificación por defecto de un motor si su definición no la indica. */
 const DEFAULT_MOTOR_BONUS = 3;
+/** Peligro a partir del cual una región se reserva para cuando la tripulación ya lleva días a bordo. */
+export const DANGER_GATE = 4;
+/** Días jugados (desde que zarpamos) antes de los que no se ofrecen regiones de peligro ≥ DANGER_GATE. */
+export const DANGER_GATE_DAYS = 6;
 
 const fail = (msg: string): ActionResult => ({ ok: false, msg });
 
@@ -39,6 +48,60 @@ export function currentRegion(sim: Simulation): RegionDef {
 /** Nombre legible de una región (o el id si no existe). */
 export function regionName(id: string): string {
   return REGIONS[id]?.name ?? id;
+}
+
+/** Artículo de los nombres de región según su primera palabra («el Mar de…», «la Corriente…»). */
+const REGION_ARTICLE: Record<string, string> = { mar: 'el', archipiélago: 'el', cementerio: 'el', corriente: 'la', aguas: '', faro: 'el', isla: 'la', islas: 'las' };
+
+/**
+ * Nombre de una región con su artículo, para frases: «el Mar de los Sargazos», «la Corriente
+ * Boreal», «Aguas Templadas», «El Faro del Fin del Mundo» (si el nombre ya lo lleva, tal cual).
+ */
+export function regionWithArticle(id: string): string {
+  const name = regionName(id);
+  const first = (name.split(/\s+/)[0] ?? '').toLowerCase();
+  if (['el', 'la', 'los', 'las'].includes(first)) return name;
+  const art = REGION_ARTICLE[first] ?? (/(a|as|ción|dad)$/.test(first) ? (first.endsWith('s') ? 'las' : 'la') : first.endsWith('s') ? 'los' : 'el');
+  return art ? `${art} ${name}` : name;
+}
+
+/** Días jugados desde que zarpamos (el día 1 a las `START_HOUR`). */
+export function playedDays(sim: Simulation): number {
+  return Math.max(0, (sim.state.time - START_HOUR * 60) / MINUTES_PER_DAY);
+}
+
+/** ¿Siguen reservadas las regiones peligrosas (primeros días de travesía)? */
+export function dangerGated(sim: Simulation): boolean {
+  return playedDays(sim) < DANGER_GATE_DAYS;
+}
+
+/**
+ * Regiones a las que se puede poner rumbo ahora desde `from` (por defecto, la actual). Al principio
+ * se descartan las de peligro ≥ DANGER_GATE si queda alguna otra salida; si todas lo son (p. ej. la
+ * Corriente Boreal), se ofrece volver a las regiones vecinas más tranquilas. Si no hay ninguna,
+ * todas las salidas.
+ */
+export function nextRegions(sim: Simulation, from: RegionDef = currentRegion(sim)): string[] {
+  const all = from.next.filter((id) => !!REGIONS[id]);
+  if (!dangerGated(sim)) return all;
+  const safe = all.filter((id) => REGIONS[id]!.danger < DANGER_GATE);
+  if (safe.length) return safe;
+  const back = Object.values(REGIONS)
+    .filter((r) => r.id !== from.id && r.next.includes(from.id) && r.danger < DANGER_GATE)
+    .sort((a, b) => a.danger - b.danger)
+    .map((r) => r.id);
+  return back.length ? back : all;
+}
+
+/**
+ * Rumbo que toma el barco si nadie lo fija: los primeros días, el de menor peligro (a igualdad, el
+ * primero de la lista); después, la corriente (la primera opción).
+ */
+export function autopilotTarget(sim: Simulation, choices: readonly string[] = nextRegions(sim)): string {
+  const valid = choices.filter((id) => !!REGIONS[id]);
+  if (!valid.length) return START_REGION;
+  if (!dangerGated(sim)) return valid[0]!;
+  return valid.reduce((best, id) => (REGIONS[id]!.danger < REGIONS[best]!.danger ? id : best), valid[0]!);
 }
 
 /** ¿Está el barco fondeado ahora mismo? */
@@ -85,6 +148,14 @@ export interface RouteOption {
   danger: number;
   baseTemp: number;
   chosen: boolean;
+  /** Es el rumbo que tomará el piloto si nadie fija otro. */
+  autopilot: boolean;
+}
+
+/** Rumbos que se pueden fijar ahora (los ofrecidos al final de la región o, antes, los posibles). */
+function currentChoices(sim: Simulation): string[] {
+  const v = sim.state.voyage;
+  return (v.nextChoices ?? nextRegions(sim)).filter((id) => !!REGIONS[id]);
 }
 
 /**
@@ -93,13 +164,25 @@ export interface RouteOption {
  */
 export function routeOptions(sim: Simulation): RouteOption[] {
   const v = sim.state.voyage;
-  const ids = v.nextChoices ?? currentRegion(sim).next;
-  return ids
-    .filter((id) => !!REGIONS[id])
-    .map((id) => {
-      const r = REGIONS[id]!;
-      return { id, name: r.name, desc: r.desc, danger: r.danger, baseTemp: r.baseTemp, chosen: v.chosenNext === id };
-    });
+  const ids = currentChoices(sim);
+  const auto = v.chosenNext ? null : autopilotTarget(sim, ids);
+  return ids.map((id) => {
+    const r = REGIONS[id]!;
+    return { id, name: r.name, desc: r.desc, danger: r.danger, baseTemp: r.baseTemp, chosen: v.chosenNext === id, autopilot: auto === id };
+  });
+}
+
+/**
+ * Regiones de la carta a las que aún no se puede poner rumbo por ser demasiado peligrosas para
+ * estos primeros días, con el motivo (para la interfaz del timón).
+ */
+export function gatedRoutes(sim: Simulation): { id: string; name: string; reason: string }[] {
+  if (!dangerGated(sim)) return [];
+  const offered = new Set(currentChoices(sim));
+  const day = DANGER_GATE_DAYS + 1;
+  return currentRegion(sim)
+    .next.filter((id) => !!REGIONS[id] && !offered.has(id))
+    .map((id) => ({ id, name: regionName(id), reason: `Aún no es prudente navegar hacia ${regionWithArticle(id)}: el barco podrá adentrarse a partir del día ${day}` }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -143,8 +226,8 @@ function enterRegion(sim: Simulation, id: string, overflow: number): void {
   v.route.push(r.id);
   v.nextChoices = null;
   v.chosenNext = null;
-  const via = chose ? '' : ' (sin rumbo fijado, seguimos la corriente)';
-  sim.log(`Dejamos atrás ${prev.name}. Entramos en ${r.name}${via}. ${r.desc}`, r.danger >= 4 ? 'warn' : 'info');
+  const via = chose ? '' : dangerGated(sim) ? ' (sin rumbo fijado, el piloto busca aguas tranquilas)' : ' (sin rumbo fijado, seguimos la corriente)';
+  sim.log(`Dejamos atrás ${regionWithArticle(prev.id)}. Entramos en ${regionWithArticle(r.id)}${via}. ${r.desc}`, r.danger >= 4 ? 'warn' : 'info');
 }
 
 export function tickVoyage(sim: Simulation, dt: number): void {
@@ -170,20 +253,20 @@ export function tickVoyage(sim: Simulation, dt: number): void {
   // Elección de rumbo cerca del final de la región.
   const region = currentRegion(sim);
   if (v.nextChoices === null && v.regionDistance >= v.regionLength - ROUTE_CHOICE_MILES) {
-    v.nextChoices = region.next.filter((id) => !!REGIONS[id]);
+    v.nextChoices = nextRegions(sim, region);
     if (v.chosenNext && !v.nextChoices.includes(v.chosenNext)) v.chosenNext = null;
     if (v.chosenNext) {
-      sim.log(`Nos acercamos al final de ${region.name}. Rumbo fijado hacia ${regionName(v.chosenNext)}`, 'info');
+      sim.log(`Nos acercamos al final de ${regionWithArticle(region.id)}. Rumbo fijado hacia ${regionWithArticle(v.chosenNext)}`, 'info');
     } else if (v.nextChoices.length > 1) {
-      const opts = v.nextChoices.map(regionName).join(' o ');
-      sim.log(`Nos acercamos al final de ${region.name}: elige rumbo en el timón del puente (${opts})`, 'info');
+      const opts = v.nextChoices.map(regionWithArticle).join(' o ');
+      sim.log(`Nos acercamos al final de ${regionWithArticle(region.id)}: elige rumbo en el timón del puente (${opts})`, 'info');
     }
   }
 
   // Cambio de región.
   if (v.regionDistance >= v.regionLength) {
-    const choices = v.nextChoices && v.nextChoices.length ? v.nextChoices : region.next;
-    const target = v.chosenNext && REGIONS[v.chosenNext] ? v.chosenNext : (choices.find((id) => !!REGIONS[id]) ?? START_REGION);
+    const choices = v.nextChoices && v.nextChoices.length ? v.nextChoices : nextRegions(sim, region);
+    const target = v.chosenNext && REGIONS[v.chosenNext] ? v.chosenNext : autopilotTarget(sim, choices);
     enterRegion(sim, target, v.regionDistance - v.regionLength);
   }
 
@@ -202,12 +285,16 @@ export function tickVoyage(sim: Simulation, dt: number): void {
 /** Fija el rumbo hacia una de las regiones siguientes (se elige en el timón). */
 export function chooseRoute(sim: Simulation, regionId: string): ActionResult {
   const v = sim.state.voyage;
-  const options = v.nextChoices ?? currentRegion(sim).next;
+  const options = currentChoices(sim);
   const r = REGIONS[regionId];
+  if (r && !options.includes(regionId)) {
+    const gated = gatedRoutes(sim).find((g) => g.id === regionId);
+    if (gated) return fail(gated.reason);
+  }
   if (!r || !options.includes(regionId)) return fail('Ese rumbo no está disponible desde aquí');
   markTutorial(sim, 'timon');
-  if (v.chosenNext === regionId) return { ok: true, msg: `Ya llevamos rumbo a ${r.name}` };
+  if (v.chosenNext === regionId) return { ok: true, msg: `Ya llevamos rumbo hacia ${regionWithArticle(regionId)}` };
   v.chosenNext = regionId;
-  sim.log(`Fijamos rumbo hacia ${r.name}`, 'info', false);
+  sim.log(`Fijamos rumbo hacia ${regionWithArticle(regionId)}`, 'info', false);
   return { ok: true, msg: `Rumbo fijado: ${r.name}` };
 }

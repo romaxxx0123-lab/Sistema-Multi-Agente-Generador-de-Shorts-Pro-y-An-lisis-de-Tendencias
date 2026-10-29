@@ -1517,8 +1517,8 @@ describe('regresiones QA 1 (economía)', () => {
     const wood = countItem(sim.state.player.inventory, 'madera');
     const c = sim.checkPlace('huerto', 0, 0, 0, 0);
     expect(c.ok).toBe(false);
-    expect(c.reason).toBe('En interior necesita el Plano: Lámparas de cultivo');
-    expect(sim.placeModule('huerto', 0, 0, 0, 0)).toMatchObject({ ok: false, msg: 'En interior necesita el Plano: Lámparas de cultivo' });
+    expect(c.reason).toBe('Necesitas el Plano: Lámparas de cultivo (aquí no llega el sol)');
+    expect(sim.placeModule('huerto', 0, 0, 0, 0)).toMatchObject({ ok: false, msg: 'Necesitas el Plano: Lámparas de cultivo (aquí no llega el sol)' });
     expect(countItem(sim.state.player.inventory, 'madera')).toBe(wood);
     expect(sim.state.ship.modules.some((m) => m.type === 'huerto')).toBe(false);
     // A cielo abierto, sin avisos.

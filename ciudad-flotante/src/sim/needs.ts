@@ -6,25 +6,35 @@
  *  2. Energía: baja despierto; sube durmiendo (cama/camilla +15/h, suelo +8/h).
  *  3. Calor corporal: tiende (30/h) a un objetivo según el entorno: temperatura del aire,
  *     interior (+12), junto a la cocina encendida (+10), lluvia y viento a la intemperie y abrigo.
- *  4. Enfermedad: cuenta atrás en horas (el doble de rápido en la enfermería).
+ *  4. Enfermedad: cuenta atrás en horas (el doble de rápido en una enfermería con energía).
  *  5. Salud: daño por hambre, sed, frío, enfermedad, agotamiento y fuego cercano; regenera si
- *     todo está bien (×3 en camilla de enfermería). A 0 → muerte con causa.
+ *     todo está bien (×3 en camilla de enfermería encendida y con energía; sin ella, como una
+ *     cama normal). A 0 → muerte con causa.
  *  6. Desmayo: energía a 0 → 3 h dormido en el suelo.
- *  7. Despertar automático (descansado de día o por emergencias) con motivo.
- *  8. Avisos con histéresis (una vez al cruzar el umbral; se rearman al recuperarse).
+ *  7. Despertar automático con motivo: descansado de día o por una emergencia real (fuego a bordo,
+ *     inicio de tormenta, hambre o sed críticas, salud en peligro, un golpe que le hiere). Los
+ *     demás sucesos (avistamientos, averías, fugas...) no le despiertan: se anotan y, al
+ *     despertar, se resumen en un aviso «Mientras dormías: …». Un evento puede forzar o impedir
+ *     el despertar con `data.wakePlayer`.
+ *  8. Avisos con histéresis (una vez al cruzar el umbral; se rearman al recuperarse). Al
+ *     despertar, el hambre y la sed se avisan en el mismo mensaje del despertar.
  *
- * El estado transitorio (avisos dados, clima anterior, eventos conocidos, última causa de daño)
- * vive en un WeakMap por simulación: no se guarda y se reconstruye al cargar.
+ * El estado transitorio (avisos dados, clima anterior, eventos conocidos, última causa de daño,
+ * lo ocurrido durante el sueño) vive en un WeakMap por simulación: no se guarda y se reconstruye
+ * al cargar.
  */
 import type { NotifyKind } from '../core/EventBus';
 import { approach, clamp } from '../core/math';
 import { ITEMS } from '../data/items';
 import { MODULES } from '../data/modules';
 import { CELL, NEED_RATES } from './constants';
+import { findModule } from './helpers';
 import { cellAtPoint, cellMin, levelOfY, moduleCells } from './ship';
 import type { Simulation } from './Simulation';
 import { hourOf } from './time';
-import type { ModuleInstance, Needs, Vec3, WeatherKind } from './types';
+import type { ActiveEvent, ModuleInstance, Needs, Vec3, WeatherKind } from './types';
+import { isHealingBedPowered, withArticle } from './utilities';
+import { regionWithArticle } from './voyage';
 
 /* ------------------------------------------------------------------ */
 /* Parámetros de equilibrio                                            */
@@ -58,8 +68,17 @@ const COAT_REFERENCE = 0.6;
 /** Margen por encima del umbral para rearmar un aviso. */
 const WARN_REARM = 5;
 
-/** Eventos del mundo que despiertan al jugador cuando empiezan (además de `data.wakePlayer`). */
-const ATTENTION_EVENTS = new Set(['incendio', 'naufragos', 'naufragio', 'isla', 'mercante', 'estructura', 'averia', 'fuga']);
+/**
+ * Eventos del mundo que despiertan al jugador cuando empiezan si el propio evento no dice otra cosa
+ * (`data.wakePlayer`): solo las emergencias reales. El resto se resume al despertar.
+ */
+const WAKE_EVENTS = new Set(['incendio', 'tormenta']);
+/** Eventos que siguen pidiendo atención al despertar (el resumen se muestra como advertencia). */
+const PENDING_CRISES = new Set(['averia', 'incendio', 'fuga', 'plaga', 'enfermedad', 'discusion', 'naufragio', 'isla', 'estructura', 'naufragos', 'mercante']);
+/** Avistamientos: si acaban sin éxito, se han perdido de vista. */
+const SIGHTINGS = new Set(['naufragio', 'isla', 'estructura', 'naufragos', 'mercante', 'banco_peces']);
+/** Sucesos que se nombran como mucho en el resumen del despertar (el resto, «y N más»). */
+const NIGHT_SUMMARY_MAX = 4;
 
 /** Causas de muerte (texto que ve el jugador). */
 export const DEATH_CAUSES = {
@@ -78,6 +97,22 @@ export type HarmKind = keyof typeof DEATH_CAUSES;
 /* Estado transitorio                                                  */
 /* ------------------------------------------------------------------ */
 
+/** Evento empezado mientras el jugador dormía (sin despertarle). */
+interface NightEvent {
+  id: number;
+  type: string;
+  title: string;
+  startedAt: number;
+  data: Record<string, unknown>;
+}
+
+/** Lo ocurrido durante el sueño, para el resumen del despertar. */
+interface NightLog {
+  /** Región en la que se acostó. */
+  regionId: string;
+  events: NightEvent[];
+}
+
 interface NeedsMemo {
   /** Avisos ya dados (claves de `WARN_RULES`). */
   flags: Set<string>;
@@ -87,13 +122,15 @@ interface NeedsMemo {
   prevWeather: WeatherKind | null;
   /** Ids de eventos activos conocidos (null hasta el primer tick). */
   knownEvents: Set<number> | null;
+  /** Sucesos de la noche en curso (null despierto). */
+  night: NightLog | null;
 }
 
 const memos = new WeakMap<Simulation, NeedsMemo>();
 
 function memoOf(sim: Simulation): NeedsMemo {
   let m = memos.get(sim);
-  if (!m) memos.set(sim, (m = { flags: new Set(), lastCause: null, prevWeather: null, knownEvents: null }));
+  if (!m) memos.set(sim, (m = { flags: new Set(), lastCause: null, prevWeather: null, knownEvents: null, night: null }));
   return m;
 }
 
@@ -180,7 +217,11 @@ export function warmthEnvironment(sim: Simulation): WarmthEnvironment {
   return { airTemp: air, indoor, nearStove, coat, effectiveTemp: t, target: clamp(t * 3.2 + 10, 0, 100) };
 }
 
-/** Dónde duerme el jugador (null si está despierto). */
+/**
+ * Dónde duerme el jugador (null si está despierto). Una camilla de enfermería solo cuenta como
+ * 'infirmary' (curación ×3) si la enfermería funciona: activa, encendida y con energía
+ * (`utilities.isHealingBedPowered`); si no, es una cama normal ('bed').
+ */
 export function sleepSpot(sim: Simulation): { kind: 'bed' | 'infirmary' | 'floor'; module: ModuleInstance | null } | null {
   const s = sim.state.player.sleeping;
   if (!s) return null;
@@ -188,7 +229,7 @@ export function sleepSpot(sim: Simulation): { kind: 'bed' | 'infirmary' | 'floor
   const m = sim.state.ship.modules.find((mm) => mm.id === s.moduleId) ?? null;
   const def = m ? MODULES[m.type] : undefined;
   if (!m || !def?.beds) return { kind: 'floor', module: m };
-  return { kind: def.healingBeds ? 'infirmary' : 'bed', module: m };
+  return { kind: def.healingBeds && isHealingBedPowered(sim, m) ? 'infirmary' : 'bed', module: m };
 }
 
 /* ------------------------------------------------------------------ */
@@ -240,6 +281,7 @@ export function killPlayer(sim: Simulation, cause: string): void {
   p.needs.health = 0;
   p.deathCause = cause;
   p.sleeping = null;
+  memoOf(sim).night = null;
   const days = p.stats.daysSurvived;
   const tail = days <= 0 ? 'No llegaste a completar el primer día a bordo.' : `Sobreviviste ${days} ${days === 1 ? 'día' : 'días'} a bordo.`;
   sim.log(`${cause}. ${tail}`, 'danger', false);
@@ -255,7 +297,12 @@ export function damagePlayer(sim: Simulation, amount: number, cause: string = DE
   if (!p.alive || !(amount > 0)) return;
   memoOf(sim).lastCause = cause;
   p.needs.health -= amount;
-  if (p.needs.health <= 0) killPlayer(sim, cause);
+  if (p.needs.health <= 0) {
+    killPlayer(sim, cause);
+    return;
+  }
+  // Un golpe despierta a quien duerme (no a quien está inconsciente: eso lo decide `checkWake`).
+  if (p.sleeping && p.sleeping.until === null) wakePlayer(sim, 'Te despiertas de golpe: ¡algo te ha herido!', 'danger');
 }
 
 /* ------------------------------------------------------------------ */
@@ -303,14 +350,135 @@ export function playerConditions(sim: Simulation): PlayerCondition[] {
 /* Sueño                                                               */
 /* ------------------------------------------------------------------ */
 
-/** Despierta al jugador (si dormía) con un motivo. Devuelve true si estaba dormido. */
+/**
+ * Despierta al jugador (si dormía) con un motivo. Si al levantarse tiene hambre o sed, se dice en
+ * el mismo aviso (y no se repite aparte); después llega el resumen de lo ocurrido mientras dormía.
+ * Devuelve true si estaba dormido.
+ */
 export function wakePlayer(sim: Simulation, reason: string | null, kind: NotifyKind = 'info'): boolean {
   const p = sim.state.player;
   if (!p.sleeping) return false;
   p.sleeping = null;
-  if (reason) sim.notify(reason, kind);
+  if (reason) {
+    const needsNote = wakeNeedsNote(sim, reason);
+    sim.notify(needsNote ? `${reason}. ${needsNote}` : reason, kind);
+  }
+  flushNight(sim);
   sim.bus.emit('sfx', { name: 'despertar', x: p.pos.x, y: p.pos.y + 1, z: p.pos.z });
   return true;
+}
+
+/**
+ * «Tienes hambre y sed: come y bebe algo» si al despertar el hambre o la sed están por debajo del
+ * aviso (y no se había avisado ya). Marca esos avisos como dados para no repetirlos en otro mensaje.
+ * Si el propio motivo ya habla del hambre o la sed, solo se marcan.
+ */
+function wakeNeedsNote(sim: Simulation, reason: string): string | null {
+  const memo = memoOf(sim);
+  const n = sim.state.player.needs;
+  const hungry = n.hunger < 25 && !memo.flags.has('hambre25');
+  const thirsty = n.thirst < 25 && !memo.flags.has('sed25');
+  if (hungry) memo.flags.add('hambre25');
+  if (thirsty) memo.flags.add('sed25');
+  if (/hambre/.test(reason)) {
+    memo.flags.add('hambre25');
+    if (n.hunger < 10) memo.flags.add('hambre10');
+  }
+  if (/sed\b/.test(reason)) {
+    memo.flags.add('sed25');
+    if (n.thirst < 10) memo.flags.add('sed10');
+  }
+  const h = hungry && !/hambre/.test(reason);
+  const t = thirsty && !/sed\b/.test(reason);
+  if (h && t) return 'Tienes hambre y sed: come y bebe algo';
+  if (h) return 'Tienes hambre: come algo pronto';
+  if (t) return 'Tienes sed: bebe agua potable';
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Resumen de la noche                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Frase (en pasado, sin mayúscula inicial) de un suceso ocurrido mientras dormía. */
+function nightEventPhrase(sim: Simulation, ev: NightEvent): string {
+  switch (ev.type) {
+    case 'naufragio':
+      return 'se avistó un naufragio';
+    case 'isla':
+      return 'se avistó una isla';
+    case 'estructura':
+      return 'se avistó una estructura misteriosa';
+    case 'naufragos':
+      return 'apareció una balsa con náufragos';
+    case 'mercante':
+      return 'se acercó un barco mercante';
+    case 'banco_peces':
+      return 'un banco de peces rodeó el barco';
+    case 'averia': {
+      const id = ev.data['moduleId'];
+      const m = typeof id === 'number' ? findModule(sim, id) : undefined;
+      const name = m ? (MODULES[m.type]?.name ?? null) : ev.title.replace(/^Avería:\s*/i, '') || null;
+      return name ? `hubo una avería en ${withArticle(name)}` : 'hubo una avería';
+    }
+    case 'fuga':
+      return 'se abrió una fuga en el depósito';
+    case 'plaga':
+      return 'apareció una plaga en el huerto';
+    case 'enfermedad': {
+      const name = ev.data['name'];
+      return typeof name === 'string' && name ? `${name} enfermó` : 'alguien de la tripulación enfermó';
+    }
+    case 'discusion':
+      return 'hubo una discusión a bordo';
+    case 'incendio':
+      return 'hubo un incendio a bordo';
+    case 'tormenta':
+      return 'hubo una tormenta';
+    default:
+      return ev.title.charAt(0).toLowerCase() + ev.title.slice(1);
+  }
+}
+
+/** Une frases: «a», «a y b», «a, b y c». */
+function joinList(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+}
+
+/** Texto del resumen de lo ocurrido mientras dormía (null si no pasó nada digno de mención). */
+export function nightSummary(sim: Simulation, night: NightLog): { text: string; kind: NotifyKind } | null {
+  const st = sim.state;
+  const parts: string[] = [];
+  let pending = false;
+  for (const ev of night.events.slice(0, NIGHT_SUMMARY_MAX)) {
+    let phrase = nightEventPhrase(sim, ev);
+    const active = st.events.active.some((e: ActiveEvent) => e.id === ev.id);
+    if (active) {
+      if (PENDING_CRISES.has(ev.type)) pending = true;
+    } else {
+      const end = [...st.events.history].reverse().find((h) => h.type === ev.type && h.title === ev.title && h.at >= ev.startedAt);
+      if (end?.success) phrase += ' (ya se resolvió)';
+      else phrase += SIGHTINGS.has(ev.type) ? ' (ya se perdió de vista)' : ' (ya pasó)';
+    }
+    parts.push(phrase);
+  }
+  const extra = night.events.length - NIGHT_SUMMARY_MAX;
+  if (extra > 0) parts.push(`${extra} ${extra === 1 ? 'cosa más' : 'cosas más'}`);
+  if (st.voyage.regionId !== night.regionId) parts.push(`entramos en ${regionWithArticle(st.voyage.regionId)}`);
+  if (!parts.length) return null;
+  const tail = night.events.length ? '. Los detalles están en el diario (J)' : '';
+  return { text: `Mientras dormías: ${joinList(parts)}${tail}`, kind: pending ? 'warn' : 'info' };
+}
+
+/** Avisa de lo ocurrido durante el sueño (una vez) y lo olvida. */
+function flushNight(sim: Simulation): void {
+  const memo = memoOf(sim);
+  const night = memo.night;
+  memo.night = null;
+  if (!night || !sim.state.player.alive) return;
+  const sum = nightSummary(sim, night);
+  if (sum) sim.notify(sum.text, sum.kind);
 }
 
 /** Desmayo por agotamiento: duerme FAINT_MINUTES en el suelo donde esté. */
@@ -444,11 +612,18 @@ export function tickNeeds(sim: Simulation, dt: number): void {
   // 6. Desmayo por agotamiento.
   if (!p.sleeping && n.energy <= 0) faint(sim);
 
-  // 7. Despertar automático.
+  // 7. Despertar automático (y registro de lo que pasa mientras duerme).
   const stormStarted = memo.prevWeather !== null && memo.prevWeather !== 'tormenta' && st.weather.kind === 'tormenta';
   memo.prevWeather = st.weather.kind;
   const newEvents = trackEvents(sim, memo);
-  if (p.sleeping) checkWake(sim, losingHealth, stormStarted, newEvents);
+  if (p.sleeping) {
+    if (!memo.night) memo.night = { regionId: st.voyage.regionId, events: [] };
+    for (const ev of newEvents) if (!wakesPlayer(ev)) memo.night.events.push({ id: ev.id, type: ev.type, title: ev.title, startedAt: ev.startedAt, data: ev.data ?? {} });
+    checkWake(sim, losingHealth, stormStarted, newEvents);
+  } else if (memo.night) {
+    // Le han despertado sin pasar por `wakePlayer` (otro sistema): el resumen sale igual.
+    flushNight(sim);
+  }
 
   // 8. Avisos (no mientras duerme a ×14: las emergencias ya le despiertan y, al levantarse,
   // los avisos pendientes saltan en el siguiente paso).
@@ -456,7 +631,7 @@ export function tickNeeds(sim: Simulation, dt: number): void {
 }
 
 /** Devuelve los eventos que han empezado desde el tick anterior. */
-function trackEvents(sim: Simulation, memo: NeedsMemo): { id: number; type: string; title: string; data: Record<string, unknown> }[] {
+function trackEvents(sim: Simulation, memo: NeedsMemo): ActiveEvent[] {
   const active = sim.state.events.active;
   if (!memo.knownEvents) {
     memo.knownEvents = new Set(active.map((e) => e.id));
@@ -468,13 +643,17 @@ function trackEvents(sim: Simulation, memo: NeedsMemo): { id: number; type: stri
   return fresh;
 }
 
-function needsAttention(ev: { type: string; data: Record<string, unknown> }): boolean {
+/**
+ * ¿Despierta al jugador este evento al empezar? Manda `data.wakePlayer` si el evento lo fija; si
+ * no, solo las emergencias reales (`WAKE_EVENTS`).
+ */
+export function wakesPlayer(ev: { type: string; data?: Record<string, unknown> }): boolean {
   const flag = ev.data?.['wakePlayer'];
-  if (flag === false) return false;
-  return flag === true || ATTENTION_EVENTS.has(ev.type);
+  if (typeof flag === 'boolean') return flag;
+  return WAKE_EVENTS.has(ev.type);
 }
 
-function checkWake(sim: Simulation, losingHealth: boolean, stormStarted: boolean, newEvents: { type: string; title: string; data: Record<string, unknown> }[]): void {
+function checkWake(sim: Simulation, losingHealth: boolean, stormStarted: boolean, newEvents: { type: string; title: string; data?: Record<string, unknown> }[]): void {
   const st = sim.state;
   const p = st.player;
   const s = p.sleeping;
@@ -496,9 +675,9 @@ function checkWake(sim: Simulation, losingHealth: boolean, stormStarted: boolean
     wakePlayer(sim, 'Te despierta el estruendo de la tormenta', 'warn');
     return;
   }
-  const ev = newEvents.find(needsAttention);
+  const ev = newEvents.find(wakesPlayer);
   if (ev) {
-    wakePlayer(sim, `Te despiertan: ${ev.title}`, 'warn');
+    wakePlayer(sim, `Te despiertan: ${ev.title.replace(/^¡(.*)!$/, '$1')}`, 'warn');
     return;
   }
   if (n.thirst < CRITICAL_NEED) {

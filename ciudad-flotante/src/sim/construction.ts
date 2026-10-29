@@ -127,9 +127,10 @@ export function checkPlace(sim: Simulation, type: string, level: number, x: numb
   }
   let warning: string | null = null;
   if (base.ok && def?.plots && !plannedHasSky(sim, type, level, x, z, rot)) {
-    // Sin sol ni lámparas no crecería nada: no se deja pagar una instalación inútil.
+    // Sin sol ni lámparas no crecería nada: no se deja pagar una instalación inútil. (El motivo
+    // empieza por "Necesitas" para que el modo construcción no sugiera girar la pieza.)
     if (!sim.state.unlocks.includes('invernadero')) {
-      return { ...base, ok: false, reason: `En interior necesita el ${blueprintName('invernadero')}`, missing };
+      return { ...base, ok: false, reason: `Necesitas el ${blueprintName('invernadero')} (aquí no llega el sol)`, missing };
     }
     const kw = (GROW_LAMP_KW * def.plots).toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',');
     warning = `En interior crece con lámparas de cultivo: consumirán hasta ${kw} kW`;
