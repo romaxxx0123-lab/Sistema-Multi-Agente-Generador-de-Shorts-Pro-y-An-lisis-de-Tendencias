@@ -5,10 +5,15 @@
  *   módulo → a mano (instantáneo).
  * - Los ingredientes se pagan con el inventario del jugador y luego con almacenes y bandejas
  *   (`payInventories`). Los habitantes (`by: 'npc'`) pagan solo con los almacenes.
- * - Cola de hasta 8 trabajos por estación; se paga al encolar y se devuelve al cancelar.
+ * - Cola de hasta 8 trabajos por estación; se paga al encolar y se devuelve al cancelar. Los
+ *   encargos del jugador van delante de los de los habitantes (`by: 'npc'`), que conservan su avance.
  * - El primer trabajo avanza `dt × velocidad`: banco siempre (×1), taller con energía
  *   (× satisfacción), cocina quemando combustible de su ranura (si se acaba, se pausa y avisa).
- * - Productos → bandeja de la estación → almacén → caja junto a la estación (nunca se pierden).
+ * - Productos → bandeja de la estación → almacén → caja junto a la estación (nunca se pierden). Las
+ *   cajas se dejan siempre en un punto transitable (`safeDropPoint`): nunca sobre el hueco de una
+ *   escalera, en una rampa ni dentro de un mueble.
+ * - Una estación averiada no trabaja, salvo que sea una estructura (banco de trabajo) y el trabajo
+ *   sea su propio repuesto (kit de reparación): así nunca queda bloqueada sin salida.
  * - Huerto: luz (cielo abierto: 30 % de noche, 100 % de día; interior: lámparas con energía),
  *   agua de la red (a cielo abierto la lluvia riega y ahorra depósito), horas sin agua, muerte,
  *   plaga y maduración. Los cultivos maduros esperan a la cosecha sin gastar agua.
@@ -17,10 +22,12 @@ import { CROPS, cropForSeed, type CropDef } from '../data/crops';
 import { ITEMS } from '../data/items';
 import { moduleDef } from '../data/modules';
 import { RECIPES, recipesFor, type RecipeDef, type StationKind } from '../data/recipes';
-import { forwardOf } from './physics';
+import { SHIP_ORIGIN_X } from './constants';
+import { NAV_RES } from './nav';
+import { forwardOf, STEP_HEIGHT } from './physics';
 import { depositToStorage, findModule, giveToPlayer, itemName, payInventories, spawnCrate, stacksText } from './helpers';
 import { addItem, consume, missingFor } from './inventory';
-import { moduleCenter } from './ship';
+import { halfWidthM, levelOfY, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
 import { daylight } from './time';
 import { markTutorial } from './tutorial';
@@ -36,6 +43,7 @@ import {
   isFeminineName,
   markWarned,
   moduleHasSky,
+  repairNeeds,
   warnOnce,
   withArticle,
 } from './utilities';
@@ -93,7 +101,7 @@ export interface StationStatus {
   working: boolean;
   /** Velocidad actual (1 = normal). */
   speed: number;
-  /** Texto de estado: "Trabajando", "Sin energía", "Sin combustible", "Averiado"… */
+  /** Texto de estado: "Trabajando", "Apagado", "Sin energía", "Sin combustible", "Averiado"… */
   status: string;
   /** Minutos de combustión que quedan (cocina) o null. */
   fuelMinutes: number | null;
@@ -127,11 +135,21 @@ function units(outputs: Record<ItemId, number>): number {
   return n;
 }
 
-/** Motivo por el que una estación no admite trabajos ahora (o null). */
-function stationBlocker(m: ModuleInstance): string | null {
+/**
+ * ¿Se puede hacer esta receta en la estación aunque esté averiada? Solo en una estructura (banco de
+ * trabajo, no una máquina) y si la receta produce el repuesto que la repara: un banco roto aún
+ * sirve para clavar un kit de reparación con el que arreglarlo (si no, quedaría bloqueado).
+ */
+export function craftableWhileBroken(m: ModuleInstance, r: RecipeDef | undefined): boolean {
+  if (!r || m.status !== 'broken' || moduleDef(m.type).machine) return false;
+  return (r.outputs[repairNeeds(m.type).part] ?? 0) > 0;
+}
+
+/** Motivo por el que una estación no admite trabajos ahora (o null). Con `r`, para esa receta. */
+function stationBlocker(m: ModuleInstance, r?: RecipeDef): string | null {
   const name = moduleDef(m.type).name;
   if (m.status === 'construction') return `${withArticle(name, true)} aún está en obras`;
-  if (m.status === 'broken') {
+  if (m.status === 'broken' && !craftableWhileBroken(m, r)) {
     const why = m.brokenReason ? ` (${m.brokenReason.toLowerCase()})` : '';
     return `${withArticle(name, true)} está ${agree(name, 'averiado')}${why}: repára${isFeminineName(name) ? 'la' : 'lo'} primero`;
   }
@@ -150,17 +168,112 @@ function productName(r: RecipeDef): string {
   return r.name;
 }
 
+/* ------------------------------------------------------------------ */
+/* Puntos transitables (cajas y recolocación de personas)              */
+/* ------------------------------------------------------------------ */
+
+/** Radio en planta de una caja suelta (para no dejarla dentro de un mueble o una pared). */
+export const CRATE_RADIUS = 0.35;
+
+/** Nodos de la rejilla de navegación alcanzables desde la cubierta (caché por rejilla). */
+const reachCache = new WeakMap<object, Uint8Array | null>();
+
+function reachableNodes(sim: Simulation): Uint8Array | null {
+  const nav = sim.nav;
+  if (reachCache.has(nav)) return reachCache.get(nav) ?? null;
+  const start = nav.nearestWalkable(sim.collision.safeSpawn(), 6);
+  const seen = start ? nav.reachableFrom(start) : null;
+  reachCache.set(nav, seen);
+  return seen;
+}
+
+/**
+ * ¿Se puede dejar una caja aquí? Suelo plano (ni rampa ni hueco de escalera) justo a la altura del
+ * punto y sin muebles ni paredes encima.
+ */
+export function isValidDropPoint(sim: Simulation, p: Vec3): boolean {
+  if (![p.x, p.y, p.z].every(Number.isFinite)) return false;
+  const col = sim.collision;
+  const cell = col.cellOf(p);
+  if (!cell || !cell.walkable || cell.kind === 'stairLow' || cell.kind === 'stairHigh') return false;
+  const g = col.groundAt(p.x, p.z, p.y + 0.05);
+  if (g === null || Math.abs(g - p.y) > 0.05) return false;
+  return col.isFree(p.x, p.z, g, CRATE_RADIUS);
+}
+
+/** ¿Una persona de radio `radius` puede estar de pie aquí (con suelo bajo los pies y sin chocar)? */
+export function standsOn(sim: Simulation, p: Vec3, radius: number): boolean {
+  if (![p.x, p.y, p.z].every(Number.isFinite)) return false;
+  const col = sim.collision;
+  const g = col.groundAt(p.x, p.z, p.y);
+  if (g === null || p.y - g > STEP_HEIGHT) return false;
+  return col.isFree(p.x, p.z, g, radius);
+}
+
+/**
+ * Nodo transitable de la rejilla de navegación, alcanzable desde la cubierta, más cercano a `pos`
+ * que cumpla `ok`. Busca primero en el nivel del punto y luego en los demás. null si no hay.
+ */
+export function nearestSpot(sim: Simulation, pos: Vec3, ok: (p: Vec3) => boolean, maxRadius = 12): Vec3 | null {
+  const nav = sim.nav;
+  const seen = reachableNodes(sim);
+  const lv0 = Math.max(0, Math.min(nav.levels - 1, levelOfY(Number.isFinite(pos.y) ? pos.y : 0)));
+  const ci = Math.max(0, Math.min(nav.nx - 1, Math.floor(((Number.isFinite(pos.x) ? pos.x : 0) + SHIP_ORIGIN_X) / NAV_RES)));
+  const cj = Math.max(0, Math.min(nav.nz - 1, Math.floor(((Number.isFinite(pos.z) ? pos.z : 0) + halfWidthM(sim.layout.width)) / NAV_RES)));
+  const maxR = Math.ceil(maxRadius / NAV_RES);
+  const levels = Array.from({ length: nav.levels }, (_, l) => l).sort((a, b) => Math.abs(a - lv0) - Math.abs(b - lv0));
+  for (const lv of levels) {
+    let best: Vec3 | null = null;
+    let bestD = Infinity;
+    let foundAt = -1;
+    for (let r = 0; r <= maxR; r++) {
+      // Un anillo más tras el primer hallazgo: puede haber un nodo más cerca en línea recta.
+      if (best && r > foundAt + 1) break;
+      for (let di = -r; di <= r; di++) {
+        for (let dj = -r; dj <= r; dj++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+          const i = ci + di;
+          const j = cj + dj;
+          if (!nav.isWalk(lv, i, j)) continue;
+          if (seen && !seen[nav.gid(lv, i, j)]) continue;
+          const p = nav.worldOf({ level: lv, i, j });
+          const d = (p.x - pos.x) ** 2 + (p.z - pos.z) ** 2 + 0.25 * (p.y - pos.y) ** 2;
+          if (d >= bestD || !ok(p)) continue;
+          best = p;
+          bestD = d;
+          if (foundAt < 0) foundAt = r;
+        }
+      }
+    }
+    if (best) return { x: best.x, y: best.y, z: best.z };
+  }
+  return null;
+}
+
+/**
+ * Punto donde dejar una caja cerca de `pos`: el propio punto si es válido o el punto transitable
+ * más cercano (nunca sobre el hueco de una escalera, en una rampa ni dentro de un mueble).
+ */
+export function safeDropPoint(sim: Simulation, pos: Vec3): Vec3 {
+  if (isValidDropPoint(sim, pos)) return { x: pos.x, y: pos.y, z: pos.z };
+  const spot = nearestSpot(sim, pos, (p) => isValidDropPoint(sim, p));
+  if (spot) return spot;
+  const s = sim.collision.safeSpawn();
+  return { x: s.x, y: s.y, z: s.z };
+}
+
 /** Punto delante del mueble principal de la estación (para dejar cajas), o el centro del módulo. */
 export function stationDropPoint(sim: Simulation, m: ModuleInstance): Vec3 {
   const layout = sim.layout;
+  const c = moduleCenter(m, sim.state.ship.width);
   const prop = layout.props.find((p) => p.moduleId === m.id && p.interact !== null);
   if (prop) {
     const f = forwardOf(prop.yaw);
     const reach = Math.abs(f.x) * prop.hx + Math.abs(f.z) * prop.hz + 0.55;
-    return { x: prop.x + f.x * reach, y: prop.y, z: prop.z + f.z * reach };
+    // A ras del suelo del módulo (algunos muebles se apoyan sobre otros: y > suelo).
+    return safeDropPoint(sim, { x: prop.x + f.x * reach, y: c.y, z: prop.z + f.z * reach });
   }
-  const c = moduleCenter(m, sim.state.ship.width);
-  return { x: c.x, y: c.y, z: c.z };
+  return safeDropPoint(sim, { x: c.x, y: c.y, z: c.z });
 }
 
 /**
@@ -195,18 +308,19 @@ function sfxAt(sim: Simulation, name: string, m: ModuleInstance): void {
 /** Recetas de una estación (o a mano si `moduleId` es null) con su disponibilidad. */
 export function availableRecipes(sim: Simulation, moduleId: number | null): RecipeAvailability[] {
   let kind: StationKind = 'mano';
-  let blocker: string | null = null;
+  let station: ModuleInstance | null = null;
   if (moduleId !== null) {
     const m = findModule(sim, moduleId);
     const k = stationKindOf(m);
     if (!m || !k) return [];
     kind = k;
-    blocker = stationBlocker(m);
+    station = m;
   }
   const invs = payInventories(sim);
   return recipesFor(kind).map((recipe) => {
     const locked = isLocked(sim, recipe);
     const missing = missingFor(invs, recipe.inputs);
+    const blocker = station ? stationBlocker(station, recipe) : null;
     let reason: string | null = null;
     if (locked) reason = `Necesitas el ${blueprintName(recipe.unlock!)}`;
     else if (blocker) reason = blocker;
@@ -243,21 +357,25 @@ export function queueCraft(sim: Simulation, moduleId: number, recipeId: string, 
   if (!m) return fail('Esa estación ya no existe');
   const kind = stationKindOf(m);
   if (!kind) return fail('Aquí no se puede fabricar');
-  const blocker = stationBlocker(m);
-  if (blocker) return fail(blocker);
   const r = RECIPES[recipeId];
+  const blocker = stationBlocker(m, r);
+  if (blocker) return fail(blocker);
   if (!r) return fail('Receta desconocida');
   if (r.station !== kind) return fail(r.station === 'mano' ? 'Esto se fabrica a mano' : `Esto se fabrica en ${STATION_PLACE[r.station]}`);
   if (isLocked(sim, r)) return fail(`Necesitas el ${blueprintName(r.unlock!)}`);
   const npc = actor.by === 'npc';
   const invs = payInventories(sim, !npc);
   const want = Math.max(1, Math.min(Math.floor(Number.isFinite(count) ? count : 1), MAX_QUEUE - m.queue.length));
+  // Los encargos del jugador pasan delante de los de los habitantes (que conservan su avance).
+  let at = npc ? m.queue.length : m.queue.findIndex((j) => (j as Job).by === 'npc');
+  if (at < 0) at = m.queue.length;
   let n = 0;
   for (let i = 0; i < want; i++) {
     if (!consume(invs, r.inputs)) break;
     const job: Job = { recipeId: r.id, progress: 0 };
     if (npc) job.by = 'npc';
-    m.queue.push(job);
+    m.queue.splice(at, 0, job);
+    at++;
     n++;
   }
   if (n === 0) return fail(`Faltan: ${stacksText(missingFor(invs, r.inputs))}`);

@@ -4,10 +4,13 @@
  * Cada paso de simulación:
  *  1. Capacidades: depósitos + colectores (agua) y baterías (kWh).
  *  2. Demanda de los consumidores activos y encendidos (taller con cola, potabilizadora si el agua
- *     no está llena, enfermería, motor navegando, lámparas de cultivo de huertos interiores).
+ *     no está llena, enfermería con alguien en una camilla, motor navegando, lámparas de cultivo de
+ *     huertos interiores).
  *  3. Generación: paneles solares (luz × nubes × condición) y generadores, que queman combustible
  *     de su ranura solo cuando hay déficit o batería por llenar (con histéresis para no parpadear).
- *  4. Baterías: cargan con el excedente y cubren el déficit (≤ 10 kW por batería).
+ *  4. Baterías: cargan con el excedente y cubren el déficit (≤ 10 kW por batería operativa). Una
+ *     batería averiada o ardiendo conserva su carga (cuenta para la capacidad) pero no carga ni
+ *     entrega energía hasta repararla.
  *  5. `satisfaction` y `module.powered` de cada consumidor.
  *  6. Red de agua: colectores con lluvia a cielo abierto, potabilizadora, fugas y depósitos dañados.
  *  7. Resumen suavizado para la UI en `state.utilities`.
@@ -180,6 +183,15 @@ export function moduleHasSky(sim: Simulation, m: ModuleInstance): boolean {
   return false;
 }
 
+/**
+ * Herramienta y repuesto para reparar un tipo de módulo: máquinas → llave inglesa + pieza
+ * mecánica; estructuras → martillo + kit de reparación. (Vive aquí para que estaciones y
+ * construcción lo compartan sin importarse entre sí.)
+ */
+export function repairNeeds(type: string): { tool: string; part: string } {
+  return moduleDef(type).machine ? { tool: 'llave_inglesa', part: 'pieza_mecanica' } : { tool: 'martillo', part: 'kit_reparacion' };
+}
+
 /** Huerto interior que puede usar lámparas de cultivo (plano `invernadero`). */
 export function hasGrowLamps(sim: Simulation, m: ModuleInstance): boolean {
   return m.plots.length > 0 && sim.state.unlocks.includes('invernadero') && !moduleHasSky(sim, m);
@@ -190,6 +202,36 @@ export function growingPlots(m: ModuleInstance): number {
   let n = 0;
   for (const p of m.plots) if (p.crop && !p.dead && p.growth < 1) n++;
   return n;
+}
+
+/** Alguien (jugador o habitante) ocupa una camilla de la enfermería. */
+export function healingBedInUse(sim: Simulation, m: ModuleInstance): boolean {
+  if (!moduleDef(m.type).healingBeds) return false;
+  if (sim.state.player.sleeping?.moduleId === m.id) return true;
+  return m.beds.some((b) => b !== null);
+}
+
+/**
+ * ¿Las camillas de este módulo curan más rápido ahora mismo? Solo una enfermería terminada, sin
+ * avería ni fuego, encendida y con energía (o que la recibiría si alguien se tumbara). Si no,
+ * sus camillas curan como una cama normal. Lo usan `needs.ts` (jugador) y `npc.ts` (habitantes).
+ */
+export function isHealingBedPowered(_sim: Simulation, m: ModuleInstance | null | undefined): boolean {
+  if (!m) return false;
+  const def = moduleDef(m.type);
+  if (!def.healingBeds || !isOperational(m) || !m.on) return false;
+  return !def.powerUse || m.powered;
+}
+
+/** Aviso para la ficha de la enfermería cuando no cura más rápido (null si funciona). */
+export function healingBedNote(sim: Simulation, m: ModuleInstance): string | null {
+  const def = moduleDef(m.type);
+  if (!def.healingBeds || isHealingBedPowered(sim, m)) return null;
+  if (m.status === 'construction') return null;
+  if (m.status === 'broken') return `${agree(def.name, 'Averiado')}: cura como una cama normal`;
+  if (m.fire > 0) return '¡Arde! Cura como una cama normal';
+  if (!m.on) return `${agree(def.name, 'Apagado')}: cura como una cama normal`;
+  return 'Sin energía: cura como una cama normal';
 }
 
 function isGenerator(def: ModuleDef): boolean {
@@ -247,6 +289,8 @@ export function currentDemand(sim: Simulation, m: ModuleInstance, hours = 1 / 60
     case 'motor':
       return isSailing(sim) ? (def.powerUse ?? 0) : 0;
     default:
+      // Enfermería: solo consume con alguien en una camilla (vacía no gasta ni da avisos).
+      if (def.healingBeds) return healingBedInUse(sim, m) ? (def.powerUse ?? 0) : 0;
       if (m.plots.length) return hasGrowLamps(sim, m) ? GROW_LAMP_KW * growingPlots(m) : 0;
       return def.powerUse ?? 0;
   }
@@ -336,18 +380,23 @@ export function burnFuel(m: ModuleInstance, minutes: number): number {
 /** Instantánea del agua tras el último tick (para medir lo que gastan otros sistemas). */
 const waterSnapshot = new WeakMap<Simulation, { waterL: number; time: number }>();
 
-/** Capacidad de agua (L) y de baterías (kWh) del barco tal y como está ahora. */
-export function capacities(sim: Simulation): { waterL: number; batteryKWh: number; batteries: number } {
+/**
+ * Capacidad de agua (L) y de baterías (kWh) del barco tal y como está ahora (`excludeId`: como
+ * quedaría sin ese módulo). Cuentan todos los depósitos y baterías terminados, también averiados:
+ * una avería no vacía lo almacenado. `batteries` = baterías operativas, las únicas que pueden
+ * cargar o entregar energía (BATTERY_MAX_KW cada una).
+ */
+export function capacities(sim: Simulation, excludeId: number | null = null): { waterL: number; batteryKWh: number; batteries: number } {
   let waterL = 0;
   let batteryKWh = 0;
   let batteries = 0;
   for (const m of sim.state.ship.modules) {
-    if (m.status === 'construction') continue;
+    if (m.status === 'construction' || m.id === excludeId) continue;
     const def = moduleDef(m.type);
     if (def.waterCapacity) waterL += def.waterCapacity;
-    if (def.batteryKWh && m.status === 'active') {
+    if (def.batteryKWh) {
       batteryKWh += def.batteryKWh;
-      batteries++;
+      if (isOperational(m)) batteries++;
     }
   }
   return { waterL, batteryKWh, batteries };
@@ -459,7 +508,7 @@ export function tickUtilities(sim: Simulation, dt: number): void {
     const wasRunning = g.powered;
     const deficit = generation < demand - 1e-6;
     const wantsCharge =
-      cap.batteryKWh > 0 &&
+      cap.batteries > 0 &&
       generation < demand + maxBatteryKW - 1e-6 &&
       (wasRunning ? batteryRoom > 0.01 : u.batteryKWh < cap.batteryKWh * GEN_RESTART_FRACTION);
     if (!deficit && !wantsCharge) {
@@ -478,7 +527,8 @@ export function tickUtilities(sim: Simulation, dt: number): void {
     clearWarn(sim, `gen-fuel:${g.id}`);
     const left = fuelMinutes(g);
     if (left < GEN_LOW_FUEL_MIN) {
-      warnOnce(sim, `gen-low:${g.id}`, `${capitalize(toArticle(def.name))} le queda combustible para unos ${Math.max(1, Math.round(left))} min`, 'warn');
+      const mins = Math.max(1, Math.round(left));
+      warnOnce(sim, `gen-low:${g.id}`, `${capitalize(toArticle(def.name))} le queda combustible para ${mins === 1 ? 'un minuto' : `unos ${mins} min`}`, 'warn');
     } else if (left > GEN_LOW_FUEL_RESET) clearWarn(sim, `gen-low:${g.id}`);
     g.powered = true;
     loads.set(g.id, burned / dt);
@@ -499,9 +549,21 @@ export function tickUtilities(sim: Simulation, dt: number): void {
   }
   const batteryLoad = maxBatteryKW > 0 ? clamp(Math.abs(u.batteryKWh - storedBefore) / hours / maxBatteryKW, 0, 1) : 0;
   for (const b of batteries) {
-    b.powered = b.status === 'active';
+    b.powered = isOperational(b);
     if (b.powered && batteryLoad > 0) loads.set(b.id, batteryLoad);
   }
+  // Baterías averiadas: guardan la carga, pero no la entregan hasta repararlas.
+  if (batteries.length && cap.batteries === 0 && u.batteryKWh > 0.05) {
+    const many = batteries.filter((b) => b.status !== 'construction').length > 1;
+    warnOnce(
+      sim,
+      'battery-down',
+      many
+        ? `Las baterías no funcionan: conservan ${Math.round(u.batteryKWh)} kWh, pero no darán energía hasta repararlas`
+        : `El banco de baterías no funciona: conserva ${Math.round(u.batteryKWh)} kWh, pero no dará energía hasta repararlo`,
+      'warn',
+    );
+  } else if (cap.batteries > 0) clearWarn(sim, 'battery-down');
   if (u.batteryKWh > 0.01) potential += maxBatteryKW;
 
   const satisfaction = demand > 1e-9 ? clamp((generation + discharge) / demand, 0, 1) : 1;

@@ -64,7 +64,8 @@ export const NPC_RATES = {
   sleepBedPerHour: 14,
   sleepFloorPerHour: 8,
   starvingDamagePerHour: 6,
-  sickDamagePerHour: 2,
+  /** Una enfermedad sin tratar (sin botiquín, enfermería ni cama) deja la salud baja en un día. */
+  sickDamagePerHour: 2.5,
   fireDamagePerHour: 10,
   /** Recuperación de salud bien comido y bebido (×1,5 durmiendo, ×3 en la enfermería). */
   regenPerHour: 2,
@@ -83,9 +84,14 @@ export const SAY_MINUTES = 6;
 /** Enfriamiento de las quejas de cada habitante (min). */
 export const COMPLAINT_COOLDOWN = 240;
 /** Habitantes como máximo apagando el mismo fuego. */
-export const MAX_FIREFIGHTERS = 3;
-/** Fuego que apaga cada habitante por minuto (× valentía). */
-export const FIREFIGHT_RATE = 5;
+export const MAX_FIREFIGHTERS = 2;
+/**
+ * Fuego que sofoca cada habitante por minuto SIN cubo (mantas, pisotones; × valentía): poco. Con
+ * cubos van a la borda a llenarlos y apagan `NPC_BUCKET_EXTINGUISH` por viaje.
+ */
+export const FIREFIGHT_RATE = 0.8;
+/** Lo que apaga un cubo de agua de mar arrojado por un habitante (el del jugador, en events.ts). */
+export const NPC_BUCKET_EXTINGUISH = 20;
 /** Distancia (m) a las celdas del módulo desde la que se lucha contra el fuego. */
 export const FIRE_REACH = 3;
 /** Comer en la mesa (min). */
@@ -102,13 +108,17 @@ const WATER_BOTTLE_RESERVE = 2;
 /** Probabilidad de ponerse enfermo al comer pescado crudo. */
 const RAW_FISH_SICK = 0.3;
 /**
- * Probabilidad por hora de curarse de una enfermedad (en camilla / por sí solo). Por sí sola dura
- * de media unas 20 h, como la del jugador (18 h); en la enfermería, unas 5 h.
+ * Probabilidad por hora de curarse de una enfermedad. Solo se cura con tratamiento: en una camilla
+ * de la enfermería (unas 4 h de media), guardando cama (unas 17 h) o con un botiquín (al instante).
+ * Andando por ahí no se cura: pierde salud hasta que alguien le atienda.
  */
-const CURE_PER_HOUR_INFIRMARY = 0.2;
-/** Guardando reposo en una cama normal (unas 12 h de media). */
-const CURE_PER_HOUR_RESTING = 0.08;
-const CURE_PER_HOUR_NATURAL = 0.05;
+const CURE_PER_HOUR_INFIRMARY = 0.25;
+/** Guardando reposo en una cama normal. */
+const CURE_PER_HOUR_RESTING = 0.06;
+/** Probabilidad por hora de contagiar a cada habitante que esté cerca (o duerma en la misma habitación). */
+export const CONTAGION_PER_HOUR = 0.03;
+/** Distancia (m) a la que se contagia la enfermedad. */
+const CONTAGION_RANGE = 2.5;
 /** Salud a partir de la que se cura una herida. */
 const INJURY_HEALED_AT = 90;
 /**
@@ -376,18 +386,59 @@ export function npcDebugStats(sim: Simulation): NpcDebugStats {
 /* Utilidades                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Nombres femeninos de `NPC_NAMES` (para concordar adjetivos: "agotada", "herido"…). */
-const FEMININE_NAMES = new Set(['Marina', 'Lucía', 'Nora', 'Alma', 'Vera', 'Inés', 'Carla', 'Rocío', 'Julia', 'Sol', 'Olga', 'Aitana', 'Celia', 'Lola', 'Greta']);
+/**
+ * Género de cada nombre de `NPC_NAMES` (para concordar adjetivos, rasgos y puestos: "agotada",
+ * "habladora", "pescadora"…). Todos los nombres de la lista son claramente femeninos o masculinos.
+ */
+export const NAME_GENDER: Readonly<Record<string, 'f' | 'm'>> = {
+  Marina: 'f', Lucía: 'f', Nora: 'f', Alma: 'f', Vera: 'f', Inés: 'f', Carla: 'f', Rocío: 'f', Julia: 'f', Sol: 'f',
+  Olga: 'f', Aitana: 'f', Celia: 'f', Lola: 'f', Greta: 'f',
+  Tomás: 'm', Iker: 'm', Bruno: 'm', Darío: 'm', Gael: 'm', Teo: 'm', Hugo: 'm', Elías: 'm', Mateo: 'm', Andrés: 'm',
+  Simón: 'm', Ramiro: 'm', Joaquín: 'm', Fermín: 'm', Pablo: 'm',
+};
 
 /** ¿El habitante es mujer? (por su nombre; los nombres desconocidos terminados en -a cuentan como femeninos). */
 export function isFemaleNpc(npc: Pick<NpcState, 'name'>): boolean {
   const first = npc.name.split(/\s+/)[0] ?? '';
-  return FEMININE_NAMES.has(first) || (!/^(Tomás|Andrés|Simón|Joaquín|Fermín|Elías|Darío)$/.test(first) && /a$/.test(first));
+  const g = NAME_GENDER[first];
+  return g ? g === 'f' : /a$/.test(first);
 }
 
 /** Concuerda un adjetivo terminado en -o con el habitante: g(Marina, 'agotado') → 'agotada'. */
 export function npcAdj(npc: Pick<NpcState, 'name'>, adjMasc: string): string {
   return isFemaleNpc(npc) ? adjMasc.replace(/o$/, 'a') : adjMasc;
+}
+
+/** Forma femenina de los rasgos que la tienen (los demás, como «Optimista» o «Valiente», no cambian). */
+const TRAIT_FEMININE: Record<string, string> = {
+  grunon: 'Gruñona',
+  madrugador: 'Madrugadora',
+  dormilon: 'Dormilona',
+  gloton: 'Glotona',
+  trabajador: 'Trabajadora',
+  hablador: 'Habladora',
+  miedoso: 'Miedosa',
+};
+
+/** Nombre del rasgo concordado con el habitante («Hablador» / «Habladora»). */
+export function npcTraitName(npc: Pick<NpcState, 'name' | 'trait'>): string {
+  const base = TRAITS[npc.trait]?.name ?? npc.trait;
+  return isFemaleNpc(npc) ? (TRAIT_FEMININE[npc.trait] ?? base) : base;
+}
+
+/** Nombre del puesto concordado con el habitante («Pescador/a» → «Pescadora» o «Pescador»). */
+export function npcRoleName(npc: Pick<NpcState, 'name'>, role: NpcRole): string {
+  const name = ROLES[role]?.name ?? role;
+  const slash = name.indexOf('/');
+  if (slash < 0) return name;
+  const masc = name.slice(0, slash);
+  if (!isFemaleNpc(npc)) return masc;
+  return /o$/.test(masc) ? `${masc.slice(0, -1)}a` : `${masc}a`;
+}
+
+/** «(habladora, pescadora)»: rasgo y puesto de un habitante nuevo, en minúsculas y concordados. */
+export function npcIntro(npc: NpcState): string {
+  return `(${npcTraitName(npc).toLowerCase()}, ${npcRoleName(npc, npc.role).toLowerCase()})`;
 }
 
 function traitOf(npc: NpcState): TraitDef {
@@ -1392,7 +1443,7 @@ function roastPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
   if (blocked(sim, npc, 'asar')) return null;
   const k = kitchen(sim);
   if (!k) return null;
-  const stove = workTarget(sim, k, ['fogon']);
+  const stove = stoveSpot(sim, k);
   if (!stove) return null;
   const cooking = k.queue.some((j) => ['pescado_asado', 'guiso', 'sopa'].includes(j.recipeId));
   if (cooking && fuelMinutes(k) > 0) {
@@ -1598,6 +1649,58 @@ function workTarget(sim: Simulation, m: ModuleInstance, kinds?: string[]): { pos
   return s.prop ? { pos: s.pos, faceYaw: yawTo(s.pos, s.prop) } : { pos: s.pos };
 }
 
+/** Fogón de una cocina. */
+function stoveProp(sim: Simulation, k: ModuleInstance): PropInstance | null {
+  return propsOf(sim, k.id).find((p) => p.kind === 'fogon') ?? null;
+}
+
+/**
+ * Punto de trabajo junto al fogón que NO ocupa su punto de uso (el que usa el jugador para abrir
+ * la cocina): a un lado del fogón y a su alcance, lejos de `avoid` (el jugador) si se indica. Si
+ * no hay hueco a los lados, el propio punto de uso.
+ */
+function stoveSpot(sim: Simulation, k: ModuleInstance, avoid?: Vec3): { pos: Vec3; faceYaw?: number } | null {
+  const prop = stoveProp(sim, k);
+  if (!prop) return workTarget(sim, k, ['fogon']);
+  const sp = propSpot(sim, prop);
+  if (!sp) return null;
+  // Delante del mueble (como `nav.standPoint`) y su perpendicular.
+  const fx = -Math.sin(prop.yaw);
+  const fz = -Math.cos(prop.yaw);
+  for (const off of [0.9, -0.9, 1.3, -1.3]) {
+    const q = { x: sp.x - fz * off, y: sp.y, z: sp.z + fx * off };
+    const n = sim.nav.locate(q);
+    if (!n || !isReachableNode(sim, n)) continue;
+    const w = sim.nav.worldOf(n);
+    if (Math.abs(w.y - sp.y) > 0.4 || Math.hypot(w.x - sp.x, w.z - sp.z) < 0.6) continue;
+    if (Math.hypot(w.x - prop.x, w.z - prop.z) > 2.4) continue;
+    if (avoid && Math.hypot(w.x - avoid.x, w.z - avoid.z) < 1) continue;
+    return { pos: w, faceYaw: yawTo(w, prop) };
+  }
+  return { pos: sp, faceYaw: yawTo(sp, prop) };
+}
+
+/**
+ * Quien trabaja en el fogón le deja sitio al jugador: si este se acerca y el habitante está en el
+ * punto de uso, da un paso a un lado (sin dejar lo que esté haciendo).
+ */
+function stepAsideFromStove(sim: Simulation, npc: NpcState): void {
+  const t = npc.task;
+  const d = td(npc);
+  if (!t || d.anim !== 'cocinar') return;
+  const p = sim.state.player;
+  if (!p.alive || p.sleeping || Math.abs(p.pos.y - npc.pos.y) > 1.2 || dist2(p.pos, npc.pos) > 1.8) return;
+  const k = findModule(sim, t.targetModuleId ?? -1);
+  const prop = k?.type === 'cocina' ? stoveProp(sim, k) : null;
+  const sp = prop ? propSpot(sim, prop) : null;
+  if (!k || !sp || dist2(npc.pos, sp) > 0.5) return;
+  const alt = stoveSpot(sim, k, p.pos);
+  if (!alt || dist2(alt.pos, npc.pos) < 0.5) return;
+  npc.path = [{ ...alt.pos }];
+  t.targetPos = { ...alt.pos };
+  if (alt.faceYaw !== undefined) d.faceYaw = alt.faceYaw;
+}
+
 /* ---- Agua de emergencia: destilar agua de mar ---- */
 
 /** Cubos que se llevan a la vez a la borda. */
@@ -1620,7 +1723,7 @@ function waterPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
   if (!fit(npc) || npc.sick) return null;
   const k = kitchen(sim);
   if (!k || (fuelMinutes(k) <= 0 && !fuelInStorage(sim, k))) return null;
-  const stove = workTarget(sim, k, ['fogon']);
+  const stove = stoveSpot(sim, k);
   if (!stove) return null;
   const distilling = k.queue.filter((j) => j.recipeId === 'destilar').length;
   const carry = npc.carry?.id;
@@ -1736,7 +1839,7 @@ function storePlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
 function cookPlan(sim: Simulation, npc: NpcState): Plan | null {
   const k = kitchen(sim);
   if (!k) return null;
-  const stove = workTarget(sim, k, ['fogon']);
+  const stove = stoveSpot(sim, k);
   if (!stove) return null;
   // Sin agua a bordo, lo primero es destilar agua de mar.
   if (waterScarce(sim)) {
