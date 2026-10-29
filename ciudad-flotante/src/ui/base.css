@@ -1,0 +1,218 @@
+/*
+ * Sistema visual base de la interfaz. Todos los paneles (UI y modo construcción) usan
+ * estas variables y clases para ser coherentes: madera clara, lona, latón y azul mar.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+
+:root {
+  --font: 'Nunito', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  --ink: #f6efe0;
+  --ink-dim: #c9bfa9;
+  --ink-faint: #8f8775;
+  --panel-bg: rgba(28, 36, 44, 0.9);
+  --panel-bg-solid: #1c242c;
+  --panel-border: rgba(232, 220, 192, 0.18);
+  --panel-raise: rgba(255, 255, 255, 0.05);
+  --slot-bg: rgba(255, 255, 255, 0.06);
+  --slot-border: rgba(232, 220, 192, 0.16);
+  --slot-hover: rgba(224, 164, 88, 0.22);
+  --accent: #e0a458;
+  --accent-ink: #1c242c;
+  --sea: #2fa3c6;
+  --good: #8ac66b;
+  --warn: #f2c14e;
+  --danger: #e5604d;
+  --info: #7cc4e8;
+  --hunger: #e9a25f;
+  --thirst: #4cc9f0;
+  --energy: #f2d16b;
+  --health: #e5604d;
+  --warmth: #f48c6b;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0b1d33;
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+.ui-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: 15px;
+}
+
+.ui-root .interactive,
+.ui-root button,
+.ui-root input,
+.ui-root select {
+  pointer-events: auto;
+}
+
+/* ---------- Componentes base ---------- */
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(6px);
+  color: var(--ink);
+}
+
+.panel-title {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+.btn {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--panel-raise);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--slot-hover);
+  border-color: var(--accent);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #ebb46e;
+}
+
+.btn.danger {
+  border-color: rgba(229, 96, 77, 0.6);
+}
+
+.kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--ink);
+  color: var(--panel-bg-solid);
+  font-weight: 900;
+  font-size: 12px;
+  text-align: center;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.slot {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  background: var(--slot-bg);
+  border: 1px solid var(--slot-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot .qty {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  font-weight: 900;
+  font-size: 12px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.25s;
+}
+
+.muted {
+  color: var(--ink-dim);
+}
+
+.faint {
+  color: var(--ink-faint);
+}
+
+.good {
+  color: var(--good);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232, 220, 192, 0.3) transparent;
+}
+
+.hud-stub {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  padding: 8px 12px;
+  background: var(--panel-bg);
+  border-radius: var(--radius-sm);
+}

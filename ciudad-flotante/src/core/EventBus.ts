@@ -27,6 +27,10 @@ export interface GameEvents {
   saved: { slot: string };
   /** Nuevo día. */
   newDay: { day: number };
+  /** Se sustituyó la simulación (partida nueva o cargada): las vistas deben reiniciarse. */
+  simReplaced: { reason: 'new' | 'load' };
+  /** El jugador usó una herramienta (para animaciones y sonido). */
+  toolUsed: { tool: string; phase: 'start' | 'hit' | 'success' | 'fail' };
 }
 
 type Handler<T> = (payload: T) => void;
