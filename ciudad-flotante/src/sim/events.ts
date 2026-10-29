@@ -37,21 +37,35 @@ import { ITEMS } from '../data/items';
 import { BLUEPRINT_ORDER, TRADE_OFFERS } from '../data/loot';
 import { moduleDef } from '../data/modules';
 import { REGIONS, START_REGION } from '../data/regions';
+import { FINAL_REGION, STORY_PAGES, STORY_TEXTS, type StoryPage } from '../data/story';
 import { wake } from './actions';
-import { CELL, MINUTES_PER_DAY, START_HOUR } from './constants';
+import { CELL, MINUTES_PER_DAY, START_HOUR, VISUAL_DRIFT } from './constants';
 import { REPAIR_THRESHOLD, repairNeeds } from './construction';
 import { collectDebrisFor, hullBounds, playerSlotOf, rollLoot, spawnDebris } from './debris';
 import { depositToStorage, findModule, giveToPlayer, itemName, payInventories, shipCount, spawnCrate, stacksText } from './helpers';
 import { consume, countItem, missingFor } from './inventory';
-import { availableForExpedition, isFemaleNpc, npcAdj, onNpcEventEnded, returnFromExpedition, sendOnExpedition, spawnSurvivor, survivorJoinText } from './npc';
+import { moduleDisplayName } from './moduleStats';
+import {
+  adjustRelation,
+  availableForExpedition,
+  isFemaleNpc,
+  npcAdj,
+  onNpcEventEnded,
+  relationBetween,
+  RIVAL_AT,
+  returnFromExpedition,
+  sendOnExpedition,
+  spawnSurvivor,
+  survivorJoinText,
+} from './npc';
 import { damagePlayer } from './needs';
 import { cellAtPoint, cellMin, isIndoorAt, levelOfY, moduleCells, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
 import { clockText, hourOf } from './time';
 import { markTutorial } from './tutorial';
-import type { ActiveEvent, Debris, DebrisKind, EventObjective, ItemId, ItemStack, ModuleInstance, NpcState, Sighting, Vec3 } from './types';
+import type { ActiveEvent, Debris, DebrisKind, EventObjective, ItemId, ItemStack, ModuleInstance, NpcState, Sighting, StoryState, Vec3 } from './types';
 import { capitalize, hasFuel, isFeminineName, machineRunning, moduleHasSky, withArticle } from './utilities';
-import { anchorShip, isAnchored, weighAnchor } from './voyage';
+import { anchorShip, isAnchored, regionWithArticle, weighAnchor } from './voyage';
 import { forceWeather } from './weather';
 
 /* ------------------------------------------------------------------ */
@@ -71,7 +85,8 @@ export type EventType =
   | 'fuga'
   | 'enfermedad'
   | 'discusion'
-  | 'estructura';
+  | 'estructura'
+  | 'llegada';
 
 export const EVENT_TYPES: readonly EventType[] = [
   'tormenta',
@@ -87,6 +102,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'enfermedad',
   'discusion',
   'estructura',
+  'llegada',
 ];
 
 /** Nombre corto de cada tipo (UI, diario). */
@@ -104,6 +120,7 @@ export const EVENT_NAMES: Record<EventType, string> = {
   enfermedad: 'Enfermedad',
   discusion: 'Discusión',
   estructura: 'Estructura misteriosa',
+  llegada: 'Llegada a Puerto Esperanza',
 };
 
 /** Minutos de juego antes de que un tipo pueda repetirse (desde que empieza). */
@@ -121,6 +138,7 @@ export const EVENT_COOLDOWN: Record<EventType, number> = {
   enfermedad: 1080,
   discusion: 720,
   estructura: 900,
+  llegada: 0,
 };
 
 /**
@@ -142,6 +160,7 @@ export const EVENT_MIN_DAY: Record<EventType, number> = {
   enfermedad: 3,
   discusion: 2,
   estructura: 6,
+  llegada: 1,
 };
 
 /** Intervalo entre tiradas del director (min). */

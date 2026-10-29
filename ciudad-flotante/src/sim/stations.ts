@@ -1,14 +1,17 @@
 /**
  * [AGENTE sim-economy] FABRICACIÓN, COCINA Y CULTIVOS (docs/SISTEMAS.md §7).
  *
- * - Estación por tipo de módulo: banco_trabajo → banco, taller → taller, cocina → cocina; sin
- *   módulo → a mano (instantáneo).
+ * - Estación por tipo de módulo: banco_trabajo → banco, taller → taller, cocina → cocina,
+ *   ahumadero → ahumadero; sin módulo → a mano (instantáneo).
  * - Los ingredientes se pagan con el inventario del jugador y luego con almacenes y bandejas
  *   (`payInventories`). Los habitantes (`by: 'npc'`) pagan solo con los almacenes.
  * - Cola de hasta 8 trabajos por estación; se paga al encolar y se devuelve al cancelar. Los
  *   encargos del jugador van delante de los de los habitantes (`by: 'npc'`), que conservan su avance.
- * - El primer trabajo avanza `dt × velocidad`: banco siempre (×1), taller con energía
+ * - El primer trabajo avanza `dt × velocidad`: banco y ahumadero siempre (×1; el ahumadero no tiene
+ *   ranura de combustible: la leña es un ingrediente de la receta), taller con energía
  *   (× satisfacción), cocina quemando combustible de su ranura (si se acaba, se pausa y avisa).
+ *   La velocidad se multiplica por la mejora (`workSpeed`) y la cocina mejorada gasta menos
+ *   combustible (`fuelEfficiency`, ver `runOnFuel`).
  * - Productos → bandeja de la estación → almacén → caja junto a la estación (nunca se pierden). Las
  *   cajas se dejan siempre en un punto transitable (`safeDropPoint`): nunca sobre el hueco de una
  *   escalera, en una rampa ni dentro de un mueble.
@@ -16,7 +19,12 @@
  *   sea su propio repuesto (kit de reparación): así nunca queda bloqueada sin salida.
  * - Huerto: luz (cielo abierto: 30 % de noche, 100 % de día; interior: lámparas con energía),
  *   agua de la red (a cielo abierto la lluvia riega y ahorra depósito), horas sin agua, muerte,
- *   plaga y maduración. Los cultivos maduros esperan a la cosecha sin gastar agua.
+ *   plaga y maduración. Los cultivos maduros esperan a la cosecha sin gastar agua. Las mejoras del
+ *   huerto beben menos (`waterUseMult`) y crecen más rápido (`growthMult`).
+ * - Vivero de peces: encendido y con energía cría 1 pescado crudo cada `VIVERO_MINUTES` min
+ *   (÷ `workSpeed` con la mejora, × satisfacción × desgaste) en su bandeja hasta llenarla; lleno se
+ *   para y avisa una vez (se rearma al recoger el pescado). El avance se guarda en
+ *   `m.prodProgress` (minutos hacia la pieza siguiente).
  */
 import { CROPS, cropForSeed, type CropDef } from '../data/crops';
 import { ITEMS } from '../data/items';
@@ -26,7 +34,8 @@ import { SHIP_ORIGIN_X } from './constants';
 import { NAV_RES } from './nav';
 import { forwardOf, STEP_HEIGHT } from './physics';
 import { depositToStorage, findModule, giveToPlayer, itemName, payInventories, spawnCrate, stacksText } from './helpers';
-import { addItem, consume, missingFor } from './inventory';
+import { addItem, consume, countItem, missingFor, spaceFor } from './inventory';
+import { moduleMult } from './moduleStats';
 import { halfWidthM, levelOfY, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
 import { daylight } from './time';
@@ -34,17 +43,22 @@ import { markTutorial } from './tutorial';
 import type { CraftJob, ItemId, ItemStack, ModuleInstance, PlotState, Vec3 } from './types';
 import {
   agree,
-  burnFuel,
   clearWarn,
   conditionFactor,
+  finite,
   fuelMinutes,
   hasFuel,
   hasGrowLamps,
   isFeminineName,
+  isOperational,
   isPluralName,
   markWarned,
   moduleHasSky,
   repairNeeds,
+  runOnFuel,
+  VIVERO_ITEM,
+  VIVERO_MINUTES,
+  viveroHasRoom,
   warnOnce,
   withArticle,
 } from './utilities';
@@ -67,7 +81,11 @@ export const STATION_OF_MODULE: Readonly<Record<string, StationKind>> = {
   banco_trabajo: 'banco',
   taller: 'taller',
   cocina: 'cocina',
+  ahumadero: 'ahumadero',
 };
+
+/** Estaciones que preparan comida (sonido de «cocinado» y paso «cocinar» del tutorial). */
+const FOOD_STATIONS: ReadonlySet<StationKind> = new Set(['cocina', 'ahumadero']);
 
 /** "en el banco de trabajo", "en la cocina"… */
 export const STATION_PLACE: Readonly<Record<StationKind, string>> = {
@@ -421,13 +439,22 @@ export function cancelCraft(sim: Simulation, moduleId: number, jobIndex: number)
   return { ok: true, msg: `Cancelado: ${r.name}. Recuperas ${stacksText(r.inputs)}${allFit ? '' : ' (lo que no cabía está en una caja a tus pies)'}` };
 }
 
-/** Velocidad actual de una estación (0 = parada). No tiene en cuenta el combustible. */
+/** Multiplicador de velocidad de la mejora del módulo (1 = básico). */
+function workSpeed(m: ModuleInstance): number {
+  const w = moduleMult(m, 'workSpeed');
+  return Number.isFinite(w) && w > 0 ? w : 1;
+}
+
+/**
+ * Velocidad actual de una estación (0 = parada), con la mejora (`workSpeed`). No tiene en cuenta
+ * el combustible.
+ */
 function stationSpeed(sim: Simulation, m: ModuleInstance, kind: StationKind): number {
   if (m.fire > 0) return 0;
   if (m.status === 'broken') return workIndex(m) >= 0 ? 1 : 0;
   if (m.status !== 'active') return 0;
-  if (kind === 'taller') return m.on && m.powered ? sim.state.utilities.power.satisfaction * conditionFactor(m) : 0;
-  return 1;
+  if (kind === 'taller') return m.on && m.powered ? finite(sim.state.utilities.power.satisfaction) * conditionFactor(m) * workSpeed(m) : 0;
+  return workSpeed(m);
 }
 
 /**
@@ -497,10 +524,10 @@ export function isStoveLit(m: ModuleInstance): boolean {
 function finishJob(sim: Simulation, m: ModuleInstance, kind: StationKind, r: RecipeDef, job: Job): void {
   const outputs: ItemStack[] = Object.entries(r.outputs).map(([id, qty]) => ({ id, qty }));
   const where = storeProducts(sim, m, outputs);
-  sfxAt(sim, kind === 'cocina' ? 'cocinado' : 'fabricado', m);
+  sfxAt(sim, FOOD_STATIONS.has(kind) ? 'cocinado' : 'fabricado', m);
   if (job.by === 'npc') return;
   sim.state.player.stats.itemsCrafted += units(r.outputs);
-  markTutorial(sim, kind === 'cocina' ? 'cocinar' : 'fabricar');
+  markTutorial(sim, FOOD_STATIONS.has(kind) ? 'cocinar' : 'fabricar');
   const name = productName(r);
   let text = `${name} ${agree(name, 'listo')} en ${STATION_PLACE[kind]}`;
   if (where === 'almacen') text += ' (bandeja llena: se ha guardado en el almacén)';
@@ -538,7 +565,8 @@ function tickStation(sim: Simulation, m: ModuleInstance, kind: StationKind, dt: 
     const need = Math.max(0, (r.time - job.progress) / speed);
     const work = Math.min(time, need);
     if (kind === 'cocina' && work > 0) {
-      const burned = burnFuel(m, work);
+      // Con la cocina mejorada cada minuto de leña da `fuelEfficiency` minutos de fuego.
+      const burned = runOnFuel(m, work);
       if (burned > 0) lit = true;
       if (burned < work - 1e-9) {
         job.progress += burned * speed;
@@ -594,6 +622,9 @@ function tickPlots(sim: Simulation, m: ModuleInstance, dt: number): void {
   const hours = dt / 60;
   const u = sim.state.utilities;
   const light = plotLight(sim, m);
+  // Mejoras: riego por goteo (bebe menos) y abono (crece más rápido).
+  const waterMult = Math.max(0, finite(moduleMult(m, 'waterUseMult'), 1));
+  const growthMult = Math.max(0, finite(moduleMult(m, 'growthMult'), 1));
   // A cielo abierto la lluvia riega: con lluvia moderada (≥ RAIN_WATERS) no hace falta agua de la red.
   const rainShare = moduleHasSky(sim, m) ? Math.min(1, Math.max(0, sim.state.weather.rain) / RAIN_WATERS) : 0;
   let thirsty = false;
@@ -605,7 +636,7 @@ function tickPlots(sim: Simulation, m: ModuleInstance, dt: number): void {
       continue;
     }
     if (p.growth >= 1) continue; // maduro: espera a la cosecha sin gastar agua
-    const need = crop.waterPerHour * hours;
+    const need = crop.waterPerHour * hours * waterMult;
     const fromRain = need * (Number.isFinite(rainShare) ? rainShare : 0);
     const got = Math.min(need - fromRain, Math.max(0, u.waterL));
     u.waterL -= got;
@@ -625,7 +656,7 @@ function tickPlots(sim: Simulation, m: ModuleInstance, dt: number): void {
     }
     if (!p.pest && light > 0) {
       const before = p.growth;
-      p.growth = Math.min(1, p.growth + (hours / crop.growHours) * light * wet);
+      p.growth = Math.min(1, p.growth + (hours / crop.growHours) * light * wet * growthMult);
       if (before < 1 && p.growth >= 1) sim.notify(`Cosecha lista en el huerto: ${crop.name}`, 'good');
     }
   }
@@ -665,7 +696,92 @@ export function tickStations(sim: Simulation, dt: number): void {
       else if (kind === 'cocina') m.powered = false;
     }
     if (m.plots.length) tickPlots(sim, m, dt);
+    if (m.type === 'vivero') tickVivero(sim, m, dt);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Vivero de peces                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Módulo con avance de producción guardado (vivero). */
+type Producer = ModuleInstance & { prodProgress?: number };
+
+/** Minutos por pieza del vivero a pleno rendimiento (con su mejora). */
+export function viveroMinutesPerFish(m: ModuleInstance): number {
+  return VIVERO_MINUTES / workSpeed(m);
+}
+
+/** Ritmo actual del vivero (0 = parado): energía × desgaste × mejora. */
+function viveroSpeed(sim: Simulation, m: ModuleInstance): number {
+  if (!isOperational(m) || !m.on || !m.powered || !viveroHasRoom(m)) return 0;
+  return Math.max(0, Math.min(1, finite(sim.state.utilities.power.satisfaction))) * conditionFactor(m) * workSpeed(m);
+}
+
+function tickVivero(sim: Simulation, m: Producer, dt: number): void {
+  if (!isOperational(m) || !m.on) return;
+  const key = `vivero-full:${m.id}`;
+  if (!viveroHasRoom(m)) {
+    warnOnce(sim, key, `${withArticle(moduleDef(m.type).name, true)} está lleno: recoge el pescado de su bandeja para que siga criando`, 'info');
+    return;
+  }
+  clearWarn(sim, key);
+  const speed = viveroSpeed(sim, m);
+  if (speed <= 0) return;
+  let progress = Math.max(0, finite(m.prodProgress)) + dt * speed;
+  while (progress >= VIVERO_MINUTES - 1e-9 && viveroHasRoom(m)) {
+    addItem(m.inventory!, VIVERO_ITEM, 1);
+    progress -= VIVERO_MINUTES;
+  }
+  // Lleno a mitad de paso: la pieza siguiente espera lista (no se acumulan más).
+  m.prodProgress = Math.max(0, Math.min(progress, VIVERO_MINUTES));
+}
+
+export interface ProducerStatus {
+  /** Piezas en la bandeja y cuántas caben como máximo. */
+  stock: number;
+  capacity: number;
+  /** 0..1 hacia la pieza siguiente. */
+  progress: number;
+  /** Minutos hasta la pieza siguiente al ritmo actual (null si está parado). */
+  etaMin: number | null;
+  /** Minutos por pieza a pleno rendimiento (con la mejora). */
+  minutesPerItem: number;
+  /** Ritmo actual (1 = normal; 0 = parado). */
+  speed: number;
+  working: boolean;
+  /** "Criando", "Criando (60 %)", "Bandeja llena", "Apagado", "Sin energía", "Averiado"… */
+  status: string;
+}
+
+/** Estado del vivero de peces para la UI (null si no es un vivero). */
+export function viveroStatus(sim: Simulation, moduleId: number): ProducerStatus | null {
+  const m = findModule(sim, moduleId) as Producer | undefined;
+  if (!m || m.type !== 'vivero') return null;
+  const name = moduleDef(m.type).name;
+  const stock = countItem(m.inventory, VIVERO_ITEM);
+  // Lo que cabe en total (las ranuras con otros objetos no cuentan).
+  const capacity = m.inventory ? stock + spaceFor(m.inventory, VIVERO_ITEM) : 0;
+  const speed = viveroSpeed(sim, m);
+  const progress = Math.max(0, Math.min(1, finite(m.prodProgress) / VIVERO_MINUTES));
+  let status: string;
+  if (m.status === 'construction') status = 'En obras';
+  else if (m.status === 'broken') status = agree(name, 'Averiado');
+  else if (m.fire > 0) status = '¡Ardiendo!';
+  else if (!m.on) status = agree(name, 'Apagado');
+  else if (!viveroHasRoom(m)) status = 'Bandeja llena';
+  else if (speed <= 0) status = 'Sin energía';
+  else status = speed < 0.99 ? `Criando (${Math.round(speed * 100)} %)` : 'Criando';
+  return {
+    stock,
+    capacity,
+    progress,
+    etaMin: speed > 0 ? ((1 - progress) * VIVERO_MINUTES) / speed : null,
+    minutesPerItem: viveroMinutesPerFish(m),
+    speed,
+    working: speed > 0,
+    status,
+  };
 }
 
 /* ------------------------------------------------------------------ */

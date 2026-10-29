@@ -15,16 +15,27 @@
  *   dormía allí. `checkDemolishModule` avisa antes del agua y la carga que se perderían.
  * - Ampliación del casco: obra especial `ship.expansion` (+2 celdas por proa, máx. 18). Cuesta
  *   `HULL_EXPANSION.cost × (1 + ampliaciones hechas)`; cancelarla devuelve lo pagado.
- * - Desgaste: las máquinas funcionando pierden 1 de condición cada 8 h; a 0 se averían.
+ * - Desgaste: las máquinas funcionando pierden 1 de condición cada 8 h (× `wearMult` de su
+ *   mejora); a 0 se averían.
  * - Reparación: máquinas → llave inglesa + pieza mecánica; estructuras → martillo + kit. Si falta
  *   el repuesto, se dice dónde conseguirlo (`partSourceHint`).
+ * - Mejoras (GDD §7, `ModuleDef.upgrades`): `checkUpgrade` / `startUpgrade` pagan la mejora
+ *   siguiente (jugador y luego almacenes) y abren una obra de mejora (`m.upgrade`) mientras el
+ *   módulo sigue funcionando con su nivel actual. Avanza como una obra (`dt / buildTime`, +75 % por
+ *   habitante con actividad 'building' cuya tarea apunta al módulo, el jugador con martillo ×2 vía
+ *   `helpBuild`) y se pausa mientras el módulo arde. Al terminar: `tier++`, se amplían bandeja y
+ *   ranura de combustible, diario «X mejorado a <nombre>», sonido 'mejora_terminada' y
+ *   `shipChanged()`. `cancelUpgrade` devuelve el 100 % de lo pagado. Al desmontar se recupera además
+ *   el 50 % de las mejoras terminadas y el 100 % de la que esté en obras.
  */
-import { HULL_EXPANSION, MODULES, moduleDef } from '../data/modules';
+import { clamp } from '../core/math';
+import { HULL_EXPANSION, MODULES, moduleDef, type UpgradeDef } from '../data/modules';
 import { RECIPE_LIST, RECIPES } from '../data/recipes';
 import { CROPS } from '../data/crops';
 import { CELL, HULL_EXPANSION_CELLS, LEVEL_H, SHIP_MAX_LENGTH } from './constants';
-import { findModule, itemName, payInventories, spawnCrate, stacksText } from './helpers';
-import { consume, countItem, missingFor } from './inventory';
+import { findModule, giveToPlayer, itemName, payInventories, spawnCrate, stacksText } from './helpers';
+import { consume, countItem, createInventory, missingFor } from './inventory';
+import { moduleDisplayName, moduleMult, moduleStat, moduleTier, nextUpgrade } from './moduleStats';
 import { AGENT_RADIUS } from './nav';
 import { PLAYER_RADIUS } from './physics';
 import {
@@ -176,10 +187,16 @@ export interface ConstructionStatus {
   builders: number;
   /** Minutos de juego que faltan al ritmo actual (sin contar al jugador). */
   etaMin: number;
+  /** Nombre de la obra (en una mejora, el nombre del nivel al que lleva). */
   name: string;
+  /** Solo en obras de mejora: nivel al que lleva. */
+  toTier?: number;
 }
 
-/** Estado de una obra (`-1` = ampliación del casco) para la UI y el modo construcción. */
+/**
+ * Estado de una obra (`-1` = ampliación del casco) para la UI y el modo construcción. También
+ * informa de la obra de mejora de un módulo terminado (con `toTier`); null si no hay obra.
+ */
 export function constructionStatus(sim: Simulation, moduleId: number): ConstructionStatus | null {
   if (moduleId === -1) {
     const ex = sim.state.ship.expansion;
@@ -189,7 +206,15 @@ export function constructionStatus(sim: Simulation, moduleId: number): Construct
     return { progress: ex.progress, builders, etaMin: (1 - ex.progress) / rate, name: HULL_EXPANSION.name };
   }
   const m = findModule(sim, moduleId);
-  if (!m || m.status !== 'construction') return null;
+  if (!m) return null;
+  if (m.status !== 'construction') {
+    const up = activeUpgrade(m);
+    if (!up || !m.upgrade) return null;
+    const builders = buildersOn(sim, m.id);
+    const rate = (1 + NPC_HELP_BONUS * builders) / Math.max(1, up.buildTime);
+    const progress = clamp(finite(m.upgrade.progress), 0, 1);
+    return { progress, builders, etaMin: (1 - progress) / rate, name: up.name, toTier: up.tier };
+  }
   const def = moduleDef(m.type);
   const builders = buildersOn(sim, m.id);
   const rate = (1 + NPC_HELP_BONUS * builders) / Math.max(1, def.buildTime);
@@ -289,6 +314,20 @@ export function tickConstruction(sim: Simulation, dt: number): void {
     if (m.buildProgress >= 1 - 1e-9) finishModule(sim, m);
   }
 
+  // Obras de mejora (el módulo sigue funcionando; se pausan mientras arde).
+  for (const m of [...st.ship.modules]) {
+    if (!m.upgrade) continue;
+    const up = activeUpgrade(m);
+    if (!up) {
+      m.upgrade = null; // guardado de otra versión: la mejora ya no existe
+      continue;
+    }
+    if (m.status === 'construction' || m.fire > 0) continue;
+    const rate = (1 + NPC_HELP_BONUS * buildersOn(sim, m.id)) / Math.max(1, up.buildTime);
+    m.upgrade.progress = Math.min(1, Math.max(0, finite(m.upgrade.progress)) + dt * rate);
+    if (m.upgrade.progress >= 1 - 1e-9) finishUpgrade(sim, m);
+  }
+
   // Ampliación del casco.
   const ex = st.ship.expansion;
   if (ex) {
@@ -297,14 +336,15 @@ export function tickConstruction(sim: Simulation, dt: number): void {
     if (ex.progress >= 1 - 1e-9) finishExpansion(sim);
   }
 
-  // Desgaste de las máquinas en funcionamiento.
+  // Desgaste de las máquinas en funcionamiento (las mejoras pueden hacerlas más duraderas).
   const wear = dt / (WEAR_HOURS_PER_POINT * 60);
   for (const m of st.ship.modules) {
     const load = machineLoad(sim, m);
     if (load <= 0) continue;
     const name = moduleDef(m.type).name;
     const before = m.condition;
-    m.condition = Math.max(0, m.condition - wear * load);
+    const wearMult = Math.max(0, finite(moduleMult(m, 'wearMult'), 1));
+    m.condition = Math.max(0, m.condition - wear * load * wearMult);
     if (before >= 50 && m.condition < 50) {
       const pron = isFeminineName(name) ? 'la' : 'lo';
       sim.notify(`${withArticle(name, true)} está muy ${agree(name, 'desgastado')} y rinde menos: repára${pron} con llave inglesa y pieza mecánica`, 'warn');
@@ -338,7 +378,17 @@ export function helpBuild(sim: Simulation, moduleId: number, minutes: number): A
   const m = findModule(sim, moduleId);
   if (!m) return fail('Esa obra ya no existe');
   const def = moduleDef(m.type);
-  if (m.status !== 'construction') return fail(`${withArticle(def.name, true)} ya está ${agree(def.name, 'terminado')}`);
+  if (m.status !== 'construction') {
+    const up = activeUpgrade(m);
+    if (!up || !m.upgrade) return fail(`${withArticle(def.name, true)} ya está ${agree(def.name, 'terminado')}`);
+    if (m.fire > 0) return fail(`¡${withArticle(def.name, true)} está ardiendo! Apaga el fuego antes de seguir con la mejora`);
+    m.upgrade.progress = Math.min(1, Math.max(0, finite(m.upgrade.progress)) + (mins * PLAYER_HELP_RATE) / Math.max(1, up.buildTime));
+    if (m.upgrade.progress >= 1 - 1e-9) {
+      finishUpgrade(sim, m);
+      return { ok: true, msg: `Mejora terminada: ${up.name}` };
+    }
+    return { ok: true, msg: `${up.name}: ${Math.floor(m.upgrade.progress * 100)} %` };
+  }
   m.buildProgress = Math.min(1, m.buildProgress + (mins * PLAYER_HELP_RATE) / Math.max(1, def.buildTime));
   if (m.buildProgress >= 1 - 1e-9) {
     finishModule(sim, m);
@@ -355,12 +405,27 @@ function addTo(acc: Record<ItemId, number>, id: ItemId, qty: number): void {
   if (qty > 0) acc[id] = (acc[id] ?? 0) + qty;
 }
 
-/** Materiales que se recuperan al desmontar (100 % si sigue en obras, 50 % redondeado abajo si no). */
+/**
+ * Materiales que se recuperan al desmontar: 100 % si sigue en obras, 50 % redondeado abajo si no.
+ * Se suma la mitad de lo invertido en las mejoras terminadas y todo lo pagado por la mejora que
+ * esté en obras.
+ */
 export function demolishRefund(m: ModuleInstance): Record<ItemId, number> {
   const def = moduleDef(m.type);
-  const out: Record<ItemId, number> = {};
   const f = m.status === 'construction' ? 1 : DEMOLISH_REFUND;
-  for (const [id, q] of Object.entries(def.cost)) addTo(out, id, Math.floor(q * f));
+  const acc: Record<ItemId, number> = {};
+  const add = (cost: Record<ItemId, number>, k: number) => {
+    for (const [id, q] of Object.entries(cost)) acc[id] = (acc[id] ?? 0) + q * k;
+  };
+  add(def.cost, f);
+  if (m.status !== 'construction') {
+    const tier = moduleTier(m);
+    for (const u of def.upgrades ?? []) if (u.tier <= tier) add(u.cost, DEMOLISH_REFUND);
+    const up = activeUpgrade(m);
+    if (up) add(up.cost, 1);
+  }
+  const out: Record<ItemId, number> = {};
+  for (const [id, q] of Object.entries(acc)) addTo(out, id, Math.floor(q + 1e-9));
   return out;
 }
 
@@ -632,7 +697,7 @@ export function repair(sim: Simulation, moduleId: number, actor: EconomyActor = 
 
 
 /* ------------------------------------------------------------------ */
-/* Mejoras de instalaciones (ronda de contenido 2: implementar)        */
+/* Mejoras de instalaciones (GDD §7: «mejorar instalaciones existentes») */
 /* ------------------------------------------------------------------ */
 
 export interface UpgradeCheck {
@@ -647,17 +712,103 @@ export interface UpgradeCheck {
   buildTime: number;
 }
 
-/** Qué mejora admite un módulo y si se puede pagar ahora. STUB. */
-export function checkUpgrade(_sim: Simulation, _moduleId: number): UpgradeCheck {
-  return { ok: false, reason: 'Pendiente de implementar', toTier: null, name: null, desc: null, cost: {}, missing: {}, buildTime: 0 };
+/** Definición de la mejora que está en obras en el módulo (null si no hay o ya no es válida). */
+export function activeUpgrade(m: ModuleInstance): UpgradeDef | null {
+  const u = m.upgrade;
+  if (!u || typeof u !== 'object') return null;
+  const to = finite(u.toTier);
+  if (to <= moduleTier(m)) return null;
+  return moduleDef(m.type).upgrades?.find((x) => x.tier === to) ?? null;
 }
 
-/** Paga y arranca la obra de mejora (el módulo sigue funcionando con su nivel actual). STUB. */
-export function startUpgrade(_sim: Simulation, _moduleId: number): ActionResult {
-  return { ok: false, msg: 'Pendiente de implementar' };
+/**
+ * Qué mejora admite un módulo y si se puede pagar ahora. Aunque no se pueda (en obras, averiado,
+ * ardiendo, sin plano o sin materiales), se rellenan nombre, coste y tiempo de la mejora siguiente
+ * para que la interfaz pueda enseñarla.
+ */
+export function checkUpgrade(sim: Simulation, moduleId: number): UpgradeCheck {
+  const none = (reason: string): UpgradeCheck => ({ ok: false, reason, toTier: null, name: null, desc: null, cost: {}, missing: {}, buildTime: 0 });
+  const m = findModule(sim, moduleId);
+  if (!m) return none('Ese módulo ya no existe');
+  const def = moduleDef(m.type);
+  if (!def.upgrades?.length) return none(`${withArticle(def.name, true)} no admite mejoras`);
+  const busy = activeUpgrade(m);
+  const up = busy ?? nextUpgrade(m);
+  if (!up) return none('Ya está al máximo');
+  const cost = { ...up.cost };
+  const missing = missingFor(payInventories(sim), cost);
+  const info = { toTier: up.tier, name: up.name, desc: up.desc, cost, missing, buildTime: up.buildTime };
+  const no = (reason: string): UpgradeCheck => ({ ok: false, reason, ...info });
+  if (busy) return no('Ya se está mejorando');
+  if (m.status === 'construction') return no(`${withArticle(def.name, true)} aún está en obras`);
+  if (m.fire > 0) return no('No se puede mejorar mientras arde');
+  if (m.status === 'broken') {
+    return no(`${withArticle(def.name, true)} está ${agree(def.name, 'averiado')}: repára${isFeminineName(def.name) ? 'la' : 'lo'} primero`);
+  }
+  if (up.unlock && !sim.state.unlocks.includes(up.unlock)) return no(`Necesitas el ${blueprintName(up.unlock)}`);
+  if (Object.keys(missing).length) return no(`Faltan: ${stacksText(missing)}`);
+  return { ok: true, reason: null, ...info };
 }
 
-/** Cancela una mejora en obras y devuelve lo pagado. STUB. */
-export function cancelUpgrade(_sim: Simulation, _moduleId: number): ActionResult {
-  return { ok: false, msg: 'Pendiente de implementar' };
+/** Paga y arranca la obra de mejora (el módulo sigue funcionando con su nivel actual). */
+export function startUpgrade(sim: Simulation, moduleId: number): ActionResult {
+  const chk = checkUpgrade(sim, moduleId);
+  if (!chk.ok || chk.toTier === null) return fail(chk.reason ?? 'No se puede mejorar');
+  if (!consume(payInventories(sim), chk.cost)) return fail(`Faltan: ${stacksText(missingFor(payInventories(sim), chk.cost))}`);
+  const m = findModule(sim, moduleId)!;
+  m.upgrade = { toTier: chk.toTier, progress: 0 };
+  const c = moduleCenter(m, sim.state.ship.width);
+  sim.bus.emit('sfx', { name: 'obra_iniciada', x: c.x, y: c.y + 1, z: c.z });
+  return { ok: true, msg: `Mejora iniciada: ${chk.name} (${durationText(chk.buildTime)}). Mientras dura la obra se puede seguir usando` };
+}
+
+/** Cancela una mejora en obras y devuelve al jugador el 100 % de lo pagado (una caja a sus pies si no cabe). */
+export function cancelUpgrade(sim: Simulation, moduleId: number): ActionResult {
+  const m = findModule(sim, moduleId);
+  if (!m) return fail('Ese módulo ya no existe');
+  const up = activeUpgrade(m);
+  if (!up) {
+    if (m.upgrade) m.upgrade = null;
+    return fail('No hay ninguna mejora en obras');
+  }
+  m.upgrade = null;
+  for (const npc of sim.state.npcs) {
+    if (npc.activity !== 'building' || npc.task?.targetModuleId !== m.id) continue;
+    npc.task = null;
+    npc.path = [];
+    npc.activity = 'idle';
+  }
+  let allFit = true;
+  for (const [id, q] of Object.entries(up.cost)) allFit = giveToPlayer(sim, id, q, true) && allFit;
+  const c = moduleCenter(m, sim.state.ship.width);
+  sim.bus.emit('sfx', { name: 'demoler', x: c.x, y: c.y + 1, z: c.z });
+  return { ok: true, msg: `Mejora cancelada: ${up.name}. Recuperas ${stacksText(up.cost)}${allFit ? '' : ' (lo que no cabía está en una caja a tus pies)'}` };
+}
+
+/** Amplía un inventario hasta `slots` ranuras (nunca lo reduce ni toca lo que hay dentro). */
+function ensureSlots(inv: ModuleInstance['inventory'], slots: number): ModuleInstance['inventory'] {
+  const n = Math.max(0, Math.floor(finite(slots)));
+  if (!inv) return n > 0 ? createInventory(n) : null;
+  while (inv.slots.length < n) inv.slots.push(null);
+  return inv;
+}
+
+/** Termina la obra de mejora: sube de nivel, amplía bandeja y combustible, diario y sonido. */
+function finishUpgrade(sim: Simulation, m: ModuleInstance): void {
+  const up = activeUpgrade(m);
+  if (!up) {
+    m.upgrade = null;
+    return;
+  }
+  const before = moduleDisplayName(m);
+  m.tier = up.tier;
+  m.upgrade = null;
+  m.inventory = ensureSlots(m.inventory, moduleStat(m, 'storageSlots'));
+  m.fuelInv = ensureSlots(m.fuelInv, moduleStat(m, 'fuelSlots'));
+  // Más depósito o batería: la red lo nota en el siguiente paso; se fija ya para la interfaz.
+  refreshCapacities(sim);
+  sim.shipChanged();
+  sim.log(`${before} ${agree(before, 'mejorado')} a ${up.name}`, 'good');
+  const c = moduleCenter(m, sim.state.ship.width);
+  sim.bus.emit('sfx', { name: 'mejora_terminada', x: c.x, y: c.y + 1, z: c.z });
 }

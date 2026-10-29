@@ -15,6 +15,16 @@
  *  6. Red de agua: colectores con lluvia a cielo abierto, potabilizadora, fugas y depósitos dañados.
  *  7. Resumen suavizado para la UI en `state.utilities`.
  *
+ * Todas las capacidades, producciones, consumos y multiplicadores se leen con `moduleStat` /
+ * `moduleMult` (sim/moduleStats.ts), así que las mejoras de nivel surten efecto: depósitos y
+ * baterías más grandes, generadores y paneles más potentes, combustible que dura más
+ * (`fuelEfficiency`: `m.fuelBurn` guarda minutos de combustible «crudos» y `fuelMinutes` devuelve
+ * los minutos de funcionamiento que dan con la eficiencia del módulo).
+ *
+ * Consumidores de la ronda 2: el vivero de peces (0,5 kW mientras le quede sitio en la bandeja),
+ * la grúa de rescate (0,4 kW) y el radar (0,3 kW), estos dos siempre que estén encendidos y
+ * operativos. `isGruaReady` e `isRadarActive` dicen a otros sistemas si pueden trabajar.
+ *
  * Significado de `ModuleInstance.powered` según el tipo de módulo:
  *  - consumidores eléctricos: recibe energía suficiente (o la recibiría si arrancase);
  *  - generador / panel solar: está produciendo ahora mismo;
@@ -29,6 +39,8 @@ import type { NotifyKind } from '../core/EventBus';
 import { ITEMS } from '../data/items';
 import { moduleDef, type ModuleDef } from '../data/modules';
 import { findModule } from './helpers';
+import { spaceFor } from './inventory';
+import { moduleMult, moduleStat } from './moduleStats';
 import { getCell, moduleCells, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
 import { daylight } from './time';
@@ -62,6 +74,9 @@ const WATER_LOW_RESET = 0.3;
 /** Minutos de combustible restantes de un generador en marcha para avisar (y para rearmar). */
 const GEN_LOW_FUEL_MIN = 30;
 const GEN_LOW_FUEL_RESET = 60;
+/** Lo que cría el vivero y los minutos que tarda cada pieza a ritmo normal (× workSpeed con la mejora). */
+export const VIVERO_ITEM = 'pescado_crudo';
+export const VIVERO_MINUTES = 150;
 
 /* ------------------------------------------------------------------ */
 /* Avisos que se muestran una sola vez (no forman parte del guardado)  */
@@ -234,6 +249,13 @@ export function healingBedNote(sim: Simulation, m: ModuleInstance): string | nul
   return 'Sin energía: cura como una cama normal';
 }
 
+/** Nombre de un consumidor en las listas de avisos ("el radar", no "el radar y radio", que se lee mal entre comas). */
+function listName(m: ModuleInstance): string {
+  if (m.plots.length) return 'Lámparas de cultivo';
+  if (m.type === 'radar') return 'Radar';
+  return moduleDef(m.type).name;
+}
+
 function isGenerator(def: ModuleDef): boolean {
   return !!def.powerGen && !!def.fuelSlots;
 }
@@ -258,9 +280,14 @@ export function hasPowerSwitch(sim: Simulation, m: ModuleInstance): boolean {
 /** Consumo nominal (kW) de un consumidor cuando trabaja a pleno. */
 export function nominalDemand(sim: Simulation, m: ModuleInstance): number {
   const def = moduleDef(m.type);
-  if (def.powerUse) return def.powerUse;
+  if (def.powerUse) return moduleStat(m, 'powerUse');
   if (m.plots.length && hasGrowLamps(sim, m)) return GROW_LAMP_KW * m.plots.length;
   return 0;
+}
+
+/** ¿Le cabe al vivero otra pieza en la bandeja? (Lleno, deja de criar y de consumir.) */
+export function viveroHasRoom(m: ModuleInstance): boolean {
+  return !!m.inventory && spaceFor(m.inventory, VIVERO_ITEM) > 0;
 }
 
 /** Hueco libre en los depósitos (L). */
@@ -277,22 +304,27 @@ function waterRoom(sim: Simulation): number {
 export function currentDemand(sim: Simulation, m: ModuleInstance, hours = 1 / 60): number {
   if (!m.on || !isOperational(m)) return 0;
   const def = moduleDef(m.type);
+  const use = moduleStat(m, 'powerUse');
   switch (m.type) {
     case 'taller':
-      return m.queue.length > 0 ? (def.powerUse ?? 0) : 0;
+      return m.queue.length > 0 ? use : 0;
     case 'potabilizadora': {
-      const perStep = (def.waterGen ?? 0) * conditionFactor(m) * Math.max(hours, 1e-6);
+      const perStep = moduleStat(m, 'waterGen') * conditionFactor(m) * Math.max(hours, 1e-6);
       const room = waterRoom(sim);
       if (room <= 1e-6 || perStep <= 0) return 0;
-      return (def.powerUse ?? 0) * Math.min(1, room / perStep);
+      return use * Math.min(1, room / perStep);
     }
     case 'motor':
-      return isSailing(sim) ? (def.powerUse ?? 0) : 0;
+      return isSailing(sim) ? use : 0;
+    case 'vivero':
+      // Con la bandeja llena las bombas paran: no cría ni gasta hasta que se recoja el pescado.
+      return viveroHasRoom(m) ? use : 0;
     default:
       // Enfermería: solo consume con alguien en una camilla (vacía no gasta ni da avisos).
-      if (def.healingBeds) return healingBedInUse(sim, m) ? (def.powerUse ?? 0) : 0;
+      if (def.healingBeds) return healingBedInUse(sim, m) ? use : 0;
       if (m.plots.length) return hasGrowLamps(sim, m) ? GROW_LAMP_KW * growingPlots(m) : 0;
-      return def.powerUse ?? 0;
+      // Grúa de rescate, radar y demás consumidores: siempre que estén encendidos y operativos.
+      return use;
   }
 }
 
@@ -338,11 +370,30 @@ export function hasFuel(m: ModuleInstance): boolean {
   return m.fuelBurn > 1e-6 || firstFuelSlot(m.fuelInv) >= 0;
 }
 
-/** Minutos de combustión disponibles en total (cargado + ranura). */
+/**
+ * Minutos de funcionamiento que da el combustible disponible (cargado + ranura), con la eficiencia
+ * del módulo (`fuelEfficiency`: un generador mejorado saca 52 min de una madera de 40).
+ */
 export function fuelMinutes(m: ModuleInstance): number {
-  let t = Math.max(0, m.fuelBurn);
+  let t = Math.max(0, finite(m.fuelBurn));
   for (const s of m.fuelInv?.slots ?? []) if (s) t += (ITEMS[s.id]?.fuel ?? 0) * s.qty;
-  return t;
+  return t * fuelEfficiency(m);
+}
+
+/** Multiplicador de duración del combustible del módulo (1 = normal; > 1 dura más). */
+export function fuelEfficiency(m: ModuleInstance): number {
+  const e = moduleMult(m, 'fuelEfficiency');
+  return Number.isFinite(e) && e > 0 ? e : 1;
+}
+
+/**
+ * Hace funcionar el módulo `minutes` minutos quemando combustible con su eficiencia. Devuelve los
+ * minutos de funcionamiento conseguidos (menos si se acabó el combustible).
+ */
+export function runOnFuel(m: ModuleInstance, minutes: number): number {
+  const eff = fuelEfficiency(m);
+  const burned = burnFuel(m, minutes / eff);
+  return Math.min(minutes, burned * eff);
 }
 
 /** Echa una unidad de combustible de la ranura al fuego. */
@@ -393,9 +444,9 @@ export function capacities(sim: Simulation, excludeId: number | null = null): { 
   for (const m of sim.state.ship.modules) {
     if (m.status === 'construction' || m.id === excludeId) continue;
     const def = moduleDef(m.type);
-    if (def.waterCapacity) waterL += def.waterCapacity;
+    if (def.waterCapacity) waterL += moduleStat(m, 'waterCapacity');
     if (def.batteryKWh) {
-      batteryKWh += def.batteryKWh;
+      batteryKWh += moduleStat(m, 'batteryKWh');
       if (isOperational(m)) batteries++;
     }
   }
@@ -485,8 +536,7 @@ export function tickUtilities(sim: Simulation, dt: number): void {
   const cloud = clamp(finite(st.weather.cloudiness), 0, 1);
   let solar = 0;
   for (const m of panels) {
-    const def = moduleDef(m.type);
-    const p = m.on && isOperational(m) ? (def.powerGen ?? 0) * light * (1 - SOLAR_CLOUD_LOSS * cloud) * conditionFactor(m) : 0;
+    const p = m.on && isOperational(m) ? moduleStat(m, 'powerGen') * light * (1 - SOLAR_CLOUD_LOSS * cloud) * conditionFactor(m) : 0;
     m.powered = p > 0.005;
     if (m.powered) loads.set(m.id, 1);
     solar += p;
@@ -503,7 +553,7 @@ export function tickUtilities(sim: Simulation, dt: number): void {
       g.powered = false;
       continue;
     }
-    const kw = (def.powerGen ?? 0) * conditionFactor(g);
+    const kw = moduleStat(g, 'powerGen') * conditionFactor(g);
     if (hasFuel(g)) potential += kw;
     const wasRunning = g.powered;
     const deficit = generation < demand - 1e-6;
@@ -515,8 +565,9 @@ export function tickUtilities(sim: Simulation, dt: number): void {
       g.powered = false;
       continue;
     }
-    const burned = burnFuel(g, dt);
-    if (burned <= 1e-9) {
+    // Con la mejora, cada minuto de combustible da `fuelEfficiency` minutos de funcionamiento.
+    const ran = runOnFuel(g, dt);
+    if (ran <= 1e-9) {
       g.powered = false;
       const batteryCovers = u.batteryKWh > 0.05 && demand - generation <= maxBatteryKW;
       if (deficit && !batteryCovers) {
@@ -531,8 +582,8 @@ export function tickUtilities(sim: Simulation, dt: number): void {
       warnOnce(sim, `gen-low:${g.id}`, `${capitalize(toArticle(def.name))} le queda combustible para ${mins === 1 ? 'un minuto' : `unos ${mins} min`}`, 'warn');
     } else if (left > GEN_LOW_FUEL_RESET) clearWarn(sim, `gen-low:${g.id}`);
     g.powered = true;
-    loads.set(g.id, burned / dt);
-    generation += kw * (burned / dt);
+    loads.set(g.id, ran / dt);
+    generation += kw * (ran / dt);
   }
 
   /* 5. Baterías */
@@ -587,7 +638,7 @@ export function tickUtilities(sim: Simulation, dt: number): void {
   u.power.satisfaction = satisfaction;
 
   if (demand > 0 && satisfaction < 0.5) {
-    const names = [...new Set(consumers.filter((c) => c.demand > 0).map((c) => (c.m.plots.length ? 'Lámparas de cultivo' : moduleDef(c.m.type).name)))];
+    const names = [...new Set(consumers.filter((c) => c.demand > 0).map((c) => listName(c.m)))];
     const list = names.map((n) => withArticle(n)).join(', ').replace(/, ([^,]*)$/, ' y $1');
     const verb = names.length > 1 || isPluralName(names[0] ?? '') ? 'se detienen' : 'se detiene';
     warnOnce(sim, 'power-low', `Falta energía: ${list} ${verb}. Revisa generadores, paneles y baterías`, 'warn');
@@ -603,11 +654,11 @@ export function tickUtilities(sim: Simulation, dt: number): void {
     if (m.status === 'construction') continue;
     const def = moduleDef(m.type);
     if (m.type === 'colector' || (def.waterGen && !def.powerUse)) {
-      if (isOperational(m) && rain > 0 && moduleHasSky(sim, m)) inflow += (def.waterGen ?? 0) * rain;
+      if (isOperational(m) && rain > 0 && moduleHasSky(sim, m)) inflow += moduleStat(m, 'waterGen') * rain;
     } else if (def.waterGen && def.powerUse) {
       // Potabilizadora: trabaja a velocidad × satisfacción mientras haya hueco y energía.
       if (m.on && isOperational(m) && m.powered && waterRoomL > 1e-6) {
-        const litres = Math.min(waterRoomL, (def.waterGen ?? 0) * conditionFactor(m) * hours) * satisfaction;
+        const litres = Math.min(waterRoomL, moduleStat(m, 'waterGen') * conditionFactor(m) * hours) * satisfaction;
         inflow += litres / hours;
       }
     }
@@ -664,7 +715,10 @@ export function togglePower(sim: Simulation, moduleId: number): ActionResult {
   const label = m.plots.length ? 'Lámparas de cultivo' : def.name;
   let msg = `${label} ${agree(label, m.on ? 'encendido' : 'apagado')}`;
   if (m.on && def.fuelSlots && !hasFuel(m)) msg += ' (sin combustible: añade madera o un bidón)';
-  else if (m.on && m.status === 'broken') {
+  else if (m.on && m.type === 'vivero' && m.status !== 'broken' && !viveroHasRoom(m)) {
+    msg += ': la bandeja está llena, recoge el pescado para que siga criando';
+    markWarned(sim, `vivero-full:${m.id}`);
+  } else if (m.on && m.status === 'broken') {
     msg += ` (está ${agree(def.name, 'averiado')}: no funcionará hasta reparar${isFeminineName(def.name) ? 'la' : 'lo'})`;
   }
   return { ok: true, msg };
@@ -682,8 +736,8 @@ export function powerBreakdown(sim: Simulation): { moduleId: number; name: strin
       const kw = !m.powered
         ? 0
         : isSolar(def)
-          ? (def.powerGen ?? 0) * light * (1 - SOLAR_CLOUD_LOSS * clamp(st.weather.cloudiness, 0, 1)) * conditionFactor(m)
-          : (def.powerGen ?? 0) * conditionFactor(m);
+          ? moduleStat(m, 'powerGen') * light * (1 - SOLAR_CLOUD_LOSS * clamp(finite(st.weather.cloudiness), 0, 1)) * conditionFactor(m)
+          : moduleStat(m, 'powerGen') * conditionFactor(m);
       out.push({ moduleId: m.id, name: def.name, kw, role: 'gen', on: m.on, powered: m.powered });
     } else if (def.batteryKWh) {
       out.push({ moduleId: m.id, name: def.name, kw: 0, role: 'battery', on: true, powered: m.powered });
@@ -692,4 +746,36 @@ export function powerBreakdown(sim: Simulation): { moduleId: number; name: strin
     }
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Grúa de rescate y radar (los usan restos, eventos y viaje)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ¿La grúa de rescate puede trabajar ahora? Terminada, sin avería ni fuego, encendida y con energía
+ * (la red le da al menos la mitad de lo que pide). No mira su bandeja: quien la use guarda el botín
+ * en `m.inventory` y, si no cabe, en los almacenes o en una caja (nunca se pierde nada).
+ */
+export function isGruaReady(_sim: Simulation, m: ModuleInstance | null | undefined): boolean {
+  return !!m && m.type === 'grua' && isOperational(m) && m.on && m.powered;
+}
+
+/**
+ * Ritmo de trabajo de la grúa (0 si no está lista): mejora (`workSpeed`) × energía disponible ×
+ * desgaste. 1 = una grúa básica a pleno rendimiento.
+ */
+export function gruaWorkRate(sim: Simulation, m: ModuleInstance | null | undefined): number {
+  if (!m || !isGruaReady(sim, m)) return 0;
+  return moduleMult(m, 'workSpeed') * clamp(finite(sim.state.utilities.power.satisfaction, 1), 0, 1) * conditionFactor(m);
+}
+
+/** El radar y radio que está funcionando ahora (terminado, sin avería ni fuego, encendido y con energía), o null. */
+export function activeRadar(sim: Simulation): ModuleInstance | null {
+  return sim.state.ship.modules.find((m) => m.type === 'radar' && isOperational(m) && m.on && m.powered) ?? null;
+}
+
+/** ¿Hay un radar funcionando? (avistamientos con antelación, avisos de tormenta tempranos, radio). */
+export function isRadarActive(sim: Simulation): boolean {
+  return activeRadar(sim) !== null;
 }
