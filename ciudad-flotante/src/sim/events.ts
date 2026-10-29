@@ -64,7 +64,7 @@ import type { ActionResult, Simulation } from './Simulation';
 import { clockText, hourOf } from './time';
 import { markTutorial } from './tutorial';
 import type { ActiveEvent, Debris, DebrisKind, EventObjective, ItemId, ItemStack, ModuleInstance, NpcState, Sighting, StoryState, Vec3 } from './types';
-import { capitalize, hasFuel, isFeminineName, machineRunning, moduleHasSky, withArticle } from './utilities';
+import { capitalize, hasFuel, isFeminineName, isRadarActive, machineRunning, moduleHasSky, withArticle } from './utilities';
 import { anchorShip, isAnchored, regionWithArticle, weighAnchor } from './voyage';
 import { forceWeather } from './weather';
 
@@ -189,11 +189,12 @@ const SCRIPT_GUARD_MIN = 180;
 
 /** Guion inicial garantizado. */
 export const SCRIPT: readonly { id: string; day: number; hour: number; type: EventType; opts?: StartOptions }[] = [
-  { id: 'dia1-naufragio', day: 1, hour: 13, type: 'naufragio', opts: { blueprint: 'next' } },
+  { id: 'dia1-naufragio', day: 1, hour: 13, type: 'naufragio', opts: { blueprint: 'next', page: null } },
   { id: 'dia2-naufragos', day: 2, hour: 10, type: 'naufragos', opts: { survivors: 1 } },
   { id: 'dia3-mercante', day: 3, hour: 11, type: 'mercante' },
   { id: 'dia4-isla', day: 4, hour: 10, type: 'isla' },
-  { id: 'dia5-naufragio', day: 5, hour: 16, type: 'naufragio', opts: { blueprint: 'next' } },
+  // El segundo plano y, en el mismo cofre, la siguiente hoja del cuaderno (el hilo no depende del azar).
+  { id: 'dia5-naufragio', day: 5, hour: 16, type: 'naufragio', opts: { blueprint: 'next', page: 'next' } },
 ];
 /** Un paso del guion que se pasa más de esto (p. ej. una partida cargada) se descarta. */
 const SCRIPT_STALE_MIN = 36 * 60;
@@ -272,6 +273,58 @@ export const RAFT_ANCHOR_MIN = 45;
 const RAFT_ANCHOR_REASON = 'esperar a la balsa de náufragos';
 export const WRECK_ANCHOR_MIN = 60;
 
+/* Radar y radio */
+/** Con el radar en marcha, los avistamientos se anuncian esta antelación antes y duran lo mismo de más (min). */
+export const RADAR_EXTRA_MIN = 60;
+/** Con el radar, una balsa de náufragos se detecta este tramo más lejos por delante de la proa (m). */
+export const RADAR_RAFT_AHEAD = 60;
+/** Minutos entre mensajes de radio (con el radar en marcha). */
+export const RADIO_INTERVAL: readonly [number, number] = [360, 720];
+/** Primer mensaje de radio tras encender el radar (min). */
+export const RADIO_FIRST: readonly [number, number] = [45, 150];
+/** Un precio anunciado por radio lo trae el próximo mercante que llegue en este plazo (min). */
+export const RADIO_RUMOUR_MIN = 2 * MINUTES_PER_DAY;
+/** Claves propias en `events.cooldowns` (mapa serializable tipo → minuto). */
+const RADIO_KEY = 'radio';
+const RUMOUR_PREFIX = 'oferta:';
+const PAGE_KEY = 'pagina';
+
+/* Hilo narrativo: páginas del cuaderno del Albatros */
+/** Probabilidad base de que una fuente traiga la siguiente página (en su región). */
+export const PAGE_CHANCE = { cofre: 0.35, estructura: 0.5, isla: 0.3, mercante: 0.3, deriva: 0.25 } as const;
+export type PageSource = keyof typeof PAGE_CHANCE;
+/** Fuera de la región de la página, la probabilidad se multiplica por esto. */
+export const PAGE_OFF_REGION = 0.45;
+/** Tras aparecer una página, ninguna otra en este plazo (min). */
+export const PAGE_COOLDOWN_MIN = 12 * 60;
+/** Cada día sin páginas sube la probabilidad (hasta `PAGE_DROUGHT_MAX`). */
+export const PAGE_DROUGHT_PER_DAY = 0.08;
+export const PAGE_DROUGHT_MAX = 0.4;
+/** Lo que pide un mercante por una hoja del cuaderno (papel mojado: barato). */
+export const PAGE_PRICE: Readonly<Record<ItemId, number>> = { madera: 6 };
+
+/* Llegada a Puerto Esperanza */
+/** El mercado del muelle abre durante este tiempo (min). */
+export const ARRIVAL_MARKET_MIN = 6 * 60;
+/** Habitantes del puerto que se unen a la tripulación al llegar. */
+export const ARRIVAL_NEWCOMERS = 2;
+/** La luz verde se ve al amanecer: la llegada ocurre de día (horas [desde, hasta)). */
+export const ARRIVAL_HOURS: readonly [number, number] = [6, 20];
+/** Ofertas del mercado del muelle (precios de amigos). */
+export const PORT_OFFERS: readonly { give: Record<ItemId, number>; get: Record<ItemId, number> }[] = [
+  { give: { pescado_crudo: 3 }, get: { componentes: 2 } },
+  { give: { madera: 8 }, get: { placa_metal: 4 } },
+  { give: { chatarra: 6 }, get: { pieza_mecanica: 2 } },
+  { give: { fibra: 5 }, get: { tela: 4 } },
+  { give: { hortaliza: 3 }, get: { botiquin: 2 } },
+  { give: { madera: 4 }, get: { combustible: 3 } },
+  { give: { plastico: 3 }, get: { celula_solar: 1 } },
+  { give: { cuerda: 1 }, get: { semilla_hortaliza: 4, semilla_lino: 4 } },
+];
+/** Planos que el mercado del muelle vende baratos (los que aún no se conocen, como mucho dos). */
+export const PORT_BLUEPRINT_PRICE: Readonly<Record<ItemId, number>> = { madera: 10 };
+export const PORT_OFFER_COUNT = 6;
+
 const fail = (msg: string): ActionResult => ({ ok: false, msg });
 
 /* ------------------------------------------------------------------ */
@@ -289,6 +342,8 @@ interface WreckData {
   ship: string;
   side: 1 | -1;
   blueprint: string | null;
+  /** Hoja del cuaderno del Albatros que guarda el cofre (id del objeto) o null. */
+  page?: string | null;
   total: number;
   collected: number;
   lost: number;
@@ -332,6 +387,8 @@ interface MerchantData {
   captain: string;
   offers: TradeOfferState[];
   trades: number;
+  /** Mercado del muelle de Puerto Esperanza (textos propios y ofertas generosas). */
+  port?: boolean;
 }
 interface PestData {
   plots: { moduleId: number; plot: number }[];
@@ -353,6 +410,8 @@ interface DiscussionData {
 export interface StartOptions {
   /** Naufragio: 'next' = garantiza el primer plano pendiente. */
   blueprint?: 'next' | null;
+  /** Naufragio: 'next' = el cofre guarda la siguiente hoja del cuaderno; null = ninguna; ausente = al azar. */
+  page?: 'next' | null;
   /** Náufragos: número de supervivientes en la balsa. */
   survivors?: number;
   /** Módulo afectado (avería, incendio, fuga). */
@@ -369,7 +428,10 @@ export interface StartOptions {
 /* Nombres evocadores                                                  */
 /* ------------------------------------------------------------------ */
 
-const WRECK_SHIPS = ['Cormorán', 'Estrella del Sur', 'Santa Inés', 'Marea Alta', 'Gaviota Gris', 'Libertad', 'Corazón de Roble', 'Brisa de Levante', 'San Telmo', 'Esperanza', 'Viento Norte', 'Perla Negra'];
+// (Ni «Albatros» ni «Esperanza»: son el barco y el puerto de la historia.)
+const WRECK_SHIPS = ['Cormorán', 'Estrella del Sur', 'Santa Inés', 'Marea Alta', 'Gaviota Gris', 'Libertad', 'Corazón de Roble', 'Brisa de Levante', 'San Telmo', 'Nueva Aurora', 'Viento Norte', 'Perla Negra'];
+/** Barcos que se oyen por la radio (pesqueros y barcos-hogar). */
+const RADIO_SHIPS = ['Lucero', 'Marejada', 'San Pancracio', 'Tres Hermanas', 'Delfín Azul', 'Golondrina', 'Rompeolas', 'Siete Mares'];
 const MERCHANT_SHIPS = ['Rosa de los Vientos', 'Mercader de Sal', 'Fortuna', 'Tres Hermanas', 'Lucero del Alba', 'Ballena Azul'];
 const CAPTAINS = ['la capitana Ofelia', 'el capitán Baltasar', 'la capitana Remedios', 'el capitán Anselmo', 'la capitana Brígida', 'el capitán Severino'];
 const ISLANDS = ['Isla de las Palmas', 'Cayo Tortuga', 'Islote Verde', 'Isla de los Cocos', 'Isla del Coral', 'Peñón de las Gaviotas', 'Isla Bruma'];
@@ -383,6 +445,9 @@ const BREAKDOWN_REASONS: Record<string, string[]> = {
   panel_solar: ['Las conexiones se han corroído por la sal', 'Un cristal del panel se ha agrietado'],
   motor: ['La hélice se ha enredado en un cabo', 'El eje del motor está desalineado'],
   enfermeria: ['El equipo médico ha dejado de funcionar'],
+  vivero: ['La bomba de agua de mar se ha atascado con algas', 'Los aireadores de los tanques se han quemado'],
+  grua: ['El cable del torno se ha deshilachado', 'El motor del torno se ha quemado'],
+  radar: ['La antena se ha desalineado con el viento', 'Una válvula de la radio se ha fundido'],
 };
 
 const sideName = (side: number): string => (side < 0 ? 'babor' : 'estribor');
@@ -424,9 +489,18 @@ export function burningModules(sim: Simulation): ModuleInstance[] {
   return sim.state.ship.modules.filter((m) => m.fire > 0);
 }
 
+/**
+ * Nombre del módulo para los textos, según su nivel de mejora («Almacén con altillo»). El radar se
+ * nombra «Radar»: con artículo, «Radar y radio» daría «el radar y radio».
+ */
+export function moduleTitle(m: Pick<ModuleInstance, 'type' | 'tier'>): string {
+  if (m.type === 'radar') return 'Radar';
+  return moduleDisplayName(m);
+}
+
 /** "la cocina", "el generador"… */
-export function moduleLabel(m: ModuleInstance): string {
-  return withArticle(moduleDef(m.type).name);
+export function moduleLabel(m: Pick<ModuleInstance, 'type' | 'tier'>): string {
+  return withArticle(moduleTitle(m));
 }
 
 /** ¿Hay alguien disponible a bordo? (lo usan las opciones de expedición). */
@@ -468,6 +542,210 @@ export function minDayReached(sim: Simulation, type: EventType): boolean {
  */
 export function stormDamageFactor(sim: Simulation): number {
   return Math.min(1.5, 0.5 + playedHours(sim) / 24 / 10);
+}
+
+/* ------------------------------------------------------------------ */
+/* Radar                                                               */
+/* ------------------------------------------------------------------ */
+
+/** ¿Hay un radar en marcha? Terminado, sin avería ni fuego, encendido y con energía (`isRadarActive`). */
+export function radarActive(sim: Simulation): boolean {
+  return isRadarActive(sim);
+}
+
+/** Minutos de antelación extra (y de duración extra) de un avistamiento que empieza ahora. */
+export function sightingLead(sim: Simulation): number {
+  return radarActive(sim) ? RADAR_EXTRA_MIN : 0;
+}
+
+/** Metros que deriva un avistamiento hacia popa en `minutes` a la velocidad actual. */
+function driftOver(sim: Simulation, minutes: number): number {
+  const knots = Number.isFinite(sim.state.voyage.speed) ? Math.max(0, sim.state.voyage.speed) : 0;
+  return ((VISUAL_DRIFT * knots) / 6) * minutes;
+}
+
+/** «dos horas», «tres horas»… (duraciones redondas de los avistamientos). */
+function hoursText(minutes: number): string {
+  const h = Math.round(minutes / 60);
+  const words = ['cero', 'una', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho'];
+  return `${words[h] ?? String(h)} ${h === 1 ? 'hora' : 'horas'}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hilo narrativo: las hojas del cuaderno del Albatros                 */
+/* ------------------------------------------------------------------ */
+
+/** Estado del hilo narrativo (lo crea si una partida antigua no lo tenía). */
+export function storyOf(sim: Simulation): StoryState {
+  const st = sim.state;
+  if (!st.story) st.story = { pages: [], revealed: false, arrived: false };
+  return st.story;
+}
+
+/**
+ * ¿La hoja ya está leída, a bordo (jugador, almacenes, bandejas, cajas, en manos de alguien),
+ * flotando, en un cofre prometido o en las ofertas de un mercante? Entonces no se repite.
+ */
+export function pageClaimed(sim: Simulation, page: StoryPage): boolean {
+  const st = sim.state;
+  if (storyOf(sim).pages.includes(page.n)) return true;
+  const id = page.item;
+  if (shipCount(sim, id) > 0) return true;
+  if (st.crates.some((c) => c.inventory.slots.some((s) => s?.id === id))) return true;
+  if (st.debris.some((d) => d.loot.some((l) => l.id === id))) return true;
+  if (st.npcs.some((n) => n.carry?.id === id)) return true;
+  return st.events.active.some((e) => {
+    if ((e.data as { page?: unknown }).page === id) return true;
+    if (e.type !== 'mercante') return false;
+    return dataOf<MerchantData>(e).offers.some((o) => !o.done && (o.get[id] ?? 0) > 0);
+  });
+}
+
+/**
+ * Siguiente hoja que puede aparecer en el mundo (la 1 viene con la partida). Las hojas se reparten
+ * por la ruta (`STORY_PAGES[i].region`): primero la de número más bajo de la región actual; si aquí
+ * no queda ninguna, la de número más bajo que falte (con `hereOnly`, ninguna). Null si no queda.
+ */
+export function nextStoryPage(sim: Simulation, hereOnly = false): StoryPage | null {
+  const free = STORY_PAGES.filter((p) => p.n >= 2 && !pageClaimed(sim, p));
+  const here = free.find((p) => p.region === sim.state.voyage.regionId);
+  return here ?? (hereOnly ? null : (free[0] ?? null));
+}
+
+/** Minuto en que apareció la última hoja (o la salida de puerto). */
+function lastPageAt(sim: Simulation): number {
+  const cd = sim.state.events.cooldowns[PAGE_KEY];
+  return cd !== undefined && Number.isFinite(cd) ? cd - PAGE_COOLDOWN_MIN : START_HOUR * 60;
+}
+
+/**
+ * Probabilidad de que una fuente (cofre de naufragio, estructura, isla, mercante, cofre a la deriva)
+ * traiga ahora la hoja `page`: mayor en su región y cuanto más tiempo lleve sin aparecer ninguna;
+ * 0 durante el enfriamiento tras la última.
+ */
+export function pageChance(sim: Simulation, page: StoryPage, source: PageSource): number {
+  const now = sim.state.time;
+  if ((sim.state.events.cooldowns[PAGE_KEY] ?? -Infinity) > now) return 0;
+  const days = Math.max(0, (now - lastPageAt(sim)) / MINUTES_PER_DAY);
+  const base = PAGE_CHANCE[source] * (page.region === sim.state.voyage.regionId ? 1 : PAGE_OFF_REGION);
+  return clamp(base + Math.min(PAGE_DROUGHT_MAX, PAGE_DROUGHT_PER_DAY * days), 0, 0.95);
+}
+
+/** Arranca el enfriamiento de las hojas (acaba de aparecer una). */
+function markPagePlaced(sim: Simulation): void {
+  sim.state.events.cooldowns[PAGE_KEY] = sim.state.time + PAGE_COOLDOWN_MIN;
+}
+
+/** ¿Esta fuente trae una hoja? Si es así, la devuelve (y ninguna otra aparecerá en un rato). */
+export function rollStoryPage(sim: Simulation, source: PageSource, hereOnly = false): StoryPage | null {
+  const page = nextStoryPage(sim, hereOnly);
+  if (!page || !sim.rng.chance(pageChance(sim, page, source))) return null;
+  markPagePlaced(sim);
+  return page;
+}
+
+/** «una hoja del cuaderno del Albatros (pág. 3)». */
+function pageText(p: StoryPage): string {
+  return `una hoja del cuaderno del Albatros (pág. ${p.n})`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Radio                                                               */
+/* ------------------------------------------------------------------ */
+
+const RADIO_CHATTER: readonly string[] = [
+  'Radio: el pesquero «{barco}» saluda y desea buen viento a quien le escuche.',
+  'Radio: entre interferencias, alguien canta una copla desafinada y corta entre risas.',
+  'Radio: una voz cansada pregunta por un velero llamado «{barco}». Nadie contesta.',
+  'Radio: el patrón del «{barco}» cuenta que ha visto ballenas al amanecer.',
+  'Radio: una niña da muy seria el parte del tiempo de su barco: nubes con forma de pez.',
+  'Radio: dos barcos-hogar se disputan la frecuencia para seguir una partida de ajedrez a distancia.',
+];
+/** Mensajes propios de cada región (se suman a los generales). */
+const RADIO_REGION: Readonly<Record<string, readonly string[]>> = {
+  sargazos: ['Radio: el «{barco}» lleva dos días atrapado entre las algas y pide paciencia a quien venga detrás.'],
+  archipielago: ['Radio: desde una isla, alguien pide que le traigan sal a cambio de fruta. Corta antes de decir cuál.'],
+  cementerio: ['Radio: alguien avisa de un casco a la deriva sin luces y repite: «Cuidado con la niebla».'],
+  boreal: ['Radio: el «{barco}» recuerda a todos que en estas aguas nadie debe dormir en cubierta.'],
+  tormentas: ['Radio: ruido blanco y cortes. Solo se entiende «… achicando…» y una carcajada.'],
+  faro: ['Radio: desde la dirección del faro llega una señal sin voz: tres pitidos largos y uno corto.'],
+  esperanza: ['Radio: desde el muelle de Puerto Esperanza dan la bienvenida a cada barco que llega.'],
+};
+
+/** Ofertas de mercante posibles ahora (sin planos ya conocidos), con su índice en `TRADE_OFFERS`. */
+function merchantPool(sim: Simulation): { o: (typeof TRADE_OFFERS)[number]; i: number }[] {
+  const st = sim.state;
+  return TRADE_OFFERS.map((o, i) => ({ o, i })).filter(({ o }) =>
+    Object.keys(o.get).every((id) => {
+      const key = ITEMS[id]?.unlocks;
+      return !key || !st.unlocks.includes(key);
+    }),
+  );
+}
+
+/** Índices de `TRADE_OFFERS` que la radio ha anunciado y aún esperan a un mercante. */
+export function rumouredOffers(sim: Simulation): number[] {
+  const out: number[] = [];
+  const cd = sim.state.events.cooldowns;
+  for (const k of Object.keys(cd)) {
+    if (!k.startsWith(RUMOUR_PREFIX)) continue;
+    if ((cd[k] ?? -Infinity) <= sim.state.time) {
+      delete cd[k];
+      continue;
+    }
+    const i = Number(k.slice(RUMOUR_PREFIX.length));
+    if (Number.isInteger(i) && TRADE_OFFERS[i]) out.push(i);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/**
+ * Un mensaje de radio: charla de otros barcos, una pista del cuaderno (dónde se pescan sus hojas, o
+ * la luz verde de Puerto Esperanza) o los precios de un mercante. Lo que se dice es verdad: las
+ * hojas aparecen sobre todo en su región, y el próximo mercante trae la oferta anunciada.
+ */
+export function radioMessage(sim: Simulation): string {
+  const st = sim.state;
+  const story = storyOf(sim);
+  const ship = sim.rng.pick(RADIO_SHIPS);
+  const page = nextStoryPage(sim);
+  const rumoured = rumouredOffers(sim);
+  const pool = merchantPool(sim).filter(({ i }) => !rumoured.includes(i));
+  const weights: Record<string, number> = { charla: 3 };
+  if (page || (story.revealed && !story.arrived) || story.arrived) weights['pista'] = 2;
+  if (pool.length) weights['precios'] = 2;
+  const kind = sim.rng.weighted(weights) ?? 'charla';
+  if (kind === 'precios') {
+    const { o, i } = sim.rng.pick(pool);
+    st.events.cooldowns[`${RUMOUR_PREFIX}${i}`] = st.time + RADIO_RUMOUR_MIN;
+    return `Radio: un mercante anuncia que, por estas aguas, cambia ${stacksText(o.get)} por ${stacksText(o.give)}. El próximo que veamos lo traerá.`;
+  }
+  if (kind === 'pista') {
+    if (story.arrived) return 'Radio: desde Puerto Esperanza os saludan: el muelle sigue abierto para vosotros.';
+    if (story.revealed) return 'Radio: alguien jura haber visto una luz verde más allá del faro. «Puerto Esperanza existe», dice antes de cortar.';
+    if (page) {
+      return page.region === st.voyage.regionId
+        ? `Radio: el «${ship}» cuenta que por estas aguas ha visto cofres y botellas con hojas de un tal cuaderno del Albatros.`
+        : `Radio: el «${ship}» cuenta que en ${regionWithArticle(page.region)} se pescan botellas con hojas del cuaderno del Albatros.`;
+    }
+  }
+  const lines = [...RADIO_CHATTER, ...(RADIO_REGION[st.voyage.regionId] ?? [])];
+  return sim.rng.pick(lines).replace('{barco}', ship);
+}
+
+/** Con el radar en marcha, de vez en cuando llega un mensaje de radio al diario. */
+function tickRadio(sim: Simulation): void {
+  if (!radarActive(sim)) return;
+  const st = sim.state;
+  const cd = st.events.cooldowns;
+  const next = cd[RADIO_KEY];
+  if (next === undefined || !Number.isFinite(next)) {
+    cd[RADIO_KEY] = st.time + sim.rng.range(RADIO_FIRST[0], RADIO_FIRST[1]);
+    return;
+  }
+  if (st.time < next) return;
+  cd[RADIO_KEY] = st.time + sim.rng.range(RADIO_INTERVAL[0], RADIO_INTERVAL[1]);
+  sim.log(radioMessage(sim), 'info', !st.player.sleeping);
 }
 
 /* ------------------------------------------------------------------ */
@@ -544,7 +822,35 @@ function plantedPlots(sim: Simulation): { m: ModuleInstance; plot: number }[] {
   return out;
 }
 
+/** Dos rivales discuten aunque su ánimo no sea tan malo (por debajo de esto). */
+export const RIVAL_ARGUE_MOOD = 65;
+/** El director saca discusiones con este peso extra si hay rivales a bordo. */
+export const RIVAL_ARGUE_FACTOR = 2.5;
+/** Afinidad que pierde una pareja al discutir, que recupera al mediar y que pierde si se enquista. */
+export const ARGUE_RELATION = -15;
+export const MEDIATE_RELATION = 8;
+export const FESTER_RELATION = -10;
+
+/** Parejas de rivales (≤ `RIVAL_AT`) presentes y despiertas, de la más enfrentada a la menos. */
+export function rivalPairs(sim: Simulation): [NpcState, NpcState][] {
+  const awake = presentNpcs(sim).filter((n) => n.activity !== 'sleeping');
+  const out: { pair: [NpcState, NpcState]; rel: number }[] = [];
+  for (let i = 0; i < awake.length; i++) {
+    for (let j = i + 1; j < awake.length; j++) {
+      const rel = relationBetween(awake[i]!, awake[j]!);
+      if (rel <= RIVAL_AT) out.push({ pair: [awake[i]!, awake[j]!], rel });
+    }
+  }
+  return out.sort((a, b) => a.rel - b.rel).map((x) => x.pair);
+}
+
+/**
+ * Quiénes discuten: primero dos rivales con el ánimo algo bajo (< `RIVAL_ARGUE_MOOD`), los más
+ * enfrentados; si no, los dos más desanimados de a bordo (< 45).
+ */
 function arguingPair(sim: Simulation): [NpcState, NpcState] | null {
+  const rivals = rivalPairs(sim).find(([a, b]) => Math.min(a.needs.mood, b.needs.mood) < RIVAL_ARGUE_MOOD);
+  if (rivals) return rivals;
   const grumpy = presentNpcs(sim)
     .filter((n) => n.needs.mood < 45 && n.activity !== 'sleeping')
     .sort((a, b) => a.needs.mood - b.needs.mood);
@@ -589,6 +895,8 @@ export function canStartEvent(sim: Simulation, type: EventType): boolean {
       return presentNpcs(sim).some((n) => !n.sick && !n.injured);
     case 'discusion':
       return arguingPair(sim) !== null;
+    case 'llegada':
+      return st.voyage.regionId === FINAL_REGION && !storyOf(sim).arrived;
     default:
       return true;
   }
@@ -634,6 +942,8 @@ export function startEvent(sim: Simulation, type: EventType, opts: StartOptions 
       return startSickness(sim, opts);
     case 'discusion':
       return startDiscussion(sim);
+    case 'llegada':
+      return startArrival(sim);
     default:
       return null;
   }
@@ -661,20 +971,32 @@ function startWreck(sim: Simulation, opts: StartOptions): ActiveEvent {
   const ship = sim.rng.pick(WRECK_SHIPS);
   let blueprint: string | null = null;
   if (opts.blueprint === 'next' || (opts.blueprint === undefined && sim.rng.chance(WRECK_BLUEPRINT_CHANCE))) blueprint = nextBlueprint(sim);
+  // Hoja del cuaderno en el cofre: garantizada ('next'), ninguna (null) o al azar.
+  let page: StoryPage | null = null;
+  if (opts.page === 'next') {
+    page = nextStoryPage(sim);
+    if (page) markPagePlaced(sim);
+  } else if (opts.page === undefined) page = rollStoryPage(sim, 'cofre');
   const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
-  const hint = blueprint ? ' Entre los restos flota un cofre metálico bien cerrado.' : ' Quizá quede algo de valor entre los restos.';
+  const hint = blueprint || page ? ' Entre los restos flota un cofre metálico bien cerrado.' : ' Quizá quede algo de valor entre los restos.';
   const ev = newEvent(sim, 'naufragio', 'Naufragio a la vista', `Por ${sideName(side)} asoma el casco destrozado del «${ship}», escorado y medio hundido.${hint}`);
   const b = hullBounds(sim);
-  const s = addSighting(sim, ev, 'naufragio', `Restos del «${ship}»`, side, b.bowX + 220, sim.rng.range(70, 105), SIGHTING_WINDOW);
-  const d: WreckData = { phase: 'avistado', sightingId: s.id, ship, side, blueprint, total: 0, collected: 0, lost: 0, chestCollected: false };
+  // Con el radar se detecta antes (más lejos) y hay más tiempo para decidir.
+  const lead = sightingLead(sim);
+  const window = SIGHTING_WINDOW + lead;
+  const s = addSighting(sim, ev, 'naufragio', `Restos del «${ship}»`, side, b.bowX + 220 + driftOver(sim, lead), sim.rng.range(70, 105), window);
+  const d: WreckData = { phase: 'avistado', sightingId: s.id, ship, side, blueprint, page: page?.item ?? null, total: 0, collected: 0, lost: 0, chestCollected: false };
   ev.data = d as unknown as Record<string, unknown>;
-  ev.endsAt = st.time + SIGHTING_WINDOW;
+  ev.endsAt = st.time + window;
   ev.objectives = [obj('Decide en el timón: detenerse a rescatar o seguir rumbo')];
   ev.choices = [
     { id: 'rescatar', label: 'Detenerse a rescatar (1 h)', enabled: true },
     { id: 'seguir', label: 'Seguir rumbo', enabled: true },
   ];
-  return begin(sim, ev, 'info', `Naufragio a la vista: el «${ship}» flota a la deriva por ${sideName(side)}. Decide en el timón si nos detenemos.`);
+  const text = lead
+    ? `El radar detecta un naufragio aún lejos: el «${ship}» flota a la deriva por ${sideName(side)}. Hay tiempo de sobra para decidir en el timón si nos detenemos.`
+    : `Naufragio a la vista: el «${ship}» flota a la deriva por ${sideName(side)}. Decide en el timón si nos detenemos.`;
+  return begin(sim, ev, 'info', text);
 }
 
 const WRECK_DEBRIS: Partial<Record<DebrisKind, number>> = { restos: 4, caja: 3, barril: 2, bidon: 2, tablones: 2, red: 1 };
@@ -695,6 +1017,7 @@ function rescueWreck(sim: Simulation, ev: ActiveEvent): ActionResult {
     const chest = i === 0;
     const kind: DebrisKind = chest ? 'cofre' : ((sim.rng.weighted(WRECK_DEBRIS) ?? 'restos') as DebrisKind);
     const loot = rollLoot(sim, kind, chest ? 1 : WRECK_RICHNESS);
+    if (chest && d.page) loot.unshift({ id: d.page, qty: 1 });
     if (chest && d.blueprint) loot.unshift({ id: d.blueprint, qty: 1 });
     // Alrededor del barco, del lado del pecio (algunos al otro lado, arrastrados por la corriente).
     const side = sim.rng.chance(0.8) ? d.side : -d.side;
@@ -722,6 +1045,10 @@ function startExpeditionSighting(sim: Simulation, type: 'isla' | 'estructura'): 
   const b = hullBounds(sim);
   const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
   const inFaro = st.voyage.regionId === 'faro';
+  // Con el radar se detecta antes (más lejos) y hay más tiempo para decidir.
+  const lead = sightingLead(sim);
+  const window = SIGHTING_WINDOW + 30 + lead;
+  const ahead = driftOver(sim, lead);
   let ev: ActiveEvent;
   let name: string;
   let minutes: number;
@@ -729,24 +1056,25 @@ function startExpeditionSighting(sim: Simulation, type: 'isla' | 'estructura'): 
     name = sim.rng.pick(ISLANDS);
     minutes = ISLAND_EXPEDITION_MIN;
     ev = newEvent(sim, 'isla', 'Isla en el horizonte', `${name} asoma por ${sideName(side)}: playas blancas, palmeras y quizá un arroyo. Si fondeamos, alguien podría bajar a explorar.`);
-    addSighting(sim, ev, 'isla', name, side, b.bowX + 260, sim.rng.range(140, 210), SIGHTING_WINDOW + 30);
+    addSighting(sim, ev, 'isla', name, side, b.bowX + 260 + ahead, sim.rng.range(140, 210), window);
   } else {
     name = inFaro ? 'un faro sin luz sobre las rocas' : sim.rng.pick(STRUCTURES);
     minutes = STRUCTURE_EXPEDITION_MIN;
     ev = newEvent(sim, 'estructura', 'Estructura misteriosa', `Por ${sideName(side)} se distingue ${name}. Nadie sabe quién la levantó ni cuándo. Dentro podría haber material valioso… o algo más.`);
-    addSighting(sim, ev, 'estructura', capitalize(name), side, b.bowX + 250, sim.rng.range(115, 165), SIGHTING_WINDOW + 30);
+    addSighting(sim, ev, 'estructura', capitalize(name), side, b.bowX + 250 + ahead, sim.rng.range(115, 165), window);
   }
   const s = st.voyage.sightings[st.voyage.sightings.length - 1]!;
   const d: ExpeditionData = { phase: 'avistado', sightingId: s.id, name, npcIds: [], returnAt: null, minutes };
   ev.data = d as unknown as Record<string, unknown>;
-  ev.endsAt = st.time + SIGHTING_WINDOW + 30;
+  ev.endsAt = st.time + window;
   ev.objectives = [obj('Decide en el timón: enviar una expedición o seguir rumbo')];
   const block = expeditionBlocker(sim);
   ev.choices = [
     { id: 'expedicion', label: `Fondear y enviar una expedición (${minutes / 60} h)`, enabled: !block, ...(block ? { reason: block } : {}) },
     { id: 'seguir', label: 'Seguir rumbo', enabled: true },
   ];
-  return begin(sim, ev, 'info', type === 'isla' ? `Tierra a la vista: ${name}. Podemos fondear y enviar una expedición.` : `Avistamos ${name}. Una expedición podría registrarla.`);
+  const radar = lead ? 'El radar marca tierra antes de verla. ' : '';
+  return begin(sim, ev, 'info', type === 'isla' ? `${radar}Tierra a la vista: ${name}. Podemos fondear y enviar una expedición.` : `${lead ? 'El radar detecta' : 'Avistamos'} ${name}. Una expedición podría registrarla.`);
 }
 
 function launchExpedition(sim: Simulation, ev: ActiveEvent): ActionResult {
@@ -819,9 +1147,19 @@ function finishExpedition(sim: Simulation, ev: ActiveEvent): void {
     if (blueprint) extra.push(`En la sala de control ${plural ? 'encontraron' : 'encontró'} un plano: «${blueprintTitle(blueprint)}».`);
     else add('componentes', 2);
   }
-  // Todo a los almacenes (el plano también); lo que no cabe, a una caja en cubierta junto a la borda.
+  // Una hoja del cuaderno del Albatros (más probable en su región).
+  const page = rollStoryPage(sim, ev.type === 'isla' ? 'isla' : 'estructura');
+  if (page) {
+    extra.push(
+      ev.type === 'isla'
+        ? `En una botella varada en la playa ${plural ? 'encontraron' : 'encontró'} ${pageText(page)}.`
+        : `Clavada en una pared ${plural ? 'encontraron' : 'encontró'} ${pageText(page)}.`,
+    );
+  }
+  // Todo a los almacenes (el plano y la hoja también); lo que no cabe, a una caja en cubierta junto a la borda.
   const left: ItemStack[] = [];
-  for (const s of blueprint ? [...loot, { id: blueprint, qty: 1 }] : loot) {
+  const found: ItemStack[] = [...(blueprint ? [{ id: blueprint, qty: 1 }] : []), ...(page ? [{ id: page.item, qty: 1 }] : [])];
+  for (const s of [...loot, ...found]) {
     const l = depositToStorage(sim, s.id, s.qty);
     if (l > 0) left.push({ id: s.id, qty: l });
   }
@@ -862,13 +1200,18 @@ function startRaft(sim: Simulation, opts: StartOptions): ActiveEvent {
   const who = survivors === 1 ? 'una persona agita' : `${survivors === 2 ? 'dos' : 'tres'} personas agitan`;
   const ev = newEvent(sim, 'naufragos', 'Náufragos a la deriva', `Una balsa improvisada se acerca por ${sideName(side)}: ${who} los brazos pidiendo ayuda. Si pasa de largo, ${survivors === 1 ? 'la' : 'los'} perderemos.`);
   const anchored = isAnchored(sim);
-  const x = anchored ? sim.rng.range(b.sternX + 6, b.bowX + 10) : b.bowX + sim.rng.range(48, 60);
+  // Con el radar, la balsa se detecta más lejos: hay más tiempo para prepararse.
+  const radar = !anchored && radarActive(sim);
+  const x = anchored ? sim.rng.range(b.sternX + 6, b.bowX + 10) : b.bowX + sim.rng.range(48, 60) + (radar ? RADAR_RAFT_AHEAD : 0);
   const raft = spawnDebris(sim, 'balsa', { x, z: side * (b.halfW + sim.rng.range(5, 11)) }, { survivors, eventId: ev.id, lateral: 0 });
   const d: RaftData = { debrisId: raft.id, survivors, rescued: false };
   ev.data = d as unknown as Record<string, unknown>;
   ev.objectives = [obj('Lanza el gancho a la balsa antes de que pase de largo')];
   ev.choices = anchored ? [] : [{ id: 'fondear', label: `Echar el ancla para esperar a la balsa (${RAFT_ANCHOR_MIN} min)`, enabled: true }];
-  return begin(sim, ev, 'warn', `¡Náufragos! Una balsa se acerca por ${sideName(side)}. Lanza el gancho para subirlos a bordo.`);
+  const text = radar
+    ? `¡Náufragos! El radar detecta una balsa a la deriva por ${sideName(side)}, aún lejos. Prepara el gancho en la borda o echa el ancla para esperarla.`
+    : `¡Náufragos! Una balsa se acerca por ${sideName(side)}. Lanza el gancho para subirlos a bordo.`;
+  return begin(sim, ev, 'warn', text);
 }
 
 /* ---- Avería ---- */
@@ -923,7 +1266,7 @@ function patchBreakdown(sim: Simulation, ev: ActiveEvent, m: ModuleInstance): vo
     d.patchAt = sim.state.time + 120; // nadie en condiciones: se vuelve a intentar más tarde
     return;
   }
-  const name = moduleDef(m.type).name;
+  const name = moduleTitle(m);
   m.status = 'active';
   m.brokenReason = null;
   m.condition = Math.max(m.condition, BREAKDOWN_PATCH_CONDITION);
@@ -951,7 +1294,7 @@ function startBreakdown(sim: Simulation, opts: StartOptions): ActiveEvent | null
   if (!m || m.status === 'construction') return null;
   const def = moduleDef(m.type);
   const structural = !def.machine;
-  const name = def.name;
+  const name = moduleTitle(m);
   let reason: string;
   if (structural) {
     reason = sim.rng.pick(['Una viga se ha agrietado', 'Las juntas del suelo ceden', 'El oleaje ha desencajado varios tablones']);
@@ -1057,7 +1400,7 @@ function tickFires(sim: Simulation, dt: number): void {
   const burning = burningModules(sim);
   for (const m of burning) {
     const sky = moduleHasSky(sim, m);
-    const name = moduleDef(m.type).name;
+    const name = moduleTitle(m);
     let growth = FIRE_GROWTH_PER_HOUR * (sky ? 1 + 0.5 * clamp(w.wind, 0, 1) : 1);
     if (sky) growth -= RAIN_QUENCH_PER_HOUR * clamp(w.rain, 0, 1);
     if (m.condition <= 0) growth = -20; // ya no queda nada que arda
@@ -1122,32 +1465,84 @@ function startMerchant(sim: Simulation): ActiveEvent {
   const ship = sim.rng.pick(MERCHANT_SHIPS);
   const captain = sim.rng.pick(CAPTAINS);
   const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
-  // Ofertas: 4 distintas, sin planos que ya conozcamos.
-  const pool = TRADE_OFFERS.filter((o) =>
-    Object.keys(o.get).every((id) => {
-      const key = ITEMS[id]?.unlocks;
-      return !key || !st.unlocks.includes(key);
-    }),
-  );
+  // Ofertas: 4 distintas, sin planos que ya conozcamos. Primero las que anunció la radio; a veces,
+  // una hoja del cuaderno del Albatros pescada en una botella.
   const offers: TradeOfferState[] = [];
-  const bag = [...pool];
-  while (offers.length < 4 && bag.length) {
-    const i = sim.rng.int(0, bag.length - 1);
-    const o = bag.splice(i, 1)[0]!;
+  const page = rollStoryPage(sim, 'mercante');
+  if (page) offers.push({ give: { ...PAGE_PRICE }, get: { [page.item]: 1 }, done: false });
+  const pool = merchantPool(sim);
+  const rumoured = rumouredOffers(sim);
+  for (const i of rumoured) {
+    const k = pool.findIndex((p) => p.i === i);
+    if (k < 0) {
+      delete st.events.cooldowns[`${RUMOUR_PREFIX}${i}`]; // ya no tiene sentido (plano conocido)
+      continue;
+    }
+    if (offers.length >= 4) continue; // lo traerá el siguiente
+    const o = pool.splice(k, 1)[0]!.o;
+    offers.push({ give: { ...o.give }, get: { ...o.get }, done: false });
+    delete st.events.cooldowns[`${RUMOUR_PREFIX}${i}`]; // el rumor se cumple con este mercante
+  }
+  while (offers.length < 4 && pool.length) {
+    const o = pool.splice(sim.rng.int(0, pool.length - 1), 1)[0]!.o;
     offers.push({ give: { ...o.give }, get: { ...o.get }, done: false });
   }
-  const ev = newEvent(sim, 'mercante', 'Barco mercante', `El «${ship}» se pone a la par por ${sideName(side)}. Desde la borda, ${captain} ofrece intercambios durante dos horas.`);
+  // Con el radar, la radio lo contacta antes y se queda más tiempo.
+  const minutes = MERCHANT_MIN + sightingLead(sim);
+  const pageNote = page ? ` También enseña ${pageText(page)} que pescaron dentro de una botella.` : '';
+  const ev = newEvent(sim, 'mercante', 'Barco mercante', `El «${ship}» se pone a la par por ${sideName(side)}. Desde la borda, ${captain} ofrece intercambios durante ${hoursText(minutes)}.${pageNote}`);
   const b = hullBounds(sim);
-  const s = addSighting(sim, ev, 'mercante', `Mercante «${ship}»`, side, b.bowX + 120, sim.rng.range(30, 38), MERCHANT_MIN);
+  const s = addSighting(sim, ev, 'mercante', `Mercante «${ship}»`, side, b.bowX + 120, sim.rng.range(30, 38), minutes);
   const d: MerchantData = { sightingId: s.id, ship, captain, offers, trades: 0 };
   ev.data = d as unknown as Record<string, unknown>;
-  ev.endsAt = st.time + MERCHANT_MIN;
+  ev.endsAt = st.time + minutes;
   ev.choices = [
     { id: 'comerciar', label: 'Comerciar con el mercante', enabled: true },
     { id: 'despedir', label: 'Despedir al mercante', enabled: true },
   ];
   refreshObjectives(sim, ev);
-  return begin(sim, ev, 'info', `El mercante «${ship}» se acerca por ${sideName(side)}: podemos comerciar durante dos horas.`);
+  const how = minutes > MERCHANT_MIN ? `El radar lo detecta y la radio lo contacta antes de verlo: el mercante «${ship}» se acerca` : `El mercante «${ship}» se acerca`;
+  return begin(sim, ev, 'info', `${how} por ${sideName(side)}: podemos comerciar durante ${hoursText(minutes)}.${page ? ' ¡Trae una hoja del cuaderno del Albatros!' : ''}`);
+}
+
+/**
+ * El mercado del muelle de Puerto Esperanza: seis horas con precios de amigos y los planos que
+ * falten (dos como mucho) por un puñado de madera. Usa el mismo panel de comercio que un mercante.
+ */
+function startPortMarket(sim: Simulation): ActiveEvent {
+  const st = sim.state;
+  const offers: TradeOfferState[] = [];
+  const known = new Set(st.unlocks);
+  for (const id of BLUEPRINT_ORDER) {
+    if (offers.length >= 2) break;
+    const key = ITEMS[id]?.unlocks;
+    if (!key || known.has(key)) continue;
+    offers.push({ give: { ...PORT_BLUEPRINT_PRICE }, get: { [id]: 1 }, done: false });
+  }
+  const bag = [...PORT_OFFERS];
+  while (offers.length < PORT_OFFER_COUNT && bag.length) {
+    const o = bag.splice(sim.rng.int(0, bag.length - 1), 1)[0]!;
+    offers.push({ give: { ...o.give }, get: { ...o.get }, done: false });
+  }
+  const side: 1 | -1 = sim.rng.chance(0.5) ? 1 : -1;
+  const ev = newEvent(
+    sim,
+    'mercante',
+    'Mercado de Puerto Esperanza',
+    `Los puestos del muelle principal abren para vosotros durante ${hoursText(ARRIVAL_MARKET_MIN)}: precios de amigos y hasta planos que nadie más vende.`,
+  );
+  const b = hullBounds(sim);
+  const s = addSighting(sim, ev, 'mercante', 'Mercado del muelle', side, b.bowX + 60, sim.rng.range(26, 32), ARRIVAL_MARKET_MIN);
+  const d: MerchantData = { sightingId: s.id, ship: 'Mercado del muelle', captain: 'la gente del muelle', offers, trades: 0, port: true };
+  ev.data = d as unknown as Record<string, unknown>;
+  ev.data['wakePlayer'] = false;
+  ev.endsAt = st.time + ARRIVAL_MARKET_MIN;
+  ev.choices = [
+    { id: 'comerciar', label: 'Comerciar en el mercado del muelle', enabled: true },
+    { id: 'despedir', label: 'Despedirse del mercado', enabled: true },
+  ];
+  refreshObjectives(sim, ev);
+  return begin(sim, ev, 'good', `El mercado del muelle abre sus puestos para nosotros durante ${hoursText(ARRIVAL_MARKET_MIN)}: precios de amigos.`);
 }
 
 /** Ofertas del mercante con su disponibilidad (para la UI). */
@@ -1181,11 +1576,13 @@ export function trade(sim: Simulation, eventId: number, offerIndex: number): Act
   o.done = true;
   d.trades++;
   refreshObjectives(sim, ev);
-  sim.log(`Trato con el «${d.ship}»: ${stacksText(o.give)} a cambio de ${stacksText(o.get)}`, 'good', false);
+  sim.log(`${d.port ? 'Trato en el mercado de Puerto Esperanza' : `Trato con el «${d.ship}»`}: ${stacksText(o.give)} a cambio de ${stacksText(o.get)}`, 'good', false);
   const p = st.player.pos;
   sim.bus.emit('sfx', { name: 'comercio', x: p.x, y: p.y + 1, z: p.z });
   const msg = `Entregas ${stacksText(o.give)} y recibes ${stacksText(o.get)}${allFit ? '' : ' (no cabía todo: el resto está en una caja a tus pies)'}`;
-  if (d.offers.every((x) => x.done)) endEvent(sim, ev, true, `${capitalize(d.captain)} se despide: «¡Da gusto comerciar con vosotros!». El «${d.ship}» se aleja.`, 'good');
+  if (d.offers.every((x) => x.done)) {
+    endEvent(sim, ev, true, d.port ? 'La gente del muelle se despide: «¡Volved cuando queráis, aquí siempre hay sitio!».' : `${capitalize(d.captain)} se despide: «¡Da gusto comerciar con vosotros!». El «${d.ship}» se aleja.`, 'good');
+  }
   return { ok: true, msg };
 }
 
@@ -1275,7 +1672,14 @@ function startDiscussion(sim: Simulation): ActiveEvent | null {
   if (!pair) return null;
   const [a, b] = pair;
   const topic = sim.rng.pick(DISCUSSION_TOPICS);
-  const ev = newEvent(sim, 'discusion', 'Discusión a bordo', `${a.name} y ${b.name} discuten a gritos por ${topic}. El mal ambiente se contagia y el trabajo se resiente.`);
+  const rivals = relationBetween(a, b) <= RIVAL_AT;
+  adjustRelation(sim, a, b, ARGUE_RELATION);
+  const ev = newEvent(
+    sim,
+    'discusion',
+    'Discusión a bordo',
+    `${a.name} y ${b.name} discuten a gritos por ${topic}.${rivals ? ' No es la primera vez: no se soportan.' : ''} El mal ambiente se contagia y el trabajo se resiente.`,
+  );
   const d: DiscussionData = { npcIds: [a.id, b.id], names: [a.name, b.name], topic, argueUntil: sim.state.time + ARGUMENT_MIN };
   ev.data = d as unknown as Record<string, unknown>;
   ev.data['wakePlayer'] = false;
@@ -1299,12 +1703,98 @@ export function mediateDiscussion(sim: Simulation, npcId: string): ActionResult 
   const info = discussionOf(sim, npcId);
   if (!info) return fail('No hay ninguna discusión que mediar');
   const d = dataOf<DiscussionData>(info.ev);
-  for (const id of d.npcIds) {
-    const n = sim.state.npcs.find((nn) => nn.id === id);
-    if (n) n.needs.mood = clamp(n.needs.mood + 15, 0, 100);
-  }
+  const pair = d.npcIds.map((id) => sim.state.npcs.find((nn) => nn.id === id));
+  for (const n of pair) if (n) n.needs.mood = clamp(n.needs.mood + 15, 0, 100);
+  if (pair[0] && pair[1]) adjustRelation(sim, pair[0], pair[1], MEDIATE_RELATION);
   endEvent(sim, info.ev, true, `Gracias a tu mediación, ${d.names[0]} y ${d.names[1]} hacen las paces.`, 'good');
   return { ok: true, msg: `Escuchas a ${d.names[0]} y a ${d.names[1]} y les ayudas a entenderse. Hacen las paces.` };
+}
+
+/* ---- Llegada a Puerto Esperanza (final del hilo narrativo) ---- */
+
+/**
+ * Llegada a Puerto Esperanza: textos de story.ts en el diario, `story.arrived = true`, dos vecinos
+ * del puerto se unen a la tripulación y el mercado del muelle abre seis horas con precios de amigos.
+ * El evento se cierra en el acto (éxito); la partida continúa. La interfaz muestra la pantalla de
+ * final al recibir `worldEventStarted` con `type: 'llegada'` y la rellena con `arrivalSummary`.
+ */
+function startArrival(sim: Simulation): ActiveEvent {
+  const story = storyOf(sim);
+  story.arrived = true;
+  const arrivalText = STORY_TEXTS.arrival.replace(/\n\n/g, ' ');
+  const ev = newEvent(sim, 'llegada', STORY_TEXTS.arrivalTitle, arrivalText);
+  ev.data['wakePlayer'] = true;
+  ev.objectives = [obj('Llega a Puerto Esperanza', true)];
+  begin(sim, ev, 'good', `¡Puerto Esperanza! ${arrivalText}`);
+  sim.bus.emit('sfx', { name: 'fanfarria' });
+  // Dos vecinos del puerto piden un sitio a bordo.
+  const newcomers: NpcState[] = [];
+  for (let i = 0; i < ARRIVAL_NEWCOMERS; i++) {
+    const n = spawnSurvivor(sim, { origin: 'puerto', quiet: true });
+    if (n) newcomers.push(n);
+  }
+  const who = newcomers.length === 1 ? (isFemaleNpc(newcomers[0]!) ? 'Una vecina' : 'Un vecino') : newcomers.every(isFemaleNpc) ? 'Dos vecinas' : 'Dos vecinos';
+  const welcome = newcomers.length ? `${who} del puerto ${newcomers.length > 1 ? 'piden' : 'pide'} un sitio a bordo. ${survivorJoinText(newcomers)} ` : '';
+  endEvent(sim, ev, true, `${welcome}${STORY_TEXTS.epilogue}`, 'good');
+  const market = startPortMarket(sim);
+  market.data['newcomers'] = newcomers.map((n) => n.name);
+  return ev;
+}
+
+/** Comprueba si el barco ha llegado a Puerto Esperanza (de día y con el jugador despierto: «al amanecer»). */
+function checkArrival(sim: Simulation): void {
+  const st = sim.state;
+  if (st.voyage.regionId !== FINAL_REGION || storyOf(sim).arrived || st.player.sleeping) return;
+  const h = hourOf(st.time);
+  if (h < ARRIVAL_HOURS[0] || h >= ARRIVAL_HOURS[1]) return;
+  startEvent(sim, 'llegada');
+}
+
+/** Lo que muestra la pantalla de final (null si aún no se ha llegado a Puerto Esperanza). */
+export interface ArrivalSummary {
+  title: string;
+  /** Párrafos del texto de llegada (story.ts). */
+  paragraphs: string[];
+  epilogue: string;
+  /** Día de la llegada y días de travesía desde que zarpamos. */
+  day: number;
+  daysAtSea: number;
+  /** Millas recorridas en total. */
+  miles: number;
+  pagesRead: number;
+  pagesTotal: number;
+  /** Tripulación a bordo (nombres). */
+  crew: string[];
+  /** Vecinos del puerto que se unieron al llegar (mientras el mercado sigue abierto). */
+  newcomers: string[];
+  /** Módulos construidos y terminados. */
+  modules: number;
+  /** Evento del mercado del muelle mientras está abierto (para abrir el panel de comercio). */
+  marketEventId: number | null;
+}
+
+export function arrivalSummary(sim: Simulation): ArrivalSummary | null {
+  const st = sim.state;
+  const story = storyOf(sim);
+  if (!story.arrived) return null;
+  const cd = st.events.cooldowns['llegada'];
+  const at = cd !== undefined && Number.isFinite(cd) ? cd : st.time;
+  const market = st.events.active.find((e) => e.type === 'mercante' && !!dataOf<MerchantData>(e).port);
+  const newcomers = market && Array.isArray(market.data['newcomers']) ? (market.data['newcomers'] as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  return {
+    title: STORY_TEXTS.arrivalTitle,
+    paragraphs: STORY_TEXTS.arrival.split('\n\n'),
+    epilogue: STORY_TEXTS.epilogue,
+    day: Math.floor(at / MINUTES_PER_DAY) + 1,
+    daysAtSea: Math.max(0, Math.floor((at - START_HOUR * 60) / MINUTES_PER_DAY)),
+    miles: Math.round(st.voyage.distance),
+    pagesRead: story.pages.length,
+    pagesTotal: STORY_PAGES.length,
+    crew: st.npcs.map((n) => n.name),
+    newcomers,
+    modules: st.ship.modules.filter((m) => m.status !== 'construction').length,
+    marketEventId: market?.id ?? null,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1315,7 +1805,7 @@ export function mediateDiscussion(sim: Simulation, npcId: string): ActionResult 
  * Un resto con evento ha sido rescatado (por el jugador o un habitante). `survivors`: los náufragos
  * que suben a bordo (ya creados en silencio: este aviso único cuenta el rescate y quién se une).
  */
-export function onDebrisCollected(sim: Simulation, d: Debris, by: 'player' | 'npc', survivors: NpcState[]): void {
+export function onDebrisCollected(sim: Simulation, d: Debris, by: 'player' | 'npc' | 'grua', survivors: NpcState[]): void {
   if (d.eventId === undefined) return;
   const ev = eventById(sim, d.eventId);
   if (!ev) return;
@@ -1326,7 +1816,7 @@ export function onDebrisCollected(sim: Simulation, d: Debris, by: 'player' | 'np
     if (isAnchored(sim) && sim.state.voyage.anchorReason === RAFT_ANCHOR_REASON) weighAnchor(sim, true);
     const many = survivors.length > 1;
     const names = survivors.length ? listNames(survivors.map((n) => n.name)) : 'Los náufragos';
-    const rescuer = by === 'player' ? '' : ' gracias a la tripulación';
+    const rescuer = by === 'player' ? '' : by === 'grua' ? ' gracias a la grúa' : ' gracias a la tripulación';
     const join = survivors.length ? ` ${survivorJoinText(survivors)}` : '';
     endEvent(sim, ev, true, `${names} ya ${many ? 'están' : 'está'} a salvo a bordo${rescuer}. ${many ? 'Cuentan que llevaban' : 'Cuenta que llevaba'} días a la deriva.${join}`, 'good');
   } else if (ev.type === 'naufragio') {
@@ -1397,7 +1887,14 @@ function refreshObjectives(sim: Simulation, ev: ActiveEvent): void {
       const d = dataOf<WreckData>(ev);
       if (d.phase !== 'rescate') return;
       ev.objectives = [obj(`Recupera los restos del naufragio (${d.collected}/${d.total})`, d.collected >= d.total)];
-      ev.objectives.push(obj(d.blueprint ? 'Rescata el cofre: ¡guarda un plano!' : 'Rescata el cofre metálico', d.chestCollected));
+      const chest = d.blueprint && d.page
+        ? 'Rescata el cofre: ¡guarda un plano y una hoja del cuaderno del Albatros!'
+        : d.blueprint
+          ? 'Rescata el cofre: ¡guarda un plano!'
+          : d.page
+            ? 'Rescata el cofre: ¡guarda una hoja del cuaderno del Albatros!'
+            : 'Rescata el cofre metálico';
+      ev.objectives.push(obj(chest, d.chestCollected));
       return;
     }
     case 'incendio': {
@@ -1436,7 +1933,7 @@ function refreshObjectives(sim: Simulation, ev: ActiveEvent): void {
     case 'averia': {
       const d = dataOf<BreakdownData>(ev);
       const m = findModule(sim, d.moduleId);
-      if (m) ev.objectives = repairObjectives(sim, m, `Repara ${withArticle(moduleDef(m.type).name)}`);
+      if (m) ev.objectives = repairObjectives(sim, m, `Repara ${moduleLabel(m)}`);
       return;
     }
     case 'fuga': {
@@ -1509,7 +2006,7 @@ export function stormWaveHits(sim: Simulation, p: number): void {
  */
 function damageList(mods: ModuleInstance[]): string {
   const sorted = [...mods].sort((a, b) => a.condition - b.condition);
-  const parts = sorted.slice(0, 3).map((m) => `${withArticle(moduleDef(m.type).name)} (${Math.round(m.condition)} %)`);
+  const parts = sorted.slice(0, 3).map((m) => `${moduleLabel(m)} (${Math.round(m.condition)} %)`);
   const more = sorted.length - parts.length;
   if (more > 0) return `${parts.join(', ')} y ${more} ${more === 1 ? 'módulo más' : 'módulos más'}`;
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
@@ -1532,7 +2029,7 @@ function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
         const light = stormLightDamage(sim, d);
         let text: string;
         if (!d.damaged.length) text = 'La tormenta ha pasado: el barco la ha capeado sin daños.';
-        else if (light.length) text = `La tormenta ha pasado. Daños leves en ${damageList(light)}: repára${light.length === 1 ? (isFeminineName(moduleDef(light[0]!.type).name) ? 'la' : 'lo') : 'los'} cuando puedas.`;
+        else if (light.length) text = `La tormenta ha pasado. Daños leves en ${damageList(light)}: repára${light.length === 1 ? (isFeminineName(moduleTitle(light[0]!)) ? 'la' : 'lo') : 'los'} cuando puedas.`;
         else text = 'La tormenta ha pasado y los daños ya están reparados.';
         endEvent(sim, ev, true, text, 'good');
         return;
@@ -1550,7 +2047,7 @@ function updateStorm(sim: Simulation, ev: ActiveEvent, dt: number): void {
     for (const m of st.ship.modules) {
       if (!isExposed(sim, m) || !sim.rng.chance(p)) continue;
       const dmg = sim.rng.int(STORM_DAMAGE[0], STORM_DAMAGE[1]);
-      const name = moduleDef(m.type).name;
+      const name = moduleTitle(m);
       m.condition = Math.max(0, m.condition - dmg);
       if (!d.damaged.includes(m.id)) d.damaged.push(m.id);
       let extra = '';
@@ -1654,7 +2151,7 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       const m = findModule(sim, d.moduleId);
       if (!m) endEvent(sim, ev, false, 'El módulo averiado se ha desmontado.', 'info');
       else if (m.status === 'active' && m.condition >= REPAIR_THRESHOLD) {
-        endEvent(sim, ev, true, d.structural ? `${capitalize(withArticle(moduleDef(m.type).name))} vuelve a estar en buen estado.` : `${capitalize(withArticle(moduleDef(m.type).name))} vuelve a estar en marcha.`, 'good');
+        endEvent(sim, ev, true, d.structural ? `${capitalize(moduleLabel(m))} vuelve a estar en buen estado.` : `${capitalize(moduleLabel(m))} vuelve a estar en marcha.`, 'good');
       } else if (now >= (d.patchAt ?? ev.startedAt + BREAKDOWN_PATCH_MIN) && m.fire <= 0) {
         patchBreakdown(sim, ev, m);
       } else if (d.structural && m.status === 'active' && m.condition > 0) {
@@ -1665,7 +2162,7 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
           m.status = 'broken';
           m.brokenReason = d.reason;
           m.powered = false;
-          sim.log(`${capitalize(withArticle(moduleDef(m.type).name))} ha cedido del todo: hay que repararl${isFeminineName(moduleDef(m.type).name) ? 'a' : 'o'} cuanto antes.`, 'danger');
+          sim.log(`${capitalize(moduleLabel(m))} ha cedido del todo: hay que repararl${isFeminineName(moduleTitle(m)) ? 'a' : 'o'} cuanto antes.`, 'danger');
         }
       }
       if (st.events.active.includes(ev)) refreshObjectives(sim, ev);
@@ -1690,7 +2187,8 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
     case 'mercante': {
       if (now >= (ev.endsAt ?? Infinity)) {
         const d = dataOf<MerchantData>(ev);
-        endEvent(sim, ev, d.trades > 0, `El «${d.ship}» iza velas y se aleja${d.trades ? ` tras ${d.trades} ${d.trades === 1 ? 'trato' : 'tratos'}` : ''}.`, 'info');
+        const tail = d.trades ? ` tras ${d.trades} ${d.trades === 1 ? 'trato' : 'tratos'}` : '';
+        endEvent(sim, ev, d.trades > 0, d.port ? `El mercado del muelle recoge sus puestos${tail}. Puerto Esperanza sigue ahí para quien vuelva.` : `El «${d.ship}» iza velas y se aleja${tail}.`, 'info');
       }
       return;
     }
@@ -1736,10 +2234,9 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
     case 'discusion': {
       const d = dataOf<DiscussionData>(ev);
       if (now >= (ev.endsAt ?? Infinity)) {
-        for (const id of d.npcIds) {
-          const n = st.npcs.find((nn) => nn.id === id);
-          if (n) n.needs.mood = clamp(n.needs.mood - 8, 0, 100);
-        }
+        const pair = d.npcIds.map((id) => st.npcs.find((nn) => nn.id === id));
+        for (const n of pair) if (n) n.needs.mood = clamp(n.needs.mood - 8, 0, 100);
+        if (pair[0] && pair[1]) adjustRelation(sim, pair[0], pair[1], FESTER_RELATION);
         endEvent(sim, ev, false, `La discusión entre ${d.names[0]} y ${d.names[1]} se enquista: ni se miran.`, 'warn');
       }
       return;
@@ -1761,7 +2258,7 @@ export function lastStartedType(sim: Simulation): EventType | null {
   let best: EventType | null = null;
   let bestAt = -Infinity;
   for (const type of EVENT_TYPES) {
-    if (type === 'tormenta') continue;
+    if (type === 'tormenta' || type === 'llegada') continue;
     const cd = sim.state.events.cooldowns[type];
     if (cd === undefined || !Number.isFinite(cd)) continue;
     const startedAt = cd - EVENT_COOLDOWN[type];
@@ -1802,6 +2299,8 @@ export function eventWeights(sim: Simulation): Partial<Record<EventType | 'calma
     if ((night || asleep) && SIGHTING_TYPES.has(type)) w *= NIGHT_SIGHTING_FACTOR;
     if (night && CRISIS_TYPES.has(type)) w *= NIGHT_CRISIS_FACTOR;
     if (type === last) w *= REPEAT_FACTOR;
+    // Los rivales discuten más a menudo.
+    if (type === 'discusion' && rivalPairs(sim).length) w *= RIVAL_ARGUE_FACTOR;
     if (w > 0) out[type] = w;
   }
   return out;
@@ -1863,8 +2362,10 @@ export function tickEvents(sim: Simulation, dt: number): void {
     if (!st.events.active.includes(ev)) continue;
     updateEvent(sim, ev, dt);
   }
+  checkArrival(sim);
   runScript(sim);
   director(sim);
+  tickRadio(sim);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1915,8 +2416,8 @@ export function eventChoice(sim: Simulation, eventId: number, choiceId: string):
     }
     case 'mercante:despedir': {
       const d = dataOf<MerchantData>(ev);
-      endEvent(sim, ev, d.trades > 0, `Despedimos al «${d.ship}», que se aleja a toda vela.`, 'info');
-      res = { ok: true, msg: 'El mercante se despide y se aleja' };
+      endEvent(sim, ev, d.trades > 0, d.port ? 'Nos despedimos del mercado del muelle de Puerto Esperanza.' : `Despedimos al «${d.ship}», que se aleja a toda vela.`, 'info');
+      res = { ok: true, msg: d.port ? 'Te despides de la gente del muelle' : 'El mercante se despide y se aleja' };
       break;
     }
     default:

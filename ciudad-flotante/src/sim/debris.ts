@@ -23,14 +23,17 @@ import { clamp } from '../core/math';
 import { DEBRIS_LOOT } from '../data/loot';
 import { REGIONS, START_REGION, type RegionDef } from '../data/regions';
 import { CELL, HOOK_RANGE, RAIL_USE_RANGE, SHIP_ORIGIN_X, VISUAL_DRIFT } from './constants';
-import { depositToStorage, giveToPlayer, itemName, spawnCrate, stacksText } from './helpers';
-import { countItem } from './inventory';
-import { cellAtPoint, halfWidthM, levelOfY } from './ship';
+import { depositToStorage, findModule, giveToPlayer, itemName, spawnCrate, stacksText, storageModules } from './helpers';
+import { addItem, countItem } from './inventory';
+import { moduleTier } from './moduleStats';
+import { cellAtPoint, halfWidthM, levelOfY, levelY, moduleCenter } from './ship';
 import type { ActionResult, Simulation } from './Simulation';
+import { stationDropPoint } from './stations';
 import { markTutorial } from './tutorial';
-import type { Debris, DebrisKind, ItemId, ItemStack, NpcState, Vec2, Vec3 } from './types';
-import { onDebrisCollected, onDebrisLost, onFishCaught, isFishBankActive } from './events';
+import type { Debris, DebrisKind, ItemId, ItemStack, ModuleInstance, NpcState, Vec2, Vec3 } from './types';
+import { onDebrisCollected, onDebrisLost, onFishCaught, isFishBankActive, rollStoryPage } from './events';
 import { spawnSurvivor } from './npc';
+import { clearWarn, gruaWorkRate, isGruaReady, warnOnce } from './utilities';
 
 /* ------------------------------------------------------------------ */
 /* Parámetros de equilibrio                                            */
@@ -88,6 +91,18 @@ export const CATCH_TABLE: readonly { id: ItemId; p: number }[] = [
 ];
 /** Probabilidad de que un pez venga doble. */
 export const DOUBLE_FISH_CHANCE = 0.2;
+
+/* Grúa de rescate */
+/** Minutos de trabajo entre rescates (÷ ritmo de la grúa: mejora `workSpeed`, energía y desgaste). */
+export const GRUA_CYCLE_MIN = 25;
+/** Alcance de la pluma (m, en planta desde la grúa). */
+export const GRUA_RANGE = 30;
+/** La pluma larga (nivel 2) llega un 25 % más lejos por nivel de mejora. */
+export const GRUA_RANGE_PER_TIER = 0.25;
+/** Minutos de trabajo que tarda en lanzar el gancho y enganchar el resto. */
+export const GRUA_HOOK_MIN = 3;
+/** Minutos de trabajo que tarda en izar la carga a bordo (fase visible de la pluma tras el rescate). */
+export const GRUA_LIFT_MIN = 4;
 
 const fail = (msg: string): ActionResult => ({ ok: false, msg });
 
@@ -212,11 +227,23 @@ export function spawnAmbientDebris(sim: Simulation): Debris | null {
   if (isAnchored(sim)) {
     const z = side * (b.halfW + sim.rng.range(ANCHORED_SIDE[0], ANCHORED_SIDE[1]));
     const x = sim.rng.range(b.sternX + 2, b.bowX + 30);
-    return spawnDebris(sim, kind, { x, z }, { lateral: -side * sim.rng.range(ANCHORED_INFLOW[0], ANCHORED_INFLOW[1]) });
+    return spawnDebris(sim, kind, { x, z }, { ...ambientLoot(sim, kind), lateral: -side * sim.rng.range(ANCHORED_INFLOW[0], ANCHORED_INFLOW[1]) });
   }
   const z = side * (b.halfW + sim.rng.range(DEBRIS_SIDE[0], DEBRIS_SIDE[1]));
   const x = b.bowX + sim.rng.range(DEBRIS_SPAWN_AHEAD[0], DEBRIS_SPAWN_AHEAD[1]);
-  return spawnDebris(sim, kind, { x, z });
+  return spawnDebris(sim, kind, { x, z }, ambientLoot(sim, kind));
+}
+
+/**
+ * Botín de un resto que aparece solo: un cofre a la deriva puede guardar una hoja del cuaderno del
+ * Albatros si a esta región le queda alguna (ver `rollStoryPage`).
+ */
+function ambientLoot(sim: Simulation, kind: DebrisKind): SpawnDebrisOptions {
+  if (kind !== 'cofre') return {};
+  const page = rollStoryPage(sim, 'deriva', true);
+  const loot = rollLoot(sim, kind);
+  if (page) loot.unshift({ id: page.item, qty: 1 });
+  return { loot };
 }
 
 /* ------------------------------------------------------------------ */
@@ -268,6 +295,9 @@ export function tickDebris(sim: Simulation, dt: number): void {
     return keep;
   });
   for (const d of gone) onDebrisLost(sim, d);
+
+  // Grúas de rescate.
+  tickCranes(sim, dt);
 }
 
 /**
@@ -306,9 +336,10 @@ export interface CollectResult extends ActionResult {
  * Saca un resto del agua (sin comprobaciones de alcance: eso lo hacen los llamantes).
  * - Jugador: el botín va a su inventario (lo que no quepa, a una caja a sus pies).
  * - Habitante: el botín va a los almacenes (lo que no quepa, a una caja en `dropAt`).
+ * - Grúa (`crane`): a su bandeja; lo que no quepa, a los almacenes y luego a una caja junto a ella.
  * Las balsas suben a sus náufragos (que se unen a la tripulación) cerca de `dropAt`.
  */
-export function collectDebrisFor(sim: Simulation, debrisId: number, by: 'player' | 'npc', dropAt: Vec3): CollectResult {
+export function collectDebrisFor(sim: Simulation, debrisId: number, by: 'player' | 'npc' | 'grua', dropAt: Vec3, crane?: ModuleInstance): CollectResult {
   const st = sim.state;
   const idx = st.debris.findIndex((d) => d.id === debrisId);
   if (idx < 0) return fail('Ese resto ya no está al alcance');
@@ -326,10 +357,11 @@ export function collectDebrisFor(sim: Simulation, debrisId: number, by: 'player'
   } else {
     const left: ItemStack[] = [];
     for (const s of items) {
-      const l = depositToStorage(sim, s.id, s.qty);
+      let l = by === 'grua' && crane?.inventory ? addItem(crane.inventory, s.id, s.qty) : s.qty;
+      if (l > 0) l = depositToStorage(sim, s.id, l);
       if (l > 0) left.push({ id: s.id, qty: l });
     }
-    if (left.length) spawnCrate(sim, dropAt, left, 'Restos rescatados');
+    if (left.length) spawnCrate(sim, by === 'grua' && crane ? stationDropPoint(sim, crane) : dropAt, left, 'Restos rescatados');
   }
 
   // Los náufragos suben a bordo en silencio: el evento deja un único aviso con quién se une.
@@ -367,6 +399,211 @@ export function collectDebris(sim: Simulation, debrisId: number): ActionResult {
   const dist = Math.hypot(d.pos.x - p.pos.x, d.pos.z - p.pos.z);
   if (dist > COLLECT_RANGE) return fail('Demasiado lejos: espera a que se acerque');
   return collectDebrisFor(sim, debrisId, 'player', { x: p.pos.x, y: p.pos.y, z: p.pos.z });
+}
+
+/* ------------------------------------------------------------------ */
+/* Grúa de rescate                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * La grúa guarda su avance en el propio módulo (serializable, como el vivero): minutos de trabajo
+ * acumulados (`prodProgress`: 0..`GRUA_CYCLE_MIN` recogiendo cable, luego hasta +`GRUA_HOOK_MIN`
+ * enganchando) y el resto al que ha lanzado el gancho (`prodTarget`).
+ */
+type Crane = ModuleInstance & { prodProgress?: number; prodTarget?: number | null };
+
+/** Avance guardado de una grúa (una recién construida empieza recogiendo cable, sin carga que izar). */
+function craneWork(m: Crane): number {
+  return Number.isFinite(m.prodProgress) ? Math.max(0, m.prodProgress!) : GRUA_LIFT_MIN;
+}
+
+/** Punto de la pluma (posición del mástil de la grúa, en planta). */
+export function gruaOrigin(sim: Simulation, m: ModuleInstance): Vec2 {
+  const prop = sim.layout.props.find((p) => p.moduleId === m.id && p.kind === 'grua');
+  if (prop) return { x: prop.x, z: prop.z };
+  const c = moduleCenter(m, sim.state.ship.width);
+  return { x: c.x, z: c.z };
+}
+
+/** Costado sobre el que trabaja la grúa (-1 babor, 1 estribor): el de la borda junto a la que está. */
+export function gruaSide(sim: Simulation, m: ModuleInstance): 1 | -1 {
+  return moduleCenter(m, sim.state.ship.width).z < 0 ? -1 : 1;
+}
+
+/** Alcance de la pluma (m): 30 m; la pluma larga de la mejora llega más lejos. */
+export function gruaRange(m: Pick<ModuleInstance, 'type' | 'tier'>): number {
+  return GRUA_RANGE * (1 + GRUA_RANGE_PER_TIER * (moduleTier(m) - 1));
+}
+
+/** ¿Al resto le alcanza la pluma? (su costado y a ≤ alcance de la grúa). */
+function inCraneReach(sim: Simulation, m: ModuleInstance, d: Debris): boolean {
+  if (!Number.isFinite(d.pos.x) || !Number.isFinite(d.pos.z)) return false;
+  if ((Math.sign(d.pos.z) || 1) !== gruaSide(sim, m)) return false;
+  const o = gruaOrigin(sim, m);
+  return Math.hypot(d.pos.x - o.x, d.pos.z - o.z) <= gruaRange(m);
+}
+
+/** ¿Cabe algo más en su bandeja o en los almacenes? (si no, solo rescata náufragos). */
+function craneHasRoom(sim: Simulation, m: ModuleInstance): boolean {
+  if (m.inventory?.slots.some((sl) => !sl)) return true;
+  return storageModules(sim).some((mm) => mm.inventory?.slots.some((sl) => !sl));
+}
+
+/** Por qué no trabaja ahora (null si puede). */
+function craneBlocker(sim: Simulation, m: ModuleInstance): GruaPhase | null {
+  if (!isGruaReady(sim, m) || gruaWorkRate(sim, m) <= 0) return 'parada';
+  if (sim.state.weather.kind === 'tormenta') return 'tormenta';
+  return null;
+}
+
+/**
+ * Resto que engancha la grúa: el que ya tiene enganchado si sigue a su alcance; si no, el más
+ * cercano de su costado (las balsas con náufragos y los restos de un naufragio primero, y los que
+ * ya va a rescatar un habitante, los últimos). Con la bandeja y los almacenes llenos, solo náufragos.
+ */
+function craneTarget(sim: Simulation, m: Crane, claimed: ReadonlySet<number>): Debris | null {
+  const st = sim.state;
+  const room = craneHasRoom(sim, m);
+  const ok = (d: Debris) => inCraneReach(sim, m, d) && !claimed.has(d.id) && (room || (d.survivors ?? 0) > 0);
+  if (typeof m.prodTarget === 'number') {
+    const cur = st.debris.find((d) => d.id === m.prodTarget);
+    if (cur && ok(cur)) return cur;
+  }
+  const o = gruaOrigin(sim, m);
+  const npcTargets = new Set<number>();
+  for (const n of st.npcs) {
+    const id = (n.task?.data as { debrisId?: unknown } | undefined)?.debrisId;
+    if (typeof id === 'number') npcTargets.add(id);
+  }
+  let best: Debris | null = null;
+  let bestScore = Infinity;
+  for (const d of st.debris) {
+    if (!ok(d)) continue;
+    const score = Math.hypot(d.pos.x - o.x, d.pos.z - o.z) - ((d.survivors ?? 0) > 0 ? 100 : 0) - (d.eventId !== undefined ? 20 : 0) + (npcTargets.has(d.id) ? 60 : 0);
+    if (score < bestScore) {
+      bestScore = score;
+      best = d;
+    }
+  }
+  return best;
+}
+
+/** Cada grúa recoge cable, engancha el resto más cercano de su costado y lo iza a bordo. */
+function tickCranes(sim: Simulation, dt: number): void {
+  const claimed = new Set<number>();
+  for (const m of sim.state.ship.modules) {
+    if (m.type !== 'grua') continue;
+    const c = m as Crane;
+    let w = craneWork(c);
+    const why = craneBlocker(sim, m);
+    if (why) {
+      // Parada: conserva lo avanzado, pero suelta el gancho.
+      c.prodProgress = Math.min(w, GRUA_CYCLE_MIN);
+      c.prodTarget = null;
+      continue;
+    }
+    const rate = gruaWorkRate(sim, m);
+    if (w < GRUA_CYCLE_MIN) {
+      c.prodProgress = Math.min(GRUA_CYCLE_MIN, w + rate * dt);
+      c.prodTarget = null;
+      continue;
+    }
+    const full = !craneHasRoom(sim, m);
+    const key = `grua-llena:${m.id}`;
+    if (full) warnOnce(sim, key, 'La bandeja de la grúa y los almacenes están llenos: la grúa solo rescatará náufragos hasta que hagáis sitio', 'warn');
+    else clearWarn(sim, key);
+    const target = craneTarget(sim, c, claimed);
+    if (!target) {
+      c.prodProgress = GRUA_CYCLE_MIN;
+      c.prodTarget = null;
+      continue;
+    }
+    if (c.prodTarget !== target.id) w = GRUA_CYCLE_MIN; // gancho nuevo: vuelta a lanzarlo
+    claimed.add(target.id);
+    c.prodTarget = target.id;
+    w += rate * dt;
+    if (w < GRUA_CYCLE_MIN + GRUA_HOOK_MIN) {
+      c.prodProgress = w;
+      continue;
+    }
+    const o = gruaOrigin(sim, m);
+    const at: Vec3 = { x: o.x, y: levelY(m.level), z: o.z };
+    const raft = (target.survivors ?? 0) > 0;
+    collectDebrisFor(sim, target.id, 'grua', at, m);
+    if (!raft) sim.bus.emit('sfx', { name: 'recoger_resto', x: o.x, y: at.y + 3, z: o.z });
+    c.prodProgress = 0;
+    c.prodTarget = null;
+  }
+}
+
+/** Resto que la grúa está enganchando ahora (para animar la pluma), o null. */
+export interface GruaTarget {
+  debrisId: number;
+  kind: DebrisKind;
+  /** Posición del resto (coordenadas del barco, en planta). */
+  pos: Vec2;
+  /** 0..1 del lance del gancho hasta engancharlo. */
+  progress: number;
+}
+
+export function gruaTarget(sim: Simulation, moduleId: number): GruaTarget | null {
+  const m = findModule(sim, moduleId) as Crane | undefined;
+  if (!m || m.type !== 'grua' || typeof m.prodTarget !== 'number') return null;
+  const d = sim.state.debris.find((x) => x.id === m.prodTarget);
+  if (!d) return null;
+  return { debrisId: d.id, kind: d.kind, pos: { x: d.pos.x, z: d.pos.z }, progress: clamp((craneWork(m) - GRUA_CYCLE_MIN) / GRUA_HOOK_MIN, 0, 1) };
+}
+
+export type GruaPhase = 'parada' | 'tormenta' | 'izando' | 'recargando' | 'esperando' | 'enganchando' | 'llena';
+
+/** Estado de la grúa para la interfaz y la vista. */
+export interface GruaStatus {
+  phase: GruaPhase;
+  /** Texto corto: «Enganchando: tablones», «Recogiendo cable (12 min)», «Sin energía»… */
+  status: string;
+  /** 0..1 de la fase actual (izando, recargando, enganchando). */
+  progress: number;
+  /** Minutos hasta que pueda lanzar otra vez (o null). */
+  etaMin: number | null;
+  /** Ritmo actual (1 = una grúa básica a pleno rendimiento). */
+  rate: number;
+  /** Alcance (m), costado y punto de la pluma. */
+  range: number;
+  side: 1 | -1;
+  origin: Vec2;
+  target: GruaTarget | null;
+  /** Restos de su costado a su alcance ahora mismo. */
+  inRange: number;
+}
+
+export function gruaStatus(sim: Simulation, moduleId: number): GruaStatus | null {
+  const m = findModule(sim, moduleId) as Crane | undefined;
+  if (!m || m.type !== 'grua') return null;
+  const rate = gruaWorkRate(sim, m);
+  const w = craneWork(m);
+  const target = gruaTarget(sim, m.id);
+  const inRange = sim.state.debris.filter((d) => inCraneReach(sim, m, d)).length;
+  const base = { rate, range: gruaRange(m), side: gruaSide(sim, m), origin: gruaOrigin(sim, m), target, inRange };
+  const why = craneBlocker(sim, m);
+  if (why === 'parada') {
+    let status = 'Sin energía';
+    if (m.status === 'construction') status = 'En obras';
+    else if (m.status === 'broken') status = 'Averiada';
+    else if (m.fire > 0) status = '¡Ardiendo!';
+    else if (!m.on) status = 'Apagada';
+    return { ...base, phase: 'parada', status, progress: 0, etaMin: null };
+  }
+  if (why === 'tormenta') return { ...base, phase: 'tormenta', status: 'Recogida por la tormenta', progress: 0, etaMin: null };
+  if (w < GRUA_LIFT_MIN && w < GRUA_CYCLE_MIN) {
+    return { ...base, phase: 'izando', status: 'Izando la carga a bordo', progress: w / GRUA_LIFT_MIN, etaMin: (GRUA_CYCLE_MIN - w) / rate };
+  }
+  if (w < GRUA_CYCLE_MIN) {
+    const eta = (GRUA_CYCLE_MIN - w) / rate;
+    return { ...base, phase: 'recargando', status: `Recogiendo cable (${Math.ceil(eta)} min)`, progress: w / GRUA_CYCLE_MIN, etaMin: eta };
+  }
+  if (target) return { ...base, phase: 'enganchando', status: `Enganchando: ${DEBRIS_NAMES[target.kind].toLowerCase()}`, progress: target.progress, etaMin: 0 };
+  if (!craneHasRoom(sim, m)) return { ...base, phase: 'llena', status: 'Bandeja y almacenes llenos', progress: 1, etaMin: null };
+  return { ...base, phase: 'esperando', status: 'Esperando restos a su alcance', progress: 1, etaMin: 0 };
 }
 
 /* ------------------------------------------------------------------ */
