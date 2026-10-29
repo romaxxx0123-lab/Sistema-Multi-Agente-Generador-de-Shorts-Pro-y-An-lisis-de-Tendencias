@@ -5,6 +5,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
 
 :root {
+  color-scheme: dark;
   --font: 'Nunito', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
   --ink: #f6efe0;
   --ink-dim: #c9bfa9;

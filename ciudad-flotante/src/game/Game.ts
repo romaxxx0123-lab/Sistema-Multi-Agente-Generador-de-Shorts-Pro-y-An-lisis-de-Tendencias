@@ -15,7 +15,7 @@ import { PlayerAvatar } from '../render/PlayerAvatar';
 import { Renderer } from '../render/Renderer';
 import { ShipView } from '../render/ShipView';
 import { TIME_SCALE } from '../sim/constants';
-import { createLocalSaveStore, type SaveSlotInfo, type SaveStore } from '../sim/save';
+import { createLocalSaveStore, restoreState, serialize, type SaveSlotInfo, type SaveStore } from '../sim/save';
 import { Simulation } from '../sim/Simulation';
 import { UI } from '../ui/UI';
 import type { GameContext } from './context';
@@ -188,6 +188,29 @@ export class Game implements GameContext {
     } catch (e) {
       console.error(e);
       this.sim.notify('La partida guardada está dañada o no es compatible', 'danger');
+      return false;
+    }
+  }
+
+  /**
+   * Instantánea de la partida en curso para conservarla si la página se actualiza en caliente
+   * (publicaciones nuevas en claude.ai). null si no hay partida en marcha.
+   */
+  snapshot(): { state: string; mode: GameMode } | null {
+    if (this._mode !== 'play' && this._mode !== 'build') return null;
+    return { state: serialize(this.sim.state), mode: this._mode };
+  }
+
+  /** Restaura una instantánea de `snapshot()`. Devuelve false si no es válida. */
+  restoreSnapshot(snap: { state?: unknown } | null | undefined): boolean {
+    if (!snap || typeof snap.state !== 'string') return false;
+    try {
+      const st = restoreState(JSON.parse(snap.state));
+      this.replaceSim(new Simulation(st, this.bus), 'load');
+      if (!this.sim.state.player.alive) this.setMode('dead');
+      return true;
+    } catch (e) {
+      console.warn('[Game] no se pudo restaurar la instantánea', e);
       return false;
     }
   }

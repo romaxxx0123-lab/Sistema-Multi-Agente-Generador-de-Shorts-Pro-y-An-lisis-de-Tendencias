@@ -26,3 +26,14 @@ mkdirSync(outDir, { recursive: true });
 const out = join(outDir, 'ciudad-flotante.html');
 writeFileSync(out, html);
 console.log(`Generado ${out} (${(html.length / 1024).toFixed(0)} KB)`);
+
+// Variante para publicar como página de claude.ai: el visor añade su propio esqueleto
+// (doctype, html, head, body), así que solo va el contenido: título, estilos, raíz y script.
+const title = html.match(/<title>[\s\S]*?<\/title>/)?.[0] ?? '<title>Ciudad Flotante</title>';
+const desc = html.match(/<meta name="description"[^>]*>/)?.[0] ?? '';
+const styles = [...html.matchAll(/<style>[\s\S]*?<\/style>/g)].map((m) => m[0]).join('\n');
+const scripts = [...html.matchAll(/<script type="module">[\s\S]*?<\/script>/g)].map((m) => m[0]).join('\n');
+const artifact = `${title}\n${desc}\n${styles}\n<div id="app"></div>\n${scripts}\n`;
+const outArtifact = join(outDir, 'ciudad-flotante.artifact.html');
+writeFileSync(outArtifact, artifact);
+console.log(`Generado ${outArtifact} (${(artifact.length / 1024).toFixed(0)} KB)`);
