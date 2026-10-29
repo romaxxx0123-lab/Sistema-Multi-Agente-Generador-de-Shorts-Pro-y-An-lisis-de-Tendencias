@@ -1,0 +1,1602 @@
+/**
+ * Tests de supervivencia (área sim-survival): necesidades, salud, sueño, objetos, inventarios,
+ * agua, clima, viaje, tutorial y guardado.
+ *
+ * La mayoría de pruebas llaman directamente al sistema que prueban (`tickNeeds`, `tickWeather`,
+ * `tickVoyage`) avanzando el reloj a mano, para que el azar de otros sistemas no interfiera.
+ * Las pruebas de integración usan `sim.tick` con la simulación completa.
+ */
+import { describe, expect, it } from 'vitest';
+import { REGIONS } from '../src/data/regions';
+import * as actions from '../src/sim/actions';
+import { CRUISE_SPEED, LEVEL_H, MINUTES_PER_DAY, NEED_RATES, PLAYER_SLOTS, SLEEP_TIME_SCALE, VISUAL_DRIFT } from '../src/sim/constants';
+import { addItem, countItem, createInventory } from '../src/sim/inventory';
+import * as needs from '../src/sim/needs';
+import { createNewGame } from '../src/sim/newGame';
+import { forwardOf } from '../src/sim/physics';
+import { createLocalSaveStore, deserialize, exportSave, restoreState, SaveError, serialize, type StorageLike } from '../src/sim/save';
+import { cellCenter, instantiateModule } from '../src/sim/ship';
+import { Simulation } from '../src/sim/Simulation';
+import { hourOf } from '../src/sim/time';
+import * as tutorial from '../src/sim/tutorial';
+import type { GameState, ModuleInstance, Vec3, WeatherKind } from '../src/sim/types';
+import { SAVE_VERSION } from '../src/sim/types';
+import * as voyage from '../src/sim/voyage';
+import * as weather from '../src/sim/weather';
+
+/* ------------------------------------------------------------------ */
+/* Utilidades de prueba                                                */
+/* ------------------------------------------------------------------ */
+
+interface Note {
+  text: string;
+  kind: string;
+}
+
+function setup(seed = 3): { sim: Simulation; notes: Note[]; sfx: string[] } {
+  const sim = new Simulation(createNewGame(seed));
+  const notes: Note[] = [];
+  const sfx: string[] = [];
+  sim.bus.on('notify', (n) => notes.push(n));
+  sim.bus.on('sfx', (s) => sfx.push(s.name));
+  return { sim, notes, sfx };
+}
+
+/** Posiciones de referencia del barco inicial. */
+const W = 4;
+const at = (cx: number, cz: number, level: number): Vec3 => {
+  const c = cellCenter(cx, cz, W);
+  return { x: c.x, y: level * LEVEL_H, z: c.z };
+};
+/** Camarote (habitación cerrada, nivel 1). */
+const INDOOR = at(3, 0, 1);
+/** Cubierta a cielo abierto (nivel 1). */
+const DECK = at(5, 1, 1);
+/** Bodega (interior, nivel 0). */
+const HOLD = at(2, 2, 0);
+
+function place(sim: Simulation, p: Vec3): void {
+  Object.assign(sim.state.player.pos, p);
+}
+
+function setNeeds(sim: Simulation, n: Partial<GameState['player']['needs']>): void {
+  Object.assign(sim.state.player.needs, n);
+}
+
+/** Clima fijo con parámetros exactos. */
+function setWeather(sim: Simulation, kind: WeatherKind, temperature: number, rain = 0, wind = 0): void {
+  const w = sim.state.weather;
+  w.kind = kind;
+  w.next = kind === 'tormenta' ? 'nublado' : kind;
+  w.remaining = 1e9;
+  w.temperature = temperature;
+  w.rain = rain;
+  w.wind = wind;
+}
+
+/** Avanza `minutes` solo el sistema de necesidades (reloj incluido), en pasos de 0,5 min. */
+function runNeeds(sim: Simulation, minutes: number, each?: () => void): void {
+  for (let t = 0; t < minutes - 1e-9; t += 0.5) {
+    each?.();
+    sim.state.time += 0.5;
+    needs.tickNeeds(sim, 0.5);
+    if (!sim.state.player.alive) break;
+  }
+}
+
+/** Lleva el reloj a la hora `h` del día actual o siguiente. */
+function goToHour(sim: Simulation, h: number): void {
+  const st = sim.state;
+  let t = Math.floor(st.time / MINUTES_PER_DAY) * MINUTES_PER_DAY + h * 60;
+  if (t < st.time) t += MINUTES_PER_DAY;
+  st.time = t;
+}
+
+function mod(sim: Simulation, type: string): ModuleInstance {
+  const m = sim.state.ship.modules.find((mm) => mm.type === type);
+  if (!m) throw new Error(`no hay ${type}`);
+  return m;
+}
+
+function addModule(sim: Simulation, type: string, level: number, x: number, z: number, rot: 0 | 1 | 2 | 3 = 0): ModuleInstance {
+  const m = instantiateModule(sim.nextId(), type, level, x, z, rot, 'active');
+  sim.state.ship.modules.push(m);
+  sim.shipChanged();
+  return m;
+}
+
+/** Coloca al jugador delante del mueble de una cama. */
+function nearBed(sim: Simulation, moduleId: number, bed: number): void {
+  const b = actions.bedProp(sim, moduleId, bed)!;
+  const f = forwardOf(b.prop.yaw);
+  const reach = Math.abs(f.x) * b.prop.hx + Math.abs(f.z) * b.prop.hz + 0.5;
+  place(sim, { x: b.prop.x + f.x * reach, y: b.prop.y, z: b.prop.z + f.z * reach });
+}
+
+/** Ranura del jugador con un objeto (añadiéndolo si hace falta). */
+function slotWith(sim: Simulation, id: string, qty = 1): number {
+  const inv = sim.state.player.inventory;
+  if (countItem(inv, id) < qty) addItem(inv, id, qty);
+  return inv.slots.findIndex((s) => s?.id === id);
+}
+
+/** Fuerza el resultado de las tiradas de probabilidad. */
+function forceChance(sim: Simulation, value: boolean): void {
+  sim.rng.chance = () => value;
+}
+
+/** localStorage falso en memoria (opcionalmente con un límite de tamaño). */
+class FakeStorage implements StorageLike {
+  private data = new Map<string, string>();
+  constructor(private readonly limit = Infinity) {}
+  get length(): number {
+    return this.data.size;
+  }
+  key(i: number): string | null {
+    return [...this.data.keys()][i] ?? null;
+  }
+  getItem(k: string): string | null {
+    return this.data.get(k) ?? null;
+  }
+  setItem(k: string, v: string): void {
+    let size = 0;
+    for (const [kk, vv] of this.data) if (kk !== k) size += kk.length + vv.length;
+    if (size + k.length + v.length > this.limit) {
+      const e = new Error('Quota exceeded');
+      e.name = 'QuotaExceededError';
+      throw e;
+    }
+    this.data.set(k, v);
+  }
+  removeItem(k: string): void {
+    this.data.delete(k);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Necesidades                                                         */
+/* ------------------------------------------------------------------ */
+
+describe('necesidades: decaimiento', () => {
+  it('hambre, sed y energía bajan a su ritmo despierto', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setNeeds(sim, { hunger: 80, thirst: 75, energy: 90, health: 100, warmth: 80 });
+    runNeeds(sim, 240);
+    const n = sim.state.player.needs;
+    expect(n.hunger).toBeCloseTo(80 + NEED_RATES.hungerPerHour * 4, 5);
+    expect(n.thirst).toBeCloseTo(75 + NEED_RATES.thirstPerHour * 4, 5);
+    expect(n.energy).toBeCloseTo(90 + NEED_RATES.energyPerHourAwake * 4, 5);
+  });
+
+  it('durmiendo en cama: hambre y sed a la mitad, energía +15/h', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setNeeds(sim, { hunger: 80, thirst: 80, energy: 30, health: 100, warmth: 80 });
+    goToHour(sim, 22);
+    const cam = mod(sim, 'camarote');
+    expect(sim.sleep(cam.id, 0).ok).toBe(true);
+    runNeeds(sim, 120);
+    const n = sim.state.player.needs;
+    expect(n.hunger).toBeCloseTo(80 + NEED_RATES.hungerPerHour, 5);
+    expect(n.thirst).toBeCloseTo(80 + NEED_RATES.thirstPerHour, 5);
+    expect(n.energy).toBeCloseTo(30 + NEED_RATES.energyPerHourBed * 2, 5);
+  });
+
+  it('los valores nunca salen de 0..100 ni se vuelven NaN', () => {
+    const { sim } = setup();
+    setNeeds(sim, { hunger: Number.NaN, thirst: 200, energy: -50, warmth: 50 });
+    runNeeds(sim, 10);
+    for (const v of Object.values(sim.state.player.needs)) {
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+describe('calor corporal', () => {
+  it('interior +12 °C y exterior con lluvia y viento según la fórmula', () => {
+    const { sim } = setup();
+    setWeather(sim, 'lluvia', 10, 0.5, 0.5);
+    place(sim, INDOOR);
+    let env = needs.warmthEnvironment(sim);
+    expect(env.indoor).toBe(true);
+    expect(env.effectiveTemp).toBeCloseTo(22, 6);
+    expect(env.target).toBeCloseTo(22 * 3.2 + 10, 6);
+    place(sim, DECK);
+    env = needs.warmthEnvironment(sim);
+    expect(env.indoor).toBe(false);
+    expect(env.effectiveTemp).toBeCloseTo(10 - 6 * 0.5 - 4 * 0.5, 6);
+    // La bodega cuenta como interior.
+    place(sim, HOLD);
+    expect(needs.warmthEnvironment(sim).indoor).toBe(true);
+  });
+
+  it('el abrigo solo abriga a la intemperie (+12 °C con protección 0,6)', () => {
+    const { sim } = setup();
+    setWeather(sim, 'despejado', 0, 0, 0);
+    sim.state.player.clothing = 'abrigo';
+    place(sim, DECK);
+    expect(needs.warmthEnvironment(sim).effectiveTemp).toBeCloseTo(12, 6);
+    place(sim, INDOOR);
+    expect(needs.warmthEnvironment(sim).effectiveTemp).toBeCloseTo(12, 6); // interior +12, sin abrigo
+  });
+
+  it('la cocina encendida da +10 °C a ≤ 4 m', () => {
+    const { sim } = setup();
+    setWeather(sim, 'despejado', 5, 0, 0);
+    const fogon = sim.layout.props.find((p) => p.kind === 'fogon')!;
+    const cocina = mod(sim, 'cocina');
+    place(sim, { x: fogon.x, y: fogon.y, z: fogon.z - 1.5 });
+    cocina.powered = false;
+    expect(needs.warmthEnvironment(sim).nearStove).toBe(false);
+    cocina.powered = true;
+    const env = needs.warmthEnvironment(sim);
+    expect(env.nearStove).toBe(true);
+    expect(env.effectiveTemp).toBeCloseTo(5 + 12 + 10, 6);
+    // Lejos (en cubierta) ya no calienta.
+    place(sim, DECK);
+    expect(needs.warmthEnvironment(sim).nearStove).toBe(false);
+  });
+
+  it('el calor tiende al objetivo a 30/h', () => {
+    const { sim } = setup();
+    setWeather(sim, 'despejado', 0, 0, 0);
+    place(sim, DECK); // objetivo 10
+    setNeeds(sim, { warmth: 70, hunger: 100, thirst: 100, energy: 100 });
+    runNeeds(sim, 60);
+    expect(sim.state.player.needs.warmth).toBeCloseTo(40, 5);
+    runNeeds(sim, 120);
+    expect(sim.state.player.needs.warmth).toBeCloseTo(10, 5);
+  });
+
+  it('el frío hace daño fuera y no dentro; el abrigo lo evita', () => {
+    const outside = setup().sim;
+    setWeather(outside, 'despejado', -2, 0, 0);
+    place(outside, DECK);
+    setNeeds(outside, { warmth: 10, hunger: 100, thirst: 100, energy: 100, health: 80 });
+    runNeeds(outside, 120);
+    expect(outside.state.player.needs.health).toBeLessThan(75);
+
+    const inside = setup().sim;
+    setWeather(inside, 'despejado', -2, 0, 0);
+    place(inside, INDOOR); // tEf 10 → objetivo 42
+    setNeeds(inside, { warmth: 10, hunger: 100, thirst: 100, energy: 100, health: 80 });
+    runNeeds(inside, 120);
+    expect(inside.state.player.needs.warmth).toBeCloseTo(42 - 0.4, 0);
+    expect(inside.state.player.needs.health).toBeGreaterThan(inside.state.player.needs.health - 1);
+
+    const coat = setup().sim;
+    setWeather(coat, 'despejado', -2, 0, 0);
+    coat.state.player.clothing = 'abrigo';
+    place(coat, DECK);
+    setNeeds(coat, { warmth: 10, hunger: 100, thirst: 100, energy: 100, health: 80 });
+    runNeeds(coat, 120);
+    expect(coat.state.player.needs.health).toBeGreaterThan(outside.state.player.needs.health);
+  });
+});
+
+describe('salud', () => {
+  it('regenera +2,5/h si todo está bien', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 90, health: 50 });
+    runNeeds(sim, 120);
+    expect(sim.state.player.needs.health).toBeCloseTo(55, 5);
+  });
+
+  it('×3 en una camilla de enfermería, que además acelera la curación', () => {
+    const { sim } = setup();
+    place(sim, HOLD);
+    setWeather(sim, 'despejado', 22);
+    const enf = addModule(sim, 'enfermeria', 0, 1, 0, 2);
+    nearBed(sim, enf.id, 0);
+    setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 90, health: 20 });
+    goToHour(sim, 22);
+    const r = sim.sleep(enf.id, 0);
+    expect(r.ok, r.msg).toBe(true);
+    runNeeds(sim, 60);
+    expect(sim.state.player.needs.health).toBeCloseTo(20 + NEED_RATES.healthRegenPerHour * 3, 5);
+  });
+
+  it('pierde salud con hambre o sed a 0 y no regenera', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    setNeeds(sim, { hunger: 0, thirst: 100, energy: 100, warmth: 90, health: 90 });
+    runNeeds(sim, 60, () => setNeeds(sim, { hunger: 0 }));
+    expect(sim.state.player.needs.health).toBeCloseTo(90 - NEED_RATES.starvingDamagePerHour, 5);
+    setNeeds(sim, { hunger: 100, thirst: 0, health: 90 });
+    runNeeds(sim, 60, () => setNeeds(sim, { thirst: 0 }));
+    expect(sim.state.player.needs.health).toBeCloseTo(90 - NEED_RATES.dehydrationDamagePerHour, 5);
+  });
+
+  it('el fuego a < 1,5 m quema (−10/h)', () => {
+    const { sim } = setup();
+    setWeather(sim, 'despejado', 22);
+    const cocina = mod(sim, 'cocina');
+    const fogon = sim.layout.props.find((p) => p.kind === 'fogon')!;
+    place(sim, { x: fogon.x, y: fogon.y, z: fogon.z - 1.5 });
+    setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 90, health: 90 });
+    cocina.fire = 50;
+    expect(needs.fireNear(sim, sim.state.player.pos)?.id).toBe(cocina.id);
+    runNeeds(sim, 60);
+    expect(sim.state.player.needs.health).toBeCloseTo(80, 5);
+    place(sim, DECK);
+    expect(needs.fireNear(sim, sim.state.player.pos)).toBeNull();
+  });
+});
+
+describe('enfermedad', () => {
+  it('la comida cruda puede enfermar; la enfermedad dura 18 h y resta salud', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    setNeeds(sim, { hunger: 50, thirst: 100, energy: 100, warmth: 90, health: 100 });
+    forceChance(sim, true);
+    const r = sim.useItem(slotWith(sim, 'pescado_crudo'));
+    expect(r.ok).toBe(true);
+    expect(r.msg).toMatch(/enfermo/);
+    expect(sim.state.player.sick).toBe(needs.SICK_HOURS);
+    runNeeds(sim, 60, () => setNeeds(sim, { hunger: 100, thirst: 100, energy: 100 }));
+    expect(sim.state.player.needs.health).toBeCloseTo(100 - NEED_RATES.sickDamagePerHour, 5);
+    runNeeds(sim, 17 * 60 + 1, () => setNeeds(sim, { hunger: 100, thirst: 100, energy: 100 }));
+    expect(sim.state.player.sick).toBe(0);
+    expect(notes.some((n) => /recuperado/.test(n.text))).toBe(true);
+  });
+
+  it('sin mala suerte la comida cruda no enferma', () => {
+    const { sim } = setup();
+    setNeeds(sim, { hunger: 50 });
+    forceChance(sim, false);
+    sim.useItem(slotWith(sim, 'pescado_crudo'));
+    expect(sim.state.player.sick).toBe(0);
+  });
+
+  it('el botiquín cura la enfermedad', () => {
+    const { sim } = setup();
+    sim.state.player.sick = 10;
+    setNeeds(sim, { health: 50 });
+    const r = sim.useItem(slotWith(sim, 'botiquin'));
+    expect(r.ok, r.msg).toBe(true);
+    expect(sim.state.player.sick).toBe(0);
+    expect(sim.state.player.needs.health).toBe(90);
+  });
+});
+
+describe('muerte', () => {
+  it('muere de sed con causa, aviso, diario y la simulación se detiene', () => {
+    const { sim } = setup();
+    let died: string | null = null;
+    sim.bus.on('playerDied', (d) => (died = d.cause));
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    setNeeds(sim, { hunger: 100, thirst: 0, energy: 100, warmth: 90, health: 5 });
+    runNeeds(sim, 120);
+    const p = sim.state.player;
+    expect(p.alive).toBe(false);
+    expect(p.deathCause).toBe(needs.DEATH_CAUSES.thirst);
+    expect(died).toBe(needs.DEATH_CAUSES.thirst);
+    expect(sim.state.log.at(-1)!.text).toMatch(/Moriste de sed/);
+    expect(p.needs.health).toBe(0);
+    const t = sim.state.time;
+    sim.tick(30);
+    expect(sim.state.time).toBe(t);
+  });
+
+  it('muere de frío y la causa es la peor fuente de daño', () => {
+    const { sim } = setup();
+    setWeather(sim, 'tormenta', -10, 1, 1);
+    place(sim, DECK);
+    setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 0, health: 3 });
+    runNeeds(sim, 240);
+    expect(sim.state.player.alive).toBe(false);
+    expect(sim.state.player.deathCause).toBe(needs.DEATH_CAUSES.cold);
+  });
+
+  it('damagePlayer de otros sistemas mata con su causa', () => {
+    const { sim } = setup();
+    setNeeds(sim, { health: 10 });
+    needs.damagePlayer(sim, 4, 'Moriste aplastado');
+    expect(sim.state.player.needs.health).toBe(6);
+    needs.damagePlayer(sim, 10, 'Moriste aplastado');
+    expect(sim.state.player.alive).toBe(false);
+    expect(sim.state.player.deathCause).toBe('Moriste aplastado');
+  });
+});
+
+describe('condiciones para el HUD', () => {
+  it('resume peligros y ventajas del entorno', () => {
+    const { sim } = setup();
+    setWeather(sim, 'lluvia', 4, 0.8, 0.5);
+    place(sim, DECK);
+    setNeeds(sim, { hunger: 20, thirst: 0, energy: 10, warmth: 15, health: 60 });
+    sim.state.player.sick = 5.2;
+    const ids = needs.playerConditions(sim).map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(['deshidratado', 'hambriento', 'congelado', 'enfermo', 'agotado', 'mojado']));
+    expect(needs.playerConditions(sim).find((c) => c.id === 'enfermo')!.label).toBe('Enfermo (6 h)');
+    place(sim, INDOOR);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 90, warmth: 80, health: 60 });
+    sim.state.player.sick = 0;
+    const inside = needs.playerConditions(sim).map((c) => c.id);
+    expect(inside).toEqual(['cubierto', 'recuperando']);
+  });
+});
+
+describe('avisos con histéresis', () => {
+  it('avisa una vez al cruzar el umbral y se rearma al recuperarse', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    setNeeds(sim, { hunger: 26, thirst: 100, energy: 100, warmth: 90, health: 100 });
+    runNeeds(sim, 60, () => setNeeds(sim, { thirst: 100, energy: 100 })); // cruza 25
+    const hungry = () => notes.filter((n) => n.text.startsWith('Tienes hambre')).length;
+    expect(hungry()).toBe(1);
+    runNeeds(sim, 30, () => setNeeds(sim, { thirst: 100, energy: 100 }));
+    expect(hungry()).toBe(1);
+    setNeeds(sim, { hunger: 28 }); // no se rearma (umbral + 5 = 30)
+    runNeeds(sim, 60, () => setNeeds(sim, { thirst: 100, energy: 100 }));
+    expect(hungry()).toBe(1);
+    setNeeds(sim, { hunger: 40 }); // se rearma
+    runNeeds(sim, 0.5);
+    setNeeds(sim, { hunger: 24 });
+    runNeeds(sim, 0.5);
+    expect(hungry()).toBe(2);
+  });
+
+  it('no avisa durmiendo; los avisos pendientes saltan al despertar', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 23);
+    setNeeds(sim, { hunger: 30, thirst: 90, energy: 40, warmth: 90, health: 100 });
+    expect(sim.sleep(mod(sim, 'camarote').id, 0).ok).toBe(true);
+    runNeeds(sim, 180); // el hambre baja de 25 durmiendo
+    expect(sim.state.player.needs.hunger).toBeLessThan(25);
+    expect(notes.some((n) => n.text.startsWith('Tienes hambre'))).toBe(false);
+    sim.wake();
+    runNeeds(sim, 0.5);
+    expect(notes.filter((n) => n.text.startsWith('Tienes hambre'))).toHaveLength(1);
+  });
+
+  it('avisa de sed, cansancio, frío y salud', () => {
+    const { sim, notes } = setup();
+    setWeather(sim, 'despejado', 0);
+    place(sim, DECK);
+    setNeeds(sim, { hunger: 100, thirst: 9, energy: 19, warmth: 29, health: 29 });
+    runNeeds(sim, 0.5);
+    const texts = notes.map((n) => n.text).join(' | ');
+    expect(texts).toMatch(/Tienes sed/);
+    expect(texts).toMatch(/deshidratando/);
+    expect(texts).toMatch(/agotado/);
+    expect(texts).toMatch(/frío/);
+    expect(texts).toMatch(/salud es crítica/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Sueño                                                               */
+/* ------------------------------------------------------------------ */
+
+describe('sueño', () => {
+  it('solo se duerme con energía < 80 o de noche', () => {
+    const { sim } = setup();
+    const cam = mod(sim, 'camarote');
+    nearBed(sim, cam.id, 0);
+    goToHour(sim, 12);
+    setNeeds(sim, { energy: 90 });
+    const r = sim.sleep(cam.id, 0);
+    expect(r.ok).toBe(false);
+    expect(r.msg).toMatch(/No tienes sueño/);
+    setNeeds(sim, { energy: 70 });
+    expect(sim.sleep(cam.id, 0).ok).toBe(true);
+    expect(sim.state.player.sleeping).toEqual({ moduleId: cam.id, bed: 0, until: null });
+    expect(sim.timeScale).toBe(SLEEP_TIME_SCALE);
+    expect(sim.state.tutorial.done).toContain('dormir');
+    sim.wake(); // se levanta el jugador: sin aviso
+    expect(sim.state.player.sleeping).toBeNull();
+    expect(sim.timeScale).toBe(1);
+    goToHour(sim, 22);
+    setNeeds(sim, { energy: 100 });
+    expect(sim.sleep(cam.id, 0).ok).toBe(true);
+  });
+
+  it('respeta las camas de los habitantes presentes', () => {
+    const { sim } = setup();
+    const dorm = mod(sim, 'dormitorio');
+    goToHour(sim, 23);
+    nearBed(sim, dorm.id, 0);
+    const r = sim.sleep(dorm.id, 0);
+    expect(r.ok).toBe(false);
+    expect(r.msg).toBe('Esa cama es de Marina');
+    // Una cama libre del dormitorio sí sirve.
+    nearBed(sim, dorm.id, 2);
+    expect(sim.sleep(dorm.id, 2).ok).toBe(true);
+    sim.wake();
+    // Si Marina está de expedición, puede usar su cama.
+    sim.state.npcs[0]!.awayUntil = sim.state.time + 100;
+    nearBed(sim, dorm.id, 0);
+    expect(sim.sleep(dorm.id, 0).ok).toBe(true);
+  });
+
+  it('rechaza camas lejanas, inexistentes, obras, fuego a bordo y necesidades críticas', () => {
+    const { sim } = setup();
+    const cam = mod(sim, 'camarote');
+    goToHour(sim, 23);
+    place(sim, DECK);
+    expect(sim.sleep(cam.id, 0).msg).toBe('Acércate a la cama');
+    nearBed(sim, cam.id, 0);
+    expect(sim.sleep(999, 0).ok).toBe(false);
+    expect(sim.sleep(cam.id, 5).ok).toBe(false);
+    expect(sim.sleep(mod(sim, 'almacen').id, 0).msg).toBe('Aquí no hay camas');
+    cam.status = 'construction';
+    expect(sim.sleep(cam.id, 0).ok).toBe(false);
+    cam.status = 'active';
+    mod(sim, 'cocina').fire = 20;
+    expect(sim.sleep(cam.id, 0).msg).toMatch(/fuego/);
+    mod(sim, 'cocina').fire = 0;
+    setNeeds(sim, { thirst: 5 });
+    expect(sim.sleep(cam.id, 0).msg).toMatch(/sed/);
+  });
+
+  it('duerme toda la noche y despierta descansado de día', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 22);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 40, warmth: 90, health: 100 });
+    expect(sim.sleep(mod(sim, 'camarote').id, 0).ok).toBe(true);
+    let wokeAt = -1;
+    let energyAtWake = -1;
+    runNeeds(sim, 12 * 60, () => {
+      if (wokeAt < 0 && !sim.state.player.sleeping) {
+        wokeAt = sim.state.time;
+        energyAtWake = sim.state.player.needs.energy;
+      }
+    });
+    expect(wokeAt).toBeGreaterThan(0);
+    const h = hourOf(wokeAt);
+    expect(h).toBeGreaterThanOrEqual(6);
+    expect(h).toBeLessThan(6.1);
+    expect(notes.some((n) => n.text === 'Te despiertas descansado')).toBe(true);
+    expect(energyAtWake).toBe(100);
+  });
+
+  it('se despierta antes si no está a gusto: sed, hambre, fuego, tormenta o un evento', () => {
+    const cases: [string, (sim: Simulation) => void, RegExp][] = [
+      ['sed', (sim) => setNeeds(sim, { thirst: 7.9 }), /sed/],
+      ['hambre', (sim) => setNeeds(sim, { hunger: 7.9 }), /hambre/],
+      ['fuego', (sim) => (mod(sim, 'almacen').fire = 10), /Fuego a bordo/],
+      ['tormenta', (sim) => (sim.state.weather.kind = 'tormenta'), /tormenta/],
+      [
+        'evento',
+        (sim) =>
+          sim.state.events.active.push({ id: 900, type: 'naufragos', title: 'Náufragos a la vista', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: {} }),
+        /Náufragos a la vista/,
+      ],
+    ];
+    for (const [name, trigger, re] of cases) {
+      const { sim, notes } = setup();
+      place(sim, INDOOR);
+      setWeather(sim, 'despejado', 22);
+      goToHour(sim, 23);
+      setNeeds(sim, { hunger: 90, thirst: 90, energy: 40, warmth: 90, health: 100 });
+      expect(sim.sleep(mod(sim, 'camarote').id, 0).ok, name).toBe(true);
+      runNeeds(sim, 10);
+      expect(sim.state.player.sleeping, name).not.toBeNull();
+      trigger(sim);
+      runNeeds(sim, 0.5);
+      expect(sim.state.player.sleeping, name).toBeNull();
+      expect(notes.some((n) => re.test(n.text)), name).toBe(true);
+    }
+  });
+
+  it('un evento sin importancia (banco de peces) no despierta', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 23);
+    setNeeds(sim, { energy: 40 });
+    sim.sleep(mod(sim, 'camarote').id, 0);
+    runNeeds(sim, 1);
+    sim.state.events.active.push({ id: 901, type: 'banco_peces', title: 'Banco de peces', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: {} });
+    runNeeds(sim, 1);
+    expect(sim.state.player.sleeping).not.toBeNull();
+  });
+
+  it('con energía a 0 se desmaya 3 h en el suelo', () => {
+    const { sim, notes } = setup();
+    place(sim, DECK);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 12);
+    setNeeds(sim, { hunger: 100, thirst: 100, energy: 0.01, warmth: 90, health: 100 });
+    runNeeds(sim, 0.5);
+    const s = sim.state.player.sleeping;
+    expect(s).not.toBeNull();
+    expect(s!.moduleId).toBeNull();
+    expect(s!.until).toBeCloseTo(sim.state.time + needs.FAINT_MINUTES, 5);
+    expect(notes.some((n) => /desmayas/.test(n.text) && n.kind === 'danger')).toBe(true);
+    runNeeds(sim, needs.FAINT_MINUTES - 1);
+    expect(sim.state.player.sleeping).not.toBeNull();
+    runNeeds(sim, 1.5);
+    expect(sim.state.player.sleeping).toBeNull();
+    expect(sim.state.player.needs.energy).toBeCloseTo((NEED_RATES.energyPerHourFloor * needs.FAINT_MINUTES) / 60, 0);
+    expect(notes.some((n) => /Recuperas el conocimiento/.test(n.text))).toBe(true);
+  });
+
+  it('desmayado no puede levantarse a voluntad, pero un sistema sí puede despertarle', () => {
+    const { sim, notes } = setup();
+    goToHour(sim, 12);
+    setNeeds(sim, { energy: 0.01 });
+    runNeeds(sim, 0.5);
+    expect(sim.state.player.sleeping?.until).not.toBeNull();
+    sim.wake();
+    expect(sim.state.player.sleeping).not.toBeNull();
+    sim.wake('Te sacuden para despertarte');
+    expect(sim.state.player.sleeping).toBeNull();
+    expect(notes.at(-1)).toEqual({ text: 'Te sacuden para despertarte', kind: 'warn' });
+  });
+
+  it('localiza el mueble de cada cama (literas con cama de arriba)', () => {
+    const { sim } = setup();
+    const dorm = mod(sim, 'dormitorio');
+    const b0 = actions.bedProp(sim, dorm.id, 0)!;
+    const b1 = actions.bedProp(sim, dorm.id, 1)!;
+    const b3 = actions.bedProp(sim, dorm.id, 3)!;
+    expect(b0.prop.kind).toBe('litera');
+    expect(b0.upper).toBe(false);
+    expect(b1.prop).toBe(b0.prop);
+    expect(b1.upper).toBe(true);
+    expect(b3.prop).not.toBe(b0.prop);
+    expect(b3.upper).toBe(true);
+    const cam = actions.bedProp(sim, mod(sim, 'camarote').id, 0)!;
+    expect(cam.prop.kind).toBe('cama');
+    expect(cam.upper).toBe(false);
+    expect(actions.bedProp(sim, mod(sim, 'almacen').id, 0)).toBeNull();
+  });
+
+  it('integración: sim.tick a ×14 durante la noche', () => {
+    const { sim } = setup(11);
+    sim.state.npcs = [];
+    sim.state.events.nextRollAt = 1e12;
+    place(sim, INDOOR);
+    goToHour(sim, 22);
+    setNeeds(sim, { hunger: 95, thirst: 95, energy: 30, warmth: 90, health: 100 });
+    expect(sim.sleep(mod(sim, 'camarote').id, 0).ok).toBe(true);
+    const t0 = sim.state.time;
+    // 40 s reales a ×14 = 560 min de juego.
+    for (let i = 0; i < 40 * 60 && sim.state.player.sleeping; i++) sim.tick((1 / 60) * sim.timeScale);
+    expect(sim.state.player.alive).toBe(true);
+    expect(sim.state.time - t0).toBeGreaterThan(400);
+    expect(sim.state.player.needs.energy).toBeGreaterThan(90);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Objetos                                                             */
+/* ------------------------------------------------------------------ */
+
+describe('usar objetos', () => {
+  it('comer: aplica efectos, gasta una unidad y marca el tutorial', () => {
+    const { sim } = setup();
+    setNeeds(sim, { hunger: 40 });
+    const slot = slotWith(sim, 'conserva');
+    const before = countItem(sim.state.player.inventory, 'conserva');
+    const r = sim.useItem(slot);
+    expect(r).toEqual({ ok: true, msg: 'Comes la lata de conserva' });
+    expect(sim.state.player.needs.hunger).toBe(75);
+    expect(countItem(sim.state.player.inventory, 'conserva')).toBe(before - 1);
+    expect(sim.state.tutorial.done).toContain('comer');
+  });
+
+  it('beber, sopa (calor) y guiso (energía) limitados a 100', () => {
+    const { sim } = setup();
+    setNeeds(sim, { thirst: 80, warmth: 50, hunger: 50, energy: 50 });
+    expect(sim.useItem(slotWith(sim, 'agua_potable')).msg).toBe('Bebes la botella de agua');
+    expect(sim.state.player.needs.thirst).toBe(100);
+    sim.useItem(slotWith(sim, 'sopa'));
+    expect(sim.state.player.needs.warmth).toBe(65);
+    sim.useItem(slotWith(sim, 'guiso'));
+    expect(sim.state.player.needs.energy).toBe(56);
+    expect(sim.state.player.needs.hunger).toBe(100);
+  });
+
+  it('no desperdicia comida si no hace falta', () => {
+    const { sim } = setup();
+    setNeeds(sim, { hunger: 100, thirst: 100 });
+    const slot = slotWith(sim, 'conserva');
+    const n = countItem(sim.state.player.inventory, 'conserva');
+    expect(sim.useItem(slot)).toEqual({ ok: false, msg: 'No tienes hambre' });
+    expect(sim.useItem(slotWith(sim, 'agua_potable'))).toEqual({ ok: false, msg: 'No tienes sed' });
+    expect(countItem(sim.state.player.inventory, 'conserva')).toBe(n);
+    setNeeds(sim, { health: 100 });
+    expect(sim.useItem(slotWith(sim, 'botiquin')).ok).toBe(false);
+  });
+
+  it('el agua de mar deja el cubo vacío en la misma ranura, da sed y puede enfermar', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    const cubo = inv.slots.findIndex((s) => s?.id === 'cubo');
+    inv.slots[cubo] = { id: 'cubo_agua', qty: 1 };
+    setNeeds(sim, { thirst: 50, health: 100 });
+    forceChance(sim, true);
+    const r = sim.useItem(cubo);
+    expect(r.ok).toBe(true);
+    expect(inv.slots[cubo]).toEqual({ id: 'cubo', qty: 1 });
+    expect(sim.state.player.needs.thirst).toBe(42);
+    expect(sim.state.player.needs.health).toBe(94);
+    expect(sim.state.player.sick).toBe(needs.SICK_HOURS);
+  });
+
+  it('los planos desbloquean, se consumen y avisan', () => {
+    const { sim } = setup();
+    const unlocked: string[] = [];
+    sim.bus.on('unlocked', (u) => unlocked.push(`${u.key}:${u.name}`));
+    const slot = slotWith(sim, 'plano_taller');
+    const r = sim.useItem(slot);
+    expect(r.ok).toBe(true);
+    expect(sim.state.unlocks).toContain('taller');
+    expect(unlocked).toEqual(['taller:Taller mecánico']);
+    expect(countItem(sim.state.player.inventory, 'plano_taller')).toBe(0);
+    expect(sim.state.log.at(-1)!.text).toMatch(/Plano aprendido: Taller mecánico/);
+    // Una segunda copia no se gasta.
+    const again = slotWith(sim, 'plano_taller');
+    expect(sim.useItem(again).ok).toBe(false);
+    expect(countItem(sim.state.player.inventory, 'plano_taller')).toBe(1);
+  });
+
+  it('la ropa se equipa, se intercambia y se quita', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    const slot = slotWith(sim, 'abrigo');
+    expect(sim.useItem(slot).msg).toBe('Te pones el abrigo de lona');
+    expect(sim.state.player.clothing).toBe('abrigo');
+    expect(inv.slots[slot]).toBeNull();
+    // Intercambio: la prenda anterior vuelve a la ranura.
+    inv.slots[slot] = { id: 'abrigo', qty: 1 };
+    expect(sim.useItem(slot).ok).toBe(true);
+    expect(inv.slots[slot]).toEqual({ id: 'abrigo', qty: 1 });
+    expect(sim.state.player.clothing).toBe('abrigo');
+    // Quitársela.
+    const n = countItem(inv, 'abrigo');
+    expect(sim.unequipClothing().ok).toBe(true);
+    expect(sim.state.player.clothing).toBeNull();
+    expect(countItem(inv, 'abrigo')).toBe(n + 1);
+    expect(sim.unequipClothing().ok).toBe(false);
+  });
+
+  it('no se quita la ropa si no cabe en el inventario', () => {
+    const { sim } = setup();
+    sim.state.player.clothing = 'abrigo';
+    const inv = sim.state.player.inventory;
+    for (let i = 0; i < inv.slots.length; i++) inv.slots[i] = { id: 'madera', qty: 50 };
+    expect(sim.unequipClothing().ok).toBe(false);
+    expect(sim.state.player.clothing).toBe('abrigo');
+  });
+
+  it('las herramientas no se consumen: se seleccionan en la barra rápida', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    const gancho = inv.slots.findIndex((s) => s?.id === 'martillo');
+    const r = sim.useItem(gancho);
+    expect(r.ok).toBe(true);
+    expect(sim.state.player.hotbar).toBe(gancho);
+    expect(countItem(inv, 'martillo')).toBe(1);
+    inv.slots[20] = { id: 'llave_inglesa', qty: 1 };
+    const far = sim.useItem(20);
+    expect(far.ok).toBe(false);
+    expect(far.msg).toMatch(/barra rápida/);
+  });
+
+  it('materiales, semillas y ranuras vacías dan un mensaje claro', () => {
+    const { sim } = setup();
+    expect(sim.useItem(slotWith(sim, 'madera')).ok).toBe(false);
+    expect(sim.useItem(slotWith(sim, 'semilla_lino')).msg).toMatch(/huerto/);
+    expect(sim.useItem(23).msg).toBe('No hay nada en esa ranura');
+    expect(sim.useItem(99).ok).toBe(false);
+  });
+
+  it('no se puede usar nada durmiendo', () => {
+    const { sim } = setup();
+    goToHour(sim, 23);
+    place(sim, INDOOR);
+    sim.sleep(mod(sim, 'camarote').id, 0);
+    expect(sim.useItem(slotWith(sim, 'conserva')).msg).toBe('Estás durmiendo');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Inventarios                                                         */
+/* ------------------------------------------------------------------ */
+
+describe('mover objetos', () => {
+  it('la ranura de combustible solo admite lo que arde', () => {
+    const { sim } = setup();
+    const cocina = mod(sim, 'cocina');
+    cocina.fuelInv!.slots[0] = null;
+    const conserva = slotWith(sim, 'conserva');
+    const r = sim.moveItem({ kind: 'player' }, conserva, { kind: 'module', id: cocina.id, slot: 'fuel' });
+    expect(r.ok).toBe(false);
+    expect(r.msg).toMatch(/no arde/);
+    const madera = slotWith(sim, 'madera', 5);
+    expect(sim.moveItem({ kind: 'player' }, madera, { kind: 'module', id: cocina.id, slot: 'fuel' }).ok).toBe(true);
+    expect(countItem(cocina.fuelInv, 'madera')).toBe(5);
+  });
+
+  it('un intercambio no puede meter algo que no arde en el combustible', () => {
+    const { sim } = setup();
+    const cocina = mod(sim, 'cocina');
+    const conserva = slotWith(sim, 'conserva');
+    const r = sim.moveItem({ kind: 'module', id: cocina.id, slot: 'fuel' }, 0, { kind: 'player' }, conserva);
+    expect(r.ok).toBe(false);
+    expect(countItem(cocina.fuelInv, 'madera')).toBe(3);
+  });
+
+  it('no se guarda nada en una obra', () => {
+    const { sim } = setup();
+    const alm = mod(sim, 'almacen');
+    alm.status = 'construction';
+    const r = sim.moveItem({ kind: 'player' }, slotWith(sim, 'conserva'), { kind: 'module', id: alm.id, slot: 'inventory' });
+    expect(r.ok).toBe(false);
+    expect(r.msg).toMatch(/obra/);
+  });
+
+  it('guardar en el almacén marca el tutorial y fusiona pilas', () => {
+    const { sim } = setup();
+    const alm = mod(sim, 'almacen');
+    const before = countItem(alm.inventory, 'conserva');
+    const slot = slotWith(sim, 'conserva');
+    const qty = sim.state.player.inventory.slots[slot]!.qty;
+    expect(sim.moveItem({ kind: 'player' }, slot, { kind: 'module', id: alm.id, slot: 'inventory' }).ok).toBe(true);
+    expect(countItem(alm.inventory, 'conserva')).toBe(before + qty);
+    expect(sim.state.player.inventory.slots[slot]).toBeNull();
+    expect(sim.state.tutorial.done).toContain('almacen');
+  });
+
+  it('mueve, intercambia y reparte dentro del propio inventario', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    inv.slots[10] = { id: 'madera', qty: 30 };
+    inv.slots[11] = { id: 'madera', qty: 40 };
+    expect(sim.moveItem({ kind: 'player' }, 10, { kind: 'player' }, 11)).toEqual({ ok: true, msg: 'Solo caben 10× Madera' });
+    expect(inv.slots[11]).toEqual({ id: 'madera', qty: 50 });
+    expect(inv.slots[10]).toEqual({ id: 'madera', qty: 20 });
+    inv.slots[12] = { id: 'tela', qty: 2 };
+    expect(sim.moveItem({ kind: 'player' }, 10, { kind: 'player' }, 12).ok).toBe(true);
+    expect(inv.slots[12]).toEqual({ id: 'madera', qty: 20 });
+    expect(inv.slots[10]).toEqual({ id: 'tela', qty: 2 });
+    expect(sim.moveItem({ kind: 'player' }, 10, { kind: 'player' }).ok).toBe(false);
+  });
+
+  it('coger todo de una caja la elimina cuando queda vacía', () => {
+    const { sim } = setup();
+    const r = sim.dropItem(slotWith(sim, 'tela', 3));
+    expect(r.ok).toBe(true);
+    expect(sim.state.crates).toHaveLength(1);
+    const crate = sim.state.crates[0]!;
+    expect(crate.pos).toEqual(sim.state.player.pos);
+    expect(countItem(crate.inventory, 'tela')).toBe(3);
+    const got: string[] = [];
+    sim.bus.on('itemGained', (g) => got.push(`${g.id}:${g.qty}`));
+    expect(sim.takeAll({ kind: 'crate', id: crate.id })).toEqual({ ok: true, msg: 'Lo coges todo' });
+    expect(sim.state.crates).toHaveLength(0);
+    expect(got).toEqual(['tela:3']);
+  });
+
+  it('coger todo con el inventario lleno deja el resto en el contenedor', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    for (let i = 0; i < PLAYER_SLOTS; i++) inv.slots[i] = { id: 'tela', qty: i === 0 ? 25 : 30 };
+    const alm = mod(sim, 'almacen');
+    alm.inventory = createInventory(20);
+    alm.inventory.slots[0] = { id: 'tela', qty: 10 };
+    alm.inventory.slots[1] = { id: 'madera', qty: 5 };
+    const r = sim.takeAll({ kind: 'module', id: alm.id, slot: 'inventory' });
+    expect(r.ok).toBe(true);
+    expect(r.msg).toMatch(/lleno/);
+    expect(alm.inventory.slots[0]).toEqual({ id: 'tela', qty: 5 });
+    expect(alm.inventory.slots[1]).toEqual({ id: 'madera', qty: 5 });
+  });
+
+  it('dropItem de una ranura vacía falla', () => {
+    const { sim } = setup();
+    expect(sim.dropItem(23).ok).toBe(false);
+    expect(sim.state.crates).toHaveLength(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Agua                                                                */
+/* ------------------------------------------------------------------ */
+
+describe('agua del depósito', () => {
+  const nearTank = (sim: Simulation) => {
+    const p = sim.layout.props.find((pp) => pp.interact === 'deposito')!;
+    place(sim, { x: p.x, y: p.y, z: p.z + p.hz + 0.6 });
+  };
+
+  it('beber del depósito: −1 L, sed +40, tutorial', () => {
+    const { sim } = setup();
+    nearTank(sim);
+    setNeeds(sim, { thirst: 30 });
+    const w0 = sim.state.utilities.waterL;
+    const r = sim.drinkFromTank();
+    expect(r.ok, r.msg).toBe(true);
+    expect(sim.state.utilities.waterL).toBe(w0 - 1);
+    expect(sim.state.player.needs.thirst).toBe(70);
+    expect(sim.state.tutorial.done).toContain('beber');
+  });
+
+  it('llenar botellas gasta 1 L por botella', () => {
+    const { sim } = setup();
+    nearTank(sim);
+    const n = countItem(sim.state.player.inventory, 'agua_potable');
+    const w0 = sim.state.utilities.waterL;
+    expect(sim.fillBottle().ok).toBe(true);
+    expect(sim.fillBottle().ok).toBe(true);
+    expect(countItem(sim.state.player.inventory, 'agua_potable')).toBe(n + 2);
+    expect(sim.state.utilities.waterL).toBe(w0 - 2);
+  });
+
+  it('hay que estar cerca y que quede agua', () => {
+    const { sim } = setup();
+    setNeeds(sim, { thirst: 30 });
+    place(sim, DECK);
+    expect(sim.drinkFromTank().msg).toMatch(/Acércate/);
+    nearTank(sim);
+    sim.state.utilities.waterL = 0.5;
+    expect(sim.drinkFromTank().msg).toMatch(/vacío/);
+    expect(sim.fillBottle().ok).toBe(false);
+    expect(sim.state.utilities.waterL).toBe(0.5);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Clima                                                               */
+/* ------------------------------------------------------------------ */
+
+/** Ejecuta el clima `minutes` minutos y registra los climas por los que pasa. */
+function runWeather(sim: Simulation, minutes: number): { kind: WeatherKind; duration: number }[] {
+  const seq: { kind: WeatherKind; duration: number }[] = [];
+  let cur = sim.state.weather.kind;
+  let started = sim.state.time;
+  for (let t = 0; t < minutes; t += 0.5) {
+    sim.state.time += 0.5;
+    weather.tickWeather(sim, 0.5);
+    const w = sim.state.weather;
+    if (w.kind !== cur || w.remaining > 1e8) {
+      seq.push({ kind: cur, duration: sim.state.time - started });
+      cur = w.kind;
+      started = sim.state.time;
+    }
+  }
+  return seq;
+}
+
+describe('clima', () => {
+  it('transiciones válidas con duraciones en rango y sin dos tormentas seguidas (varias semillas)', () => {
+    for (const seed of [1, 2, 3, 42, 777, 2024]) {
+      const { sim } = setup(seed);
+      sim.state.voyage.regionId = 'tormentas'; // muchas tormentas para estresar la regla
+      const kinds = new Set<string>();
+      const errors: string[] = [];
+      let storms = 0;
+      let prev: WeatherKind = sim.state.weather.kind;
+      for (let t = 0; t < 30 * MINUTES_PER_DAY; t += 1) {
+        sim.state.time += 1;
+        weather.tickWeather(sim, 1);
+        const w = sim.state.weather;
+        if (!weather.WEATHER_KINDS.includes(w.kind) || !weather.WEATHER_KINDS.includes(w.next)) errors.push(`clima inválido ${w.kind}/${w.next}`);
+        if (w.kind === 'tormenta' && w.next === 'tormenta') errors.push(`t=${t}: tormenta prevista tras tormenta`);
+        if (prev !== w.kind) {
+          kinds.add(w.kind);
+          if (w.kind === 'tormenta') {
+            if (prev === 'tormenta') errors.push(`t=${t}: dos tormentas seguidas`);
+            storms++;
+          }
+          const [lo, hi] = weather.WEATHER_DURATION[w.kind];
+          if (w.remaining < lo - 1 || w.remaining > hi) errors.push(`t=${t}: duración ${w.remaining} fuera de [${lo}, ${hi}] para ${w.kind}`);
+        }
+        prev = w.kind;
+        for (const v of [w.cloudiness, w.rain, w.fog, w.wind]) if (!(v >= 0 && v <= 1)) errors.push(`t=${t}: parámetro fuera de rango ${v}`);
+      }
+      expect(errors.slice(0, 5), `semilla ${seed}`).toEqual([]);
+      expect(kinds.size, `semilla ${seed}`).toBeGreaterThanOrEqual(4);
+      expect(storms, `semilla ${seed}`).toBeGreaterThan(3);
+    }
+  });
+
+  it('la tormenta nunca se repite seguida aunque la región solo pese tormentas', () => {
+    const { sim } = setup(5);
+    const r = REGIONS['tormentas']!;
+    const saved = { ...r.weather };
+    try {
+      Object.assign(r.weather, { despejado: 0, nublado: 0, lluvia: 0, niebla: 0.01, tormenta: 100 });
+      weather.forceWeather(sim, 'tormenta', 10);
+      sim.state.voyage.regionId = 'tormentas';
+      const seq = runWeather(sim, 5 * MINUTES_PER_DAY);
+      for (let i = 1; i < seq.length; i++) expect(seq[i - 1]!.kind === 'tormenta' && seq[i]!.kind === 'tormenta').toBe(false);
+    } finally {
+      Object.assign(r.weather, saved);
+    }
+  });
+
+  it('las regiones cambian la frecuencia de cada clima', () => {
+    const count = (region: string) => {
+      const { sim } = setup(9);
+      sim.state.voyage.regionId = region;
+      let storm = 0;
+      for (let t = 0; t < 60 * MINUTES_PER_DAY; t += 2) {
+        sim.state.time += 2;
+        weather.tickWeather(sim, 2);
+        if (sim.state.weather.kind === 'tormenta') storm += 2;
+      }
+      return storm;
+    };
+    expect(count('tormentas')).toBeGreaterThan(count('templadas') * 2);
+  });
+
+  it('los parámetros se suavizan hacia el objetivo del clima', () => {
+    const { sim } = setup();
+    weather.forceWeather(sim, 'tormenta', 600);
+    const w = sim.state.weather;
+    expect(w.blend).toBe(0);
+    const rain0 = w.rain;
+    sim.state.time += 1;
+    weather.tickWeather(sim, 1);
+    expect(w.rain).toBeGreaterThan(rain0);
+    expect(w.rain).toBeLessThan(0.1);
+    for (let i = 0; i < 300; i++) {
+      sim.state.time += 1;
+      weather.tickWeather(sim, 1);
+    }
+    expect(w.rain).toBeCloseTo(1, 2);
+    expect(w.wind).toBeCloseTo(1, 2);
+    expect(w.waveHeight).toBeCloseTo(2.6, 1);
+    expect(w.blend).toBe(1);
+  });
+
+  it('temperatura: base de la región + sol − lluvia − viento', () => {
+    const { sim } = setup();
+    weather.forceWeather(sim, 'despejado', 1e6, true);
+    goToHour(sim, 12.25);
+    weather.tickWeather(sim, 0.5);
+    const w = sim.state.weather;
+    expect(w.temperature).toBeCloseTo(weather.airTemperature(REGIONS['templadas']!.baseTemp, sim.state.time, w.rain, w.wind), 6);
+    expect(w.temperature).toBeGreaterThan(26);
+    goToHour(sim, 0.25);
+    weather.tickWeather(sim, 0.5);
+    expect(w.temperature).toBeLessThan(18);
+  });
+
+  it('la temperatura cambia de forma gradual al cambiar de región', () => {
+    const { sim } = setup();
+    weather.forceWeather(sim, 'despejado', 1e6, true);
+    weather.tickWeather(sim, 0.5);
+    const t0 = sim.state.weather.temperature;
+    sim.state.voyage.regionId = 'boreal';
+    weather.tickWeather(sim, 0.5);
+    expect(t0 - sim.state.weather.temperature).toBeLessThan(1);
+    for (let i = 0; i < 400; i++) weather.tickWeather(sim, 0.5);
+    expect(sim.state.weather.temperature).toBeLessThan(t0 - 15);
+  });
+
+  it('el barómetro avisa una vez 60–90 min antes de la tormenta', () => {
+    const { sim, notes } = setup();
+    weather.forceWeather(sim, 'nublado', 300);
+    sim.state.weather.next = 'tormenta';
+    let warnedAt: number | null = null;
+    for (let t = 0; t < 300; t += 0.5) {
+      sim.state.time += 0.5;
+      weather.tickWeather(sim, 0.5);
+      if (warnedAt === null && notes.some((n) => /barómetro/.test(n.text))) warnedAt = sim.state.weather.remaining;
+    }
+    expect(warnedAt).not.toBeNull();
+    expect(warnedAt!).toBeGreaterThanOrEqual(59);
+    expect(warnedAt!).toBeLessThanOrEqual(90);
+    expect(notes.filter((n) => /barómetro/.test(n.text))).toHaveLength(1);
+    expect(sim.state.weather.kind).toBe('tormenta');
+    expect(notes.some((n) => /tormenta/.test(n.text) && n.kind === 'danger')).toBe(true);
+    expect(weather.barometer(sim).trend).toBe('tormenta');
+  });
+
+  it('relámpagos con trueno durante la tormenta', () => {
+    const { sim, sfx } = setup(4);
+    weather.forceWeather(sim, 'tormenta', 600, true);
+    let flashes = 0;
+    for (let t = 0; t < 120; t += 0.5) {
+      sim.state.time += 0.5;
+      weather.tickWeather(sim, 0.5);
+      if (sim.state.weather.lightning > 0) flashes++;
+    }
+    const thunder = sfx.filter((s) => s === 'trueno').length;
+    expect(thunder).toBeGreaterThan(5);
+    expect(thunder).toBeLessThan(40);
+    expect(flashes).toBeGreaterThan(0);
+    // Sin tormenta no hay rayos.
+    weather.forceWeather(sim, 'despejado', 600, true);
+    const before = sfx.length;
+    for (let t = 0; t < 120; t += 0.5) weather.tickWeather(sim, 0.5);
+    expect(sfx.slice(before).filter((s) => s === 'trueno')).toHaveLength(0);
+    expect(sim.state.weather.lightning).toBe(0);
+  });
+
+  it('es determinista con la misma semilla', () => {
+    const a = setup(31).sim;
+    const b = setup(31).sim;
+    const sa = runWeather(a, 10 * MINUTES_PER_DAY).map((s) => s.kind).join(',');
+    const sb = runWeather(b, 10 * MINUTES_PER_DAY).map((s) => s.kind).join(',');
+    expect(sa).toBe(sb);
+    expect(sa.length).toBeGreaterThan(10);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Viaje                                                               */
+/* ------------------------------------------------------------------ */
+
+function runVoyage(sim: Simulation, minutes: number): void {
+  for (let t = 0; t < minutes - 1e-9; t += 0.5) {
+    sim.state.time += 0.5;
+    voyage.tickVoyage(sim, 0.5);
+  }
+}
+
+describe('viaje', () => {
+  it('navega a velocidad de crucero', () => {
+    const { sim } = setup();
+    runVoyage(sim, 60);
+    const v = sim.state.voyage;
+    expect(v.speed).toBeCloseTo(CRUISE_SPEED, 6);
+    expect(v.distance).toBeCloseTo(CRUISE_SPEED, 6);
+    expect(v.regionDistance).toBeCloseTo(CRUISE_SPEED, 6);
+  });
+
+  it('la región y el motor cambian la velocidad', () => {
+    const { sim } = setup();
+    sim.state.voyage.regionId = 'sargazos';
+    expect(voyage.targetSpeed(sim)).toBeCloseTo(CRUISE_SPEED * 0.75, 6);
+    const motor = addModule(sim, 'motor', 0, 2, 2);
+    motor.on = true;
+    motor.powered = false;
+    expect(voyage.targetSpeed(sim)).toBeCloseTo(CRUISE_SPEED * 0.75, 6);
+    motor.powered = true;
+    expect(voyage.targetSpeed(sim)).toBeCloseTo(CRUISE_SPEED * 0.75 + 3, 6);
+    motor.on = false;
+    expect(voyage.motorBonus(sim)).toBe(0);
+  });
+
+  it('fondeo: se detiene poco a poco y leva anclas al acabar', () => {
+    const { sim, notes } = setup();
+    voyage.anchorShip(sim, 60, 'rescate');
+    expect(voyage.isAnchored(sim)).toBe(true);
+    runVoyage(sim, 30);
+    expect(sim.state.voyage.speed).toBe(0);
+    const d = sim.state.voyage.distance;
+    runVoyage(sim, 20);
+    expect(sim.state.voyage.distance).toBe(d);
+    runVoyage(sim, 15);
+    expect(sim.state.voyage.anchoredUntil).toBeNull();
+    expect(notes.some((n) => /Levamos anclas/.test(n.text))).toBe(true);
+    runVoyage(sim, 10);
+    expect(sim.state.voyage.speed).toBeGreaterThan(3);
+  });
+
+  it('pide rumbo a 10 millas del final y entra en la región elegida', () => {
+    const { sim, notes } = setup();
+    const v = sim.state.voyage;
+    const len = v.regionLength;
+    v.regionDistance = len - 10.5;
+    runVoyage(sim, 1);
+    expect(v.nextChoices).toBeNull();
+    runVoyage(sim, 10);
+    expect(v.nextChoices).toEqual(REGIONS['templadas']!.next);
+    expect(notes.some((n) => /elige rumbo en el timón/.test(n.text))).toBe(true);
+    expect(sim.chooseRoute('boreal').ok).toBe(false);
+    const r = sim.chooseRoute('archipielago');
+    expect(r).toEqual({ ok: true, msg: 'Rumbo fijado: Archipiélago Esmeralda' });
+    expect(sim.state.tutorial.done).toContain('timon');
+    runVoyage(sim, 120);
+    expect(v.regionId).toBe('archipielago');
+    expect(v.regionLength).toBe(REGIONS['archipielago']!.length);
+    expect(v.regionDistance).toBeGreaterThan(0);
+    expect(v.regionDistance).toBeLessThan(10);
+    expect(v.route).toEqual(['templadas', 'archipielago']);
+    expect(v.nextChoices).toBeNull();
+    expect(v.chosenNext).toBeNull();
+    expect(sim.state.log.some((l) => /Entramos en Archipiélago Esmeralda/.test(l.text))).toBe(true);
+  });
+
+  it('sin rumbo elegido sigue la primera opción', () => {
+    const { sim } = setup();
+    runVoyage(sim, (REGIONS['templadas']!.length / CRUISE_SPEED) * 60 + 5);
+    expect(sim.state.voyage.regionId).toBe(REGIONS['templadas']!.next[0]);
+    expect(sim.state.log.some((l) => /sin rumbo fijado/.test(l.text))).toBe(true);
+  });
+
+  it('se puede fijar el rumbo antes de tiempo y se respeta', () => {
+    const { sim } = setup();
+    expect(sim.chooseRoute('archipielago').ok).toBe(true);
+    runVoyage(sim, (REGIONS['templadas']!.length / CRUISE_SPEED) * 60 + 5);
+    expect(sim.state.voyage.regionId).toBe('archipielago');
+  });
+
+  it('integración: varios días de sim.tick recorren regiones encadenadas', () => {
+    const { sim } = setup(17);
+    sim.state.npcs = [];
+    sim.state.events.nextRollAt = 1e12;
+    for (let i = 0; i < 3 * 48; i++) {
+      Object.assign(sim.state.player.needs, { hunger: 100, thirst: 100, energy: 100, health: 100, warmth: 80 });
+      sim.tick(30);
+    }
+    const v = sim.state.voyage;
+    expect(v.route.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < v.route.length; i++) expect(REGIONS[v.route[i - 1]!]!.next).toContain(v.route[i]);
+    expect(v.distance).toBeGreaterThan(300);
+  });
+
+  it('los avistamientos derivan hacia popa y caducan', () => {
+    const { sim } = setup();
+    const v = sim.state.voyage;
+    v.sightings.push({ id: 50, kind: 'isla', name: 'Isla', expiresAt: sim.state.time + 30, side: 1, distance: 200, x: 100, eventId: 1 });
+    runVoyage(sim, 10);
+    expect(v.sightings[0]!.x).toBeCloseTo(100 - ((VISUAL_DRIFT * CRUISE_SPEED) / 6) * 10, 6);
+    runVoyage(sim, 21);
+    expect(v.sightings).toHaveLength(0);
+  });
+
+  it('opciones de rumbo para el timón', () => {
+    const { sim } = setup();
+    sim.chooseRoute('sargazos');
+    const opts = voyage.routeOptions(sim);
+    expect(opts.map((o) => o.id)).toEqual(['sargazos', 'archipielago']);
+    expect(opts[0]!.chosen).toBe(true);
+    expect(voyage.hoursToRegionEnd(sim)).toBeCloseTo(REGIONS['templadas']!.length / CRUISE_SPEED, 6);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Tutorial                                                            */
+/* ------------------------------------------------------------------ */
+
+describe('tutorial', () => {
+  it('empieza por moverse y se completa al alejarse 5 m', () => {
+    const { sim } = setup();
+    expect(tutorial.currentTutorial(sim)?.id).toBe('mover');
+    tutorial.tickTutorial(sim, 0.5);
+    sim.state.player.pos.x += 3;
+    tutorial.tickTutorial(sim, 0.5);
+    expect(sim.state.tutorial.done).not.toContain('mover');
+    sim.state.player.pos.z += 4;
+    tutorial.tickTutorial(sim, 0.5);
+    expect(sim.state.tutorial.done).toContain('mover');
+  });
+
+  it('deja al menos 20 min entre pasos y salta los que no aplican', () => {
+    const { sim } = setup();
+    tutorial.markTutorial(sim, 'mover');
+    expect(tutorial.currentTutorial(sim)).toBeNull();
+    sim.state.time += 19;
+    expect(tutorial.currentTutorial(sim)).toBeNull();
+    sim.state.time += 1;
+    // Sin restos flotando, el gancho espera y se muestra comer.
+    expect(tutorial.currentTutorial(sim)?.id).toBe('comer');
+    sim.state.debris.push({ id: 77, kind: 'tablones', pos: { x: 30, z: 10 }, vel: { x: -1, z: 0 }, loot: [], spin: 0 });
+    const step = tutorial.currentTutorial(sim)!;
+    expect(step.id).toBe('gancho');
+    expect(step.index).toBe(2);
+    expect(step.total).toBe(tutorial.TUTORIAL_STEPS.length);
+  });
+
+  it('los pasos hechos fuera de orden se saltan y "dormir" espera a la noche', () => {
+    const { sim } = setup();
+    for (const id of ['mover', 'gancho', 'comer', 'almacen', 'fabricar', 'cocinar', 'beber']) tutorial.markTutorial(sim, id);
+    sim.state.time += 30;
+    goToHour(sim, 12);
+    setNeeds(sim, { energy: 90 });
+    // 'pescar' espera a tener caña y 'dormir' a la noche: toca construir.
+    expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
+    goToHour(sim, 20);
+    expect(tutorial.currentTutorial(sim)?.id).toBe('dormir');
+    addItem(sim.state.player.inventory, 'cana', 1);
+    expect(tutorial.currentTutorial(sim)?.id).toBe('pescar');
+  });
+
+  it('descartado, terminado o durmiendo no muestra nada', () => {
+    const { sim, notes } = setup();
+    tutorial.dismissTutorial(sim);
+    expect(tutorial.currentTutorial(sim)).toBeNull();
+    tutorial.resumeTutorial(sim);
+    expect(tutorial.currentTutorial(sim)?.id).toBe('mover');
+    for (const s of tutorial.TUTORIAL_STEPS) tutorial.markTutorial(sim, s.id);
+    sim.state.time += 100;
+    expect(tutorial.currentTutorial(sim)).toBeNull();
+    expect(tutorial.tutorialProgress(sim)).toEqual({ done: 13, total: 13, complete: true });
+    expect(notes.filter((n) => /Tutorial completado/.test(n.text))).toHaveLength(1);
+  });
+
+  it('markTutorial emite el evento una sola vez', () => {
+    const { sim } = setup();
+    const ids: string[] = [];
+    sim.bus.on('tutorialStep', (e) => ids.push(e.id));
+    tutorial.markTutorial(sim, 'comer');
+    tutorial.markTutorial(sim, 'comer');
+    expect(ids).toEqual(['comer']);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Guardado                                                            */
+/* ------------------------------------------------------------------ */
+
+describe('guardado', () => {
+  it('ida y vuelta con localStorage falso: estado idéntico', () => {
+    const storage = new FakeStorage();
+    const store = createLocalSaveStore('test', storage);
+    const { sim } = setup(21);
+    sim.state.npcs = [];
+    sim.state.events.nextRollAt = 1e12;
+    for (let i = 0; i < 20; i++) sim.tick(30);
+    sim.state.player.clothing = 'abrigo';
+    sim.state.unlocks.push('taller');
+    store.save('manual', sim.state);
+    const loaded = store.load('manual')!;
+    expect(loaded).toEqual(JSON.parse(serialize(sim.state)));
+    // La partida cargada sigue funcionando.
+    const sim2 = new Simulation(loaded);
+    sim2.tick(30);
+    expect(sim2.state.time).toBeCloseTo(sim.state.time + 30, 6);
+  });
+
+  it('lista ordenada por fecha con etiqueta legible', async () => {
+    const storage = new FakeStorage();
+    const store = createLocalSaveStore('test', storage);
+    const a = createNewGame(1);
+    const b = createNewGame(2);
+    b.time += 2 * MINUTES_PER_DAY;
+    b.voyage.regionId = 'archipielago';
+    store.save('auto', a);
+    await new Promise((r) => setTimeout(r, 5));
+    store.save('manual2', b);
+    storage.setItem('otra-cosa', '{}');
+    const list = store.list();
+    expect(list.map((x) => x.slot)).toEqual(['manual2', 'auto']);
+    expect(list[0]!.label).toBe('Día 3 · Archipiélago Esmeralda');
+    expect(list[0]!.day).toBe(3);
+    expect(list[0]!.region).toBe('Archipiélago Esmeralda');
+    expect(list[1]!.label).toBe('Día 1 · Aguas Templadas');
+    expect(list[1]!.slotName).toBe('Guardado automático');
+    await new Promise((r) => setTimeout(r, 5));
+    store.save('manual', a, 'Antes de la tormenta');
+    const after = store.list();
+    expect(after[0]!.slot).toBe('manual');
+    expect(after[0]!.label).toBe('Antes de la tormenta');
+  });
+
+  it('borrar, cargar inexistente y entradas dañadas', () => {
+    const storage = new FakeStorage();
+    const store = createLocalSaveStore('test', storage);
+    store.save('manual', createNewGame(1));
+    expect(store.load('manual3')).toBeNull();
+    store.remove('manual');
+    expect(store.load('manual')).toBeNull();
+    expect(store.list()).toHaveLength(0);
+    storage.setItem('test:save:manual2', '{roto');
+    const list = store.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]!.corrupt).toBe(true);
+    expect(() => store.load('manual2')).toThrow(SaveError);
+    try {
+      store.load('manual2');
+    } catch (e) {
+      expect((e as SaveError).kind).toBe('corrupt');
+      expect((e as Error).message).toMatch(/dañada/);
+    }
+  });
+
+  it('rellena en profundidad los campos que falten', () => {
+    const s = createNewGame(5) as unknown as Record<string, any>;
+    delete s.weather.fog;
+    delete s.player.stats;
+    delete s.player.needs.warmth;
+    delete s.tutorial;
+    delete s.utilities.water;
+    s.voyage.speed = 'rápido';
+    delete s.ship.modules[2].queue;
+    delete s.ship.modules[2].fuelInv;
+    delete s.ship.modules[0].beds;
+    delete s.npcs[0].needs.mood;
+    delete s.npcs[1].appearance;
+    s.player.inventory.slots[5] = { id: 'objeto_inexistente', qty: 3 };
+    s.player.inventory.slots.length = 10;
+    const st = deserialize(JSON.stringify(s));
+    const def = createNewGame(5);
+    expect(st.weather.fog).toBe(def.weather.fog);
+    expect(st.player.stats).toEqual(def.player.stats);
+    expect(st.player.needs.warmth).toBe(def.player.needs.warmth);
+    expect(st.tutorial).toEqual({ done: [], dismissed: false });
+    expect(st.utilities.water).toEqual(def.utilities.water);
+    expect(st.voyage.speed).toBe(def.voyage.speed);
+    expect(st.ship.modules[2]!.queue).toEqual([]);
+    expect(st.ship.modules[2]!.fuelInv!.slots).toHaveLength(1);
+    expect(st.ship.modules[0]!.beds).toEqual([null, null, null, null]);
+    expect(st.npcs[0]!.needs.mood).toBe(70);
+    expect(st.npcs[1]!.appearance).toBeTruthy();
+    expect(st.player.inventory.slots).toHaveLength(PLAYER_SLOTS);
+    expect(st.player.inventory.slots[5]).toBeNull();
+    // Los datos guardados se conservan.
+    expect(st.ship.modules[1]!.beds).toEqual(['player']);
+    expect(st.npcs[0]!.name).toBe('Marina');
+    // Y la partida se puede simular.
+    const sim = new Simulation(st);
+    sim.tick(10);
+    expect(sim.state.player.alive).toBe(true);
+  });
+
+  it('corrige ids, regiones y climas inválidos', () => {
+    const s = createNewGame(5) as unknown as Record<string, any>;
+    s.nextId = 1;
+    s.voyage.regionId = 'atlantida';
+    s.weather.kind = 'granizo';
+    s.ship.modules.push({ id: 99, type: 'modulo_futuro', level: 1, x: 0, z: 0, rot: 0 });
+    const st = restoreState(s);
+    expect(st.nextId).toBeGreaterThan(Math.max(...st.ship.modules.map((m) => m.id)));
+    expect(st.voyage.regionId).toBe('templadas');
+    expect(st.weather.kind).toBe('despejado');
+    expect(st.ship.modules.some((m) => m.type === 'modulo_futuro')).toBe(false);
+  });
+
+  it('migra guardados sin versión y rechaza versiones futuras o datos dañados', () => {
+    const old = createNewGame(8) as unknown as Record<string, any>;
+    delete old.version;
+    expect(deserialize(JSON.stringify(old)).version).toBe(SAVE_VERSION);
+    const future = createNewGame(8) as unknown as Record<string, any>;
+    future.version = SAVE_VERSION + 1;
+    expect(() => deserialize(JSON.stringify(future))).toThrow(/versión más nueva/);
+    expect(() => deserialize('no es json')).toThrow(/dañada/);
+    expect(() => deserialize('{"time":5}')).toThrow(/falta el barco/);
+    const noPlayer = createNewGame(8) as unknown as Record<string, any>;
+    delete noPlayer.player;
+    expect(() => deserialize(JSON.stringify(noPlayer))).toThrow(/falta el jugador/);
+  });
+
+  it('exporta e importa una partida como archivo', () => {
+    const st = createNewGame(12);
+    st.time += 3 * MINUTES_PER_DAY;
+    const file = exportSave(st, 'Mi partida');
+    expect(JSON.parse(file).meta.label).toBe('Mi partida');
+    expect(deserialize(file)).toEqual(JSON.parse(serialize(st)));
+  });
+
+  it('acepta un estado suelto (sin envoltorio meta) en el almacenamiento', () => {
+    const storage = new FakeStorage();
+    storage.setItem('test:save:manual', JSON.stringify(createNewGame(4)));
+    const store = createLocalSaveStore('test', storage);
+    expect(store.load('manual')!.seed).toBe(4);
+  });
+
+  it('error de cuota claro sin perder el guardado anterior', () => {
+    const first = createNewGame(1);
+    const size = JSON.stringify({ meta: {}, state: first }).length;
+    const storage = new FakeStorage(size + 600);
+    const store = createLocalSaveStore('test', storage);
+    store.save('manual', first);
+    const big = createNewGame(2);
+    for (let i = 0; i < 200; i++) big.log.push({ at: i, text: 'x'.repeat(100), kind: 'info' });
+    let err: unknown = null;
+    try {
+      store.save('manual', big);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(SaveError);
+    expect((err as SaveError).kind).toBe('quota');
+    expect((err as Error).message).toMatch(/espacio/);
+    expect(store.load('manual')!.seed).toBe(1);
+  });
+
+  it('la cuota se libera reescribiendo la misma ranura cuando hace falta', () => {
+    const a = createNewGame(1);
+    const size = JSON.stringify({ meta: {}, state: a }).length;
+    // Cabe una partida, pero no dos a la vez: el reintento borra la vieja primero.
+    const storage = new FakeStorage(size * 1.5);
+    let firstTry = true;
+    const orig = storage.setItem.bind(storage);
+    storage.setItem = (k, v) => {
+      if (firstTry && storage.getItem(k) !== null) {
+        firstTry = false;
+        const e = new Error('lleno');
+        e.name = 'QuotaExceededError';
+        throw e;
+      }
+      orig(k, v);
+    };
+    const store = createLocalSaveStore('test', storage);
+    store.save('manual', a);
+    const b = createNewGame(2);
+    store.save('manual', b);
+    expect(store.load('manual')!.seed).toBe(2);
+  });
+
+  it('sin almacenamiento disponible: lista vacía y error claro al guardar', () => {
+    const g = globalThis as { localStorage?: unknown };
+    const prev = g.localStorage;
+    delete g.localStorage;
+    try {
+      const store = createLocalSaveStore('test');
+      expect(store.list()).toEqual([]);
+      expect(store.load('manual')).toBeNull();
+      expect(() => store.save('manual', createNewGame(1))).toThrow(/no permite guardar/);
+    } finally {
+      if (prev !== undefined) g.localStorage = prev;
+    }
+  });
+
+  it('usa globalThis.localStorage por defecto', () => {
+    const g = globalThis as { localStorage?: unknown };
+    const prev = g.localStorage;
+    g.localStorage = new FakeStorage();
+    try {
+      const store = createLocalSaveStore();
+      store.save('auto', createNewGame(6));
+      expect(store.list()[0]!.slot).toBe('auto');
+      expect((g.localStorage as FakeStorage).getItem('ciudad-flotante:save:auto')).toMatch(/^\{"meta":/);
+    } finally {
+      if (prev === undefined) delete g.localStorage;
+      else g.localStorage = prev;
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Integración: vida a bordo                                           */
+/* ------------------------------------------------------------------ */
+
+describe('integración: varios días a bordo', () => {
+  it('un jugador que come, bebe y duerme sobrevive 3 días con valores siempre válidos', () => {
+    for (const seed of [1, 8, 99]) {
+      const { sim } = setup(seed);
+      const st = sim.state;
+      addItem(st.player.inventory, 'conserva', 15);
+      const cam = mod(sim, 'camarote');
+      const tank = sim.layout.props.find((pp) => pp.interact === 'deposito')!;
+      let slept = 0;
+      let drank = 0;
+      let ate = 0;
+      const errors: string[] = [];
+      for (let i = 0; i < 3 * 24 * 4 && st.player.alive; i++) {
+        const p = st.player;
+        const n = p.needs;
+        if (!p.sleeping) {
+          if (n.thirst < 50 && st.utilities.waterL >= 1) {
+            place(sim, { x: tank.x, y: tank.y, z: tank.z + tank.hz + 0.6 });
+            if (sim.drinkFromTank().ok) drank++;
+          }
+          if (n.hunger < 50) {
+            const slot = st.player.inventory.slots.findIndex((x) => x?.id === 'conserva');
+            if (slot >= 0 && sim.useItem(slot).ok) ate++;
+          }
+          const h = hourOf(st.time);
+          if ((h >= 21 || h < 5) && !p.sleeping) {
+            nearBed(sim, cam.id, 0);
+            if (sim.sleep(cam.id, 0).ok) slept++;
+          } else {
+            place(sim, INDOOR);
+          }
+        }
+        sim.tick(15);
+        for (const [k, v] of Object.entries(st.player.needs)) if (!(v >= 0 && v <= 100)) errors.push(`${seed}/${i}: ${k}=${v}`);
+        if (!Number.isFinite(st.weather.temperature) || !Number.isFinite(st.voyage.distance)) errors.push(`${seed}/${i}: mundo inválido`);
+      }
+      expect(errors.slice(0, 5)).toEqual([]);
+      expect(st.player.alive, `semilla ${seed}: ${st.player.deathCause}`).toBe(true);
+      expect(st.player.stats.daysSurvived).toBeGreaterThanOrEqual(2);
+      expect(slept).toBeGreaterThanOrEqual(2);
+      expect(drank).toBeGreaterThan(5);
+      expect(ate).toBeGreaterThan(3);
+      expect(st.voyage.route.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
