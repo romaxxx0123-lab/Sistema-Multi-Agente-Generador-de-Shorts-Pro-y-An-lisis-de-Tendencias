@@ -552,11 +552,11 @@ export class Menus {
           [kbd('V'), 'Primera / tercera persona'],
         ]),
         group('Acciones', [
-          [kbd('E'), 'Interactuar, abrir, dormir, hablar'],
-          [[kbd('Mantén'), kbd('E')], 'Ayudar en una obra (con martillo)'],
+          [kbd('E'), 'Interactuar: beber del depósito, coger una caja, cosechar, abrir, dormir, hablar'],
+          [[kbd('Mantén'), kbd('E')], 'Abrir el panel (depósito, caja, bancal) o ayudar en una obra (con martillo)'],
           [kbd('Clic'), 'Usar la herramienta en la mano'],
           [[kbd('Clic der.'), ' / ', kbd('F')], 'Comer, beber o usar lo seleccionado'],
-          [kbd('R'), 'Reparar lo que miras'],
+          [kbd('R'), 'Reparar lo que miras (en el depósito: llenar una botella)'],
           [[kbd('1'), '–', kbd('8'), ' / rueda'], 'Barra rápida'],
         ]),
         group('Paneles', [

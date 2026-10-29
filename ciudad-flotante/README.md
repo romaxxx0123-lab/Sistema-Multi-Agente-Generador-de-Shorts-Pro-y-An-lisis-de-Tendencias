@@ -26,10 +26,10 @@ npm run build:single   # crea dist-single/ciudad-flotante.html
 |---|---|
 | Moverse / correr / saltar | WASD / Mayús / Espacio |
 | Mirar | Ratón |
-| Interactuar (abrir, dormir, hablar) | E (mantener E para ayudar en obras) |
+| Interactuar (beber del depósito, coger una caja, cosechar, abrir, dormir, hablar) | E (mantener E: abrir el panel o ayudar en obras) |
 | Usar la herramienta (gancho, caña, cubo, martillo) | Clic izquierdo |
 | Comer o beber lo seleccionado | Clic derecho o F |
-| Reparar | R |
+| Reparar (en el depósito: llenar una botella) | R |
 | Barra rápida | 1–8 o rueda del ratón |
 | Inventario / fabricar / diario | Tab o I / C / J |
 | Modo construcción | B |

@@ -437,7 +437,7 @@ export class BuildHud {
     const html = `<div class="bm-tip-title">${m.tone === 'bad' || m.tone === 'warn' ? gl('alert') : m.tone === 'ok' ? gl('check') : gl('info')}<b>${esc(m.title)}</b></div><div class="bm-tip-text">${esc(m.text)}</div>${m.sub ? `<div class="bm-tip-sub">${m.sub}</div>` : ''}`;
     setHtml(this.tip, html);
     this.tip.className = `bm-tip show ${m.tone}`;
-    this.position(this.tip, x, y);
+    this.position(this.tip, x, y, true);
   }
 
   /** Ficha de información de un módulo (y vista previa de demolición si procede). */
@@ -466,19 +466,25 @@ export class BuildHud {
     }
     setHtml(this.info, html);
     this.info.classList.add('show');
-    this.position(this.info, x, y);
+    this.position(this.info, x, y, true);
   }
 
-  /** Coloca un rótulo junto al cursor sin salirse de la pantalla (cálculo en px de pantalla). */
-  private position(e: HTMLElement, x: number, y: number): void {
+  /**
+   * Coloca un rótulo junto al cursor sin salirse de la pantalla (cálculo en px de pantalla).
+   * `avoidPalette`: si el cursor está por encima de la paleta, el rótulo no se mete encima de
+   * ella (se da la vuelta hacia arriba), para no tapar las pestañas ni las fichas.
+   */
+  private position(e: HTMLElement, x: number, y: number, avoidPalette = false): void {
     const s = this.scale;
     const r = e.getBoundingClientRect();
     const ew = r.width || 240 * s;
     const eh = r.height || 80 * s;
+    const paletteTop = window.innerHeight - this.paletteHeightPx;
+    const bottom = avoidPalette && y < paletteTop ? paletteTop - 6 : window.innerHeight - 8;
     let left = x + 18 * s;
     let top = y + 20 * s;
     if (left + ew > window.innerWidth - 8) left = x - ew - 14 * s;
-    if (top + eh > window.innerHeight - 8) top = y - eh - 12 * s;
+    if (top + eh > bottom) top = y - eh - 12 * s;
     // Los px de estilo dentro de la capa se multiplican por su zoom.
     e.style.left = `${Math.max(6, left) / s}px`;
     e.style.top = `${Math.max(6, top) / s}px`;

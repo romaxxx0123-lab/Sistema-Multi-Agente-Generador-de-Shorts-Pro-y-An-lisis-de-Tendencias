@@ -24,6 +24,9 @@ export class Input {
   /** El usuario soltó la captura (Esc del navegador) mientras el juego la quería. */
   private lockLost = false;
   private weReleased = false;
+  /** Última posición del cursor sin capturar (Chromium manda saltos relativos a ella). */
+  private freeX = 0;
+  private freeY = 0;
 
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -58,6 +61,17 @@ export class Input {
       const r = element.getBoundingClientRect();
       this.mouseX = e.clientX - r.left;
       this.mouseY = e.clientY - r.top;
+      if (!this.locked) {
+        this.freeX = e.clientX;
+        this.freeY = e.clientY;
+      }
+      // Salto espurio al capturar o tras un clic con el puntero capturado: el movimiento vale
+      // exactamente menos la posición del cursor (la actual o la última libre). Se descarta.
+      const spike =
+        this.locked &&
+        (e.movementX !== 0 || e.movementY !== 0) &&
+        ((e.movementX === -e.clientX && e.movementY === -e.clientY) || (e.movementX === -this.freeX && e.movementY === -this.freeY));
+      if (spike) return;
       if (this.locked || (this.lockWanted && this.lockUnavailable)) {
         this.dx += e.movementX;
         this.dy += e.movementY;
