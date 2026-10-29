@@ -303,15 +303,15 @@ const PAGE_KEY = 'pagina';
 
 /* Hilo narrativo: páginas del cuaderno del Albatros */
 /** Probabilidad base de que una fuente traiga la siguiente página (en su región). */
-export const PAGE_CHANCE = { cofre: 0.35, estructura: 0.5, isla: 0.3, mercante: 0.3, deriva: 0.25 } as const;
+export const PAGE_CHANCE = { cofre: 0.25, estructura: 0.4, isla: 0.2, mercante: 0.2, deriva: 0.15 } as const;
 export type PageSource = keyof typeof PAGE_CHANCE;
 /** Fuera de la región de la página, la probabilidad se multiplica por esto. */
-export const PAGE_OFF_REGION = 0.45;
+export const PAGE_OFF_REGION = 0.35;
 /** Tras aparecer una página, ninguna otra en este plazo (min). */
-export const PAGE_COOLDOWN_MIN = 12 * 60;
+export const PAGE_COOLDOWN_MIN = 24 * 60;
 /** Cada día sin páginas sube la probabilidad (hasta `PAGE_DROUGHT_MAX`). */
-export const PAGE_DROUGHT_PER_DAY = 0.08;
-export const PAGE_DROUGHT_MAX = 0.4;
+export const PAGE_DROUGHT_PER_DAY = 0.05;
+export const PAGE_DROUGHT_MAX = 0.3;
 /** Lo que pide un mercante por una hoja del cuaderno (papel mojado: barato). */
 export const PAGE_PRICE: Readonly<Record<ItemId, number>> = { madera: 6 };
 
@@ -1748,6 +1748,11 @@ function startArrival(sim: Simulation): ActiveEvent {
   const who = newcomers.length === 1 ? (isFemaleNpc(newcomers[0]!) ? 'Una vecina' : 'Un vecino') : newcomers.every(isFemaleNpc) ? 'Dos vecinas' : 'Dos vecinos';
   const welcome = newcomers.length ? `${who} del puerto ${newcomers.length > 1 ? 'piden' : 'pide'} un sitio a bordo. ${survivorJoinText(newcomers)} ` : '';
   endEvent(sim, ev, true, `${welcome}${STORY_TEXTS.epilogue}`, 'good');
+  // Un mercante que nos acompañara se despide: en el puerto manda el mercado del muelle.
+  for (const m of sim.state.events.active.filter((e) => e.type === 'mercante')) {
+    const d = dataOf<MerchantData>(m);
+    endEvent(sim, m, d.trades > 0 ? true : null, `El «${d.ship}» se despide al entrar en el puerto: aquí hay mercado de sobra.`, 'info');
+  }
   const market = startPortMarket(sim);
   market.data['newcomers'] = newcomers.map((n) => n.name);
   return ev;

@@ -3,13 +3,16 @@
  *
  * Cada paso de simulación:
  *  1. Hambre y sed bajan (a la mitad durmiendo).
- *  2. Energía: baja despierto; sube durmiendo (cama/camilla +15/h, suelo +8/h).
+ *  2. Energía: baja despierto; sube durmiendo (cama/camilla +15/h, suelo +8/h). Una cama en una
+ *     habitación con más confort que un camarote básico (camarote mejorado: `moduleStat` 'comfort')
+ *     da un pequeño extra (`COMFORT_ENERGY_PER_POINT` por punto, hasta `COMFORT_ENERGY_MAX`).
  *  3. Calor corporal: tiende (30/h) a un objetivo según el entorno: temperatura del aire,
  *     interior (+12), junto a la cocina encendida (+10), lluvia y viento a la intemperie y abrigo.
- *  4. Enfermedad: cuenta atrás en horas (el doble de rápido en una enfermería con energía).
+ *  4. Enfermedad: cuenta atrás en horas (el doble de rápido en una enfermería con energía, × el
+ *     `healMult` de su mejora).
  *  5. Salud: daño por hambre, sed, frío, enfermedad, agotamiento y fuego cercano; regenera si
- *     todo está bien (×3 en camilla de enfermería encendida y con energía; sin ella, como una
- *     cama normal). A 0 → muerte con causa.
+ *     todo está bien (×3 en camilla de enfermería encendida y con energía, × `healMult` si está
+ *     mejorada; sin energía, como una cama normal). A 0 → muerte con causa.
  *  6. Desmayo: energía a 0 → 3 h dormido en el suelo.
  *  7. Despertar automático con motivo: descansado de día o por una emergencia real (fuego a bordo,
  *     inicio de tormenta, hambre o sed críticas, salud en peligro, un golpe que le hiere). Los
@@ -29,6 +32,7 @@ import { ITEMS } from '../data/items';
 import { MODULES } from '../data/modules';
 import { CELL, NEED_RATES } from './constants';
 import { findModule } from './helpers';
+import { moduleMult, moduleStat } from './moduleStats';
 import { cellAtPoint, cellMin, levelOfY, moduleCells } from './ship';
 import type { Simulation } from './Simulation';
 import { hourOf } from './time';
@@ -53,6 +57,12 @@ export const FIRE_DAMAGE_PER_HOUR = 10;
 export const INFIRMARY_REGEN_MULT = 3;
 /** Multiplicador de la recuperación de la enfermedad descansando en la enfermería. */
 export const INFIRMARY_SICK_MULT = 2;
+/** Confort de la habitación de referencia (camarote básico): por encima, el sueño repone más. */
+export const BED_BASE_COMFORT = 3;
+/** Energía extra por hora durmiendo por cada punto de confort por encima de `BED_BASE_COMFORT`. */
+export const COMFORT_ENERGY_PER_POINT = 1;
+/** Tope de la energía extra por confort (por hora). */
+export const COMFORT_ENERGY_MAX = 4;
 /** Energía a partir de la que el jugador se despierta descansado (de día). */
 export const WAKE_ENERGY = 98;
 export const WAKE_HOUR_FROM = 6;
@@ -234,6 +244,37 @@ export function sleepSpot(sim: Simulation): { kind: 'bed' | 'infirmary' | 'floor
   return { kind: def.healingBeds && isHealingBedPowered(sim, m) ? 'infirmary' : 'bed', module: m };
 }
 
+/**
+ * Energía extra por hora que da dormir en una cama de este módulo por su confort (0 en un camarote
+ * básico, un dormitorio o la enfermería; +2/h en el camarote acogedor). Lee el confort efectivo del
+ * nivel de mejora (`moduleStat`).
+ */
+export function bedComfortBonus(m: ModuleInstance | null | undefined): number {
+  if (!m || !MODULES[m.type]?.beds) return 0;
+  const comfort = moduleStat(m, 'comfort');
+  return clamp((comfort - BED_BASE_COMFORT) * COMFORT_ENERGY_PER_POINT, 0, COMFORT_ENERGY_MAX);
+}
+
+/** Energía por hora que recupera el jugador según dónde duerme (null si está despierto). */
+export function sleepEnergyPerHour(sim: Simulation): number | null {
+  const spot = sleepSpot(sim);
+  if (!spot) return null;
+  if (spot.kind === 'floor') return NEED_RATES.energyPerHourFloor;
+  return NEED_RATES.energyPerHourBed + bedComfortBonus(spot.module);
+}
+
+/**
+ * Multiplicadores de la camilla en la que duerme el jugador: regeneración de salud (×3 × `healMult`
+ * de la mejora) y recuperación de la enfermedad (×2 × `healMult`). 1 si no está en una camilla que
+ * funcione.
+ */
+export function infirmaryMults(sim: Simulation): { regen: number; sickness: number } {
+  const spot = sleepSpot(sim);
+  if (spot?.kind !== 'infirmary' || !spot.module) return { regen: 1, sickness: 1 };
+  const heal = Math.max(0, moduleMult(spot.module, 'healMult'));
+  return { regen: INFIRMARY_REGEN_MULT * heal, sickness: INFIRMARY_SICK_MULT * heal };
+}
+
 /* ------------------------------------------------------------------ */
 /* Salud                                                               */
 /* ------------------------------------------------------------------ */
@@ -271,8 +312,7 @@ export function healthRatePerHour(sim: Simulation): number {
   const harms = activeHarms(sim);
   if (harms.length) return -harms.reduce((a, h) => a + h.perHour, 0);
   if (!canRegenerate(sim)) return 0;
-  const spot = sleepSpot(sim);
-  return NEED_RATES.healthRegenPerHour * (spot?.kind === 'infirmary' ? INFIRMARY_REGEN_MULT : 1);
+  return NEED_RATES.healthRegenPerHour * infirmaryMults(sim).regen;
 }
 
 /** Mata al jugador con una causa (texto). Idempotente. */
@@ -330,6 +370,7 @@ export function playerConditions(sim: Simulation): PlayerCondition[] {
   const env = warmthEnvironment(sim);
   const s = p.sleeping;
   if (s) out.push(s.until !== null ? { id: 'inconsciente', label: 'Inconsciente', kind: 'danger' } : { id: 'durmiendo', label: 'Durmiendo', kind: 'info' });
+  if (s && s.until === null && bedComfortBonus(sleepSpot(sim)?.module) > 0) out.push({ id: 'acogedor', label: 'Cama acogedora', kind: 'good' });
   if (fireNear(sim, p.pos)) out.push({ id: 'quemandose', label: 'Te quemas', kind: 'danger' });
   if (n.thirst <= 0) out.push({ id: 'deshidratado', label: 'Deshidratado', kind: 'danger' });
   else if (n.thirst < 25) out.push({ id: 'sediento', label: 'Sediento', kind: 'warn' });
@@ -575,9 +616,8 @@ export function tickNeeds(sim: Simulation, dt: number): void {
   n.hunger = clamp(n.hunger + R.hungerPerHour * metabolism * hours, 0, 100);
   n.thirst = clamp(n.thirst + R.thirstPerHour * metabolism * hours, 0, 100);
 
-  // 2. Energía.
-  let energyRate = R.energyPerHourAwake;
-  if (spot) energyRate = spot.kind === 'floor' ? R.energyPerHourFloor : R.energyPerHourBed;
+  // 2. Energía (durmiendo: cama, más el extra del confort de la habitación; o suelo).
+  const energyRate = sleepEnergyPerHour(sim) ?? R.energyPerHourAwake;
   n.energy = clamp(n.energy + energyRate * hours, 0, 100);
 
   // 3. Calor corporal.
@@ -585,8 +625,9 @@ export function tickNeeds(sim: Simulation, dt: number): void {
   n.warmth = clamp(approach(n.warmth, env.target, R.warmthRatePerHour * hours), 0, 100);
 
   // 4. Enfermedad.
+  const infirmary = infirmaryMults(sim);
   if (p.sick > 0) {
-    p.sick -= hours * (spot?.kind === 'infirmary' ? INFIRMARY_SICK_MULT : 1);
+    p.sick -= hours * infirmary.sickness;
     if (p.sick <= 0) {
       p.sick = 0;
       sim.notify('Te has recuperado de la enfermedad', 'good');
@@ -604,7 +645,7 @@ export function tickNeeds(sim: Simulation, dt: number): void {
     }
     memo.lastCause = DEATH_CAUSES[worst.kind];
   } else if (canRegenerate(sim)) {
-    healthDelta = R.healthRegenPerHour * hours * (spot?.kind === 'infirmary' ? INFIRMARY_REGEN_MULT : 1);
+    healthDelta = R.healthRegenPerHour * hours * infirmary.regen;
   }
   n.health = Math.min(100, n.health + healthDelta);
   if (n.health <= 0) {

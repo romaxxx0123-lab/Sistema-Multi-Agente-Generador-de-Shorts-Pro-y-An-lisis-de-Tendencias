@@ -3,8 +3,10 @@
  * (docs/SISTEMAS.md §1).
  *
  * - `useItem`: comer/beber/curarse (efectos, enfermedad por probabilidad, cura, objeto que queda),
- *   estudiar planos (desbloqueo), ponerse ropa (intercambia con la que hubiera) y herramientas
- *   (se seleccionan en la barra rápida, no se consumen).
+ *   estudiar planos (desbloqueo), leer hojas del cuaderno del Albatros (se archivan en el diario y,
+ *   con `PAGES_TO_REVEAL`, revelan el rumbo a Puerto Esperanza; ver `readDocument` y
+ *   `storyStatus`), ponerse ropa (intercambia con la que hubiera) y herramientas (se seleccionan en
+ *   la barra rápida, no se consumen).
  * - `moveItem` / `takeAll` / `dropItem`: mover pilas entre inventarios con reglas (la ranura de
  *   combustible solo acepta lo que arde, nada se mete en una obra) y sin perder nunca objetos.
  * - `sleep` / `wake`: dormir en una cama libre o propia; el sueño y el despertar automático los
@@ -16,16 +18,20 @@
 import { clamp } from '../core/math';
 import { ITEMS, type ItemDef } from '../data/items';
 import { MODULES } from '../data/modules';
+import { REGIONS } from '../data/regions';
+import { FINAL_REGION, PAGES_TO_REVEAL, STORY_PAGES, STORY_TEXTS, pageByItem } from '../data/story';
 import { HOTBAR_SLOTS, INTERACT_RANGE, WATER_PER_DRINK } from './constants';
-import { addToPlayerInventory, findModule, giveToPlayer, itemName, pruneCrates, spawnCrate } from './helpers';
-import { addItem, moveStack, spaceFor, takeFromSlot, stackLimit } from './inventory';
+import { addToPlayerInventory, findModule, giveToPlayer, itemName, pruneCrates, shipCount, spawnCrate } from './helpers';
+import { addItem, countItem, moveStack, spaceFor, takeFromSlot, stackLimit } from './inventory';
+import { moduleDisplayName } from './moduleStats';
 import { CRITICAL_HEALTH, CRITICAL_NEED, DEATH_CAUSES, SICK_HOURS, fireAboard, healthRatePerHour, killPlayer, wakePlayer } from './needs';
 import type { ActionResult, InvRef, Simulation } from './Simulation';
 import { hourOf } from './time';
 import type { PropInstance } from './ship';
 import { markTutorial } from './tutorial';
-import type { Inventory, ModuleInstance } from './types';
+import type { Inventory, ModuleInstance, StoryState } from './types';
 import { agree, isFeminineName, isHealingBedPowered, withArticle as moduleWithArticle } from './utilities';
+import { regionWithArticle } from './voyage';
 
 /* ------------------------------------------------------------------ */
 /* Parámetros                                                          */
@@ -102,7 +108,19 @@ export const ITEM_GENDER: Readonly<Record<string, ItemGender>> = {
   plano_enfermeria: 'm',
   plano_casco: 'm',
   plano_invernadero: 'm',
+  plano_acuicultura: 'm',
+  plano_grua: 'm',
+  plano_radar: 'm',
   plano_motor: 'm',
+  pescado_ahumado: 'm',
+  // «Cuaderno del Albatros, pág. N»: el núcleo del nombre es «cuaderno».
+  pagina_1: 'm',
+  pagina_2: 'm',
+  pagina_3: 'm',
+  pagina_4: 'm',
+  pagina_5: 'm',
+  pagina_6: 'm',
+  pagina_7: 'm',
 };
 
 /** Sustantivos femeninos que no acaban en -a, y masculinos que sí (para objetos sin entrada). */
@@ -223,6 +241,7 @@ export function useItem(sim: Simulation, slot: number): ActionResult {
   if (!def) return fail('Objeto desconocido');
 
   if (def.category === 'plano') return readBlueprint(sim, slot, def);
+  if (def.category === 'documento') return readDocument(sim, slot, def);
   if (def.category === 'ropa') return equipClothing(sim, slot, def);
   if (def.consume) return consumeItem(sim, slot, def);
 
@@ -273,6 +292,153 @@ function readBlueprint(sim: Simulation, slot: number, def: ItemDef): ActionResul
   sim.bus.emit('sfx', { name: 'plano', x: p.x, y: p.y + 1, z: p.z });
   sim.log(`Plano aprendido: ${short}. ${def.desc}`, 'good', false);
   return ok(`Has aprendido el plano «${short}». ${def.desc}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Hilo narrativo: las hojas del cuaderno del Albatros (data/story.ts)  */
+/* ------------------------------------------------------------------ */
+
+/** Números en palabra (femenino: «hoja») para los textos. */
+const PAGE_WORDS = ['ninguna', 'una', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+const pageWord = (n: number): string => PAGE_WORDS[n] ?? String(n);
+
+/** Estado del hilo narrativo (lo crea si una partida antigua no lo tenía). */
+export function storyState(sim: Simulation): StoryState {
+  const st = sim.state;
+  if (!st.story) st.story = { pages: [], revealed: false, arrived: false };
+  return st.story;
+}
+
+/**
+ * Lee una hoja del cuaderno. La hoja SE CONSUME: queda archivada en el Cuaderno del Diario (J),
+ * donde la interfaz muestra su texto completo (SISTEMAS.md §15: «leer una página la guarda en el
+ * Cuaderno del Diario»). Así siete hojas de valor 0 no ocupan siete ranuras de la mochila para
+ * siempre, no se pueden perder en una caja ni venderse, y el director de eventos sabe por
+ * `story.pages` que no debe repetirlas. Una copia de una hoja ya leída también se archiva, sin
+ * entrada nueva en el diario. Al llegar a `PAGES_TO_REVEAL` hojas se conoce el rumbo a Puerto
+ * Esperanza (`story.revealed`), que el timón ofrecerá al final de cualquier región (voyage.ts).
+ */
+function readDocument(sim: Simulation, slot: number, def: ItemDef): ActionResult {
+  const page = pageByItem(def.id);
+  if (!page) return fail('El agua ha borrado la tinta: no se puede leer');
+  const p = sim.state.player;
+  const story = storyState(sim);
+  takeFromSlot(p.inventory, slot, 1);
+  sim.bus.emit('sfx', { name: 'pagina', x: p.pos.x, y: p.pos.y + 1.2, z: p.pos.z });
+  markTutorial(sim, 'cuaderno');
+  if (story.pages.includes(page.n)) {
+    return ok(`Ya habías leído esta hoja («${page.title}»): la guardas con las demás en el cuaderno del diario (J)`);
+  }
+  story.pages.push(page.n);
+  story.pages.sort((a, b) => a - b);
+  sim.log(`Leíste: «${page.title}» (cuaderno del Albatros, pág. ${page.n})`, 'info', false);
+  const base = `Lees «${page.title}» (cuaderno del Albatros, pág. ${page.n}). Puedes releerla en el diario (J)`;
+  if (story.revealed) return ok(base);
+  const left = PAGES_TO_REVEAL - story.pages.length;
+  if (left > 0) return ok(`${base}. ${left === 1 ? 'Te falta una hoja' : `Te faltan ${pageWord(left)} hojas`} para conocer el rumbo a ${REGIONS[FINAL_REGION]?.name ?? 'Puerto Esperanza'}`);
+  story.revealed = true;
+  sim.log(STORY_TEXTS.revealed, 'good');
+  return ok(`${base}. ¡Ya sabes cómo llegar a ${REGIONS[FINAL_REGION]?.name ?? 'Puerto Esperanza'}!`);
+}
+
+export interface StoryPageInfo {
+  n: number;
+  /** Id del objeto de la hoja. */
+  item: string;
+  read: boolean;
+  /** Título y texto (solo de las hojas ya leídas: las demás no se conocen). */
+  title: string | null;
+  text: string | null;
+  /** Hoja a bordo sin leer: en la mochila del jugador, en el barco (almacenes, bandejas, cajas) o null. */
+  aboard: 'mochila' | 'barco' | null;
+  /** Región donde suele aparecer. */
+  region: string;
+  regionName: string;
+  /** Pista para encontrarla o leerla (null si ya está leída). */
+  hint: string | null;
+}
+
+export interface StoryStatus {
+  /** Las siete hojas en orden. */
+  pages: StoryPageInfo[];
+  /** Números de las hojas leídas (ordenados). */
+  read: number[];
+  /** Hojas sin leer (con pista). */
+  missing: StoryPageInfo[];
+  total: number;
+  /** Hojas necesarias para conocer el rumbo (`PAGES_TO_REVEAL`). */
+  needed: number;
+  /** Hojas que aún faltan para conocerlo (0 si ya se conoce). */
+  remaining: number;
+  revealed: boolean;
+  arrived: boolean;
+  finalRegion: string;
+  finalRegionName: string;
+  /** Resumen de una frase para el Cuaderno del Diario. */
+  summary: string;
+}
+
+/** ¿Dónde está una hoja sin leer? En la mochila, en el barco o en ningún sitio a bordo. */
+function pageAboard(sim: Simulation, item: string): 'mochila' | 'barco' | null {
+  const st = sim.state;
+  if (countItem(st.player.inventory, item) > 0) return 'mochila';
+  if (shipCount(sim, item) > 0) return 'barco';
+  if (st.crates.some((c) => c.inventory.slots.some((s) => s?.id === item))) return 'barco';
+  if (st.npcs.some((n) => n.carry?.id === item)) return 'barco';
+  return null;
+}
+
+/**
+ * Progreso del hilo narrativo para la interfaz (Cuaderno del Diario): hojas leídas con su texto,
+ * las que faltan con una pista de dónde buscarlas (su región; o dónde está si ya está a bordo sin
+ * leer), si ya se conoce el rumbo a Puerto Esperanza y si se ha llegado.
+ */
+export function storyStatus(sim: Simulation): StoryStatus {
+  const story = storyState(sim);
+  const read = new Set(story.pages);
+  const finalName = REGIONS[FINAL_REGION]?.name ?? 'Puerto Esperanza';
+  const pages = STORY_PAGES.map((pg): StoryPageInfo => {
+    const isRead = read.has(pg.n);
+    const aboard = isRead ? null : pageAboard(sim, pg.item);
+    let hint: string | null = null;
+    if (!isRead) {
+      if (aboard === 'mochila') hint = 'La llevas en la mochila sin leer: clic derecho sobre ella, o F con ella en la barra rápida';
+      else if (aboard === 'barco') hint = 'Está a bordo sin leer, en un almacén o en una caja: cógela y léela';
+      else if (pg.n === 1) hint = 'Estaba entre las cartas náuticas del puente';
+      else hint = `Suele aparecer en ${regionWithArticle(pg.region)}: en cofres de naufragio, estructuras, islas y mercantes`;
+    }
+    return {
+      n: pg.n,
+      item: pg.item,
+      read: isRead,
+      title: isRead ? pg.title : null,
+      text: isRead ? pg.text : null,
+      aboard,
+      region: pg.region,
+      regionName: REGIONS[pg.region]?.name ?? pg.region,
+      hint,
+    };
+  });
+  const readList = pages.filter((x) => x.read).map((x) => x.n);
+  const remaining = story.revealed ? 0 : Math.max(0, PAGES_TO_REVEAL - readList.length);
+  let summary: string;
+  if (story.arrived) summary = `Llegaste a ${finalName} siguiendo el rumbo de la capitana Duarte. Hojas leídas: ${readList.length} de ${STORY_PAGES.length}.`;
+  else if (story.revealed) summary = `Conoces el rumbo a ${finalName}: elígelo en el timón al final de cualquier región (el rumbo de la capitana).`;
+  else if (!readList.length) summary = `Aún no has leído ninguna hoja del cuaderno del Albatros. Con ${pageWord(PAGES_TO_REVEAL)} sabrás cómo llegar a ${finalName}.`;
+  else summary = `Hojas leídas: ${readList.length} de ${STORY_PAGES.length}. Con ${pageWord(remaining)} más sabrás cómo llegar a ${finalName}.`;
+  return {
+    pages,
+    read: readList,
+    missing: pages.filter((x) => !x.read),
+    total: STORY_PAGES.length,
+    needed: PAGES_TO_REVEAL,
+    remaining,
+    revealed: story.revealed,
+    arrived: story.arrived,
+    finalRegion: FINAL_REGION,
+    finalRegionName: finalName,
+    summary,
+  };
 }
 
 function equipClothing(sim: Simulation, slot: number, def: ItemDef): ActionResult {
@@ -576,10 +742,12 @@ export function sleep(sim: Simulation, moduleId: number, bed: number): ActionRes
   p.sleeping = { moduleId, bed, until: null };
   markTutorial(sim, 'dormir');
   sim.bus.emit('sfx', { name: 'dormir', x: p.pos.x, y: p.pos.y + 0.5, z: p.pos.z });
+  // Nombre según el nivel de mejora: «en el camarote acogedor», «de la enfermería equipada».
+  const name = moduleDisplayName(m);
   if (def.healingBeds) {
-    return ok(isHealingBedPowered(sim, m) ? `Te tumbas en una camilla de ${moduleWithArticle(def.name)}…` : `Te tumbas en una camilla de ${moduleWithArticle(def.name)}. Sin energía, cura como una cama normal…`);
+    return ok(isHealingBedPowered(sim, m) ? `Te tumbas en una camilla de ${moduleWithArticle(name)}…` : `Te tumbas en una camilla de ${moduleWithArticle(name)}. Sin energía, cura como una cama normal…`);
   }
-  return ok(`Te acuestas a dormir en ${moduleWithArticle(def.name)}…`);
+  return ok(`Te acuestas a dormir en ${moduleWithArticle(name)}…`);
 }
 
 /**

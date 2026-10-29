@@ -15,6 +15,10 @@
  * mientras el jugador duerme: a ×14 serían una lluvia de mensajes que nadie lee. La tormenta, su
  * final y el barómetro sí (quedan en el diario).
  *
+ * Con un radar y radio funcionando (`isRadarActive`), el frente de tormenta se ve en la pantalla
+ * del radar con `RADAR_STORM_LEAD` minutos (3 h) de antelación: el aviso llega entonces y la
+ * lectura del barómetro dice cuánto falta.
+ *
  * Estado transitorio (no se guarda): aviso del barómetro ya dado, antelación del aviso, rumbo
  * objetivo del viento y base de temperatura suavizada. Se reconstruye al cargar.
  */
@@ -23,6 +27,7 @@ import { REGIONS, START_REGION, type RegionDef } from '../data/regions';
 import type { Simulation } from './Simulation';
 import { sunElevation } from './time';
 import type { WeatherKind, WeatherState } from './types';
+import { isRadarActive } from './utilities';
 
 /* ------------------------------------------------------------------ */
 /* Datos de equilibrio                                                 */
@@ -80,6 +85,8 @@ const LIGHTNING_MIN_RAIN = 0.5;
 const LIGHTNING_FLASH = 0.4;
 /** Antelación del aviso del barómetro (minutos antes de la tormenta). */
 const BAROMETER_LEAD: readonly [number, number] = [60, 90];
+/** Con el radar en marcha, el frente de tormenta se detecta esta antelación (min). */
+export const RADAR_STORM_LEAD = 180;
 /** Giro del viento (rad/min) en calma y en tormenta. */
 const WIND_TURN_RATE = 0.01;
 const WIND_TURN_RATE_STORM = 0.03;
@@ -224,10 +231,17 @@ export function tickWeather(sim: Simulation, dt: number): void {
   let guard = 0;
   while (w.remaining <= 0 && guard++ < 8) beginWeather(sim, w.next, w.remaining);
 
-  // Barómetro: aviso único 60–90 min antes de una tormenta.
-  if (!memo.warned && w.next === 'tormenta' && w.kind !== 'tormenta' && w.remaining <= memo.lead) {
-    memo.warned = true;
-    sim.log('El barómetro cae en picado: se acerca una tormenta. Prepara el barco y busca refugio', 'warn');
+  // Barómetro: aviso único 60–90 min antes de una tormenta (3 h antes con el radar en marcha).
+  if (!memo.warned && w.next === 'tormenta' && w.kind !== 'tormenta') {
+    const radar = isRadarActive(sim);
+    if (w.remaining <= (radar ? Math.max(RADAR_STORM_LEAD, memo.lead) : memo.lead)) {
+      memo.warned = true;
+      if (radar) {
+        sim.log(`El radar detecta un frente de tormenta y el barómetro empieza a caer: llegará en ${etaText(w.remaining)}. Prepara el barco y busca refugio`, 'warn');
+      } else {
+        sim.log('El barómetro cae en picado: se acerca una tormenta. Prepara el barco y busca refugio', 'warn');
+      }
+    }
   }
 
   // Suavizado de parámetros hacia el objetivo.
@@ -263,6 +277,15 @@ export function tickWeather(sim: Simulation, dt: number): void {
   }
 }
 
+/** «unas tres horas», «una hora», «menos de una hora» (antelación de un aviso). */
+export function etaText(minutes: number): string {
+  if (!(minutes >= 45)) return 'menos de una hora';
+  const h = Math.max(1, Math.round(minutes / 60));
+  if (h === 1) return 'una hora';
+  const words = ['', '', 'dos', 'tres', 'cuatro', 'cinco', 'seis'];
+  return `unas ${words[h] ?? String(h)} horas`;
+}
+
 function lerpSafe(cur: number, target: number, k: number): number {
   const c = Number.isFinite(cur) ? cur : target;
   return c + (target - c) * k;
@@ -281,22 +304,26 @@ export interface BarometerReading {
   next: WeatherKind;
   /** Minutos que faltan para el cambio (aprox.). */
   inMinutes: number;
+  /** Hay un radar en marcha (la lectura incluye lo que ve en pantalla). */
+  radar: boolean;
 }
 
 /** Lectura del barómetro para el puente y el HUD. */
 export function barometer(sim: Simulation): BarometerReading {
   const w = sim.state.weather;
   const inMinutes = Math.max(0, Math.round(w.remaining));
-  if (w.kind === 'tormenta') return { trend: 'tormenta', text: 'Tormenta en curso', next: w.next, inMinutes };
+  const radar = isRadarActive(sim);
+  if (w.kind === 'tormenta') return { trend: 'tormenta', text: 'Tormenta en curso', next: w.next, inMinutes, radar };
   if (w.next === 'tormenta') {
+    if (radar && w.remaining <= RADAR_STORM_LEAD) return { trend: 'baja', text: `Radar: frente de tormenta, llegará en ${etaText(w.remaining)}`, next: w.next, inMinutes, radar };
     const close = w.remaining <= 180;
-    return { trend: 'baja', text: close ? 'Cae en picado: tormenta en camino' : 'Bajando: empeorará', next: w.next, inMinutes };
+    return { trend: 'baja', text: close ? 'Cae en picado: tormenta en camino' : 'Bajando: empeorará', next: w.next, inMinutes, radar };
   }
   const rank: Record<WeatherKind, number> = { despejado: 0, niebla: 1, nublado: 1, lluvia: 2, tormenta: 3 };
   const d = rank[w.next] - rank[w.kind];
-  if (d > 0) return { trend: 'baja', text: 'Bajando: empeorará', next: w.next, inMinutes };
-  if (d < 0) return { trend: 'sube', text: 'Subiendo: mejorará', next: w.next, inMinutes };
-  return { trend: 'estable', text: 'Estable', next: w.next, inMinutes };
+  if (d > 0) return { trend: 'baja', text: 'Bajando: empeorará', next: w.next, inMinutes, radar };
+  if (d < 0) return { trend: 'sube', text: 'Subiendo: mejorará', next: w.next, inMinutes, radar };
+  return { trend: 'estable', text: 'Estable', next: w.next, inMinutes, radar };
 }
 
 /** Nombre legible del clima actual. */

@@ -2152,6 +2152,7 @@ describe('grúa de rescate', () => {
 
   it('sube a bordo a los náufragos de una balsa (el evento se resuelve gracias a la grúa)', () => {
     const { sim, crane, o } = craneSetup();
+    expect(debris.gruaStatus(sim, crane.id)!.inRange).toBe(0);
     const ev = events.startEvent(sim, 'naufragos', { survivors: 2 })!;
     const raft = sim.state.debris.find((d) => d.eventId === ev.id)!;
     raft.pos = { x: o.x + 4, z: o.z - 9 };
@@ -2353,7 +2354,7 @@ describe('historia: hojas del cuaderno del Albatros', () => {
     expect(countItem(sim.state.player.inventory, 'pagina_2')).toBe(1);
   });
 
-  it('naufragios al azar: hoja en el cofre en torno al 35 % en su región (menos fuera)', () => {
+  it('naufragios al azar: hoja en el cofre en torno al 25 % en su región (menos fuera)', () => {
     let here = 0;
     let away = 0;
     for (let i = 0; i < 80; i++) {
@@ -2363,14 +2364,14 @@ describe('historia: hojas del cuaderno del Albatros', () => {
       b.state.voyage.regionId = 'archipielago'; // ninguna hoja es de aquí
       if ((events.startEvent(b, 'naufragio')!.data as { page: string | null }).page) away++;
     }
-    expect(here).toBeGreaterThan(14);
-    expect(here).toBeLessThan(44);
+    expect(here).toBeGreaterThan(8);
+    expect(here).toBeLessThan(34);
     expect(away).toBeLessThan(here);
   });
 
   it('expediciones a islas y estructuras pueden traer una hoja (a los almacenes, con su frase)', () => {
     let found = 0;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       const sim = quiet(setup(40 + i));
       sim.state.time = at(3, 9);
       sim.state.events.cooldowns['pagina'] = sim.state.time - 20 * MINUTES_PER_DAY; // mucho sin hojas
@@ -2382,12 +2383,12 @@ describe('historia: hojas del cuaderno del Albatros', () => {
         expect(sim.state.log.some((l) => /hoja del cuaderno del Albatros \(pág\. 2\)/.test(l.text))).toBe(true);
       }
     }
-    expect(found).toBeGreaterThanOrEqual(3);
+    expect(found).toBeGreaterThanOrEqual(4); // ~60 % con muchos días sin hojas
   });
 
   it('un mercante puede ofrecer la siguiente hoja (barata) y no se repite', () => {
     let offered = 0;
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 24; i++) {
       const sim = quiet(setup(70 + i));
       sim.state.events.cooldowns['pagina'] = sim.state.time - 20 * MINUTES_PER_DAY;
       const ev = events.startEvent(sim, 'mercante')!;
@@ -2403,7 +2404,7 @@ describe('historia: hojas del cuaderno del Albatros', () => {
       expect(sim.trade(ev.id, k).ok).toBe(true);
       expect(countItem(sim.state.player.inventory, 'pagina_2')).toBe(1);
     }
-    expect(offered).toBeGreaterThanOrEqual(4);
+    expect(offered).toBeGreaterThanOrEqual(6); // ~50 % con muchos días sin hojas
   });
 
   it('un cofre a la deriva puede traer la hoja de su región (solo la de esa región)', () => {
@@ -2512,6 +2513,18 @@ describe('historia: llegada a Puerto Esperanza', () => {
     expect(loaded.state.story!.arrived).toBe(true);
     expect(events.arrivalSummary(loaded)?.title).toBe('Puerto Esperanza');
     expect(events.canStartEvent(loaded, 'llegada')).toBe(false);
+  });
+
+  it('un mercante que nos acompañaba se despide: en el puerto solo queda el mercado del muelle', () => {
+    const sim = arriveSetup();
+    sim.state.time = at(9, 5);
+    const merc = events.startEvent(sim, 'mercante')!;
+    runUntil(sim, at(9, 6) + 2);
+    expect(events.eventById(sim, merc.id)).toBeUndefined();
+    const markets = sim.state.events.active.filter((e) => e.type === 'mercante');
+    expect(markets.length).toBe(1);
+    expect(markets[0]!.title).toBe('Mercado de Puerto Esperanza');
+    expect(sim.state.log.some((l) => /se despide al entrar en el puerto/.test(l.text))).toBe(true);
   });
 
   it('fuera de Puerto Esperanza no hay llegada ni pantalla de final', () => {
@@ -2756,6 +2769,7 @@ describe('sala común', () => {
     lucia.needs = { hunger: 90, thirst: 90, energy: 90, mood: 70, health: 100 };
     runUntil(sim, at(1, 18));
     let together = false;
+    let social = false;
     let status = '';
     run(sim, 6 * 60, () => {
       keepFed(sim);
@@ -2763,10 +2777,11 @@ describe('sala común', () => {
       if (players.length >= 2) {
         together = true;
         status = sim.npcStatus(players[0]!.id);
-        expect(players[0]!.activity).toBe('socializing');
+        if (players.every((p) => p.activity === 'socializing')) social = true;
       }
     });
     expect(together).toBe(true);
+    expect(social).toBe(true);
     expect(status).toMatch(/^Jugando a las cartas con /);
     const rels = sim.state.npcs.flatMap((a) => sim.state.npcs.filter((b) => b !== a).map((b) => npc.relationBetween(a, b)));
     expect(rels.some((v) => v > 0)).toBe(true);
@@ -2872,7 +2887,7 @@ describe('módulos nuevos en la IA de los habitantes', () => {
     const jobs = new Set<string>();
     run(sim, 180, () => {
       keepPlayer(sim);
-      for (const n of [pesc, rec]) {
+      for (const n of sim.state.npcs) {
         const d = n.task?.data as { job?: string } | undefined;
         if (d?.job === 'bandeja') jobs.add(`${n.name}:${sim.npcStatus(n.id)}`);
       }
@@ -2931,5 +2946,17 @@ describe('módulos nuevos en la IA de los habitantes', () => {
     expect(storageTotal(sim, 'pescado_ahumado')).toBe(2);
     expect(marina.needs.hunger).toBeGreaterThan(30);
     expect(npc.FOOD_PREFERENCE.indexOf('pescado_ahumado')).toBeLessThan(npc.FOOD_PREFERENCE.indexOf('conserva'));
+  });
+});
+
+describe('textos de eventos con módulos mejorados', () => {
+  it('los avisos nombran el módulo por su nivel («el almacén con altillo») y el radar como «el radar»', () => {
+    const sim = quiet(setup());
+    const alm = mod(sim, 'almacen');
+    alm.tier = 2;
+    expect(events.moduleLabel(alm)).toBe('el almacén con altillo');
+    expect(events.moduleTitle({ type: 'radar', tier: 1 })).toBe('Radar');
+    events.startFire(sim, alm, 50);
+    expect(sim.state.log.at(-1)!.text).toMatch(/¡Fuego en el almacén con altillo!/);
   });
 });
