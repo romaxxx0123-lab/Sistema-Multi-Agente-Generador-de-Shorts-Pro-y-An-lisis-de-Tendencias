@@ -10,7 +10,8 @@ type NumericBase = 'storageSlots' | 'fuelSlots' | 'waterCapacity' | 'waterGen' |
 type Mult = 'workSpeed' | 'fuelEfficiency' | 'growthMult' | 'waterUseMult' | 'healMult' | 'wearMult';
 
 export function moduleTier(m: Pick<ModuleInstance, 'tier'>): number {
-  return Math.max(1, Math.floor(m.tier ?? 1));
+  const t = Math.floor(Number(m.tier ?? 1));
+  return Number.isFinite(t) && t >= 1 ? t : 1;
 }
 
 /** Efectos acumulados hasta el nivel actual (cada nivel sustituye los valores del anterior). */

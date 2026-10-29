@@ -13,6 +13,7 @@ import { HULL_EXPANSION, moduleDef, type InteractKind } from '../../data/modules
 import { sleepBlocker } from '../../sim/actions';
 import { WATER_PER_DRINK } from '../../sim/constants';
 import { findModule } from '../../sim/helpers';
+import { viveroStatus } from '../../sim/stations';
 import { addItem, cloneInventory } from '../../sim/inventory';
 import type { PropInstance } from '../../sim/ship';
 import type { Simulation } from '../../sim/Simulation';
@@ -150,7 +151,8 @@ export function propPrompt(sim: Simulation, prop: PropInstance): PromptInfo | nu
   if (!m || !prop.interact) return null;
   const st = sim.state;
   const def = moduleDef(m.type);
-  const warn = moduleWarning(m);
+  const cs = m.upgrade ? sim.constructionStatus(m.id) : null;
+  const warn = moduleWarning(m) ?? (cs ? `Mejorando a ${cs.name} (${Math.floor(cs.progress * 100)} %): clic con el martillo para ayudar` : null);
   const join = (...parts: (string | null | undefined)[]): string | undefined => {
     const s = parts.filter((p) => !!p).join(' · ');
     return s || undefined;
@@ -227,6 +229,20 @@ export function propPrompt(sim: Simulation, prop: PropInstance): PromptInfo | nu
       else if (v.anchoredUntil !== null) sub = v.anchorReason ? `Fondeados: ${v.anchorReason}` : 'Fondeados';
       return { key: 'E', text, sub: join(warn, sub) };
     }
+    case 'ahumadero': {
+      const ss = sim.stationStatus(m.id);
+      const queue = ss && ss.jobs.length ? `${ss.jobs.length} en cola` : null;
+      return { key: 'E', text: VERB.ahumadero, sub: join(warn, ss?.status, queue) };
+    }
+    case 'vivero': {
+      const vs = viveroStatus(sim, m.id);
+      const stock = vs ? (vs.stock === 1 ? '1 pescado en la bandeja' : `${vs.stock} pescados en la bandeja`) : null;
+      return { key: 'E', text: VERB.vivero, sub: join(warn, vs?.status, stock) };
+    }
+    case 'grua':
+      return { key: 'E', text: VERB.grua, sub: join(warn, onOff(m), usedSlots(m)) };
+    case 'radar':
+      return { key: 'E', text: VERB.radar, sub: join(warn, onOff(m)) };
     default:
       return { key: 'E', text: `Usar ${def.name.toLowerCase()}`, sub: join(warn) };
   }

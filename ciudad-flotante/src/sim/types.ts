@@ -97,6 +97,8 @@ export interface ModuleInstance {
   tier?: number;
   /** Mejora en obras (el módulo sigue funcionando con su nivel actual). */
   upgrade?: { toTier: number; progress: number } | null;
+  /** Minutos de producción acumulados hacia la pieza siguiente (vivero; la grúa también lo usa). Ausente = 0. */
+  prodProgress?: number;
 }
 
 export interface ShipState {

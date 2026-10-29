@@ -194,9 +194,15 @@ export const GRIEF_HOURS = 48;
 /** Plazas del sofá: desplazamiento a lo largo del mueble (x local, m) y hacia su frente. */
 export const SOFA_SEATS: readonly number[] = [-0.55, 0.55];
 export const SOFA_SEAT_FORWARD = 0.1;
-/** Puestos alrededor de la mesa de juegos (uno por lado) y distancia a su centro (m). */
+/**
+ * Puestos alrededor de la mesa de juegos: se prueban `GAME_DIRECTIONS` direcciones a `GAME_REACH` m
+ * de su centro y se quedan hasta `GAME_SPOTS` alcanzables, separados al menos `GAME_SPACING` m (las
+ * paredes o el sofá pueden tapar algún lado).
+ */
 export const GAME_SPOTS = 4;
-export const GAME_REACH = 1.2;
+export const GAME_DIRECTIONS = 8;
+export const GAME_REACH = 1.05;
+export const GAME_SPACING = 0.9;
 /** El rato en la sala común se nota en el ánimo durante estas horas: 2 puntos por punto de confort. */
 export const LOUNGE_MOOD_HOURS = 6;
 export const COMFORT_MOOD = 2;
@@ -1840,17 +1846,23 @@ function freeSofaSeat(sim: Simulation, npc: NpcState, m: ModuleInstance): { key:
   return null;
 }
 
-/** Puestos alrededor de una mesa de juegos (alcanzables), con la orientación hacia la mesa. */
-function gameSpots(sim: Simulation, m: ModuleInstance): { key: string; pos: Vec3; yaw: number }[] {
+/** Puestos alrededor de la mesa de juegos de una sala común (alcanzables), mirando a la mesa. */
+export function gameSpots(sim: Simulation, m: ModuleInstance): { key: string; pos: Vec3; yaw: number }[] {
   const out: { key: string; pos: Vec3; yaw: number }[] = [];
   for (const p of propsOf(sim, m.id)) {
     if (p.kind !== 'mesa_juegos') continue;
-    for (let i = 0; i < GAME_SPOTS; i++) {
-      const a = p.yaw + (i * Math.PI * 2) / GAME_SPOTS;
+    let n = 0;
+    // Primero los cuatro lados y luego las esquinas.
+    const order = Array.from({ length: GAME_DIRECTIONS }, (_, i) => i).sort((a, b) => (a % 2) - (b % 2) || a - b);
+    for (const i of order) {
+      if (n >= GAME_SPOTS) break;
+      const a = p.yaw + (i * Math.PI * 2) / GAME_DIRECTIONS;
       const want = { x: p.x - Math.sin(a) * GAME_REACH, y: p.y, z: p.z - Math.cos(a) * GAME_REACH };
       const pos = snapReachable(sim, want, 0.6);
-      if (!pos || Math.hypot(pos.x - want.x, pos.z - want.z) > 0.6) continue;
+      if (!pos || Math.hypot(pos.x - want.x, pos.z - want.z) > 0.6 || Math.hypot(pos.x - p.x, pos.z - p.z) > GAME_REACH + 0.5) continue;
+      if (out.some((o) => o.key.startsWith(`${p.key}@`) && Math.hypot(o.pos.x - pos.x, o.pos.z - pos.z) < GAME_SPACING)) continue;
       out.push({ key: `${p.key}@${i}`, pos, yaw: yawTo(pos, p) });
+      n++;
     }
   }
   return out;

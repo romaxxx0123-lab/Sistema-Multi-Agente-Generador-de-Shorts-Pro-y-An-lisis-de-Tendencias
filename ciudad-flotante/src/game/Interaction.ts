@@ -21,6 +21,7 @@
  * Los comandos fallidos se muestran con `ui.toast(msg, 'warn')`.
  */
 import * as THREE from 'three';
+import type { ModuleInstance } from '../sim/types';
 import type { NotifyKind } from '../core/EventBus';
 import { ITEMS, type ToolKind } from '../data/items';
 import { moduleDef } from '../data/modules';
@@ -82,6 +83,9 @@ export const REPAIR_TIME = 1.25;
 export const HOLD_PANEL = 0.45;
 /** El anillo de «Mantén E» aparece a partir de aquí (antes es una pulsación normal). */
 const HOLD_HINT = 0.12;
+
+/** Obra en curso: módulo en construcción o con una mejora en obras. */
+const isBuildSite = (m?: ModuleInstance | null): m is ModuleInstance => !!m && (m.status === 'construction' || !!m.upgrade);
 
 const _o = new THREE.Vector3();
 const _d = new THREE.Vector3();
@@ -408,6 +412,8 @@ export class Interaction implements ToolEnv {
     const hasHammer = countItem(sim.state.player.inventory, 'martillo') > 0;
     const f = this.focus;
     const siteId = f?.kind === 'site' ? (f.moduleId ?? null) : f?.kind === 'expansion' ? -1 : null;
+    // Mejora en obras: con el martillo en la mano, el clic sobre un mueble del módulo ayuda (E sigue abriendo el panel).
+    const upgradeId = f?.kind === 'prop' && f.moduleId !== undefined && findModule(sim, f.moduleId)?.upgrade ? f.moduleId : null;
 
     // --- Obras: mantener E (o el clic con el martillo) ---
     if (this.building) {
@@ -416,10 +422,10 @@ export class Interaction implements ToolEnv {
         this.building = null;
         this.vm.stop();
       }
-    } else if (siteId !== null && !this.timed && (ePressed || (click && tool === 'martillo'))) {
+    } else if ((siteId !== null && !this.timed && (ePressed || (click && tool === 'martillo'))) || (upgradeId !== null && !this.timed && click && tool === 'martillo')) {
       if (!hasHammer) this.toast('Necesitas un martillo para ayudar en la obra', 'warn');
       else {
-        this.building = { id: siteId, hits: 0 };
+        this.building = { id: (siteId ?? upgradeId)!, hits: 0 };
         this.vm.play('swing', (ev) => this.onBuildHit(ev));
         this.toolUsed('martillo', 'start');
       }
@@ -429,7 +435,7 @@ export class Interaction implements ToolEnv {
       if (!res.ok) {
         this.toast(res.msg ?? 'No puedes ayudar en esta obra', 'warn');
         this.building = null;
-      } else if (this.building.id === -1 ? !sim.state.ship.expansion : findModule(sim, this.building.id)?.status !== 'construction') {
+      } else if (this.building.id === -1 ? !sim.state.ship.expansion : !isBuildSite(findModule(sim, this.building.id))) {
         // Obra terminada: la simulación ya lo anuncia en el diario.
         this.toolUsed('martillo', 'success');
         this.building = null;
@@ -553,7 +559,7 @@ export class Interaction implements ToolEnv {
       return hullBounds(sim).bowX - p.x <= INTERACT_RANGE + 1.2;
     }
     const m = findModule(sim, id);
-    if (!m || m.status !== 'construction') return false;
+    if (!isBuildSite(m)) return false;
     // La obra aún no existe en el layout: distancia a sus celdas en el mismo nivel.
     return distanceToModule(sim, m, p) <= INTERACT_RANGE + 0.6;
   }
