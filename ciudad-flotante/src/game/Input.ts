@@ -19,6 +19,8 @@ export class Input {
   private lockWanted = false;
   /** El navegador no permite capturar el ratón (iframe sin permiso, headless…): se usa mirada libre. */
   lockUnavailable = false;
+  /** La última petición se rechazó por falta de gesto: se reintenta en el próximo clic o tecla. */
+  private needsGesture = false;
   /** El usuario soltó la captura (Esc del navegador) mientras el juego la quería. */
   private lockLost = false;
   private weReleased = false;
@@ -26,6 +28,8 @@ export class Input {
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
       if (this.isTyping(e)) return;
+      // Una tecla es un gesto válido: reintentar la captura si quedó pendiente.
+      if (this.lockWanted && !this.locked && this.needsGesture && e.code !== 'Escape') this.requestLock();
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'F1', 'F3'].includes(e.code)) e.preventDefault();
       if (!this.held.has(e.code)) this.justDown.add(e.code);
       this.held.add(e.code);
@@ -37,9 +41,13 @@ export class Input {
     window.addEventListener('blur', () => this.held.clear());
     element.addEventListener('mousedown', (e) => {
       const code = `Mouse${e.button}`;
+      // El clic que sirve para recuperar la captura no debe usar la herramienta de la mano.
+      if (this.lockWanted && !this.locked && !this.lockUnavailable) {
+        this.requestLock();
+        return;
+      }
       this.held.add(code);
       this.justDown.add(code);
-      if (this.lockWanted && !this.locked) this.requestLock();
     });
     window.addEventListener('mouseup', (e) => {
       const code = `Mouse${e.button}`;
@@ -56,10 +64,12 @@ export class Input {
       }
     });
     document.addEventListener('pointerlockerror', () => {
-      this.lockUnavailable = true;
+      // Puede ser un rechazo pasajero (sin gesto): se decide por el error de la promesa.
+      this.needsGesture = true;
       this.updateCursor();
     });
     document.addEventListener('pointerlockchange', () => {
+      if (this.locked) this.needsGesture = false;
       if (!this.locked && this.lockWanted && !this.weReleased) this.lockLost = true;
       this.weReleased = false;
       this.updateCursor();
@@ -110,6 +120,11 @@ export class Input {
     return this.lockWanted && this.lockUnavailable;
   }
 
+  /** El juego quiere el ratón y espera un clic del jugador para capturarlo. */
+  get awaitingClick(): boolean {
+    return this.lockWanted && !this.locked && !this.lockUnavailable && this.needsGesture;
+  }
+
   private updateCursor(): void {
     this.element.style.cursor = this.lockWanted && !this.locked ? (this.lockUnavailable ? 'none' : 'pointer') : '';
   }
@@ -117,19 +132,33 @@ export class Input {
   private requestLock(): void {
     if (this.lockUnavailable || !('requestPointerLock' in this.element)) {
       this.lockUnavailable = true;
+      this.updateCursor();
+      return;
+    }
+    // Sin activación de usuario la petición fallaría: esperar al próximo clic o tecla.
+    const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    if (ua && !ua.isActive) {
+      this.needsGesture = true;
+      this.updateCursor();
       return;
     }
     try {
       const p = this.element.requestPointerLock() as unknown as Promise<void> | undefined;
       if (p && typeof p.catch === 'function') {
         p.catch((err: unknown) => {
-          // Sin gesto de usuario reciente no es un fallo permanente; un entorno sin permiso sí.
+          // Solo es permanente si el entorno no lo admite (iframe sin permiso, API ausente).
           const name = (err as { name?: string } | null)?.name ?? '';
-          if (name === 'NotSupportedError' || name === 'SecurityError' || name === 'WrongDocumentError') this.lockUnavailable = true;
+          const msg = String((err as { message?: string } | null)?.message ?? '');
+          if (name === 'NotSupportedError' || (name === 'SecurityError' && /sandbox|allow-pointer-lock|permission/i.test(msg))) {
+            this.lockUnavailable = true;
+          } else {
+            this.needsGesture = true;
+          }
+          this.updateCursor();
         });
       }
     } catch {
-      this.lockUnavailable = true;
+      this.needsGesture = true;
     }
   }
 

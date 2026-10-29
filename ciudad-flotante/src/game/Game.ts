@@ -56,6 +56,7 @@ export class Game implements GameContext {
   private saves: SaveStore;
   private last = performance.now();
   private autosaveTimer = 0;
+  private clickHintShown = false;
   private fpsAcc = 0;
   private fpsFrames = 0;
   fps = 0;
@@ -106,6 +107,12 @@ export class Game implements GameContext {
     this._mode = mode;
     if (prev === 'build') this.build.exit();
     if (mode === 'build') this.build.enter();
+    if (mode === 'menu' || mode === 'dead') {
+      // La mano en primera persona cuelga de la cámara que también usa el menú: ocultarla.
+      // (En juego, Interaction decide su visibilidad cada frame.)
+      this.interaction.hideViewModel();
+      if (mode === 'menu') this.avatar.object.visible = false;
+    }
     if (mode === 'dead') this.ui.showDeath();
     if (mode === 'play') this.ui.hideMenus();
   }
@@ -314,6 +321,12 @@ export class Game implements GameContext {
     const wantLock = this._mode === 'play' && !ui.panelOpen && !ui.menuOpen && !this.paused;
     this.input.setPointerLockWanted(wantLock);
     this.input.enabled = wantLock;
+    if (this.input.awaitingClick) {
+      if (!this.clickHintShown) {
+        this.clickHintShown = true;
+        ui.toast('Haz clic en la pantalla para controlar la cámara', 'info');
+      }
+    } else if (this.input.locked) this.clickHintShown = false;
     if (playing && !this.paused) {
       if (this._mode === 'play') {
         this.player.update(dt);
