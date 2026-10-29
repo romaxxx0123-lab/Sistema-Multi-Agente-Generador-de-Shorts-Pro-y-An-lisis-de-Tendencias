@@ -84,6 +84,44 @@ export interface DoorSpec {
   cell: number;
 }
 
+/** Efectos de un nivel de mejora. Los valores absolutos sustituyen al de la definición base. */
+export interface ModuleEffects {
+  storageSlots?: number;
+  fuelSlots?: number;
+  waterCapacity?: number;
+  waterGen?: number;
+  powerGen?: number;
+  powerUse?: number;
+  batteryKWh?: number;
+  comfort?: number;
+  speedBonus?: number;
+  /** Multiplicador de velocidad de fabricación/cocina/producción (1 = base). */
+  workSpeed?: number;
+  /** Multiplicador de duración del combustible (>1 dura más). */
+  fuelEfficiency?: number;
+  /** Multiplicador del crecimiento de cultivos. */
+  growthMult?: number;
+  /** Multiplicador del agua que beben los cultivos (<1 = menos). */
+  waterUseMult?: number;
+  /** Multiplicador de curación de las camillas. */
+  healMult?: number;
+  /** Multiplicador del desgaste (<1 = más duradero). */
+  wearMult?: number;
+}
+
+export interface UpgradeDef {
+  /** Nivel al que lleva (2 o 3). */
+  tier: number;
+  name: string;
+  desc: string;
+  cost: Record<ItemId, number>;
+  /** Minutos de juego de obra. */
+  buildTime: number;
+  /** Clave de desbloqueo necesaria (opcional). */
+  unlock?: string | null;
+  effects: ModuleEffects;
+}
+
 export interface ModuleDef {
   id: string;
   name: string;
@@ -129,6 +167,8 @@ export interface ModuleDef {
   buildable: boolean;
   /** Nudos extra de velocidad (motor). */
   speedBonus?: number;
+  /** Mejoras disponibles, en orden de nivel. */
+  upgrades?: UpgradeDef[];
 }
 
 const P = Math.PI;
@@ -508,6 +548,67 @@ const defs: ModuleDef[] = [
     buildable: false,
   },
 ];
+
+
+/* ------------------------------------------------------------------ */
+/* Mejoras de instalaciones (GDD §7: "mejorar instalaciones existentes") */
+/* ------------------------------------------------------------------ */
+
+const UPGRADES: Record<string, UpgradeDef[]> = {
+  almacen: [
+    { tier: 2, name: 'Almacén con altillo', desc: 'Un altillo y más baldas: mucho más espacio.', cost: { madera: 12, tornillos: 6 }, buildTime: 45, effects: { storageSlots: 32 } },
+    { tier: 3, name: 'Almacén reforzado', desc: 'Estanterías metálicas de suelo a techo.', cost: { placa_metal: 6, tornillos: 10, madera: 10 }, buildTime: 70, effects: { storageSlots: 48 } },
+  ],
+  deposito: [
+    { tier: 2, name: 'Depósito ampliado', desc: 'Un segundo cuerpo soldado: casi el doble de agua.', cost: { placa_metal: 4, tornillos: 6 }, buildTime: 45, effects: { waterCapacity: 220 } },
+    { tier: 3, name: 'Gran depósito', desc: 'Tanque presurizado con aislamiento.', cost: { placa_metal: 8, tornillos: 8, plastico: 6 }, buildTime: 70, effects: { waterCapacity: 340 } },
+  ],
+  colector: [
+    { tier: 2, name: 'Colector de doble lona', desc: 'Más superficie de captación y un pequeño tanque.', cost: { tela: 4, cuerda: 2, madera: 4 }, buildTime: 25, effects: { waterGen: 18, waterCapacity: 35 } },
+  ],
+  potabilizadora: [
+    { tier: 2, name: 'Potabilizadora con prefiltro', desc: 'Filtra más rápido y se desgasta menos.', cost: { componentes: 2, placa_metal: 2, tornillos: 4 }, buildTime: 60, effects: { waterGen: 16, wearMult: 0.7 } },
+  ],
+  generador: [
+    { tier: 2, name: 'Generador de doble cilindro', desc: 'Más potencia y mejor aprovechamiento del combustible.', cost: { pieza_mecanica: 2, placa_metal: 4, componentes: 1 }, buildTime: 80, effects: { powerGen: 8, fuelEfficiency: 1.3 } },
+    { tier: 3, name: 'Generador turbo', desc: 'Turbocompresor recuperado de un pesquero: potente y eficiente.', cost: { pieza_mecanica: 3, componentes: 3, placa_metal: 6 }, buildTime: 120, effects: { powerGen: 11, fuelEfficiency: 1.6 } },
+  ],
+  bateria: [
+    { tier: 2, name: 'Baterías de alta capacidad', desc: 'Celdas nuevas: casi el doble de carga.', cost: { componentes: 3, placa_metal: 2 }, buildTime: 50, effects: { batteryKWh: 45 } },
+  ],
+  panel_solar: [
+    { tier: 2, name: 'Panel orientable', desc: 'Sigue al sol y rinde más.', cost: { celula_solar: 2, placa_metal: 1, tornillos: 4 }, buildTime: 45, effects: { powerGen: 2.4 } },
+  ],
+  banco_trabajo: [
+    { tier: 2, name: 'Banco con tornillo de banco', desc: 'Herramientas mejores: se trabaja más rápido.', cost: { madera: 6, tornillos: 6, placa_metal: 2 }, buildTime: 30, effects: { workSpeed: 1.5, storageSlots: 10 } },
+  ],
+  taller: [
+    { tier: 2, name: 'Taller con fresadora', desc: 'Fabrica más rápido y sus máquinas duran más.', cost: { pieza_mecanica: 2, componentes: 2, placa_metal: 4 }, buildTime: 90, effects: { workSpeed: 1.6, wearMult: 0.7 } },
+  ],
+  cocina: [
+    { tier: 2, name: 'Cocina de hierro', desc: 'Fogón de hierro colado: cocina antes y gasta menos leña.', cost: { placa_metal: 4, tornillos: 6, chatarra: 6 }, buildTime: 60, effects: { workSpeed: 1.5, fuelEfficiency: 1.5, storageSlots: 18 } },
+  ],
+  huerto: [
+    { tier: 2, name: 'Huerto con riego por goteo', desc: 'Gomas y botellas agujereadas: menos agua y plantas más sanas.', cost: { plastico: 6, cuerda: 2, tornillos: 4 }, buildTime: 40, effects: { waterUseMult: 0.6, growthMult: 1.2 } },
+    { tier: 3, name: 'Huerto abonado', desc: 'Tierra nueva con compost de algas: crece mucho más.', cost: { madera: 10, plastico: 4, placa_metal: 2, fibra: 10 }, buildTime: 60, effects: { waterUseMult: 0.6, growthMult: 1.5 } },
+  ],
+  camarote: [
+    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 4, madera: 6 }, buildTime: 30, effects: { comfort: 5 } },
+  ],
+  dormitorio: [
+    { tier: 2, name: 'Dormitorio con taquillas', desc: 'Cada cual con su rincón: más descanso y menos roces.', cost: { tela: 6, madera: 8 }, buildTime: 45, effects: { comfort: 3 } },
+  ],
+  comedor: [
+    { tier: 2, name: 'Comedor con despensa a la vista', desc: 'Manteles, farolillos y sitio para todos.', cost: { madera: 8, tela: 4 }, buildTime: 40, effects: { comfort: 5 } },
+  ],
+  enfermeria: [
+    { tier: 2, name: 'Enfermería equipada', desc: 'Instrumental y medicinas ordenadas: se cura antes.', cost: { componentes: 2, tela: 4, plastico: 2 }, buildTime: 60, effects: { healMult: 1.5 } },
+  ],
+  motor: [
+    { tier: 2, name: 'Motor con hélice de paso variable', desc: 'Más velocidad con la misma energía.', cost: { pieza_mecanica: 4, componentes: 4 }, buildTime: 120, effects: { speedBonus: 5 } },
+  ],
+};
+for (const d of defs) if (UPGRADES[d.id]) d.upgrades = UPGRADES[d.id];
 
 export const MODULES: Record<string, ModuleDef> = Object.fromEntries(defs.map((d) => [d.id, d]));
 export const MODULE_LIST: ModuleDef[] = defs;

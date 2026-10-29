@@ -772,6 +772,8 @@ export function previewModule(type: string, level: number, x: number, z: number,
     powered: false,
     fire: 0,
     leak: false,
+    tier: 1,
+    upgrade: null,
   };
 }
 

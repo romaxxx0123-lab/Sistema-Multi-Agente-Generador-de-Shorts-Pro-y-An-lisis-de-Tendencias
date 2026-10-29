@@ -778,6 +778,11 @@ describe('[16] la vista no salta al capturar el ratón', () => {
     input.dx = -640;
     input.dy = -360;
     expect(pc.lookDelta(true)).toBeNull();
+    // Dos saltos en el mismo frame.
+    input.dx = -1280;
+    input.dy = -720;
+    expect(pc.lookDelta(true)).toBeNull();
+    input.dy = -360;
     input.dx = -639;
     expect(pc.lookDelta(true)).toEqual({ dx: -639, dy: -360 });
     input.dx = 12;

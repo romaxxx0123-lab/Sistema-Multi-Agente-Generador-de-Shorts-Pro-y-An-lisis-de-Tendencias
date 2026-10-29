@@ -354,10 +354,14 @@ export class PlayerController {
     if (!Number.isFinite(md.dx) || !Number.isFinite(md.dy)) return null;
     if (Math.abs(md.dx) > MAX_LOOK_DELTA || Math.abs(md.dy) > MAX_LOOK_DELTA) return null;
     // Con el puntero capturado, Chromium a veces manda un movimiento igual a menos la posición
-    // del cursor (al capturar o tras un clic): no es un movimiento real de la mano.
+    // del cursor (al capturar o tras un clic; a veces dos en el mismo frame): no es un movimiento
+    // real de la mano.
     const mx = input.mouseX;
     const my = input.mouseY;
-    if (locked && typeof mx === 'number' && typeof my === 'number' && Math.abs(mx) + Math.abs(my) > 2 && Math.abs(md.dx + mx) < 0.5 && Math.abs(md.dy + my) < 0.5) return null;
+    if (locked && typeof mx === 'number' && typeof my === 'number' && Math.abs(mx) + Math.abs(my) > 2) {
+      const k = Math.round(Math.abs(mx) >= Math.abs(my) ? -md.dx / mx : -md.dy / my);
+      if (k >= 1 && k <= 4 && Math.abs(md.dx + k * mx) < 0.5 && Math.abs(md.dy + k * my) < 0.5) return null;
+    }
     return md;
   }
 

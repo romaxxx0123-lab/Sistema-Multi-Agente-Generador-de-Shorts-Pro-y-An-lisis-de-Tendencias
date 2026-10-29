@@ -93,6 +93,10 @@ export interface ModuleInstance {
   fire: number;
   /** Fuga de agua activa (depósitos). */
   leak: boolean;
+  /** Nivel de mejora (1 = básico). Ausente en partidas antiguas = 1. */
+  tier?: number;
+  /** Mejora en obras (el módulo sigue funcionando con su nivel actual). */
+  upgrade?: { toTier: number; progress: number } | null;
 }
 
 export interface ShipState {
@@ -222,6 +226,8 @@ export interface NpcState {
   awayUntil: number | null;
   /** Memoria corta de quejas para no repetirlas. */
   lastComplaintAt: number;
+  /** Afinidad con otros habitantes (-100..100) por id. Ausente = sin relaciones aún. */
+  relations?: Record<string, number>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -366,6 +372,16 @@ export interface LogEntry {
   kind: 'info' | 'good' | 'warn' | 'danger';
 }
 
+/** Progreso del hilo narrativo (ver data/story.ts). */
+export interface StoryState {
+  /** Páginas del cuaderno leídas (números 1..7). */
+  pages: number[];
+  /** Ya se conoce el rumbo a Puerto Esperanza. */
+  revealed: boolean;
+  /** Se llegó a Puerto Esperanza (se mostró el final). */
+  arrived: boolean;
+}
+
 export interface GameState {
   /** Versión del formato de guardado. */
   version: number;
@@ -388,6 +404,8 @@ export interface GameState {
   tutorial: { done: string[]; dismissed: boolean };
   /** Diario de a bordo (últimas entradas). */
   log: LogEntry[];
+  /** Hilo narrativo. Ausente en partidas antiguas. */
+  story?: StoryState;
   nextId: number;
 }
 
