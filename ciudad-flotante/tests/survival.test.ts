@@ -7,6 +7,7 @@
  * Las pruebas de integración usan `sim.tick` con la simulación completa.
  */
 import { describe, expect, it } from 'vitest';
+import { ITEMS } from '../src/data/items';
 import { REGIONS } from '../src/data/regions';
 import * as actions from '../src/sim/actions';
 import { CRUISE_SPEED, LEVEL_H, MINUTES_PER_DAY, NEED_RATES, PLAYER_SLOTS, SLEEP_TIME_SCALE, VISUAL_DRIFT } from '../src/sim/constants';
@@ -287,18 +288,70 @@ describe('salud', () => {
     expect(sim.state.player.needs.health).toBeCloseTo(55, 5);
   });
 
-  it('×3 en una camilla de enfermería, que además acelera la curación', () => {
+  it('×3 en una camilla de enfermería con energía, que además acelera la curación', () => {
     const { sim } = setup();
     place(sim, HOLD);
     setWeather(sim, 'despejado', 22);
     const enf = addModule(sim, 'enfermeria', 0, 1, 0, 2);
+    enf.on = true;
+    enf.powered = true;
     nearBed(sim, enf.id, 0);
     setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 90, health: 20 });
     goToHour(sim, 22);
     const r = sim.sleep(enf.id, 0);
     expect(r.ok, r.msg).toBe(true);
+    expect(r.msg).toBe('Te tumbas en una camilla de la enfermería…');
+    expect(needs.sleepSpot(sim)?.kind).toBe('infirmary');
     runNeeds(sim, 60);
     expect(sim.state.player.needs.health).toBeCloseTo(20 + NEED_RATES.healthRegenPerHour * 3, 5);
+    // La enfermedad se cura el doble de rápido en la camilla.
+    setNeeds(sim, { hunger: 100, thirst: 100, health: 80 });
+    sim.state.player.sick = 10;
+    runNeeds(sim, 60);
+    expect(sim.state.player.sick).toBeCloseTo(10 - needs.INFIRMARY_SICK_MULT, 5);
+  });
+
+  it('sin energía (o apagada, averiada o ardiendo) la camilla cura como una cama normal', () => {
+    const variants: [string, (m: ModuleInstance) => void][] = [
+      ['sin energía', (m) => ((m.on = true), (m.powered = false))],
+      ['apagada', (m) => ((m.on = false), (m.powered = true))],
+      ['averiada', (m) => ((m.on = true), (m.powered = true), (m.status = 'broken'))],
+    ];
+    for (const [name, apply] of variants) {
+      const { sim } = setup();
+      place(sim, HOLD);
+      setWeather(sim, 'despejado', 22);
+      const enf = addModule(sim, 'enfermeria', 0, 1, 0, 2);
+      nearBed(sim, enf.id, 0);
+      setNeeds(sim, { hunger: 100, thirst: 100, energy: 100, warmth: 90, health: 20 });
+      goToHour(sim, 22);
+      enf.on = true;
+      enf.powered = true;
+      expect(sim.sleep(enf.id, 0).ok, name).toBe(true);
+      apply(enf);
+      expect(needs.sleepSpot(sim)?.kind, name).toBe('bed');
+      expect(needs.healthRatePerHour(sim), name).toBeCloseTo(NEED_RATES.healthRegenPerHour, 5);
+      sim.state.player.sick = 10;
+      setNeeds(sim, { health: 50 });
+      runNeeds(sim, 60);
+      expect(sim.state.player.sick, name).toBeCloseTo(9, 5);
+    }
+  });
+
+  it('integración: una enfermería sin ninguna fuente de energía no cura ×3 y lo dice al tumbarse', () => {
+    const { sim } = setup(4);
+    sim.state.npcs = [];
+    sim.state.events.nextRollAt = 1e12;
+    const enf = addModule(sim, 'enfermeria', 0, 1, 0, 2);
+    sim.tick(1);
+    expect(enf.powered).toBe(false);
+    nearBed(sim, enf.id, 0);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 50, health: 60, warmth: 80 });
+    const r = sim.sleep(enf.id, 0);
+    expect(r.ok, r.msg).toBe(true);
+    expect(r.msg).toMatch(/Sin energía, cura como una cama normal/);
+    sim.tick(1);
+    expect(needs.healthRatePerHour(sim)).toBeCloseTo(NEED_RATES.healthRegenPerHour, 5);
   });
 
   it('pierde salud con hambre o sed a 0 y no regenera', () => {
@@ -571,11 +624,12 @@ describe('sueño', () => {
       ['fuego', (sim) => (mod(sim, 'almacen').fire = 10), /Fuego a bordo/],
       ['tormenta', (sim) => (sim.state.weather.kind = 'tormenta'), /tormenta/],
       [
-        'evento',
+        'evento que lo pide',
         (sim) =>
-          sim.state.events.active.push({ id: 900, type: 'naufragos', title: 'Náufragos a la vista', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: {} }),
-        /Náufragos a la vista/,
+          sim.state.events.active.push({ id: 900, type: 'naufragos', title: 'Náufragos a la deriva', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: { wakePlayer: true } }),
+        /Te despiertan: Náufragos a la deriva/,
       ],
+      ['un golpe', (sim) => needs.damagePlayer(sim, 5, 'Un golpe de mar te arrojó por la borda'), /algo te ha herido/],
     ];
     for (const [name, trigger, re] of cases) {
       const { sim, notes } = setup();
@@ -591,6 +645,115 @@ describe('sueño', () => {
       expect(sim.state.player.sleeping, name).toBeNull();
       expect(notes.some((n) => re.test(n.text)), name).toBe(true);
     }
+  });
+
+  it('avistamientos, averías y fugas no despiertan: se resumen al despertar («Mientras dormías: …»)', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 23);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 40, warmth: 90, health: 100 });
+    const cam = mod(sim, 'camarote');
+    expect(sim.sleep(cam.id, 0).ok).toBe(true);
+    runNeeds(sim, 5);
+    const ev = (id: number, type: string, title: string, data: Record<string, unknown> = {}) => ({ id, type, title, description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data });
+    const almacen = mod(sim, 'almacen');
+    sim.state.events.active.push(ev(910, 'naufragio', 'Naufragio a la vista'), ev(911, 'averia', 'Avería: Almacén', { moduleId: almacen.id }), ev(912, 'fuga', 'Fuga en el depósito'));
+    // Un naufragio sin bandera tampoco despierta aunque los eventos antiguos lo hicieran.
+    sim.state.events.active.push(ev(913, 'naufragos', 'Náufragos a la deriva'));
+    runNeeds(sim, 30);
+    expect(sim.state.player.sleeping).not.toBeNull();
+    // La fuga se resuelve antes de despertar; la balsa pasa de largo.
+    sim.state.events.active = sim.state.events.active.filter((e) => e.id !== 912 && e.id !== 913);
+    sim.state.events.history.push({ type: 'fuga', title: 'Fuga en el depósito', at: sim.state.time, success: true });
+    sim.state.events.history.push({ type: 'naufragos', title: 'Náufragos a la deriva', at: sim.state.time, success: false });
+    runNeeds(sim, 1);
+    expect(sim.state.player.sleeping).not.toBeNull();
+    expect(notes.some((n) => /Mientras dormías/.test(n.text))).toBe(false);
+    const before = notes.length;
+    runNeeds(sim, 10 * 60);
+    expect(sim.state.player.sleeping).toBeNull();
+    expect(hourOf(sim.state.time)).toBeGreaterThanOrEqual(6);
+    const after = notes.slice(before);
+    expect(after.some((n) => n.text === 'Te despiertas descansado')).toBe(true);
+    const sum = after.find((n) => /^Mientras dormías: /.test(n.text));
+    expect(sum, JSON.stringify(after)).toBeDefined();
+    expect(sum!.text).toBe(
+      'Mientras dormías: se avistó un naufragio, hubo una avería en el almacén, se abrió una fuga en el depósito (ya se resolvió) y apareció una balsa con náufragos (ya se perdió de vista). Los detalles están en el diario (J)',
+    );
+    expect(sum!.kind).toBe('warn');
+    // El resumen sale una sola vez.
+    runNeeds(sim, 5);
+    expect(notes.filter((n) => /^Mientras dormías/.test(n.text))).toHaveLength(1);
+  });
+
+  it('el resumen de la noche sale también si le despierta otro sistema, e incluye el cambio de región', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 23);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 40, warmth: 90, health: 100 });
+    expect(sim.sleep(mod(sim, 'camarote').id, 0).ok).toBe(true);
+    runNeeds(sim, 5);
+    sim.state.voyage.regionId = 'sargazos';
+    sim.state.events.active.push({ id: 920, type: 'enfermedad', title: 'Tomás ha enfermado', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: { name: 'Tomás', wakePlayer: false } });
+    // Un banco de peces que ya se fue no merece mención.
+    sim.state.events.active.push({ id: 921, type: 'banco_peces', title: 'Banco de peces', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: {} });
+    runNeeds(sim, 5);
+    sim.state.events.active = sim.state.events.active.filter((e) => e.id !== 921);
+    runNeeds(sim, 1);
+    expect(sim.state.player.sleeping).not.toBeNull();
+    sim.wake('Te sacuden para despertarte');
+    const sum = notes.find((n) => /^Mientras dormías/.test(n.text));
+    expect(sum?.text).toBe('Mientras dormías: Tomás enfermó y entramos en el Mar de los Sargazos. Los detalles están en el diario (J)');
+    // Una noche sin nada que contar no deja resumen.
+    const { sim: sim2, notes: notes2 } = setup();
+    place(sim2, INDOOR);
+    setWeather(sim2, 'despejado', 22);
+    goToHour(sim2, 23);
+    setNeeds(sim2, { hunger: 90, thirst: 90, energy: 40, warmth: 90, health: 100 });
+    sim2.sleep(mod(sim2, 'camarote').id, 0);
+    runNeeds(sim2, 10 * 60);
+    expect(sim2.state.player.sleeping).toBeNull();
+    expect(notes2.some((n) => /Mientras dormías/.test(n.text))).toBe(false);
+  });
+
+  it('un evento puede impedir que le despierten (data.wakePlayer = false) salvo que haya fuego de verdad', () => {
+    const { sim } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 23);
+    setNeeds(sim, { energy: 40 });
+    sim.sleep(mod(sim, 'camarote').id, 0);
+    runNeeds(sim, 1);
+    expect(needs.wakesPlayer({ type: 'incendio', data: {} })).toBe(true);
+    expect(needs.wakesPlayer({ type: 'tormenta' })).toBe(true);
+    expect(needs.wakesPlayer({ type: 'averia', data: {} })).toBe(false);
+    expect(needs.wakesPlayer({ type: 'averia', data: { wakePlayer: true } })).toBe(true);
+    expect(needs.wakesPlayer({ type: 'incendio', data: { wakePlayer: false } })).toBe(false);
+    sim.state.events.active.push({ id: 930, type: 'incendio', title: '¡Incendio a bordo!', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [], data: { wakePlayer: false } });
+    runNeeds(sim, 1);
+    expect(sim.state.player.sleeping).not.toBeNull();
+    mod(sim, 'cocina').fire = 5;
+    runNeeds(sim, 0.5);
+    expect(sim.state.player.sleeping).toBeNull();
+  });
+
+  it('al despertar, el hambre y la sed van en el mismo aviso y no se repiten aparte', () => {
+    const { sim, notes } = setup();
+    place(sim, INDOOR);
+    setWeather(sim, 'despejado', 22);
+    goToHour(sim, 23);
+    setNeeds(sim, { hunger: 30, thirst: 40, energy: 40, warmth: 90, health: 100 });
+    sim.sleep(mod(sim, 'camarote').id, 0);
+    runNeeds(sim, 10 * 60);
+    expect(sim.state.player.sleeping).toBeNull();
+    const n = sim.state.player.needs;
+    expect(n.hunger).toBeLessThan(25);
+    expect(n.thirst).toBeLessThan(25);
+    expect(notes.some((x) => x.text === 'Te despiertas descansado. Tienes hambre y sed: come y bebe algo')).toBe(true);
+    runNeeds(sim, 5);
+    expect(notes.some((x) => /^Tienes (hambre|sed)/.test(x.text))).toBe(false);
   });
 
   it('un evento sin importancia (banco de peces) no despierta', () => {
@@ -685,7 +848,7 @@ describe('usar objetos', () => {
     const slot = slotWith(sim, 'conserva');
     const before = countItem(sim.state.player.inventory, 'conserva');
     const r = sim.useItem(slot);
-    expect(r).toEqual({ ok: true, msg: 'Comes la lata de conserva' });
+    expect(r).toEqual({ ok: true, msg: 'Comes una lata de conserva' });
     expect(sim.state.player.needs.hunger).toBe(75);
     expect(countItem(sim.state.player.inventory, 'conserva')).toBe(before - 1);
     expect(sim.state.tutorial.done).toContain('comer');
@@ -694,7 +857,7 @@ describe('usar objetos', () => {
   it('beber, sopa (calor) y guiso (energía) limitados a 100', () => {
     const { sim } = setup();
     setNeeds(sim, { thirst: 80, warmth: 50, hunger: 50, energy: 50 });
-    expect(sim.useItem(slotWith(sim, 'agua_potable')).msg).toBe('Bebes la botella de agua');
+    expect(sim.useItem(slotWith(sim, 'agua_potable')).msg).toBe('Bebes una botella de agua');
     expect(sim.state.player.needs.thirst).toBe(100);
     sim.useItem(slotWith(sim, 'sopa'));
     expect(sim.state.player.needs.warmth).toBe(65);
@@ -788,6 +951,61 @@ describe('usar objetos', () => {
     const far = sim.useItem(20);
     expect(far.ok).toBe(false);
     expect(far.msg).toMatch(/barra rápida/);
+  });
+
+  it('concordancia: «la llave inglesa», «el martillo», «una lata de conserva» (todos los objetos tienen género)', () => {
+    const { sim } = setup();
+    const inv = sim.state.player.inventory;
+    for (const id of Object.keys(ITEMS)) expect(actions.ITEM_GENDER[id], `falta el género de ${id}`).toBeDefined();
+    const toolMsg = (id: string): string | undefined => {
+      inv.slots[0] = { id, qty: 1 };
+      return sim.useItem(0).msg;
+    };
+    expect(toolMsg('llave_inglesa')).toBe('Llevas la llave inglesa en la mano');
+    expect(toolMsg('cana')).toBe('Llevas la caña de pescar en la mano');
+    expect(toolMsg('martillo')).toBe('Llevas el martillo en la mano');
+    expect(toolMsg('gancho')).toBe('Llevas el gancho de rescate en la mano');
+    expect(actions.itemWithArticle('tornillos')).toBe('la tornillería');
+    expect(actions.itemWithArticle('componentes')).toBe('los componentes eléctricos');
+    expect(actions.itemWithArticle('hortaliza')).toBe('las hortalizas');
+    expect(actions.itemWithArticle('combustible')).toBe('el bidón de combustible');
+    expect(actions.itemWithIndefinite('celula_solar')).toBe('una célula solar');
+    expect(actions.itemAgree('tela', 'enredado')).toBe('enredada');
+    expect(actions.itemAgree('componentes', 'enredado')).toBe('enredados');
+    expect(actions.itemAgree('semilla_lino', 'enredado')).toBe('enredadas');
+    // Objetos sin entrada: se deduce del nombre.
+    expect(actions.itemGender('desconocido_llave')).toBe('m');
+    setNeeds(sim, { hunger: 40, thirst: 40, health: 50 });
+    sim.state.player.sick = 5;
+    const eat = (id: string): string | undefined => {
+      inv.slots[0] = { id, qty: 2 };
+      return sim.useItem(0).msg;
+    };
+    expect(eat('hortaliza')).toBe('Comes unas hortalizas');
+    expect(eat('sopa')).toBe('Tomas una sopa de verduras');
+    expect(eat('botiquin')).toBe('Usas un botiquín. Te encuentras mucho mejor');
+    // Combustible: artículo y verbo en plural cuando toca.
+    const cocina = mod(sim, 'cocina');
+    const fuel = { kind: 'module' as const, id: cocina.id, slot: 'fuel' as const };
+    inv.slots[0] = { id: 'conserva', qty: 1 };
+    expect(sim.moveItem({ kind: 'player' }, 0, fuel).msg).toBe('La lata de conserva no arde: aquí solo va madera o combustible');
+    inv.slots[0] = { id: 'hortaliza', qty: 1 };
+    expect(sim.moveItem({ kind: 'player' }, 0, fuel).msg).toBe('Las hortalizas no arden: aquí solo va madera o combustible');
+    // Una enfermería destrozada: femenino.
+    const enf = addModule(sim, 'enfermeria', 0, 1, 0, 2);
+    enf.status = 'broken';
+    nearBed(sim, enf.id, 0);
+    expect(actions.sleepBlocker(sim, enf.id, 0)).toBe('Enfermería: está destrozada, repárala antes de dormir aquí');
+  });
+
+  it('las piezas explican para qué sirven (la célula solar no es un repuesto)', () => {
+    const { sim } = setup();
+    expect(sim.useItem(slotWith(sim, 'celula_solar')).msg).toBe('La célula solar sirve para construir paneles solares (modo construcción, B)');
+    expect(sim.useItem(slotWith(sim, 'kit_reparacion')).msg).toMatch(/^El kit de reparación se gasta al reparar estructuras.*martillo.*R$/);
+    expect(sim.useItem(slotWith(sim, 'pieza_mecanica')).msg).toMatch(/^La pieza mecánica se gasta al reparar máquinas.*llave inglesa.*R$/);
+    expect(sim.useItem(slotWith(sim, 'madera')).msg).toMatch(/también arde/);
+    expect(sim.useItem(slotWith(sim, 'chatarra')).msg).toBe('Es un material: sirve para fabricar y construir');
+    expect(sim.useItem(slotWith(sim, 'combustible')).msg).toBe('Echa el bidón de combustible en la ranura de combustible de la cocina o del generador');
   });
 
   it('materiales, semillas y ranuras vacías dan un mensaje claro', () => {
@@ -1206,7 +1424,7 @@ describe('viaje', () => {
     expect(v.route).toEqual(['templadas', 'archipielago']);
     expect(v.nextChoices).toBeNull();
     expect(v.chosenNext).toBeNull();
-    expect(sim.state.log.some((l) => /Entramos en Archipiélago Esmeralda/.test(l.text))).toBe(true);
+    expect(sim.state.log.some((l) => /Dejamos atrás Aguas Templadas\. Entramos en el Archipiélago Esmeralda\./.test(l.text))).toBe(true);
   });
 
   it('sin rumbo elegido sigue la primera opción', () => {
@@ -1232,8 +1450,13 @@ describe('viaje', () => {
       sim.tick(30);
     }
     const v = sim.state.voyage;
-    expect(v.route.length).toBeGreaterThanOrEqual(3);
-    for (let i = 1; i < v.route.length; i++) expect(REGIONS[v.route[i - 1]!]!.next).toContain(v.route[i]);
+    expect(v.route.length).toBeGreaterThanOrEqual(2);
+    // Cada tramo une regiones vecinas en la carta (hacia delante o, los primeros días, de vuelta).
+    for (let i = 1; i < v.route.length; i++) {
+      const a = REGIONS[v.route[i - 1]!]!;
+      const b = REGIONS[v.route[i]!]!;
+      expect(a.next.includes(b.id) || b.next.includes(a.id)).toBe(true);
+    }
     expect(v.distance).toBeGreaterThan(300);
   });
 
@@ -1245,6 +1468,90 @@ describe('viaje', () => {
     expect(v.sightings[0]!.x).toBeCloseTo(100 - ((VISUAL_DRIFT * CRUISE_SPEED) / 6) * 10, 6);
     runVoyage(sim, 21);
     expect(v.sightings).toHaveLength(0);
+  });
+
+  it('los primeros días no se ofrecen regiones de peligro ≥ 4 si hay alternativa y el piloto busca aguas tranquilas', () => {
+    const { sim } = setup();
+    const v = sim.state.voyage;
+    expect(voyage.dangerGated(sim)).toBe(true);
+    // Cementerio → Boreal (3) o Tormentas (5): solo se ofrece Boreal.
+    v.regionId = 'cementerio';
+    v.regionLength = REGIONS['cementerio']!.length;
+    expect(voyage.nextRegions(sim)).toEqual(['boreal']);
+    expect(voyage.routeOptions(sim).map((o) => o.id)).toEqual(['boreal']);
+    const r = sim.chooseRoute('tormentas');
+    expect(r.ok).toBe(false);
+    expect(r.msg).toBe('Aún no es prudente navegar hacia el Mar de las Tormentas: el barco podrá adentrarse a partir del día 7');
+    expect(voyage.gatedRoutes(sim).map((g) => g.id)).toEqual(['tormentas']);
+    // Boreal → Tormentas (5) o Faro (4): sin alternativa hacia delante, se ofrece volver a aguas más tranquilas…
+    v.regionId = 'boreal';
+    expect(voyage.nextRegions(sim)).toEqual(['archipielago', 'cementerio']);
+    for (const id of voyage.nextRegions(sim)) expect(REGIONS[id]!.danger).toBeLessThan(voyage.DANGER_GATE);
+    // …salvo que falte menos de un día para el día 7: entonces se sigue adelante por lo menos peligroso.
+    const t0 = sim.state.time;
+    sim.state.time = t0 + voyage.DANGER_GATE_DAYS * MINUTES_PER_DAY - (voyage.BACKTRACK_MIN_HOURS - 1) * 60;
+    expect(voyage.dangerGated(sim)).toBe(true);
+    expect(voyage.nextRegions(sim)).toEqual(REGIONS['boreal']!.next);
+    expect(voyage.autopilotTarget(sim)).toBe('faro');
+    sim.state.time = t0;
+    // El piloto (sin rumbo fijado) elige la menos peligrosa.
+    v.regionId = 'templadas';
+    expect(voyage.autopilotTarget(sim, ['archipielago', 'sargazos'])).toBe('sargazos');
+    expect(voyage.routeOptions(sim).find((o) => o.autopilot)?.id).toBe('sargazos');
+    v.regionDistance = v.regionLength - 0.1;
+    v.regionId = 'archipielago';
+    v.regionLength = REGIONS['archipielago']!.length;
+    v.regionDistance = v.regionLength - 0.1;
+    runVoyage(sim, 5);
+    expect(v.regionId).toBe('cementerio');
+    expect(sim.state.log.some((l) => /el piloto busca aguas tranquilas/.test(l.text))).toBe(true);
+  });
+
+  it('a partir del día 7 se ofrecen todas las salidas y, sin rumbo, el barco sigue la corriente', () => {
+    const { sim } = setup();
+    const v = sim.state.voyage;
+    sim.state.time += voyage.DANGER_GATE_DAYS * MINUTES_PER_DAY;
+    expect(voyage.dangerGated(sim)).toBe(false);
+    v.regionId = 'cementerio';
+    v.regionLength = REGIONS['cementerio']!.length;
+    expect(voyage.nextRegions(sim)).toEqual(REGIONS['cementerio']!.next);
+    expect(voyage.gatedRoutes(sim)).toEqual([]);
+    expect(sim.chooseRoute('tormentas').ok).toBe(true);
+    v.chosenNext = null;
+    v.regionDistance = v.regionLength - 0.1;
+    runVoyage(sim, 5);
+    expect(v.regionId).toBe(REGIONS['cementerio']!.next[0]);
+    expect(sim.state.log.some((l) => /seguimos la corriente/.test(l.text))).toBe(true);
+  });
+
+  it('con el piloto, las regiones de peligro ≥ 4 no llegan antes de unos 6 días jugados (varias semillas)', () => {
+    for (const seed of [1, 5, 9]) {
+      const { sim } = setup(seed);
+      const v = sim.state.voyage;
+      const first: Record<string, number> = {};
+      // 7 días de navegación sin fijar rumbo.
+      for (let t = 0; t < 7 * MINUTES_PER_DAY; t += 0.5) {
+        sim.state.time += 0.5;
+        voyage.tickVoyage(sim, 0.5);
+        if (first[v.regionId] === undefined) first[v.regionId] = sim.state.time;
+      }
+      for (const [id, at] of Object.entries(first)) {
+        const played = voyage.playedDays({ state: { time: at } } as unknown as Simulation);
+        if (REGIONS[id]!.danger >= voyage.DANGER_GATE) expect(played, `${seed}: ${id}`).toBeGreaterThanOrEqual(voyage.DANGER_GATE_DAYS - voyage.BACKTRACK_MIN_HOURS / 24);
+        // El frío de la Corriente Boreal no llega antes del día 5.
+        if (id === 'boreal') expect(played, `${seed}: boreal`).toBeGreaterThanOrEqual(4);
+      }
+      // Cada región dura al menos medio día: el viaje no se recorre en cuatro días.
+      expect(v.route.length, `${seed}: ${v.route.join(' → ')}`).toBeLessThanOrEqual(7);
+    }
+  });
+
+  it('nombres de región con artículo para los textos', () => {
+    expect(voyage.regionWithArticle('sargazos')).toBe('el Mar de los Sargazos');
+    expect(voyage.regionWithArticle('boreal')).toBe('la Corriente Boreal');
+    expect(voyage.regionWithArticle('templadas')).toBe('Aguas Templadas');
+    expect(voyage.regionWithArticle('faro')).toBe('El Faro del Fin del Mundo');
+    expect(voyage.regionWithArticle('cementerio')).toBe('el Cementerio de Barcos');
   });
 
   it('opciones de rumbo para el timón', () => {
@@ -1296,12 +1603,86 @@ describe('tutorial', () => {
     sim.state.time += 30;
     goToHour(sim, 12);
     setNeeds(sim, { energy: 90 });
-    // 'pescar' espera a tener caña y 'dormir' a la noche: toca construir.
+    // 'pescar' espera a tener caña y 'dormir' a que se pueda dormir: toca construir.
     expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
     goToHour(sim, 20);
-    expect(tutorial.currentTutorial(sim)?.id).toBe('dormir');
+    expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
     addItem(sim.state.player.inventory, 'cana', 1);
     expect(tutorial.currentTutorial(sim)?.id).toBe('pescar');
+    // De noche, dormir es oportuno y pasa por delante de pescar.
+    goToHour(sim, 21);
+    const step = tutorial.currentTutorial(sim)!;
+    expect(step.id).toBe('dormir');
+    expect(step.urgent).toBe(true);
+  });
+
+  it('lo oportuno pasa delante: dormir de noche aunque falte cocinar, el timón con una decisión pendiente, reparar con daños', () => {
+    const { sim } = setup();
+    for (const id of ['mover', 'gancho', 'comer', 'almacen', 'fabricar', 'pescar', 'beber']) tutorial.markTutorial(sim, id);
+    addItem(sim.state.player.inventory, 'pescado_crudo', 1);
+    sim.state.time += 30;
+    goToHour(sim, 15);
+    setNeeds(sim, { hunger: 90, thirst: 90, energy: 70 });
+    expect(tutorial.currentTutorial(sim)?.id).toBe('cocinar');
+    // Caso del informe: a las 21:17 con energía 24 seguía «Cocinar» y nunca salía «Dormir».
+    goToHour(sim, 21);
+    sim.state.time += 17;
+    setNeeds(sim, { energy: 24 });
+    expect(tutorial.currentTutorial(sim)?.id).toBe('dormir');
+    goToHour(sim, 10);
+    setNeeds(sim, { energy: 90 });
+    expect(tutorial.currentTutorial(sim)?.id).toBe('cocinar');
+    // Un avistamiento con decisión: el timón pasa delante.
+    sim.state.events.active.push({ id: 940, type: 'naufragio', title: 'Naufragio a la vista', description: '', startedAt: sim.state.time, endsAt: null, stage: 0, objectives: [], choices: [{ id: 'rescatar', label: 'Rescatar', enabled: true }], data: {} });
+    expect(tutorial.currentTutorial(sim)?.id).toBe('timon');
+    sim.state.events.active = [];
+    // Algo dañado: reparar.
+    mod(sim, 'almacen').condition = 30;
+    expect(tutorial.currentTutorial(sim)?.id).toBe('reparar');
+    mod(sim, 'almacen').condition = 100;
+    // Con sed, el depósito ya está hecho: comer y beber también. Sin pasos oportunos, el primero pendiente.
+    expect(tutorial.currentTutorial(sim)?.id).toBe('cocinar');
+  });
+
+  it('moverse se da por hecho al completar pasos que exigen caminar, o al recorrer 5 m en varios pasos', () => {
+    const { sim } = setup();
+    tutorial.markTutorial(sim, 'almacen');
+    expect(sim.state.tutorial.done).toContain('mover');
+    const { sim: s2 } = setup();
+    // Ir y venir dentro del camarote: nunca a 5 m del origen, pero recorre más de 5 m.
+    for (let i = 0; i < 12; i++) {
+      s2.state.player.pos.x += i % 2 ? -1 : 1;
+      tutorial.tickTutorial(s2, 0.5);
+    }
+    expect(s2.state.tutorial.done).toContain('mover');
+    // Quedarse quieto o dar un paso no basta.
+    const { sim: s3 } = setup();
+    for (let i = 0; i < 4; i++) {
+      s3.state.player.pos.x += i % 2 ? -1 : 1;
+      tutorial.tickTutorial(s3, 0.5);
+    }
+    expect(s3.state.tutorial.done).not.toContain('mover');
+  });
+
+  it('los consejos describen la acción física (teclas y muebles), no menús, y «dormir» coincide con cuándo se puede dormir', () => {
+    for (const s of tutorial.TUTORIAL_STEPS) {
+      expect(s.text, s.id).not.toMatch(/\b(Tab|inventario|menú)\b/i);
+      expect(s.text.trim().endsWith('.'), s.id).toBe(true);
+    }
+    const comer = tutorial.TUTORIAL_STEPS.find((s) => s.id === 'comer')!;
+    expect(comer.text).toMatch(/F o clic derecho/);
+    // 'dormir' aparece justo cuando sleepBlocker deja de decir «No tienes sueño».
+    const { sim } = setup();
+    for (const s of tutorial.TUTORIAL_STEPS) if (s.id !== 'dormir') tutorial.markTutorial(sim, s.id);
+    sim.state.time += 30;
+    const cam = mod(sim, 'camarote');
+    nearBed(sim, cam.id, 0);
+    for (const [hour, energy] of [[12, 90], [12, 79], [20, 85], [21, 85], [4, 95], [5, 95]] as const) {
+      goToHour(sim, hour);
+      setNeeds(sim, { energy, hunger: 90, thirst: 90 });
+      const canSleep = !/No tienes sueño/.test(actions.sleepBlocker(sim, cam.id, 0) ?? '');
+      expect(tutorial.currentTutorial(sim)?.id === 'dormir', `${hour}:00 energía ${energy}`).toBe(canSleep);
+    }
   });
 
   it('descartado, terminado o durmiendo no muestra nada', () => {
@@ -1348,6 +1729,21 @@ describe('guardado', () => {
     const sim2 = new Simulation(loaded);
     sim2.tick(30);
     expect(sim2.state.time).toBeCloseTo(sim.state.time + 30, 6);
+  });
+
+  it('el RNG se sincroniza antes de guardar: la partida cargada no repite tiradas hechas fuera del tick', () => {
+    const { sim } = setup(21);
+    sim.tick(1);
+    setNeeds(sim, { hunger: 30 });
+    sim.useItem(slotWith(sim, 'pescado_crudo', 2)); // tira dados (puede enfermar) fuera del tick
+    sim.rng.next();
+    expect(sim.rng.state).not.toBe(sim.state.rngState);
+    sim.syncRng();
+    expect(sim.state.rngState).toBe(sim.rng.state);
+    const store = createLocalSaveStore('t-rng', new FakeStorage());
+    store.save('manual', sim.state);
+    const loaded = new Simulation(store.load('manual')!);
+    expect(loaded.rng.next()).toBe(sim.rng.next());
   });
 
   it('lista ordenada por fecha con etiqueta legible', async () => {

@@ -25,6 +25,7 @@ import { hourOf } from './time';
 import type { PropInstance } from './ship';
 import { markTutorial } from './tutorial';
 import type { Inventory, ModuleInstance } from './types';
+import { agree, isFeminineName, isHealingBedPowered, withArticle as moduleWithArticle } from './utilities';
 
 /* ------------------------------------------------------------------ */
 /* Parámetros                                                          */
@@ -53,13 +54,118 @@ const ok = (msg?: string): ActionResult => (msg === undefined ? { ok: true } : {
 /* Textos                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Artículo determinado aproximado para nombres de objetos ("el pescado asado", "las hortalizas"). */
-function withArt(name: string): string {
+/** Género y número gramatical del nombre de un objeto: m, f, mp (masculino plural), fp. */
+export type ItemGender = 'm' | 'f' | 'mp' | 'fp';
+
+/**
+ * Género y número del nombre de cada objeto de data/items.ts (según su `name`: «Tornillería» es
+ * femenino aunque el id sea `tornillos`; «Bidón de combustible», masculino). Los objetos que no
+ * estén aquí se deducen del nombre (`guessGender`).
+ */
+export const ITEM_GENDER: Readonly<Record<string, ItemGender>> = {
+  madera: 'f',
+  chatarra: 'f',
+  placa_metal: 'f',
+  tornillos: 'f',
+  fibra: 'f',
+  cuerda: 'f',
+  tela: 'f',
+  plastico: 'm',
+  componentes: 'mp',
+  combustible: 'm',
+  pieza_mecanica: 'f',
+  kit_reparacion: 'm',
+  celula_solar: 'f',
+  pescado_crudo: 'm',
+  pescado_asado: 'm',
+  hortaliza: 'fp',
+  fruta: 'f',
+  conserva: 'f',
+  sopa: 'f',
+  guiso: 'm',
+  agua_potable: 'f',
+  cubo_agua: 'm',
+  semilla_hortaliza: 'fp',
+  semilla_lino: 'fp',
+  vendaje: 'm',
+  botiquin: 'm',
+  martillo: 'm',
+  llave_inglesa: 'f',
+  gancho: 'm',
+  cana: 'f',
+  cubo: 'm',
+  abrigo: 'm',
+  plano_taller: 'm',
+  plano_energia: 'm',
+  plano_agua: 'm',
+  plano_solar: 'm',
+  plano_enfermeria: 'm',
+  plano_casco: 'm',
+  plano_invernadero: 'm',
+  plano_motor: 'm',
+};
+
+/** Sustantivos femeninos que no acaban en -a, y masculinos que sí (para objetos sin entrada). */
+const FEM_NOUNS = new Set(['llave', 'red', 'sal', 'luz', 'lona', 'pieza', 'célula', 'semilla']);
+const MASC_NOUNS = new Set(['día', 'mapa', 'sistema', 'problema']);
+
+/** Deduce el género de un nombre por su primera palabra. */
+function guessGender(name: string): ItemGender {
   const first = (name.split(/\s+/)[0] ?? '').toLowerCase();
   const plural = /[^íéáóú]s$/.test(first);
-  const fem = /(a|as|ción|ciones|dad|dades)$/.test(first);
-  const art = plural ? (fem ? 'las' : 'los') : fem ? 'la' : 'el';
-  return `${art} ${name.charAt(0).toLowerCase()}${name.slice(1)}`;
+  const sing = plural ? first.replace(/es$/, '').replace(/s$/, '') : first;
+  const fem = FEM_NOUNS.has(sing) || FEM_NOUNS.has(first) ? true : MASC_NOUNS.has(sing) ? false : /(a|ción|sión|dad|ería)$/.test(sing);
+  return plural ? (fem ? 'fp' : 'mp') : fem ? 'f' : 'm';
+}
+
+/** Género y número del nombre de un objeto. */
+export function itemGender(id: string): ItemGender {
+  return ITEM_GENDER[id] ?? guessGender(ITEMS[id]?.name ?? id);
+}
+
+/** Artículo determinado de un objeto: 'el', 'la', 'los' o 'las'. */
+export function itemArticle(id: string): string {
+  return { m: 'el', f: 'la', mp: 'los', fp: 'las' }[itemGender(id)];
+}
+
+/** Artículo indeterminado de un objeto: 'un', 'una', 'unos' o 'unas'. */
+export function itemIndefinite(id: string): string {
+  return { m: 'un', f: 'una', mp: 'unos', fp: 'unas' }[itemGender(id)];
+}
+
+/** Nombre del objeto en minúscula inicial. */
+function lowerName(id: string): string {
+  const name = ITEMS[id]?.name ?? id;
+  return name.charAt(0).toLowerCase() + name.slice(1);
+}
+
+/** «la llave inglesa», «el martillo», «las hortalizas». */
+export function itemWithArticle(id: string): string {
+  return `${itemArticle(id)} ${lowerName(id)}`;
+}
+
+/** «La llave inglesa», «Las hortalizas»: con artículo y mayúscula inicial (para empezar una frase). */
+function capItem(id: string): string {
+  const t = itemWithArticle(id);
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+/** ¿El nombre del objeto es plural? («Hortalizas», «Componentes eléctricos»). */
+function pluralItem(id: string): boolean {
+  const g = itemGender(id);
+  return g === 'mp' || g === 'fp';
+}
+
+/** «una llave inglesa», «un martillo», «unas hortalizas». */
+export function itemWithIndefinite(id: string): string {
+  return `${itemIndefinite(id)} ${lowerName(id)}`;
+}
+
+/** Concuerda un adjetivo (en masculino singular acabado en -o) con el objeto: ('tela', 'enredado') → 'enredada'. */
+export function itemAgree(id: string, adjMasc: string): string {
+  const g = itemGender(id);
+  const stem = adjMasc.replace(/o$/, '');
+  return stem + (g === 'f' || g === 'fp' ? 'a' : 'o') + (g === 'mp' || g === 'fp' ? 's' : '');
 }
 
 /** Segunda persona del verbo de consumo ("Comer" → "Comes"). */
@@ -124,19 +230,33 @@ export function useItem(sim: Simulation, slot: number): ActionResult {
     case 'herramienta':
       if (slot < HOTBAR_SLOTS) {
         setHotbar(sim, slot);
-        return ok(`Llevas ${withArt(def.name)} en la mano`);
+        return ok(`Llevas ${itemWithArticle(def.id)} en la mano`);
       }
-      return fail('Selecciónala en la barra rápida: muévela a una de las 8 primeras ranuras');
+      return fail('Para usar una herramienta, muévela a la barra rápida (las 8 primeras ranuras) y selecciónala');
     case 'semilla':
-      return fail('Las semillas se plantan en un huerto (E sobre un bancal)');
+      return fail('Las semillas se plantan en un huerto: pulsa E sobre un bancal');
     case 'combustible':
-      return fail('Échalo en la ranura de combustible de la cocina o del generador');
+      return fail(`Echa ${itemWithArticle(def.id)} en la ranura de combustible de la cocina o del generador`);
     case 'pieza':
-      return fail('Es un repuesto: se gasta al reparar instalaciones');
+      return fail(partUse(def.id));
     case 'material':
-      return fail('Es un material: sirve para fabricar y construir');
+      return fail(def.fuel ? 'Es un material para fabricar y construir; también arde en la cocina y en el generador' : 'Es un material: sirve para fabricar y construir');
     default:
       return fail('Esto no se puede usar');
+  }
+}
+
+/** Para qué sirve una pieza de repuesto (no se «usa» desde el inventario). */
+function partUse(id: string): string {
+  switch (id) {
+    case 'kit_reparacion':
+      return 'El kit de reparación se gasta al reparar estructuras: acércate a lo dañado con un martillo y pulsa R';
+    case 'pieza_mecanica':
+      return 'La pieza mecánica se gasta al reparar máquinas: acércate a la máquina averiada con una llave inglesa y pulsa R';
+    case 'celula_solar':
+      return 'La célula solar sirve para construir paneles solares (modo construcción, B)';
+    default:
+      return `${itemWithArticle(id).charAt(0).toUpperCase()}${itemWithArticle(id).slice(1)} es un repuesto: se gasta al reparar o construir`;
   }
 }
 
@@ -161,12 +281,12 @@ function equipClothing(sim: Simulation, slot: number, def: ItemDef): ActionResul
   const old = p.clothing;
   takeFromSlot(inv, slot, 1);
   p.clothing = def.id;
-  let msg = `Te pones ${withArt(def.name)}`;
+  let msg = `Te pones ${itemWithArticle(def.id)}`;
   if (old) {
     // La prenda anterior vuelve a la misma ranura (o donde quepa; si no, a una caja a los pies).
     if (!inv.slots[slot]) inv.slots[slot] = { id: old, qty: 1 };
     else giveToPlayer(sim, old, 1);
-    msg += ` y guardas ${withArt(itemName(old))}`;
+    msg += ` y guardas ${itemWithArticle(old)}`;
   }
   sim.bus.emit('sfx', { name: 'equipar', x: p.pos.x, y: p.pos.y + 1, z: p.pos.z });
   return ok(msg);
@@ -213,7 +333,7 @@ function consumeItem(sim: Simulation, slot: number, def: ItemDef): ActionResult 
     else giveToPlayer(sim, c.leaves, 1);
   }
 
-  let msg = salty ? 'Bebes agua salada: ¡puaj! Te deja más sediento' : `${verb2(c.verb)} ${withArt(def.name)}`;
+  let msg = salty ? 'Bebes agua salada: ¡puaj! Te deja más sediento' : `${verb2(c.verb)} ${itemWithIndefinite(def.id)}`;
   if (c.cures && p.sick > 0) {
     p.sick = 0;
     msg += '. Te encuentras mucho mejor';
@@ -240,10 +360,14 @@ export function unequipClothing(sim: Simulation): ActionResult {
   if (!p.clothing) return fail('No llevas nada de abrigo');
   if (p.sleeping) return fail('Estás durmiendo');
   const id = p.clothing;
-  if (spaceFor(p.inventory, id) < 1) return fail('No tienes sitio en el inventario para quitártelo');
+  if (spaceFor(p.inventory, id) < 1) {
+    const g = itemGender(id);
+    const pron = { m: 'lo', f: 'la', mp: 'los', fp: 'las' }[g];
+    return fail(`No tienes sitio en el inventario para quitárte${pron}`);
+  }
   addItem(p.inventory, id, 1);
   p.clothing = null;
-  return ok(`Te quitas ${withArt(itemName(id))}`);
+  return ok(`Te quitas ${itemWithArticle(id)}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -266,13 +390,13 @@ export function moveItem(sim: Simulation, from: InvRef, fromSlot: number, to: In
 
   const dstModule = refModule(sim, to);
   if (dstModule && dstModule.status === 'construction') return fail('No se puede guardar nada en una obra');
-  if (isFuelSlot(to) && !burns(s.id)) return fail(`${itemName(s.id)} no arde: aquí solo va madera o combustible`);
+  if (isFuelSlot(to) && !burns(s.id)) return fail(`${capItem(s.id)} no ${pluralItem(s.id) ? 'arden' : 'arde'}: aquí solo va madera o combustible`);
 
   // En un intercambio, lo que vuelve al origen también debe respetar sus reglas.
   if (toSlot !== undefined) {
     const t = dst.slots[toSlot];
     if (t && t.id !== s.id) {
-      if (isFuelSlot(from) && !burns(t.id)) return fail(`${itemName(t.id)} no arde: no puede ir a la ranura de combustible`);
+      if (isFuelSlot(from) && !burns(t.id)) return fail(`${capItem(t.id)} no ${pluralItem(t.id) ? 'arden: no pueden' : 'arde: no puede'} ir a la ranura de combustible`);
       const srcModule = refModule(sim, from);
       if (srcModule && srcModule.status === 'construction') return fail('No se puede guardar nada en una obra');
     }
@@ -410,7 +534,7 @@ export function sleepBlocker(sim: Simulation, moduleId: number, bed: number): st
   const def = MODULES[m.type];
   if (!def?.beds) return 'Aquí no hay camas';
   if (m.status === 'construction') return `${def.name}: aún está en obras`;
-  if (m.status !== 'active') return `${def.name}: está destrozado, repáralo antes de dormir aquí`;
+  if (m.status !== 'active') return `${def.name}: está ${agree(def.name, 'destrozado')}, repára${isFeminineName(def.name) ? 'la' : 'lo'} antes de dormir aquí`;
   if (m.fire > 0) return '¡Está ardiendo!';
   if (!Number.isInteger(bed) || bed < 0 || bed >= m.beds.length) return 'Esa cama no existe';
   if (distanceToBed(sim, m.id, bed) > BED_RANGE) return 'Acércate a la cama';
@@ -442,7 +566,10 @@ export function sleep(sim: Simulation, moduleId: number, bed: number): ActionRes
   p.sleeping = { moduleId, bed, until: null };
   markTutorial(sim, 'dormir');
   sim.bus.emit('sfx', { name: 'dormir', x: p.pos.x, y: p.pos.y + 0.5, z: p.pos.z });
-  return ok(def.healingBeds ? 'Te tumbas en una camilla de la enfermería…' : `Te acuestas a dormir en ${withArt(def.name)}…`);
+  if (def.healingBeds) {
+    return ok(isHealingBedPowered(sim, m) ? `Te tumbas en una camilla de ${moduleWithArticle(def.name)}…` : `Te tumbas en una camilla de ${moduleWithArticle(def.name)}. Sin energía, cura como una cama normal…`);
+  }
+  return ok(`Te acuestas a dormir en ${moduleWithArticle(def.name)}…`);
 }
 
 /**

@@ -77,6 +77,8 @@ const WAKE_EVENTS = new Set(['incendio', 'tormenta']);
 const PENDING_CRISES = new Set(['averia', 'incendio', 'fuga', 'plaga', 'enfermedad', 'discusion', 'naufragio', 'isla', 'estructura', 'naufragos', 'mercante']);
 /** Avistamientos: si acaban sin éxito, se han perdido de vista. */
 const SIGHTINGS = new Set(['naufragio', 'isla', 'estructura', 'naufragos', 'mercante', 'banco_peces']);
+/** Sucesos menores que no merecen mención si ya han terminado al despertar. */
+const MINOR_EVENTS = new Set(['banco_peces']);
 /** Sucesos que se nombran como mucho en el resumen del despertar (el resto, «y N más»). */
 const NIGHT_SUMMARY_MAX = 4;
 
@@ -451,9 +453,11 @@ export function nightSummary(sim: Simulation, night: NightLog): { text: string; 
   const st = sim.state;
   const parts: string[] = [];
   let pending = false;
-  for (const ev of night.events.slice(0, NIGHT_SUMMARY_MAX)) {
+  const isActive = (ev: NightEvent): boolean => st.events.active.some((e: ActiveEvent) => e.id === ev.id);
+  const events = night.events.filter((ev) => !MINOR_EVENTS.has(ev.type) || isActive(ev));
+  for (const ev of events.slice(0, NIGHT_SUMMARY_MAX)) {
     let phrase = nightEventPhrase(sim, ev);
-    const active = st.events.active.some((e: ActiveEvent) => e.id === ev.id);
+    const active = isActive(ev);
     if (active) {
       if (PENDING_CRISES.has(ev.type)) pending = true;
     } else {
@@ -463,11 +467,11 @@ export function nightSummary(sim: Simulation, night: NightLog): { text: string; 
     }
     parts.push(phrase);
   }
-  const extra = night.events.length - NIGHT_SUMMARY_MAX;
+  const extra = events.length - NIGHT_SUMMARY_MAX;
   if (extra > 0) parts.push(`${extra} ${extra === 1 ? 'cosa más' : 'cosas más'}`);
   if (st.voyage.regionId !== night.regionId) parts.push(`entramos en ${regionWithArticle(st.voyage.regionId)}`);
   if (!parts.length) return null;
-  const tail = night.events.length ? '. Los detalles están en el diario (J)' : '';
+  const tail = events.length ? '. Los detalles están en el diario (J)' : '';
   return { text: `Mientras dormías: ${joinList(parts)}${tail}`, kind: pending ? 'warn' : 'info' };
 }
 

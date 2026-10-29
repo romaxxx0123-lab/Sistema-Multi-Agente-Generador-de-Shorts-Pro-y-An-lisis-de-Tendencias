@@ -33,6 +33,12 @@ const DEFAULT_MOTOR_BONUS = 3;
 export const DANGER_GATE = 4;
 /** Días jugados (desde que zarpamos) antes de los que no se ofrecen regiones de peligro ≥ DANGER_GATE. */
 export const DANGER_GATE_DAYS = 6;
+/**
+ * Si todas las salidas son peligrosas, solo se da media vuelta hacia aguas tranquilas cuando aún
+ * faltan más de estas horas para que se abran las regiones peligrosas (si no, sería desandar días
+ * de viaje por unas horas).
+ */
+export const BACKTRACK_MIN_HOURS = 24;
 
 const fail = (msg: string): ActionResult => ({ ok: false, msg });
 
@@ -78,14 +84,15 @@ export function dangerGated(sim: Simulation): boolean {
 /**
  * Regiones a las que se puede poner rumbo ahora desde `from` (por defecto, la actual). Al principio
  * se descartan las de peligro ≥ DANGER_GATE si queda alguna otra salida; si todas lo son (p. ej. la
- * Corriente Boreal), se ofrece volver a las regiones vecinas más tranquilas. Si no hay ninguna,
- * todas las salidas.
+ * Corriente Boreal) y aún falta más de un día para que se abran, se ofrece volver a las regiones
+ * vecinas más tranquilas. Si no, todas las salidas.
  */
 export function nextRegions(sim: Simulation, from: RegionDef = currentRegion(sim)): string[] {
   const all = from.next.filter((id) => !!REGIONS[id]);
   if (!dangerGated(sim)) return all;
   const safe = all.filter((id) => REGIONS[id]!.danger < DANGER_GATE);
   if (safe.length) return safe;
+  if ((DANGER_GATE_DAYS - playedDays(sim)) * 24 <= BACKTRACK_MIN_HOURS) return all;
   const back = Object.values(REGIONS)
     .filter((r) => r.id !== from.id && r.next.includes(from.id) && r.danger < DANGER_GATE)
     .sort((a, b) => a.danger - b.danger)

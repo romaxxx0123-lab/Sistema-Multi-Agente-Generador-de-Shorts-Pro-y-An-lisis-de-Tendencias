@@ -173,8 +173,10 @@ function productName(r: RecipeDef): string {
 /* Puntos transitables (cajas y recolocación de personas)              */
 /* ------------------------------------------------------------------ */
 
-/** Radio en planta de una caja suelta (para no dejarla dentro de un mueble o una pared). */
-export const CRATE_RADIUS = 0.35;
+/** Radio en planta de una caja suelta (0,62 m de lado girada al azar: media diagonal ≈ 0,44 m). */
+export const CRATE_RADIUS = 0.45;
+/** Media huella de la caja: sus cuatro esquinas deben apoyar en el mismo suelo (no colgar de un hueco). */
+const CRATE_HALF = 0.31;
 
 /** Nodos de la rejilla de navegación alcanzables desde la cubierta (caché por rejilla). */
 const reachCache = new WeakMap<object, Uint8Array | null>();
@@ -190,16 +192,19 @@ function reachableNodes(sim: Simulation): Uint8Array | null {
 
 /**
  * ¿Se puede dejar una caja aquí? Suelo plano (ni rampa ni hueco de escalera) justo a la altura del
- * punto y sin muebles ni paredes encima.
+ * punto bajo toda la caja y sin muebles ni paredes encima.
  */
 export function isValidDropPoint(sim: Simulation, p: Vec3): boolean {
   if (![p.x, p.y, p.z].every(Number.isFinite)) return false;
   const col = sim.collision;
-  const cell = col.cellOf(p);
-  if (!cell || !cell.walkable || cell.kind === 'stairLow' || cell.kind === 'stairHigh') return false;
-  const g = col.groundAt(p.x, p.z, p.y + 0.05);
-  if (g === null || Math.abs(g - p.y) > 0.05) return false;
-  return col.isFree(p.x, p.z, g, CRATE_RADIUS);
+  for (const [dx, dz] of [[0, 0], [-CRATE_HALF, -CRATE_HALF], [CRATE_HALF, -CRATE_HALF], [-CRATE_HALF, CRATE_HALF], [CRATE_HALF, CRATE_HALF]] as const) {
+    const q = { x: p.x + dx, y: p.y, z: p.z + dz };
+    const cell = col.cellOf(q);
+    if (!cell || !cell.walkable || cell.kind === 'stairLow' || cell.kind === 'stairHigh') return false;
+    const g = col.groundAt(q.x, q.z, p.y + 0.05);
+    if (g === null || Math.abs(g - p.y) > 0.05) return false;
+  }
+  return col.isFree(p.x, p.z, p.y, CRATE_RADIUS);
 }
 
 /** ¿Una persona de radio `radius` puede estar de pie aquí (con suelo bajo los pies y sin chocar)? */

@@ -11,6 +11,10 @@
  * `base región + 5·sol − 4·lluvia − 3·viento`, con la base de la región suavizada para que el
  * cambio de región no dé saltos bruscos.
  *
+ * Los avisos menores de cambio de clima (lluvia, niebla, cielo despejado o nublado) no se muestran
+ * mientras el jugador duerme: a ×14 serían una lluvia de mensajes que nadie lee. La tormenta, su
+ * final y el barómetro sí (quedan en el diario).
+ *
  * Estado transitorio (no se guarda): aviso del barómetro ya dado, antelación del aviso, rumbo
  * objetivo del viento y base de temperatura suavizada. Se reconstruye al cargar.
  */
@@ -151,14 +155,14 @@ export function airTemperature(base: number, time: number, rain: number, wind: n
   return base + 5 * clamp(sunElevation(time), -1, 1) - 4 * rain - 3 * wind;
 }
 
-/** Mensaje al cambiar de clima (null = no merece aviso). */
-function transitionMessage(prev: WeatherKind, next: WeatherKind): { text: string; kind: 'info' | 'good' | 'warn' | 'danger'; log: boolean } | null {
+/** Mensaje al cambiar de clima (null = no merece aviso). `collectors`: hay colectores de lluvia a bordo. */
+function transitionMessage(prev: WeatherKind, next: WeatherKind, collectors = true): { text: string; kind: 'info' | 'good' | 'warn' | 'danger'; log: boolean } | null {
   if (prev === next) return null;
   if (next === 'tormenta') return { text: '¡Estalla la tormenta! Ponte a cubierto y vigila el barco', kind: 'danger', log: true };
   if (prev === 'tormenta') return { text: 'La tormenta amaina. Revisa los daños del barco', kind: 'good', log: true };
   switch (next) {
     case 'lluvia':
-      return { text: 'Empieza a llover: los colectores recogen agua', kind: 'info', log: false };
+      return { text: collectors ? 'Empieza a llover: los colectores recogen agua' : 'Empieza a llover', kind: 'info', log: false };
     case 'niebla':
       return { text: 'Un banco de niebla envuelve el barco', kind: 'info', log: false };
     case 'despejado':
@@ -184,10 +188,11 @@ function beginWeather(sim: Simulation, kind: WeatherKind, carry: number): void {
   // El viento rola un poco (mucho más con tormenta).
   const swing = kind === 'tormenta' ? 1.5 : 0.8;
   memo.windTarget = wrapAngle(w.windDir + sim.rng.range(-swing, swing));
-  const msg = transitionMessage(prev, kind);
+  const collectors = sim.state.ship.modules.some((m) => m.type === 'colector' && m.status === 'active');
+  const msg = transitionMessage(prev, kind, collectors);
   if (msg) {
     if (msg.log) sim.log(msg.text, msg.kind);
-    else sim.notify(msg.text, msg.kind);
+    else if (!sim.state.player.sleeping) sim.notify(msg.text, msg.kind);
   }
 }
 
