@@ -31,7 +31,11 @@ export type InteractKind =
   | 'bateria'
   | 'panel'
   | 'timon'
-  | 'motor';
+  | 'motor'
+  | 'ahumadero'
+  | 'vivero'
+  | 'grua'
+  | 'radar';
 
 export type PropKind =
   | 'cama'
@@ -62,7 +66,14 @@ export type PropKind =
   | 'timon'
   | 'carta_nautica'
   | 'motor'
-  | 'barril';
+  | 'barril'
+  | 'sofa'
+  | 'mesa_juegos'
+  | 'estanteria_libros'
+  | 'ahumadero'
+  | 'tanque_peces'
+  | 'grua'
+  | 'radar';
 
 export interface PropSpec {
   kind: PropKind;
@@ -169,6 +180,8 @@ export interface ModuleDef {
   speedBonus?: number;
   /** Mejoras disponibles, en orden de nivel. */
   upgrades?: UpgradeDef[];
+  /** Debe ir en una celda junto a la borda (primera o última fila de la manga). */
+  edge?: boolean;
 }
 
 const P = Math.PI;
@@ -512,6 +525,108 @@ const defs: ModuleDef[] = [
     buildable: true,
   },
   {
+    id: 'sala_comun',
+    name: 'Sala común',
+    desc: 'Sofás, una mesa de juegos y libros. La tripulación pasa aquí sus ratos libres y se lleva mejor.',
+    category: 'vivienda',
+    size: [2, 1],
+    enclosed: true,
+    levels: [0, 1, 2],
+    cost: { madera: 14, tela: 6 },
+    buildTime: 70,
+    unlock: null,
+    doors: [{ side: 'S', cell: 0 }],
+    props: [
+      { kind: 'sofa', u: 5.3, v: 3.45, rot: 0, collider: [1.1, 0.45, 0.9] },
+      { kind: 'mesa_juegos', u: 6.3, v: 1.7, rot: 0, collider: [0.7, 0.7, 0.8] },
+      { kind: 'estanteria_libros', u: 0.45, v: 3.0, rot: -P / 2, collider: [0.9, 0.25, 2.0] },
+      { kind: 'alfombra', u: 4.2, v: 2.0, rot: 0, collider: null },
+    ],
+    comfort: 4,
+    demolishable: true,
+    buildable: true,
+  },
+  {
+    id: 'ahumadero',
+    name: 'Ahumadero',
+    desc: 'Una caseta de humo a cielo abierto: convierte pescado crudo y leña en pescado ahumado que aguanta.',
+    category: 'produccion',
+    size: [1, 1],
+    enclosed: false,
+    levels: [1, 2],
+    needsSky: true,
+    cost: { madera: 10, chatarra: 4 },
+    buildTime: 40,
+    unlock: null,
+    doors: [],
+    props: [{ kind: 'ahumadero', u: 2.0, v: 2.2, rot: 0, collider: [1.0, 0.7, 2.0], interact: 'ahumadero' }],
+    storageSlots: 6,
+    demolishable: true,
+    buildable: true,
+  },
+  {
+    id: 'vivero',
+    name: 'Vivero de peces',
+    desc: 'Dos tanques con agua de mar bombeada donde crían peces. Da pescado sin salir de cubierta. Consume electricidad.',
+    category: 'produccion',
+    size: [2, 1],
+    enclosed: false,
+    levels: [0, 1],
+    cost: { placa_metal: 6, plastico: 8, componentes: 1, tornillos: 6 },
+    buildTime: 90,
+    unlock: 'acuicultura',
+    doors: [],
+    props: [
+      { kind: 'tanque_peces', u: 2.0, v: 2.0, rot: 0, collider: [1.4, 1.0, 1.3], interact: 'vivero' },
+      { kind: 'tanque_peces', u: 6.0, v: 2.0, rot: 0, collider: [1.4, 1.0, 1.3], interact: 'vivero' },
+    ],
+    storageSlots: 6,
+    powerUse: 0.5,
+    machine: true,
+    demolishable: true,
+    buildable: true,
+  },
+  {
+    id: 'grua',
+    name: 'Grúa de rescate',
+    desc: 'Una pluma eléctrica junto a la borda que engancha sola los restos que pasan cerca. Consume electricidad.',
+    category: 'produccion',
+    size: [1, 1],
+    enclosed: false,
+    levels: [1],
+    needsSky: true,
+    edge: true,
+    cost: { placa_metal: 8, pieza_mecanica: 2, cuerda: 4, componentes: 2 },
+    buildTime: 100,
+    unlock: 'grua',
+    doors: [],
+    props: [{ kind: 'grua', u: 2.0, v: 2.0, rot: 0, collider: [0.8, 0.8, 3.2], interact: 'grua' }],
+    storageSlots: 12,
+    powerUse: 0.4,
+    machine: true,
+    demolishable: true,
+    buildable: true,
+  },
+  {
+    id: 'radar',
+    name: 'Radar y radio',
+    desc: 'Antena giratoria y radio de onda corta en la cubierta superior: avistamientos con más antelación, avisos de tormenta tempranos y voces de otros barcos.',
+    category: 'estructura',
+    size: [1, 1],
+    enclosed: false,
+    levels: [2],
+    needsSky: true,
+    cost: { componentes: 4, placa_metal: 4, tornillos: 4 },
+    buildTime: 60,
+    unlock: 'radar',
+    doors: [],
+    props: [{ kind: 'radar', u: 2.0, v: 2.0, rot: 0, collider: [0.6, 0.6, 2.6], interact: 'radar' }],
+    powerUse: 0.3,
+    machine: true,
+    demolishable: true,
+    buildable: true,
+  },
+  {
     id: 'escalera',
     name: 'Escalera',
     desc: 'Conecta este nivel con el superior. Se entra por el lado marcado y se sale por el opuesto, un nivel más arriba.',
@@ -603,6 +718,18 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
   ],
   enfermeria: [
     { tier: 2, name: 'Enfermería equipada', desc: 'Instrumental y medicinas ordenadas: se cura antes.', cost: { componentes: 2, tela: 4, plastico: 2 }, buildTime: 60, effects: { healMult: 1.5 } },
+  ],
+  sala_comun: [
+    { tier: 2, name: 'Sala común con estufa', desc: 'Una estufa de hierro y cojines: el mejor sitio del barco.', cost: { madera: 6, placa_metal: 2, chatarra: 4, tela: 4 }, buildTime: 45, effects: { comfort: 6 } },
+  ],
+  ahumadero: [
+    { tier: 2, name: 'Ahumadero de tiro doble', desc: 'Dos cámaras de humo: ahúma más rápido con la misma leña.', cost: { madera: 8, placa_metal: 2, tornillos: 4 }, buildTime: 40, effects: { workSpeed: 1.6 } },
+  ],
+  vivero: [
+    { tier: 2, name: 'Vivero con aireadores', desc: 'Burbujeadores y sombra: los peces crecen antes.', cost: { componentes: 2, plastico: 4, tornillos: 4 }, buildTime: 60, effects: { workSpeed: 1.6 } },
+  ],
+  grua: [
+    { tier: 2, name: 'Grúa de pluma larga', desc: 'Más alcance y un torno más rápido.', cost: { placa_metal: 4, pieza_mecanica: 2, cuerda: 4 }, buildTime: 80, effects: { workSpeed: 1.6 } },
   ],
   motor: [
     { tier: 2, name: 'Motor con hélice de paso variable', desc: 'Más velocidad con la misma energía.', cost: { pieza_mecanica: 4, componentes: 4 }, buildTime: 120, effects: { speedBonus: 5 } },

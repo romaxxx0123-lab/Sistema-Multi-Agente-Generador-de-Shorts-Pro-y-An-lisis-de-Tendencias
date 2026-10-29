@@ -135,7 +135,7 @@ function crossesWall(ax: number, az: number, bx: number, bz: number, walls: Wall
 /* Textos                                                              */
 /* ------------------------------------------------------------------ */
 
-const FEMININE_MODULES = new Set(['cocina', 'enfermeria', 'escalera', 'potabilizadora', 'bateria']);
+const FEMININE_MODULES = new Set(['cocina', 'enfermeria', 'escalera', 'potabilizadora', 'bateria', 'sala_comun', 'grua']);
 
 /** "al camarote" / "a la cocina". */
 export function toModule(type: string): string {
@@ -182,6 +182,10 @@ const PROP_LABEL: Record<InteractKind, string> = {
   panel: 'el panel solar',
   timon: 'el timón',
   motor: 'el motor',
+  ahumadero: 'el ahumadero',
+  vivero: 'los tanques del vivero',
+  grua: 'la grúa',
+  radar: 'el radar',
 };
 
 export function propLabel(kind: InteractKind): string {

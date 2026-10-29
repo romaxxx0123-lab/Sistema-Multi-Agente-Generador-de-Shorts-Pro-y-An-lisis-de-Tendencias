@@ -87,6 +87,8 @@ export function createNewGame(seed = 12345): GameState {
   addItem(player, 'cubo', 1);
   addItem(player, 'agua_potable', 2);
   addItem(player, 'conserva', 2);
+  // Hoja encontrada en la carta náutica del puente: arranca el hilo narrativo.
+  player.slots[8] = { id: 'pagina_1', qty: 1 };
 
   const deckY = LEVEL_H;
   const start = cellCenter(5, 1, SHIP_WIDTH);
@@ -168,7 +170,11 @@ export function createNewGame(seed = 12345): GameState {
     },
     unlocks: [],
     tutorial: { done: [], dismissed: false },
-    log: [{ at: time, text: 'Día 1. Zarpamos de puerto con lo justo. El barco será nuestro hogar.', kind: 'info' }],
+    log: [
+      { at: time, text: 'Día 1. Zarpamos de puerto con lo justo. El barco será nuestro hogar.', kind: 'info' },
+      { at: time, text: 'Entre las cartas náuticas del puente había una hoja doblada: «Cuaderno del Albatros, pág. 1». Habrá que leerla.', kind: 'info' },
+    ],
+    story: { pages: [], revealed: false, arrived: false },
     nextId,
   };
   void CELL;

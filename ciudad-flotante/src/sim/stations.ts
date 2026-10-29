@@ -75,6 +75,7 @@ export const STATION_PLACE: Readonly<Record<StationKind, string>> = {
   banco: 'el banco de trabajo',
   taller: 'el taller',
   cocina: 'la cocina',
+  ahumadero: 'el ahumadero',
 };
 
 /** Quién realiza la acción: el jugador (por defecto) o un habitante (paga con los almacenes). */

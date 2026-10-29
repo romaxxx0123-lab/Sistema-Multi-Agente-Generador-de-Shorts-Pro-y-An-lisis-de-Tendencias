@@ -629,3 +629,35 @@ export function repair(sim: Simulation, moduleId: number, actor: EconomyActor = 
   if (wasBroken || hadLeak) sim.log(msg, 'good', false);
   return { ok: true, msg };
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Mejoras de instalaciones (ronda de contenido 2: implementar)        */
+/* ------------------------------------------------------------------ */
+
+export interface UpgradeCheck {
+  ok: boolean;
+  reason: string | null;
+  /** Nivel al que llevaría la mejora (null si no hay más). */
+  toTier: number | null;
+  name: string | null;
+  desc: string | null;
+  cost: Record<ItemId, number>;
+  missing: Record<ItemId, number>;
+  buildTime: number;
+}
+
+/** Qué mejora admite un módulo y si se puede pagar ahora. STUB. */
+export function checkUpgrade(_sim: Simulation, _moduleId: number): UpgradeCheck {
+  return { ok: false, reason: 'Pendiente de implementar', toTier: null, name: null, desc: null, cost: {}, missing: {}, buildTime: 0 };
+}
+
+/** Paga y arranca la obra de mejora (el módulo sigue funcionando con su nivel actual). STUB. */
+export function startUpgrade(_sim: Simulation, _moduleId: number): ActionResult {
+  return { ok: false, msg: 'Pendiente de implementar' };
+}
+
+/** Cancela una mejora en obras y devuelve lo pagado. STUB. */
+export function cancelUpgrade(_sim: Simulation, _moduleId: number): ActionResult {
+  return { ok: false, msg: 'Pendiente de implementar' };
+}

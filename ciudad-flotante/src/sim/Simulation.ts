@@ -260,6 +260,17 @@ export class Simulation {
   expandHull(): ActionResult {
     return construction.expandHull(this);
   }
+  /** Mejora siguiente de un módulo: nombre, efectos, coste y si se puede pagar. */
+  checkUpgrade(moduleId: number): construction.UpgradeCheck {
+    return construction.checkUpgrade(this, moduleId);
+  }
+  /** Paga y empieza a mejorar un módulo (sigue funcionando mientras tanto). */
+  startUpgrade(moduleId: number): ActionResult {
+    return construction.startUpgrade(this, moduleId);
+  }
+  cancelUpgrade(moduleId: number): ActionResult {
+    return construction.cancelUpgrade(this, moduleId);
+  }
   /** Cancela la ampliación del casco en obras (devuelve lo pagado en una caja en la proa). */
   cancelExpansion(): ActionResult {
     return construction.cancelExpansion(this);

@@ -139,6 +139,22 @@ const defs: RegionDef[] = [
     palette: { water: '#35698a', waterDeep: '#132c45', sky: '#8c9fc0', horizon: '#e6d9c9', fog: '#a3abc2' },
     danger: 4,
   },
+  {
+    id: 'esperanza',
+    name: 'Puerto Esperanza',
+    desc: 'El fondeadero de la luz verde: barcos-hogar amarrados unos a otros, mercados flotantes y aguas tranquilas.',
+    length: 140,
+    baseTemp: 21,
+    speedMult: 0.8,
+    weather: { despejado: 6, nublado: 2.5, lluvia: 1.2, tormenta: 0.1, niebla: 0.4 },
+    debrisPerHour: 3,
+    debrisWeights: { tablones: 4, caja: 4, barril: 3, restos: 1, red: 2, bidon: 1 },
+    fishMult: 1.3,
+    eventWeights: { naufragio: 0.3, isla: 0.6, naufragos: 0.6, averia: 0.6, banco_peces: 1.5, mercante: 4, plaga: 0.4, fuga: 0.4, incendio: 0.3, enfermedad: 0.4, discusion: 0.4, estructura: 0.2 },
+    next: ['templadas', 'archipielago'],
+    palette: { water: '#38b0c8', waterDeep: '#17657f', sky: '#8fd3ea', horizon: '#fff1cf', fog: '#cbe8ee' },
+    danger: 1,
+  },
 ];
 
 export const REGIONS: Record<string, RegionDef> = Object.fromEntries(defs.map((d) => [d.id, d]));

@@ -10,7 +10,8 @@ export type ItemCategory =
   | 'semilla'
   | 'plano'
   | 'ropa'
-  | 'combustible';
+  | 'combustible'
+  | 'documento';
 
 export type ToolKind = 'martillo' | 'llave' | 'gancho' | 'cana' | 'cubo' | 'cubo_lleno';
 
@@ -70,6 +71,7 @@ const defs: ItemDef[] = [
   { id: 'pescado_asado', name: 'Pescado asado', desc: 'Pescado a la brasa. Sencillo y sabroso.', category: 'comida', stack: 10, color: '#e9a25f', consume: { hunger: 30, verb: 'Comer' }, value: 4 },
   { id: 'hortaliza', name: 'Hortalizas', desc: 'Verduras del huerto de a bordo.', category: 'comida', stack: 20, color: '#90be6d', consume: { hunger: 12, thirst: 4, verb: 'Comer' }, value: 2 },
   { id: 'fruta', name: 'Fruta tropical', desc: 'Traída de una isla. Dulce y jugosa.', category: 'comida', stack: 20, color: '#f9c74f', consume: { hunger: 14, thirst: 10, verb: 'Comer' }, value: 3 },
+  { id: 'pescado_ahumado', name: 'Pescado ahumado', desc: 'Ahumado con leña: aguanta lo que haga falta y llena bastante. Algo salado.', category: 'comida', stack: 20, color: '#c97c3d', consume: { hunger: 26, thirst: -3, verb: 'Comer' }, value: 5 },
   { id: 'conserva', name: 'Lata de conserva', desc: 'Comida en lata. No caduca y llena bastante.', category: 'comida', stack: 20, color: '#adb5bd', consume: { hunger: 35, verb: 'Comer' }, value: 5 },
   { id: 'sopa', name: 'Sopa de verduras', desc: 'Caliente y reconfortante. Quita el hambre, la sed y el frío.', category: 'comida', stack: 10, color: '#f4a261', consume: { hunger: 28, thirst: 18, warmth: 15, verb: 'Tomar' }, value: 6 },
   { id: 'guiso', name: 'Guiso marinero', desc: 'Pescado con verduras a fuego lento. La mejor comida a bordo.', category: 'comida', stack: 10, color: '#bc6c25', consume: { hunger: 50, thirst: 10, warmth: 20, energy: 6, verb: 'Comer' }, value: 9 },
@@ -98,7 +100,18 @@ const defs: ItemDef[] = [
   { id: 'plano_enfermeria', name: 'Plano: Enfermería', desc: 'Permite construir una enfermería para curar más rápido.', category: 'plano', stack: 1, color: '#e63946', unlocks: 'enfermeria', value: 15 },
   { id: 'plano_casco', name: 'Plano: Ampliación del casco', desc: 'Permite alargar el casco por la proa para ganar espacio.', category: 'plano', stack: 1, color: '#023047', unlocks: 'casco', value: 25 },
   { id: 'plano_invernadero', name: 'Plano: Lámparas de cultivo', desc: 'Permite instalar huertos en interiores con luz eléctrica.', category: 'plano', stack: 1, color: '#80b918', unlocks: 'invernadero', value: 15 },
+  { id: 'plano_acuicultura', name: 'Plano: Vivero de peces', desc: 'Permite construir tanques donde criar peces a bordo.', category: 'plano', stack: 1, color: '#2a9d8f', unlocks: 'acuicultura', value: 18 },
+  { id: 'plano_grua', name: 'Plano: Grúa de rescate', desc: 'Una grúa eléctrica que pesca restos flotantes por sí sola.', category: 'plano', stack: 1, color: '#f4a261', unlocks: 'grua', value: 22 },
+  { id: 'plano_radar', name: 'Plano: Radar y radio', desc: 'Ve más lejos: avistamientos con antelación y avisos de tormenta tempranos.', category: 'plano', stack: 1, color: '#8ecae6', unlocks: 'radar', value: 20 },
   { id: 'plano_motor', name: 'Plano: Motor auxiliar', desc: 'Un motor eléctrico que acelera la travesía.', category: 'plano', stack: 1, color: '#6d597a', unlocks: 'motor', value: 25 },
+  // Documentos (hilo narrativo, ver data/story.ts)
+  { id: 'pagina_1', name: 'Cuaderno del Albatros, pág. 1', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «A quien encuentre esto». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
+  { id: 'pagina_2', name: 'Cuaderno del Albatros, pág. 2', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «Lo que el mar trae». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
+  { id: 'pagina_3', name: 'Cuaderno del Albatros, pág. 3', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «Nadie come solo». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
+  { id: 'pagina_4', name: 'Cuaderno del Albatros, pág. 4', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «Los que lo intentaron antes». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
+  { id: 'pagina_5', name: 'Cuaderno del Albatros, pág. 5', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «El frío». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
+  { id: 'pagina_6', name: 'Cuaderno del Albatros, pág. 6', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «El barco es la gente». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
+  { id: 'pagina_7', name: 'Cuaderno del Albatros, pág. 7', desc: 'Una hoja del cuaderno de la capitana Elena Duarte: «La luz verde». Léela con F o clic derecho.', category: 'documento', stack: 1, color: '#e9d8a6', value: 0 },
 ];
 
 export const ITEMS: Record<ItemId, ItemDef> = Object.fromEntries(defs.map((d) => [d.id, d]));

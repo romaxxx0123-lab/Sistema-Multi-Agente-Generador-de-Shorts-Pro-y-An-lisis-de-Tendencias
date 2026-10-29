@@ -15,6 +15,7 @@ export const STATION_LABEL: Record<StationKind, string> = {
   banco: 'Banco de trabajo',
   taller: 'Taller mecánico',
   cocina: 'Cocina',
+  ahumadero: 'Ahumadero',
 };
 
 export const STATION_GLYPH: Record<StationKind, string> = {
@@ -22,6 +23,7 @@ export const STATION_GLYPH: Record<StationKind, string> = {
   banco: 'hammer',
   taller: 'gear',
   cocina: 'pot',
+  ahumadero: 'fire',
 };
 
 /** Primer producto de una receta (para el icono). */

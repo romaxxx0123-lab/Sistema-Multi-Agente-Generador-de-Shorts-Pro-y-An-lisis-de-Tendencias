@@ -814,6 +814,7 @@ export function checkPlacement(ship: ShipState, unlocks: string[], type: string,
     }
   }
   if (def.needsSky && level < 1) return fail('Necesita estar a cielo abierto', cells);
+  if (def.edge && !cells.some((c) => c.z === 0 || c.z === ship.width - 1)) return fail('Debe ir junto a la borda (en el borde de la cubierta)', cells);
   if (type === 'escalera') {
     const upper = planned.cells[level + 1]![x]![z]!;
     if (level + 1 === 2 && planned.cells[1]![x]![z]!.kind === 'room') return fail('No se puede atravesar una habitación', cells);

@@ -65,7 +65,10 @@ export const BLUEPRINT_ORDER: ItemId[] = [
   'plano_enfermeria',
   'plano_casco',
   'plano_solar',
+  'plano_acuicultura',
   'plano_invernadero',
+  'plano_grua',
+  'plano_radar',
   'plano_motor',
 ];
 

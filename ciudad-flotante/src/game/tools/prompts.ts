@@ -117,6 +117,10 @@ const VERB: Record<Exclude<InteractKind, 'dormir'>, string> = {
   panel: 'Ver el panel solar',
   timon: 'Timón: rumbo y avistamientos',
   motor: 'Manejar el motor auxiliar',
+  ahumadero: 'Usar el ahumadero',
+  vivero: 'Ver el vivero',
+  grua: 'Manejar la grúa',
+  radar: 'Escuchar la radio',
 };
 
 function usedSlots(m: ModuleInstance): string {

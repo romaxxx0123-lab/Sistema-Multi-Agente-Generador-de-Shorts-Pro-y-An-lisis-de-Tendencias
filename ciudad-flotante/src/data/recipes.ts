@@ -1,6 +1,6 @@
 import type { ItemId } from '../sim/types';
 
-export type StationKind = 'mano' | 'banco' | 'taller' | 'cocina';
+export type StationKind = 'mano' | 'banco' | 'taller' | 'cocina' | 'ahumadero';
 
 export interface RecipeDef {
   id: string;
@@ -42,6 +42,7 @@ const defs: RecipeDef[] = [
   { id: 'sopa', name: 'Sopa de verduras', station: 'cocina', inputs: { hortaliza: 2, agua_potable: 1 }, outputs: { sopa: 2 }, time: 20 },
   { id: 'guiso', name: 'Guiso marinero', station: 'cocina', inputs: { pescado_crudo: 1, hortaliza: 1, agua_potable: 1 }, outputs: { guiso: 2 }, time: 30 },
   { id: 'destilar', name: 'Destilar agua de mar', station: 'cocina', inputs: { cubo_agua: 1 }, outputs: { agua_potable: 1, cubo: 1 }, time: 25, desc: 'Hierve el agua salada y condensa el vapor.' },
+  { id: 'ahumar', name: 'Ahumar pescado', station: 'ahumadero', inputs: { pescado_crudo: 3, madera: 1 }, outputs: { pescado_ahumado: 3 }, time: 90, desc: 'Tres pescados al humo lento de la leña.' },
   { id: 'conserva', name: 'Conservas caseras', station: 'cocina', inputs: { hortaliza: 3, plastico: 1 }, outputs: { conserva: 2 }, time: 40 },
 ];
 

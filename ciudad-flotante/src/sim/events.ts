@@ -350,7 +350,7 @@ export interface StartOptions {
 /* Nombres evocadores                                                  */
 /* ------------------------------------------------------------------ */
 
-const WRECK_SHIPS = ['Albatros', 'Estrella del Sur', 'Santa Inés', 'Marea Alta', 'Gaviota Gris', 'Libertad', 'Corazón de Roble', 'Brisa de Levante', 'San Telmo', 'Esperanza', 'Viento Norte', 'Perla Negra'];
+const WRECK_SHIPS = ['Cormorán', 'Estrella del Sur', 'Santa Inés', 'Marea Alta', 'Gaviota Gris', 'Libertad', 'Corazón de Roble', 'Brisa de Levante', 'San Telmo', 'Esperanza', 'Viento Norte', 'Perla Negra'];
 const MERCHANT_SHIPS = ['Rosa de los Vientos', 'Mercader de Sal', 'Fortuna', 'Tres Hermanas', 'Lucero del Alba', 'Ballena Azul'];
 const CAPTAINS = ['la capitana Ofelia', 'el capitán Baltasar', 'la capitana Remedios', 'el capitán Anselmo', 'la capitana Brígida', 'el capitán Severino'];
 const ISLANDS = ['Isla de las Palmas', 'Cayo Tortuga', 'Islote Verde', 'Isla de los Cocos', 'Isla del Coral', 'Peñón de las Gaviotas', 'Isla Bruma'];

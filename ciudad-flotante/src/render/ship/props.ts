@@ -899,6 +899,14 @@ const BUILDERS: Record<PropKind, Builder> = {
     g.cylinder(0, h - 0.005, 0, r * 0.8, r * 0.8, 0.01, seg, WOOD_DARK);
     g.cylinder(r * 0.4, h, 0, 0.04, 0.04, 0.03, 6, WOOD_DARK);
   },
+  // Marcadores provisionales de la ronda de contenido 2 (los sustituye el área render-ship).
+  sofa: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, WOOD),
+  mesa_juegos: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, WOOD),
+  estanteria_libros: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, WOOD_DARK),
+  ahumadero: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, WOOD_DARK),
+  tanque_peces: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, STEEL_DARK),
+  grua: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, STEEL_DARK),
+  radar: ({ g }, d) => g.box(-d.hx, 0, -d.hz, d.hx, d.h, d.hz, STEEL_DARK),
 };
 
 /** Reparte los objetos en 4 tramos de llenado (orden intercalado para que se llenen todas las baldas). */
