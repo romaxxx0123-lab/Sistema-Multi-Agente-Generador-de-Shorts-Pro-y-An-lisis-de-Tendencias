@@ -143,6 +143,24 @@ export function toModule(type: string): string {
   return FEMININE_MODULES.has(type) ? `a la ${name}` : `al ${name}`;
 }
 
+/** "el camarote" / "la cocina". */
+export function theModule(type: string): string {
+  const name = moduleDef(type).name.toLowerCase();
+  return FEMININE_MODULES.has(type) ? `la ${name}` : `el ${name}`;
+}
+
+/**
+ * "el timón del puente de mando", pero "el depósito de agua" (no "el depósito del depósito de agua"):
+ * si el mueble ya da nombre al módulo, basta con el módulo.
+ */
+export function propWithModule(kind: InteractKind, type: string): string {
+  const label = propLabel(kind);
+  const noun = label.split(' ').pop()!;
+  const modName = moduleDef(type).name.toLowerCase();
+  if (modName.split(' ').includes(noun)) return theModule(type);
+  return `${label} ${ofModule(type)}`;
+}
+
 /** "del camarote" / "de la cocina". */
 export function ofModule(type: string): string {
   const name = moduleDef(type).name.toLowerCase();

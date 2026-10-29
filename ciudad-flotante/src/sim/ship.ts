@@ -787,7 +787,12 @@ export function checkPlacement(ship: ShipState, unlocks: string[], type: string,
   if (!def) return fail('Módulo desconocido');
   if (!def.buildable) return fail('Este módulo no se puede construir');
   if (def.unlock && !unlocks.includes(def.unlock)) return fail('Necesitas el plano correspondiente');
-  if (!def.levels.includes(level)) return fail(def.levels.includes(0) && level > 0 ? 'Solo se puede construir en la bodega' : 'No se puede construir en este nivel');
+  if (!def.levels.includes(level)) {
+    const where = ['la bodega', 'la cubierta principal', 'la cubierta superior'];
+    const ls = [...def.levels].sort((a, b) => a - b).map((l) => where[l] ?? `el nivel ${l}`);
+    const list = ls.length > 1 ? `${ls.slice(0, -1).join(', ')} o ${ls[ls.length - 1]}` : ls[0];
+    return fail(`Solo se construye en ${list}`);
+  }
   const preview = previewModule(type, level, x, z, rot);
   const cells = moduleCells(preview);
   for (const c of cells) {
@@ -833,7 +838,11 @@ export function checkPlacement(ship: ShipState, unlocks: string[], type: string,
   if (after.includes(-1)) {
     return fail(def.enclosed ? 'Sin acceso: la puerta debe dar a una zona transitable' : 'Sin acceso desde la cubierta', cells);
   }
-  if (after.some((id) => !before.includes(id))) return fail('Dejaría otra zona del barco sin acceso', cells);
+  const lost = after.filter((id) => id !== -1 && !before.includes(id));
+  if (lost.length) {
+    const names = [...new Set(lost.map((id) => ship.modules.find((m) => m.id === id)).filter((m): m is ModuleInstance => !!m).map((m) => theModule(m.type)))];
+    return fail(names.length ? `Dejaría sin acceso ${names.slice(0, 2).join(' y ')}` : 'Dejaría otra zona del barco sin acceso', cells);
+  }
   if (unreachableDeckCells(ship, [preview]) > unreachableDeckCells(ship, [])) return fail('Partiría la cubierta en zonas aisladas', cells);
   // Comprobación fina (muebles y colisionadores): que nada quede tapado.
   const fine = fineReachCheck(ship, preview);
@@ -880,7 +889,7 @@ function fineReachCheck(ship: ShipState, preview: ModuleInstance): string | null
   for (const p of afterLayout.props) {
     if (p.moduleId === -1 || !p.interact) continue;
     if (before.props.get(p.key) && after.props.get(p.key) === false) {
-      return `Dejaría ${propLabel(p.interact)} ${ofModule(p.moduleType)} fuera de alcance`;
+      return `Dejaría ${propWithModule(p.interact, p.moduleType)} fuera de alcance`;
     }
   }
   return null;
@@ -947,7 +956,7 @@ export { WALL_T };
 /* ------------------------------------------------------------------ */
 
 import { createInventory } from './inventory';
-import { ofModule, propLabel, reachReport, toModule, type ReachReport } from './reach';
+import { propLabel, propWithModule, reachReport, theModule, toModule, type ReachReport } from './reach';
 
 /** Crea una instancia de módulo con sus inventarios, camas y parcelas inicializados. */
 export function instantiateModule(

@@ -461,7 +461,8 @@ export class BuildHud {
         html += `<div class="bm-info-foot bad">${gl('trash')}<span><b>Clic: ${demolish.inConstruction ? 'cancelar la obra' : 'desmontar'}</b><br>Recuperas: ${refund}</span></div>`;
         for (const l of demolish.losses) html += `<div class="bm-info-loss">${gl('alert')}<span>${esc(l)}</span></div>`;
       } else {
-        html += `<div class="bm-info-foot warn">${gl('lock')}<span>${esc(demolish.reason ?? 'No se puede desmontar')}</span></div>`;
+        const hint = demolish.hint ? `<br><span class="bm-info-hint">${esc(demolish.hint)}</span>` : '';
+        html += `<div class="bm-info-foot warn">${gl('lock')}<span>${esc(demolish.reason ?? 'No se puede desmontar')}${hint}</span></div>`;
       }
     }
     setHtml(this.info, html);

@@ -250,6 +250,16 @@ describe('catálogo de la paleta', () => {
     const p = demolishPreview(sim, camarote);
     expect(p.ok).toBe(false);
     expect(p.reason).toMatch(/escalera/i);
+    expect(p.hint).toBe('Desmonta antes la escalera que sube a su techo');
+    // Nombra lo que sostiene y lo que quedaría aislado (no "otra zona del barco").
+    const dorm = ship.modules.find((m) => m.type === 'dormitorio')!;
+    expect(demolishPreview(sim, dorm).reason).toBe('Sostiene el puente de mando');
+    expect(demolishPreview(sim, dorm).hint).toBeNull();
+    const escHold = ship.modules.find((m) => m.type === 'escalera' && m.level === 0)!;
+    const e = demolishPreview(sim, escHold);
+    expect(e.ok).toBe(false);
+    expect(e.reason).toBe('Dejaría sin acceso el depósito de agua');
+    expect(e.hint).toMatch(/otro acceso/);
     const alm = ship.modules.find((m) => m.type === 'almacen')!;
     const q = demolishPreview(sim, alm);
     expect(q.ok).toBe(true);

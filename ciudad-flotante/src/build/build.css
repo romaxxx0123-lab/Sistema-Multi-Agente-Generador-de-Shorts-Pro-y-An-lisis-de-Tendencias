@@ -791,6 +791,11 @@
   line-height: 1.3;
 }
 
+.bm-info-hint {
+  color: var(--ink-dim);
+  font-weight: 700;
+}
+
 .bm-info-loss {
   display: flex;
   gap: 7px;

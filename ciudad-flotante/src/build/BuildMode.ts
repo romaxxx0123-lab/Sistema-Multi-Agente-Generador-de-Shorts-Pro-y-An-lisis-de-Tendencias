@@ -795,6 +795,8 @@ export class BuildMode {
     const type = this.selected;
     const at = this.ghostAt;
     if (!type || !at) return;
+    // Si el rótulo ya explicaba por qué no se puede, el aviso dice lo mismo (no el texto técnico).
+    const shown = !this.place.ok && this.place.reason ? this.place.reason : null;
     const res = sim.placeModule(type, at.level, at.x, at.z, this.rot);
     this.place.key = '';
     if (res.ok) {
@@ -807,7 +809,7 @@ export class BuildMode {
       this.placedMsg = 'Obra iniciada';
       this.hudDirty = true;
     } else {
-      sim.notify(res.msg ?? 'No se puede construir aquí', 'warn');
+      sim.notify(shown ?? res.msg ?? 'No se puede construir aquí', 'warn');
       this.ctx.bus.emit('sfx', { name: 'ui_error' });
     }
   }

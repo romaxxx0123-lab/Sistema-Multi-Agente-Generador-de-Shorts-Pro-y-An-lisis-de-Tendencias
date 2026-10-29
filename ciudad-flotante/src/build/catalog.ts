@@ -13,9 +13,10 @@ import { durationText } from '../sim/construction';
 import { payInventories } from '../sim/helpers';
 import { totals } from '../sim/inventory';
 import type { Simulation } from '../sim/Simulation';
+import { moduleCells, unreachableModules } from '../sim/ship';
 import { blueprintName } from '../sim/stations';
 import type { ItemId, ModuleInstance } from '../sim/types';
-import { finite, isConsumer } from '../sim/utilities';
+import { finite, isConsumer, withArticle } from '../sim/utilities';
 
 /* ------------------------------------------------------------------ */
 /* Textos y formato                                                    */
@@ -359,6 +360,8 @@ export interface DemolishPreview {
   name: string;
   ok: boolean;
   reason: string | null;
+  /** Qué hacer para poder desmontarlo ("Desmonta antes la escalera"), si se sabe. */
+  hint: string | null;
   inConstruction: boolean;
   refund: { id: ItemId; name: string; qty: number }[];
   /** Unidades guardadas dentro (almacén, combustible, trabajos pagados, plantas vivas). */
@@ -394,11 +397,13 @@ export function demolishPreview(sim: Simulation, m: ModuleInstance): DemolishPre
   for (const inv of [m.inventory, m.fuelInv]) for (const s of inv?.slots ?? []) if (s) contents += s.qty;
   contents += m.queue.length;
   contents += m.plots.filter((p) => p.crop && !p.dead).length;
+  const reason = chk.ok ? null : demolishReason(sim, m, chk.reason);
   return {
     id: m.id,
     name: moduleDef(m.type).name,
     ok: chk.ok,
-    reason: chk.reason,
+    reason,
+    hint: chk.ok ? null : demolishHint(reason, aboveModules(sim, m).every((mm) => moduleDef(mm.type).demolishable)),
     inConstruction: m.status === 'construction',
     refund: Object.entries(chk.refund)
       .filter(([, q]) => q > 0)
@@ -421,4 +426,47 @@ function demolishLossesOf(
     batteryLossKWh: finite(chk.batteryLossKWh),
     losses: chk.losses ? [...chk.losses] : est!.losses,
   };
+}
+
+/** Módulos apoyados encima de `m` (en el nivel superior, sobre sus celdas). */
+function aboveModules(sim: Simulation, m: ModuleInstance): ModuleInstance[] {
+  const cells = moduleCells(m).filter((c) => c.level === m.level);
+  return sim.state.ship.modules.filter(
+    (o) => o.id !== m.id && o.level === m.level + 1 && moduleCells(o).some((oc) => oc.level === o.level && cells.some((c) => c.x === oc.x && c.z === oc.z)),
+  );
+}
+
+/** "el almacén", "el almacén y la cocina". */
+function namesList(mods: ModuleInstance[]): string {
+  const names = [...new Set(mods.map((mm) => withArticle(moduleDef(mm.type).name)))];
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+}
+
+/** Motivo de no poder desmontar, nombrando lo que sostiene o lo que quedaría aislado. */
+function demolishReason(sim: Simulation, m: ModuleInstance, reason: string | null): string | null {
+  if (reason === 'Sostiene una estructura del nivel superior') {
+    const above = aboveModules(sim, m);
+    return above.length ? `Sostiene ${namesList(above)}` : reason;
+  }
+  if (reason !== 'Dejaría otra zona del barco sin acceso') return reason;
+  const ship = sim.state.ship;
+  const before = new Set(unreachableModules(ship, true));
+  const lost = unreachableModules(ship, true, [], [m.id])
+    .filter((id) => !before.has(id))
+    .map((id) => ship.modules.find((mm) => mm.id === id))
+    .filter((mm): mm is ModuleInstance => !!mm);
+  return lost.length ? `Dejaría sin acceso ${namesList(lost)}` : reason;
+}
+
+/**
+ * Qué hacer para poder desmontar, según el motivo. `aboveRemovable`: lo que tiene encima se
+ * puede desmontar (el puente de mando, no).
+ */
+export function demolishHint(reason: string | null, aboveRemovable = true): string | null {
+  if (!reason) return null;
+  if (reason.startsWith('Sostiene')) return aboveRemovable ? 'Desmonta antes lo que tiene encima' : null;
+  if (reason.startsWith('Una escalera desembarca')) return 'Desmonta antes la escalera que sube a su techo';
+  if (reason.startsWith('Dejaría')) return 'Es el único paso: construye antes otro acceso';
+  if (reason.includes('arde')) return 'Apaga antes el fuego con el cubo';
+  return null;
 }
