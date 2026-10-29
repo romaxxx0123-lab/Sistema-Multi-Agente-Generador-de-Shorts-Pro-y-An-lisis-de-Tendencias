@@ -5,7 +5,7 @@
  */
 import { REGIONS } from '../../data/regions';
 import { eventStatusText } from '../../sim/events';
-import { currentRegion, hoursToRegionEnd, isAnchored, milesToRegionEnd, routeOptions } from '../../sim/voyage';
+import { currentRegion, gatedRoutes, hoursToRegionEnd, isAnchored, milesToRegionEnd, routeOptions } from '../../sim/voyage';
 import { barometer, weatherName } from '../../sim/weather';
 import type { ActiveEvent } from '../../sim/types';
 import type { UiEnv } from '../env';
@@ -162,7 +162,10 @@ export function renderHelm(env: UiEnv): PanelView {
         ),
       ),
     ),
-    h('div', { class: 'faint small' }, mustChoose ? 'Nos acercamos al final de la región: si no eliges, seguiremos la corriente.' : 'Puedes fijar el rumbo en cualquier momento antes de llegar al final de la región.'),
+    gatedRoutes(sim).length
+      ? h('div', { class: 'routes gated' }, gatedRoutes(sim).map((g) => h('div', { key: `g-${g.id}`, class: 'route disabled', title: g.reason }, h('div', { class: 'route-head' }, h('b', null, g.name), chip('Aún no', 'dim', 'lock')), h('p', { class: 'small faint' }, g.reason))))
+      : null,
+    h('div', { class: 'faint small' }, mustChoose ? `Nos acercamos al final de la región: si no eliges, pondremos rumbo hacia ${REGIONS[opts.find((o) => (o as { autopilot?: boolean }).autopilot)?.id ?? '']?.name ?? 'donde nos lleve la corriente'}.` : 'Puedes fijar el rumbo en cualquier momento antes de llegar al final de la región.'),
   );
 
   const sight = section(

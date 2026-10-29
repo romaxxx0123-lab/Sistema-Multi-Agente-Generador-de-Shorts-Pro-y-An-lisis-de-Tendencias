@@ -447,7 +447,7 @@ export class Hud {
         const born = this.eventBorn.get(ev.id);
         const fresh = born !== undefined && this.time - born < 2.5;
         const objs = ev.objectives.slice(0, 4);
-        const hint = ev.choices.length ? (ev.type === 'mercante' ? 'Comercia desde el timón del puente' : 'Decide en el timón del puente') : null;
+        const hint = ev.choices.length ? (ev.type === 'mercante' ? 'Comercia desde el timón del puente' : ev.type === 'naufragos' ? 'Ve a la borda con el gancho (o fondea desde el timón)' : 'Decide en el timón del puente') : null;
         return h(
           'div',
           { key: ev.id, class: cx('ev-card', `tone-${tone}`, fresh && 'fresh') },

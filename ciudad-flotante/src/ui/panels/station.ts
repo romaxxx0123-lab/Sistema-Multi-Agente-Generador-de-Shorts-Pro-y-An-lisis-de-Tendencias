@@ -8,6 +8,7 @@
  *  - depósito, colector, potabilizadora, generador, baterías, panel solar, motor;
  *  - y en todos: condición, avería/daño/fuga/fuego, obra en curso y Reparar con requisitos.
  */
+import { breakdownReason } from '../../sim/events';
 import { CROPS } from '../../data/crops';
 import { moduleDef, type ModuleDef } from '../../data/modules';
 import { WATER_PER_DRINK } from '../../sim/constants';
@@ -127,6 +128,7 @@ function conditionFoot(env: UiEnv, m: ModuleInstance, def: ModuleDef): VNode {
   else if (m.status === 'broken') msg = h('span', { class: 'danger' }, gl('alert'), `Averiado: ${m.brokenReason ?? 'necesita reparación'}`);
   else if (m.leak) msg = h('span', { class: 'warn' }, gl('leak'), 'Pierde agua: hay que sellar la fuga.');
   else if (m.condition < 50) msg = h('span', { class: 'warn' }, gl('alert'), def.machine ? 'Dañado: rinde un 30 % menos.' : 'Dañado: conviene repararlo antes de la próxima tormenta.');
+  else if (breakdownReason(sim, m.id)) msg = h('span', { class: 'warn' }, gl('alert'), `Avería: ${breakdownReason(sim, m.id)}`);
   else if (m.condition < REPAIR_THRESHOLD) msg = h('span', { class: 'faint' }, 'Algo de desgaste por el uso.');
   if (msg) parts.push(h('div', { class: 'cond-msg' }, msg));
   if (info.needed && info.tool && info.part) {
@@ -163,7 +165,7 @@ function powerSwitch(env: UiEnv, m: ModuleInstance, label?: string): VNode | nul
     { class: 'switch-row' },
     h('button', { type: 'button', class: cx('switch', m.on && 'on'), role: 'switch', 'aria-checked': m.on ? 'true' : 'false', onclick: () => env.act(sim.togglePower(m.id), 'info') }, h('i')),
     h('span', null, label ?? (m.on ? 'Encendido' : 'Apagado')),
-    m.on ? (m.powered ? chip('Con energía', 'good', 'power') : chip('Sin energía', 'warn', 'plug')) : null,
+    m.on ? (m.status === 'broken' ? chip('Averiado', 'danger', 'alert') : m.powered ? chip('Con energía', 'good', 'power') : chip('Sin energía', 'warn', 'plug')) : null,
   );
 }
 

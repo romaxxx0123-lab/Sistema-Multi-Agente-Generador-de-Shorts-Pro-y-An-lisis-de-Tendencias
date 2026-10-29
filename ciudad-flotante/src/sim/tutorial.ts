@@ -116,13 +116,13 @@ const STEPS: readonly StepDef[] = [
   {
     id: 'cocinar',
     title: 'Cocinar',
-    text: 'Pulsa E en la cocina, echa madera al fogón y pon a asar el pescado: crudo puede sentarte mal.',
+    text: 'Pulsa E en la cocina, echa 1 de madera al fogón (arde 40 min) y pon a asar el pescado: crudo puede sentarte mal.',
     when: hasRawFish,
   },
   {
     id: 'beber',
     title: 'Agua potable',
-    text: 'Baja a la bodega y pulsa E junto al depósito para beber o rellenar botellas.',
+    text: 'Baja a la bodega y pulsa E junto al depósito para beber; R llena una botella.',
     now: (sim) => sim.state.player.needs.thirst < NEED_LOW,
   },
   {

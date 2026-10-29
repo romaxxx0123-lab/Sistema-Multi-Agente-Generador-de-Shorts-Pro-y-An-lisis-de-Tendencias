@@ -7,7 +7,7 @@ import { ITEMS } from '../../data/items';
 import { ROLES, TRAITS } from '../../data/names';
 import { hash01 } from '../../render/ship/geo';
 import { lookFromAppearance } from '../../render/ship/character';
-import { npcMoodFactors } from '../../sim/npc';
+import { isFemaleNpc, npcAdj, npcMoodFactors, npcRoleName, npcTraitName } from '../../sim/npc';
 import type { NpcRole, NpcState } from '../../sim/types';
 import type { UiEnv } from '../env';
 import { signed } from '../fmt';
@@ -115,8 +115,8 @@ export function renderNpc(env: UiEnv, npcId: string): PanelView | null {
     { class: 'npc-card' },
     h('div', { class: 'npc-portrait', html: portrait(npc) }),
     h('div', { class: 'npc-name' }, npc.name),
-    h('div', { class: 'npc-trait', title: trait?.desc ?? '' }, trait?.name ?? npc.trait, trait ? h('small', { class: 'faint' }, ` · ${trait.desc}`) : null),
-    h('div', { class: 'npc-chips' }, chip(ROLES[npc.role]?.name ?? npc.role, 'info', 'wrench'), npc.sick ? chip('Enfermo', 'warn', 'sick') : null, npc.injured ? chip('Herido', 'warn', 'medical') : null, away ? chip('De expedición', 'dim', 'ship') : null, !npc.bed ? chip('Sin cama', 'warn', 'bed') : null),
+    h('div', { class: 'npc-trait', title: trait?.desc ?? '' }, npcTraitName(npc), trait ? h('small', { class: 'faint' }, ` · ${trait.desc}`) : null),
+    h('div', { class: 'npc-chips' }, chip(npcRoleName(npc, npc.role), 'info', 'wrench'), npc.sick ? chip(npcAdj(npc, 'Enfermo'), 'warn', 'sick') : null, npc.injured ? chip(npcAdj(npc, 'Herido'), 'warn', 'medical') : null, away ? chip('De expedición', 'dim', 'ship') : null, !npc.bed ? chip('Sin cama', 'warn', 'bed') : null),
     h('div', { class: cx('npc-mood', `tone-${moodTone}`) }, h('div', { class: 'mood-head' }, gl(moodGlyph), h('span', null, 'Ánimo'), h('b', null, String(Math.round(mood)))), bar(mood / 100, `var(--${moodTone})`)),
     h(
       'div',
@@ -190,7 +190,7 @@ export function renderNpc(env: UiEnv, npcId: string): PanelView | null {
               if (npc.role !== r) env.act(sim.setNpcRole(npc.id, r), 'good');
             },
           },
-          h('b', null, ROLES[r].name),
+          h('b', null, npcRoleName(npc, r)),
           h('small', null, ROLES[r].desc),
         ),
       ),
@@ -210,9 +210,9 @@ export function renderNpc(env: UiEnv, npcId: string): PanelView | null {
 
   return {
     title: npc.name,
-    subtitle: `${ROLES[npc.role]?.name ?? npc.role} · a bordo desde el día ${npc.joinedDay}`,
+    subtitle: `${npcRoleName(npc, npc.role)} · a bordo desde el día ${npc.joinedDay}`,
     glyph: 'person',
-    body: h('div', { class: 'npc-layout' }, card, h('div', { class: 'npc-main scroll' }, status, lines, away ? empty('Está fuera del barco. Podrás hablar con él o ella cuando vuelva.', 'ship') : actions, giving, roles, why)),
+    body: h('div', { class: 'npc-layout' }, card, h('div', { class: 'npc-main scroll' }, status, lines, away ? empty(`Está fuera del barco. Podrás hablar con ${isFemaleNpc(npc) ? 'ella' : 'él'} cuando vuelva.`, 'ship') : actions, giving, roles, why)),
     cls: 'pn-wide',
   };
 }

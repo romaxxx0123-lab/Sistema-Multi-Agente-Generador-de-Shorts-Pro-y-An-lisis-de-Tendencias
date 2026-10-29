@@ -58,6 +58,13 @@ export const MAX_LOOK_DELTA = 2000;
 
 const _v = new THREE.Vector3();
 
+/** ¿Es el delta de ratón un múltiplo (1–4) de menos la posición del cursor (salto del navegador)? */
+export function cursorSpike(dx: number, dy: number, cx: number, cy: number): boolean {
+  if (!(Math.abs(cx) + Math.abs(cy) > 2)) return false;
+  const k = Math.round(Math.abs(cx) >= Math.abs(cy) ? -dx / cx : -dy / cy);
+  return k >= 1 && k <= 4 && Math.abs(dx + k * cx) < 0.5 && Math.abs(dy + k * cy) < 0.5;
+}
+
 export class PlayerController {
   readonly camera: THREE.PerspectiveCamera;
   private body: Body | null = null;
@@ -84,6 +91,7 @@ export class PlayerController {
   /** Frames de ratón que quedan por descartar (ver LOOK_GRACE_FRAMES). */
   private lookGrace = 0;
   private lookGraceT = 0;
+  private freeCursor: { x: number; y: number } | null = null;
   private hadControl = false;
   private wasLocked = false;
   /** Cuerpos de los habitantes de este frame (reutilizado). */
@@ -338,6 +346,11 @@ export class PlayerController {
   lookDelta(canControl: boolean, dt = 1 / 60): { dx: number; dy: number } | null {
     const input = this.ctx.input as GameContext['input'] & { locked?: boolean; mouseX?: number; mouseY?: number };
     const locked = !!input.locked;
+    const mx = input.mouseX;
+    const my = input.mouseY;
+    // Última posición del cursor libre: con el puntero capturado, el navegador puede seguir
+    // informando de ella (o de 0, 0) y mandar saltos relativos a ella.
+    if (!locked && typeof mx === 'number' && typeof my === 'number' && Number.isFinite(mx) && Number.isFinite(my)) this.freeCursor = { x: mx, y: my };
     if ((canControl && !this.hadControl) || (locked && !this.wasLocked)) {
       this.lookGrace = LOOK_GRACE_FRAMES;
       this.lookGraceT = LOOK_GRACE_TIME;
@@ -356,11 +369,9 @@ export class PlayerController {
     // Con el puntero capturado, Chromium a veces manda un movimiento igual a menos la posición
     // del cursor (al capturar o tras un clic; a veces dos en el mismo frame): no es un movimiento
     // real de la mano.
-    const mx = input.mouseX;
-    const my = input.mouseY;
-    if (locked && typeof mx === 'number' && typeof my === 'number' && Math.abs(mx) + Math.abs(my) > 2) {
-      const k = Math.round(Math.abs(mx) >= Math.abs(my) ? -md.dx / mx : -md.dy / my);
-      if (k >= 1 && k <= 4 && Math.abs(md.dx + k * mx) < 0.5 && Math.abs(md.dy + k * my) < 0.5) return null;
+    if (locked) {
+      if (typeof mx === 'number' && typeof my === 'number' && cursorSpike(md.dx, md.dy, mx, my)) return null;
+      if (this.freeCursor && cursorSpike(md.dx, md.dy, this.freeCursor.x, this.freeCursor.y)) return null;
     }
     return md;
   }

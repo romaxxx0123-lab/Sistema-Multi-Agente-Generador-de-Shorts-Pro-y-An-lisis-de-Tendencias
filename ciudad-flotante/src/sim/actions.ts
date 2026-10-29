@@ -17,7 +17,7 @@ import { clamp } from '../core/math';
 import { ITEMS, type ItemDef } from '../data/items';
 import { MODULES } from '../data/modules';
 import { HOTBAR_SLOTS, INTERACT_RANGE, WATER_PER_DRINK } from './constants';
-import { findModule, giveToPlayer, itemName, pruneCrates, spawnCrate } from './helpers';
+import { addToPlayerInventory, findModule, giveToPlayer, itemName, pruneCrates, spawnCrate } from './helpers';
 import { addItem, moveStack, spaceFor, takeFromSlot, stackLimit } from './inventory';
 import { CRITICAL_HEALTH, CRITICAL_NEED, DEATH_CAUSES, SICK_HOURS, fireAboard, healthRatePerHour, killPlayer, wakePlayer } from './needs';
 import type { ActionResult, InvRef, Simulation } from './Simulation';
@@ -411,7 +411,7 @@ export function moveItem(sim: Simulation, from: InvRef, fromSlot: number, to: In
   if (qty !== undefined && Number.isFinite(qty) && qty >= 1 && qty < s.qty) {
     const n = Math.floor(qty);
     let left: number;
-    if (toSlot === undefined) left = addItem(dst, id, n);
+    if (toSlot === undefined) left = to.kind === 'player' && from.kind !== 'player' ? addToPlayerInventory(sim, id, n) : addItem(dst, id, n);
     else {
       const t = dst.slots[toSlot];
       if (!t) {
@@ -431,9 +431,19 @@ export function moveItem(sim: Simulation, from: InvRef, fromSlot: number, to: In
     if (dstModule?.type === 'almacen') markTutorial(sim, 'almacen');
     return movedPart < n ? ok(`Solo caben ${movedPart}× ${itemName(id)}`) : ok();
   }
-  if (!moveStack(src, fromSlot, dst, toSlot)) return fail(toSlot === undefined ? 'No hay sitio' : 'No cabe ahí');
-  // `moveStack` modifica la pila en su sitio: si sigue en el origen, solo se movió una parte.
-  const moved = src.slots[fromSlot] === s ? before - s.qty : before;
+  let moved: number;
+  if (toSlot === undefined && to.kind === 'player' && from.kind !== 'player') {
+    // Hacia el jugador sin ranura: herramientas a la barra rápida, materiales a la mochila.
+    const left = addToPlayerInventory(sim, id, s.qty);
+    moved = s.qty - left;
+    if (moved <= 0) return fail('No hay sitio');
+    s.qty = left;
+    if (s.qty <= 0) src.slots[fromSlot] = null;
+  } else {
+    if (!moveStack(src, fromSlot, dst, toSlot)) return fail(toSlot === undefined ? 'No hay sitio' : 'No cabe ahí');
+    // `moveStack` modifica la pila en su sitio: si sigue en el origen, solo se movió una parte.
+    moved = src.slots[fromSlot] === s ? before - s.qty : before;
+  }
 
   if (from.kind === 'crate' || to.kind === 'crate') pruneCrates(sim);
   if (dstModule?.type === 'almacen' && moved > 0) markTutorial(sim, 'almacen');
@@ -453,7 +463,7 @@ export function takeAll(sim: Simulation, from: InvRef): ActionResult {
   for (let i = 0; i < inv.slots.length; i++) {
     const s = inv.slots[i];
     if (!s) continue;
-    const rest = addItem(p.inventory, s.id, s.qty);
+    const rest = addToPlayerInventory(sim, s.id, s.qty);
     const got = s.qty - rest;
     if (got > 0) {
       moved += got;

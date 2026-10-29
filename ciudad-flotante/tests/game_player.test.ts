@@ -772,9 +772,14 @@ describe('[16] la vista no salta al capturar el ratón', () => {
     expect(pc.lookDelta(true)).toBeNull();
     input.dx = Number.NaN;
     expect(pc.lookDelta(true)).toBeNull();
-    // Salto de Chromium con el puntero capturado: exactamente menos la posición del cursor.
+    // Salto de Chromium con el puntero capturado: exactamente menos la posición del cursor (que
+    // estaba en 640, 360 antes de capturarlo).
+    input.locked = false;
     input.mouseX = 640;
     input.mouseY = 360;
+    pc.lookDelta(false);
+    input.locked = true;
+    for (let i = 0; i < 20; i++) pc.lookDelta(true, 0.1);
     input.dx = -640;
     input.dy = -360;
     expect(pc.lookDelta(true)).toBeNull();
@@ -785,6 +790,13 @@ describe('[16] la vista no salta al capturar el ratón', () => {
     input.dy = -360;
     input.dx = -639;
     expect(pc.lookDelta(true)).toEqual({ dx: -639, dy: -360 });
+    // Con el puntero capturado el navegador puede informar del cursor en (0, 0): el salto se
+    // reconoce con la última posición libre del cursor.
+    input.mouseX = 0;
+    input.mouseY = 0;
+    input.dx = -640;
+    input.dy = -360;
+    expect(pc.lookDelta(true)).toBeNull();
     input.dx = 12;
     input.dy = 4;
     expect(pc.lookDelta(true)).toEqual({ dx: 12, dy: 4 });

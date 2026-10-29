@@ -9,7 +9,7 @@
 import { ITEMS } from '../../data/items';
 import { REGIONS } from '../../data/regions';
 import type { StationKind } from '../../data/recipes';
-import { ROLES } from '../../data/names';
+import { npcRoleName } from '../../sim/npc';
 import { HOTBAR_SLOTS } from '../../sim/constants';
 import { eventStatusText } from '../../sim/events';
 import { healthRatePerHour, playerConditions, warmthEnvironment } from '../../sim/needs';
@@ -627,7 +627,7 @@ function shipTab(env: UiEnv): VNode {
           'li',
           { key: n.id },
           gl(n.needs.mood >= 60 ? 'smile' : n.needs.mood >= 35 ? 'meh' : 'frown', cx('gl', n.needs.mood >= 60 ? 'good' : n.needs.mood >= 35 ? 'warn' : 'danger')),
-          h('span', { class: 'ml-name' }, h('b', null, n.name), h('small', { class: 'faint' }, ` · ${ROLES[n.role]?.name ?? n.role}`)),
+          h('span', { class: 'ml-name' }, h('b', null, n.name), h('small', { class: 'faint' }, ` · ${npcRoleName(n, n.role)}`)),
           h('span', { class: 'ml-val muted' }, sim.npcStatus(n.id)),
         ),
       ),

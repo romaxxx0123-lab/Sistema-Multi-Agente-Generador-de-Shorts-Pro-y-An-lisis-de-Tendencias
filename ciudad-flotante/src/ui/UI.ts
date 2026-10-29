@@ -104,7 +104,11 @@ export class UI {
     this.menus = new Menus(this.layer, ctx, this.env);
 
     const bus = ctx.bus;
-    bus.on('notify', (e) => this.toast(e.text, e.kind));
+    bus.on('notify', (e) => {
+      // Mientras se duerme solo pasan los peligros: el resto se resume al despertar («Mientras dormías…»).
+      if (this.ctx.sim.state.player.sleeping && e.kind !== 'danger') return;
+      this.toast(e.text, e.kind);
+    });
     bus.on('itemGained', (e) => this.hud.itemGained(e.id, e.qty));
     bus.on('unlocked', (e) => this.hud.unlocked(e.key, e.name));
     bus.on('newDay', (e) => this.hud.newDay(e.day));
