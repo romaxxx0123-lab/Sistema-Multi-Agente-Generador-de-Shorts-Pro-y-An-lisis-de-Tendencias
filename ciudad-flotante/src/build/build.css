@@ -10,7 +10,7 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 20;
+  /* Sin capa propia: cada bloque se apila con el resto de la interfaz (ver más abajo). */
   color: var(--ink);
   font-family: var(--font);
   font-size: 14px;
@@ -640,6 +640,23 @@
 
 .bm-expand.busy {
   border-color: rgba(242, 193, 78, 0.6);
+}
+
+/* ---------- Capas ----------
+ * Paneles del modo por encima del HUD normal; el rótulo del cursor, la ficha del módulo señalado y
+ * la confirmación, por encima también de los avisos (z 40): es lo que se está leyendo. El menú de
+ * pausa y los ajustes (.ui-over, z 50) siguen encima de todo. */
+
+.bm-levels,
+.bm-side,
+.bm-palette {
+  z-index: 20;
+}
+
+.bm-tip,
+.bm-info,
+.bm-modal {
+  z-index: 45;
 }
 
 /* ---------- Herramienta Mejorar (U) ---------- */
