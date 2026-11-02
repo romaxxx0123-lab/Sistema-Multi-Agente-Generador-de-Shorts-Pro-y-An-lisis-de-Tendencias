@@ -1,5 +1,6 @@
 import './ui/base.css';
 import { Game } from './game/Game';
+import { preloadModels } from './render/assets';
 
 const container = document.getElementById('app');
 if (!container) throw new Error('Falta #app');
@@ -22,5 +23,12 @@ function start(data: unknown): void {
   }
 }
 
-if (hot?.ready) hot.ready(start);
-else start(hot?.data ?? null);
+/** Los modelos de Blender se decodifican antes de crear las vistas (si fallan, se usan los procedimentales). */
+function boot(data: unknown): void {
+  void preloadModels()
+    .catch((err: unknown) => console.warn('Modelos no disponibles', err))
+    .then(() => start(data));
+}
+
+if (hot?.ready) hot.ready(boot);
+else boot(hot?.data ?? null);

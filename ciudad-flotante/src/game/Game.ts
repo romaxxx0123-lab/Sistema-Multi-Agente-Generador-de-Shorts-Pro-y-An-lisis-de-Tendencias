@@ -31,6 +31,7 @@ import { forceWeather } from '../sim/weather';
 import type { WeatherKind } from '../sim/types';
 import * as events from '../sim/events';
 import { spawnSurvivor } from '../sim/npc';
+import { modelNames, modelObject } from '../render/assets';
 
 const SETTINGS_KEY = 'ciudad-flotante:settings';
 const AUTOSAVE_SLOT = 'auto';
@@ -409,5 +410,25 @@ export class Game implements GameContext {
       if (m) events.startFire(this.sim, m, 40);
     }) as never);
     registerDebug('survivor', (() => spawnSurvivor(this.sim)) as never);
+    // Vista previa de modelos de Blender: models() los lista; showModel('barril', 2) lo pone a
+    // 2 m delante del jugador (a la altura de sus pies, mirándole); clearModels() los quita.
+    registerDebug('models', (() => modelNames()) as never);
+    registerDebug('showModel', ((name: string, dist = 2.5, side = 0) => {
+      const obj = modelObject(name);
+      if (!obj) return `No existe el modelo «${name}» (models() da la lista)`;
+      const pl = this.sim.state.player;
+      const fx = -Math.sin(pl.yaw);
+      const fz = -Math.cos(pl.yaw);
+      obj.position.set(pl.pos.x + fx * dist - fz * side, pl.pos.y, pl.pos.z + fz * dist + fx * side);
+      obj.rotation.y = pl.yaw + Math.PI;
+      obj.userData['preview'] = true;
+      this.renderer.shipRoot.add(obj);
+      return name;
+    }) as never);
+    registerDebug('clearModels', (() => {
+      const gone = this.renderer.shipRoot.children.filter((o) => o.userData['preview']);
+      for (const o of gone) this.renderer.shipRoot.remove(o);
+      return gone.length;
+    }) as never);
   }
 }

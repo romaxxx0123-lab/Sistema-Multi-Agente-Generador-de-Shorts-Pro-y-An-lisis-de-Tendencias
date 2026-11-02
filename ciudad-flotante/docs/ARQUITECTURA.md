@@ -114,5 +114,33 @@ con `registerDebug(nombre, fn)` (`src/game/debug.ts`); `Object.keys(__game.cmd)`
 | Construcción | `buildInfo()`, `buildLevel(l)`, `buildSelect(tipo)`, `buildRotate(n)`, `buildDemolish(on)`, `buildCategory(c)`, `buildView(yaw,pitch,dist,tx,tz)`, `buildCellToScreen(nivel,x,z)`, `buildModuleToScreen(id,altura)`, `buildExpand()`, `buildConfirm()` |
 | Interfaz | `uiScreen()`, `uiMenu(sub)` |
 | Audio | `audio()`, `audioMeter()`, `audioPlay(nombre)`, `audioUnlock()`, `audioTest()` (síntesis offline) |
+| Modelos | `models()` (lista), `showModel(nombre, dist, lado)` (delante del jugador), `clearModels()` |
 
 Parámetros de URL: `?autostart` (partida nueva directa), `seed=N`, `quality=baja|media|alta`.
+
+## 8. Modelos hechos con Blender
+
+Los modelos que ganan con un modelado de verdad (biseles, superficies de revolución, cuerdas,
+personajes con esqueleto) se generan con **Blender 5.2 sin interfaz** (módulo `bpy` de PyPI)
+mediante scripts deterministas guardados en el repositorio. Los `.glb` resultantes también se
+guardan en el repositorio, así que el juego no necesita Blender para compilar.
+
+- `scripts/blender/cf.py` — biblioteca común: primitivas low-poly (`box`, `cylinder`, `lathe`,
+  `tube`, `torus`, `prism`, `sphere`), color por vértice con la paleta del juego (`paint`,
+  `paint_faces`, `jitter_colors`), `bevel`, `join`, `model(partes, nombre)` y exportación.
+  Explica las convenciones: Blender (x, y, z) → juego (x, z, −y); frente de un mueble = +Y en
+  Blender (−z en el juego); origen en la base; color lineal; sombreado plano.
+- `scripts/blender/models/<archivo>.py` — cada uno define `build()` y crea objetos raíz cuyo
+  nombre es el del modelo en el juego (único entre todos los archivos).
+- `npm run models [-- archivo …]` (`scripts/blender/build.mjs`) — exporta la paleta
+  (`palette.json`), ejecuta Blender (`build.py`; instala `bpy` con `setup.sh` si falta) y optimiza
+  cada `.glb`: sin normales en mallas estáticas, vértices soldados, cuantización y compresión
+  meshopt. También escribe `src/assets/models/manifest.json` (triángulos y caja envolvente en
+  coordenadas del juego), que comprueba `tests/assets.test.ts`.
+- `src/render/assets.ts` — los `.glb` van incrustados (`?inline`) y `preloadModels()` los
+  decodifica al arrancar (`main.ts`). `modelGeometry(nombre)` da la geometría fusionada (posición y
+  color) para `GeoBuilder.appendGeometry`; `modelObject(nombre)` da una copia (con esqueleto y
+  material mate si no trae materiales); `modelAnimations(nombre)` da sus clips. Si un modelo
+  falta, devuelven `null` y la vista usa su versión procedimental.
+- Presupuesto: ≤ 2500 triángulos por modelo estático (`MAX_TRIS` en el script para subirlo). Tras
+  la optimización, unos 10 KB por cada 1000 triángulos.
