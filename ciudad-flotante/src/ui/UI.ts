@@ -285,6 +285,8 @@ export class UI {
     this.closePanel();
     this.reader.hide();
     ctx.paused = true;
+    // La celebración se ve sin la mano en primera persona delante (vuelve sola al seguir jugando).
+    ctx.interaction?.hideViewModel();
     this.menus.showArrival((eventId) => {
       // El mercado del muelle: un evento de mercante normal.
       if (ctx.sim.state.events.active.some((e) => e.id === eventId)) this.openPanel({ kind: 'trade', eventId });

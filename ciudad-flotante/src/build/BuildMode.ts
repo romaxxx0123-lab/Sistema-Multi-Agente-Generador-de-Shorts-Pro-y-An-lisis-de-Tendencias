@@ -810,7 +810,8 @@ export class BuildMode {
     const y = WATERLINE_Y + 0.25;
     let shown = false;
     let nextShown = false;
-    if (this.selected === 'grua' && this.ghostAt) {
+    // Al colocarla, solo donde vale (o solo faltan materiales): fuera de la borda no trabajaría.
+    if (this.selected === 'grua' && this.ghostAt && (this.place.ok || this.place.costOnly || this.placedFlash > 0)) {
       const c = cellMin(this.ghostAt.x, this.ghostAt.z, ship.width);
       const cz = c.z + CELL / 2;
       reach.show(c.x + CELL / 2, cz, GRUA_RANGE, cz < 0 ? -1 : 1, y);

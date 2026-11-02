@@ -55,6 +55,7 @@ import { finalRegionOnChart, renderHelm } from '../src/ui/panels/helm';
 import { renderInventory } from '../src/ui/panels/inventory';
 import { relationTone, renderNpc } from '../src/ui/panels/npc';
 import { renderStation, upgradeLine } from '../src/ui/panels/station';
+import { renderTrade } from '../src/ui/panels/trade';
 import { arrivalStats, arrivalView, defaultPage, listNames, newPages, PageReader, paragraphs, readingSeconds } from '../src/ui/story';
 
 /* ------------------------------------------------------------------ */
@@ -1047,6 +1048,21 @@ describe('c2-ui: relaciones, cuaderno y llegada', () => {
     expect(sum.marketEventId).not.toBeNull();
     (buttons.find((b) => vtext(b).includes('Ir al mercado'))!.props['onclick'] as (e: unknown) => void)({ stopPropagation() {} });
     expect(market).toBe(sum.marketEventId);
+    // El comercio del muelle lleva su nombre y su despedida.
+    const trade = renderTrade(fakeEnv(sim).env, sum.marketEventId!)!;
+    expect(trade.title).toBe('Mercado de Puerto Esperanza');
+    expect(vtext(trade)).toContain('Despedirse del mercado');
+    expect(vtext(trade)).toContain('Los puestos cierran cuando se acabe el tiempo');
+    // Después de la llegada, el Cuaderno ofrece volver a verla.
+    const { env } = fakeEnv(sim);
+    let shown = 0;
+    (env as unknown as { showArrival: () => void }).showArrival = () => shown++;
+    env.ps.tab = 'diario';
+    env.ps.diary = 'cuaderno';
+    const inv = renderInventory(env);
+    expect(vtext(inv)).toContain('Llegaste a Puerto Esperanza');
+    (findByClass(inv, 'btn').find((b) => vtext(b).includes('Volver a ver la llegada'))!.props['onclick'] as (e: unknown) => void)({ stopPropagation() {} });
+    expect(shown).toBe(1);
   });
 });
 
