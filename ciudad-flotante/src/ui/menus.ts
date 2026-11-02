@@ -36,6 +36,8 @@ export class Menus {
   private saves: SaveSlotInfo[] | null = null;
   /** Pantalla de llegada: qué hacer con «Ir al mercado del muelle». */
   private onMarket: ((eventId: number) => void) | null = null;
+  /** Se navega con el teclado: al cambiar de pantalla, el foco pasa al primer control. */
+  private kbNav = false;
 
   constructor(
     layer: HTMLElement,
@@ -45,6 +47,8 @@ export class Menus {
     this.el = document.createElement('div');
     this.el.className = 'ui-menus';
     layer.appendChild(this.el);
+    // Con el ratón ya no se navega con el teclado (no se mueve el foco por sorpresa).
+    this.el.addEventListener?.('mousedown', () => (this.kbNav = false), true);
   }
 
   get open(): boolean {
@@ -107,6 +111,7 @@ export class Menus {
     if (!this.root) return false;
     if (e.code === 'Tab' || e.code === 'ArrowDown' || e.code === 'ArrowUp') {
       e.preventDefault();
+      this.kbNav = true;
       this.moveFocus(e.code === 'ArrowUp' || (e.code === 'Tab' && e.shiftKey) ? -1 : 1);
       return true;
     }
@@ -114,6 +119,7 @@ export class Menus {
       const a = typeof document !== 'undefined' ? document.activeElement : null;
       if (a instanceof HTMLElement && this.el.contains(a) && (a.tagName === 'BUTTON' || a.getAttribute('role') === 'switch')) {
         e.preventDefault();
+        this.kbNav = true;
         if (!e.repeat) a.click();
         return true;
       }
@@ -169,6 +175,12 @@ export class Menus {
     }
     this.el.classList.add('open');
     patch(this.el, this.render());
+    // Navegando con el teclado, si el control con el foco desapareció (otra pantalla), el foco
+    // pasa al primero de la nueva: Tab, Intro y Esc encadenan pantallas sin ratón.
+    if (this.kbNav && typeof document !== 'undefined') {
+      const a = document.activeElement;
+      if (!a || !this.el.contains(a)) this.focusables()[0]?.focus();
+    }
   }
 
   private get list(): SaveSlotInfo[] {

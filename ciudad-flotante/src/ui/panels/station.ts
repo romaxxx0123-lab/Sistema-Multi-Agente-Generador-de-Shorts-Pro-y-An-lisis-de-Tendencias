@@ -210,7 +210,8 @@ export function upgradeLine(env: UiEnv, m: ModuleInstance): VNode | null {
           'Sigue funcionando con su nivel actual mientras dura la obra',
           cs.builders > 0 ? ` · ${cs.builders} ${cs.builders === 1 ? 'habitante ayuda' : 'habitantes ayudan'}` : '',
           '. ',
-          hammer ? ['Mantén ', kbd('E'), ' con el martillo mirándolo para acabar antes.'] : 'Con un martillo puedes ayudar.',
+          // Como en Interaction: en una mejora, E sigue abriendo el panel y ayuda el clic con el martillo.
+          hammer ? ['Con el martillo en la mano, mantén ', kbd('Clic'), ' sobre él para acabar antes.'] : 'Con un martillo en la mano puedes ayudar.',
         ),
       ),
     );
@@ -404,7 +405,7 @@ function craftStation(env: UiEnv, m: ModuleInstance, _def: ModuleDef): { body: V
       section(
         h('span', { class: 'sec-row' }, h('span', null, gl('box'), 'Bandeja de salida'), btn('Tomar todo', () => takeAllFrom(env, ref), { small: true, disabled: used === 0 })),
         trayRow(env, m, 6),
-        h('div', { class: 'faint small' }, 'Lo fabricado espera aquí. Clic para cogerlo: las herramientas van a la barra rápida.'),
+        h('div', { class: 'faint small' }, isSmoker ? 'El pescado ahumado espera aquí. Clic para cogerlo; los habitantes también lo llevan al almacén.' : 'Lo fabricado espera aquí. Clic para cogerlo: las herramientas van a la barra rápida.'),
       ),
     );
   }
@@ -882,7 +883,7 @@ function viveroBody(env: UiEnv, m: ModuleInstance): VNode {
       ),
       vs && vs.stock >= vs.capacity && vs.capacity > 0 ? h('div', { class: 'note warn' }, gl('alert'), 'La bandeja está llena: recoge el pescado para que siga criando.') : null,
     ),
-    h('div', { class: 'util-side' }, outputTray(env, m, 'Los habitantes también recogen de aquí para la cocina y el ahumadero.')),
+    h('div', { class: 'util-side' }, outputTray(env, m, 'Clic para coger el pescado; los habitantes también lo llevan al almacén.')),
   );
 }
 
@@ -927,7 +928,7 @@ function gruaBody(env: UiEnv, m: ModuleInstance): VNode {
       gs.phase === 'llena' ? h('div', { class: 'note warn' }, gl('alert'), 'La bandeja y los almacenes están llenos: solo rescatará náufragos hasta que hagáis sitio.') : null,
       h('div', { class: 'faint small' }, 'Engancha sola el resto más cercano de su costado, y antes que nada las balsas con náufragos.'),
     ),
-    h('div', { class: 'util-side' }, outputTray(env, m, 'Lo que rescata espera aquí; si no cabe, va al almacén.', 12, 6)),
+    h('div', { class: 'util-side' }, outputTray(env, m, 'Lo que rescata espera aquí (si no cabe, va al almacén); los habitantes también lo llevan allí.', 12, 6)),
   );
 }
 

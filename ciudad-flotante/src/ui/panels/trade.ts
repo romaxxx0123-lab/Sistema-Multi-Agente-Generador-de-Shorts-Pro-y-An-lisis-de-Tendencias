@@ -1,6 +1,7 @@
 /**
  * Panel de COMERCIO con el mercante: ofertas (`sim.tradeOffers`) con lo que das y lo que recibes,
  * lo que tienes, y el intercambio real (`sim.trade`). Paga con tu inventario y los almacenes.
+ * El mercado del muelle de Puerto Esperanza (`data.port`) es un mercante más, con su nombre.
  */
 import { eventStatusText } from '../../sim/events';
 import { payInventories } from '../../sim/helpers';
@@ -19,6 +20,7 @@ export function renderTrade(env: UiEnv, eventId: number): PanelView | null {
   const invs = payInventories(sim);
   const have = (id: string): number => countIn(invs, id);
   const despedir = ev.choices.find((c) => c.id === 'despedir');
+  const port = !!(ev.data as { port?: boolean }).port;
   const rows = offers.map((o) =>
     h(
       'div',
@@ -37,13 +39,13 @@ export function renderTrade(env: UiEnv, eventId: number): PanelView | null {
     ),
   );
   return {
-    title: 'Comercio',
+    title: port ? ev.title : 'Comercio',
     subtitle: ev.description,
     glyph: 'merchant',
     head: chip(eventStatusText(sim, ev), 'info', 'clock'),
-    body: h('div', { class: 'trade' }, rows.length ? rows : empty('El mercante no tiene nada que ofrecer.'), h('div', { class: 'faint small' }, 'Cada trato se puede hacer una vez. El mercante se irá cuando se acabe el tiempo.')),
+    body: h('div', { class: 'trade' }, rows.length ? rows : empty(port ? 'Los puestos ya no tienen nada que ofrecer.' : 'El mercante no tiene nada que ofrecer.'), h('div', { class: 'faint small' }, port ? 'Cada trato se puede hacer una vez. Los puestos cierran cuando se acabe el tiempo.' : 'Cada trato se puede hacer una vez. El mercante se irá cuando se acabe el tiempo.')),
     foot: despedir
-      ? h('div', { class: 'foot-row' }, btn('Volver al timón', () => env.open({ kind: 'helm' }), { small: true, glyph: 'back' }), btn('Despedir al mercante', () => {
+      ? h('div', { class: 'foot-row' }, btn('Volver al timón', () => env.open({ kind: 'helm' }), { small: true, glyph: 'back' }), btn(port ? despedir.label : 'Despedir al mercante', () => {
           if (env.act(sim.eventChoice(eventId, 'despedir'), 'info')) env.close();
         }, { small: true, danger: true }))
       : null,

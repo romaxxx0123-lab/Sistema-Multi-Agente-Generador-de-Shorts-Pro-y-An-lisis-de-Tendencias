@@ -336,7 +336,8 @@ export class UI {
       if (this.panelTimer >= PANEL_REFRESH) this.renderPanelNow();
     }
     this.watchStory();
-    this.hud.update(dtReal, { panelOpen: this.panelOpen, menuOpen: this.menuOpen });
+    // La pantalla de llegada se ve sola, sobre la celebración: sin HUD ni avisos encima.
+    this.hud.update(dtReal, { panelOpen: this.panelOpen, menuOpen: this.menuOpen, quiet: this.menus.screen === 'arrival' });
     this.reader.update(dtReal, { hidden: this.menuOpen || ctx.mode !== 'play' || !ctx.sim.state.player.alive, panelOpen: this.panelOpen });
     this.menus.update(dtReal);
     this.tip.update(dtReal);

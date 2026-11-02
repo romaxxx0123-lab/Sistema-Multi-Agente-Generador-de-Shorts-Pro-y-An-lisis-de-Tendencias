@@ -200,7 +200,7 @@ export class Hud {
 
   /* ---------------- Bucle ---------------- */
 
-  update(dt: number, opts: { panelOpen: boolean; menuOpen: boolean }): void {
+  update(dt: number, opts: { panelOpen: boolean; menuOpen: boolean; quiet?: boolean }): void {
     this.time += dt;
     if (dt > 0) this.fps += (1 / dt - this.fps) * Math.min(1, dt * 2);
     const now = this.time;
@@ -252,7 +252,7 @@ export class Hud {
     // Clase del modo de juego (para que el modo construcción u otras capas puedan adaptar el HUD).
     const cls = `hud mode-${this.ctx.mode}${opts.panelOpen ? ' with-panel' : ''}`;
     if (this.el.className !== cls) this.el.className = cls;
-    patch(this.el, this.render(opts));
+    patch(this.el, opts.quiet ? [] : this.render(opts));
   }
 
   /* ---------------- Pintado ---------------- */
@@ -302,6 +302,9 @@ export class Hud {
     const night = isNight(st.time);
     const prog = v.regionLength > 0 ? v.regionDistance / v.regionLength : 0;
     const baro = barometer(sim);
+    const stormSoon = baro.trend === 'baja' && baro.next === 'tormenta';
+    // «Radar: frente de tormenta, llegará en unas dos horas» (barómetro con el radar en marcha).
+    const radarStorm = stormSoon && baro.radar && /^Radar:/.test(baro.text);
     const anchored = isAnchored(sim);
     const needRoute = !!v.nextChoices && v.nextChoices.length > 1 && !v.chosenNext;
     const fast = !!st.player.sleeping;
@@ -324,13 +327,11 @@ export class Hud {
         h('span', null, weatherName(w.kind)),
         h('span', { class: 'sep' }, '·'),
         h('span', null, `${Math.round(w.temperature)} °C`),
-        // Con el radar en marcha, su lectura («Radar: frente de tormenta, llegará en 2 h») sustituye al aviso genérico.
-        baro.trend === 'baja' && baro.next === 'tormenta'
-          ? h('span', { class: 'tl-warn', title: `Barómetro: ${baro.text}` }, gl(baro.radar ? 'radar' : 'alert'), baro.radar && /^Radar:/.test(baro.text) ? baro.text : 'Tormenta en camino')
-          : baro.radar
-            ? h('span', { class: 'tl-radar', title: `Radar en marcha · Barómetro: ${baro.text}` }, gl('radar'))
-            : null,
+        // Con el radar en marcha, un pequeño indicador; su lectura de tormenta va en su propia fila.
+        stormSoon && !radarStorm ? h('span', { class: 'tl-warn', title: `Barómetro: ${baro.text}` }, gl('alert'), 'Tormenta en camino') : null,
+        baro.radar && !radarStorm ? h('span', { class: 'tl-radar', title: `Radar en marcha · Barómetro: ${baro.text}` }, gl('radar')) : null,
       ),
+      radarStorm ? h('div', { class: 'tl-chip danger', title: 'Lectura del radar' }, gl('radar'), baro.text) : null,
       h(
         'div',
         { class: 'tl-region' },

@@ -232,6 +232,12 @@
   color: var(--accent-ink);
 }
 
+.tl-chip.danger {
+  max-width: 300px;
+  background: rgba(229, 96, 77, 0.88);
+  color: #fff;
+}
+
 .tl-chip .dim {
   color: var(--ink-dim);
 }

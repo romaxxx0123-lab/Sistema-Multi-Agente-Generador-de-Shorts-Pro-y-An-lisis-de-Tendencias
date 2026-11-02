@@ -150,7 +150,7 @@ function specialStats(def: ModuleDef): StatChip[] {
     case 'grua':
       return [{ glyph: 'lifebuoy', text: `Rescata a ${fmtNum(GRUA_RANGE)} m`, tone: 'good', title: `Con energía engancha sola el resto más cercano de su costado a ${fmtNum(GRUA_RANGE)} m o menos, cada ${durationText(GRUA_CYCLE_MIN)} (también balsas de náufragos)` }];
     case 'radar':
-      return [{ glyph: 'compass', text: `Tormentas ${durationText(RADAR_STORM_LEAD)} antes`, tone: 'good', title: `Con energía: aviso de tormenta ${durationText(RADAR_STORM_LEAD)} antes, avistamientos ${durationText(RADAR_EXTRA_MIN)} antes y durante más tiempo, y mensajes de radio de otros barcos` }];
+      return [{ glyph: 'storm', text: `Tormentas ${durationText(RADAR_STORM_LEAD)} antes`, tone: 'good', title: `Con energía: aviso de tormenta ${durationText(RADAR_STORM_LEAD)} antes, avistamientos ${durationText(RADAR_EXTRA_MIN)} antes y durante más tiempo, y mensajes de radio de otros barcos` }];
     default:
       return [];
   }

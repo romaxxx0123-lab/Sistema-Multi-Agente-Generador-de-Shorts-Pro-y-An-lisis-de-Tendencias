@@ -23,7 +23,7 @@ import {
   upgradeList,
   upgradePreview,
 } from '../src/build/catalog';
-import { buildGhostGeometry, GridView, reachArcPoints } from '../src/build/ghost';
+import { buildGhostGeometry, dashedRibbon, GridView, reachArcPoints } from '../src/build/ghost';
 import { HUD_GLYPHS } from '../src/build/hud';
 import { hasGlyph, MODULE_GLYPH } from '../src/ui/icons';
 import { fitDistance, ORBIT_LIMITS, OrbitRig, rescaleDistance } from '../src/build/orbit';
@@ -780,7 +780,7 @@ describe('grúa: junto a la borda', () => {
     for (const c of normal) expect(c.a).toBeCloseTo(0.16, 5);
     const edge = alpha(true);
     expect(edge.some((c) => c.edge)).toBe(true);
-    for (const c of edge) expect(c.a).toBeCloseTo(c.edge ? 0.36 : 0.05, 5);
+    for (const c of edge) expect(c.a).toBeCloseTo(c.edge ? 0.42 : 0.05, 5);
   });
 
   it('el arco de alcance cubre solo su costado y tiene el radio de la pluma', () => {
@@ -798,6 +798,16 @@ describe('grúa: junto a la borda', () => {
       expect(Math.max(...pts.map((q) => q.z * side))).toBeCloseTo(6 + GRUA_RANGE, 1);
     }
     expect(reachArcPoints(0, 0, 0, 1)).toEqual([]);
+    // Se dibuja como cinta discontinua (visible de lejos): trazos de 2,2 m y huecos de 1,4 m.
+    const straight = dashedRibbon([{ x: 0, z: 0 }, { x: 10, z: 0 }], 1, 0.5, 2, 1);
+    const pos = straight.getAttribute('position');
+    expect(pos.count).toBe(4 * 6); // trazos en 0-2, 3-5, 6-8 y 9-10
+    for (let i = 0; i < pos.count; i++) {
+      expect(pos.getY(i)).toBe(1);
+      expect(Math.abs(pos.getZ(i))).toBeCloseTo(0.25, 5);
+    }
+    const arc = dashedRibbon(reachArcPoints(2, 6, GRUA_RANGE, 1), 1.25, 0.55, 2.2, 1.4);
+    expect(arc.getAttribute('position').count).toBeGreaterThan(100);
   });
 });
 
