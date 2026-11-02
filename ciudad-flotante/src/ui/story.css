@@ -229,7 +229,6 @@
 }
 
 .nb-course {
-  flex-basis: 100%;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -341,12 +340,30 @@
   color: var(--accent);
 }
 
+.nb-desk .nb-paper {
+  --rule: 26px;
+  padding-top: 22px;
+}
+
+.nb-desk .nb-title {
+  font-size: 31px;
+}
+
+.nb-desk .nb-text {
+  font-size: 21.5px;
+}
+
+.nb-desk .nb-sign {
+  margin-top: 6px;
+  font-size: 20px;
+}
+
 .nb-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 /* ================================================================== */

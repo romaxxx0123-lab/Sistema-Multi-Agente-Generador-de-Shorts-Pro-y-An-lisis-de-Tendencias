@@ -301,7 +301,14 @@ export class UI {
     if (pages.length !== this.seenPages.length || pages.some((n, i) => n !== this.seenPages[i])) {
       const fresh = newPages(this.seenPages, pages);
       this.seenPages = [...pages];
-      if (fresh.length && ctx.mode === 'play') this.reader.show(fresh[fresh.length - 1]!);
+      const last = fresh[fresh.length - 1];
+      if (last !== undefined && ctx.mode === 'play') {
+        // Con el Cuaderno a la vista, la hoja nueva se abre ahí mismo; si no, en el lector.
+        if (this.panel?.kind === 'inventory' && this.ps.tab === 'diario' && this.ps.diary === 'cuaderno') {
+          this.ps.page = last;
+          this.renderPanelNow();
+        } else this.reader.show(last);
+      }
     }
     const arrived = !!story?.arrived;
     if (arrived && !this.seenArrived) this.arrivalPending = true;

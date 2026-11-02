@@ -150,14 +150,14 @@ export function notebookView(env: UiEnv): VNode {
       ),
     ),
   );
-  const head = h(
-    'div',
-    { class: 'nb-head' },
-    h('div', { class: 'nb-summary' }, gl('quill'), h('span', null, st.summary)),
-    progressDots(st),
-    st.revealed && !st.arrived ? h('div', { class: 'nb-course' }, gl('helm'), h('b', null, `${CAPTAIN_COURSE_LABEL}:`), ` elígelo en el timón para poner rumbo a ${st.finalRegionName}.`) : null,
-    st.arrived ? h('div', { class: 'nb-course arrived' }, gl('anchor'), h('span', null, `Llegaste a ${st.finalRegionName}.`), btn('Volver a ver la llegada', () => env.showArrival(), { small: true, glyph: 'flag' })) : null,
-  );
+  // Con el rumbo revelado, el resumen se destaca (y dice dónde elegirlo); al llegar, se puede volver a ver la llegada.
+  let summary: VNode;
+  if (st.revealed && !st.arrived) {
+    summary = h('div', { class: 'nb-summary nb-course' }, gl('helm'), h('span', null, h('b', null, `${CAPTAIN_COURSE_LABEL}:`), ` elígelo en el timón al final de cualquier región para poner rumbo a ${st.finalRegionName}.`));
+  } else if (st.arrived) {
+    summary = h('div', { class: 'nb-summary nb-course arrived' }, gl('anchor'), h('span', null, st.summary), btn('Volver a ver la llegada', () => env.showArrival(), { small: true, glyph: 'flag' }));
+  } else summary = h('div', { class: 'nb-summary' }, gl('quill'), h('span', null, st.summary));
+  const head = h('div', { class: 'nb-head' }, summary, progressDots(st));
   return h(
     'div',
     { class: 'notebook' },
