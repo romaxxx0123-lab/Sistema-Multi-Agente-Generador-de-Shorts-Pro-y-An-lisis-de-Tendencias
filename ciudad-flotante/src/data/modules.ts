@@ -328,7 +328,7 @@ const defs: ModuleDef[] = [
   {
     id: 'taller',
     name: 'Taller mecánico',
-    desc: 'Torno y prensa eléctricos. Fabrica piezas mecánicas, componentes y células solares. Consume electricidad.',
+    desc: 'Torno y prensa. Fabrica piezas mecánicas, componentes y células solares. Sin electricidad va a mano, muy despacio; con energía, cuatro veces más rápido.',
     category: 'produccion',
     size: [2, 1],
     enclosed: true,
@@ -384,7 +384,7 @@ const defs: ModuleDef[] = [
     unlock: null,
     doors: [],
     props: [{ kind: 'colector', u: 2.0, v: 2.0, rot: 0, collider: [0.9, 0.9, 2.2], interact: 'colector' }],
-    waterGen: 10,
+    waterGen: 8,
     waterCapacity: 20,
     demolishable: true,
     buildable: true,
@@ -420,7 +420,7 @@ const defs: ModuleDef[] = [
     doors: [],
     props: [{ kind: 'potabilizadora', u: 2.0, v: 2.0, rot: 0, collider: [1.0, 0.7, 1.6], interact: 'potabilizadora' }],
     powerUse: 2,
-    waterGen: 10,
+    waterGen: 4,
     machine: true,
     demolishable: true,
     buildable: true,
@@ -549,7 +549,7 @@ const defs: ModuleDef[] = [
   {
     id: 'ahumadero',
     name: 'Ahumadero',
-    desc: 'Una caseta de humo a cielo abierto: convierte pescado crudo y leña en pescado ahumado que aguanta.',
+    desc: 'Una caseta de humo a cielo abierto: convierte pescado crudo y leña en pescado ahumado, que alimenta más que el asado y no ocupa el fogón.',
     category: 'produccion',
     size: [1, 1],
     enclosed: false,
@@ -669,70 +669,76 @@ const defs: ModuleDef[] = [
 /* Mejoras de instalaciones (GDD §7: "mejorar instalaciones existentes") */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Equilibrio (ronda de pruebas 2): el nivel 2 cuesta al menos lo que el módulo y tarda ~1,5 veces su
+ * obra; el nivel 3 cuesta unas dos veces el 2 y pide un plano (almacén → casco, depósito → agua,
+ * huerto → lámparas de cultivo) o componentes y piezas del taller (generador). Así las mejoras
+ * llegan escalonadas con la exploración y no todas el primer día.
+ */
 const UPGRADES: Record<string, UpgradeDef[]> = {
   almacen: [
-    { tier: 2, name: 'Almacén con altillo', desc: 'Un altillo y más baldas: mucho más espacio.', cost: { madera: 12, tornillos: 6 }, buildTime: 45, effects: { storageSlots: 32 } },
-    { tier: 3, name: 'Almacén reforzado', desc: 'Estanterías metálicas de suelo a techo.', cost: { placa_metal: 6, tornillos: 10, madera: 10 }, buildTime: 70, effects: { storageSlots: 48 } },
+    { tier: 2, name: 'Almacén con altillo', desc: 'Un altillo y más baldas: mucho más espacio.', cost: { madera: 16, tornillos: 8, placa_metal: 2 }, buildTime: 60, effects: { storageSlots: 32 } },
+    { tier: 3, name: 'Almacén reforzado', desc: 'Estanterías metálicas de suelo a techo, ancladas al refuerzo del casco.', cost: { placa_metal: 12, tornillos: 16, madera: 20 }, buildTime: 105, unlock: 'casco', effects: { storageSlots: 48 } },
   ],
   deposito: [
-    { tier: 2, name: 'Depósito ampliado', desc: 'Un segundo cuerpo soldado: casi el doble de agua.', cost: { placa_metal: 4, tornillos: 6 }, buildTime: 45, effects: { waterCapacity: 220 } },
-    { tier: 3, name: 'Gran depósito', desc: 'Tanque presurizado con aislamiento.', cost: { placa_metal: 8, tornillos: 8, plastico: 6 }, buildTime: 70, effects: { waterCapacity: 340 } },
+    { tier: 2, name: 'Depósito ampliado', desc: 'Un segundo cuerpo soldado: casi el doble de agua.', cost: { placa_metal: 6, tornillos: 10, madera: 4 }, buildTime: 70, effects: { waterCapacity: 220 } },
+    { tier: 3, name: 'Gran depósito', desc: 'Tanque presurizado con aislamiento: casi el triple que el básico.', cost: { placa_metal: 12, tornillos: 12, plastico: 10, componentes: 1 }, buildTime: 105, unlock: 'agua', effects: { waterCapacity: 340 } },
   ],
   colector: [
-    { tier: 2, name: 'Colector de doble lona', desc: 'Más superficie de captación y un pequeño tanque.', cost: { tela: 4, cuerda: 2, madera: 4 }, buildTime: 25, effects: { waterGen: 18, waterCapacity: 35 } },
+    { tier: 2, name: 'Colector de doble lona', desc: 'Más superficie de captación y un pequeño tanque: recoge la mitad más de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 12, waterCapacity: 35 } },
   ],
   potabilizadora: [
-    { tier: 2, name: 'Potabilizadora con prefiltro', desc: 'Filtra más rápido y se desgasta menos.', cost: { componentes: 2, placa_metal: 2, tornillos: 4 }, buildTime: 60, effects: { waterGen: 16, wearMult: 0.7 } },
+    { tier: 2, name: 'Potabilizadora con prefiltro', desc: 'Filtra casi el doble de agua por hora y se desgasta menos.', cost: { componentes: 3, placa_metal: 4, tornillos: 6, pieza_mecanica: 1 }, buildTime: 90, effects: { waterGen: 7, wearMult: 0.7 } },
   ],
   generador: [
-    { tier: 2, name: 'Generador de doble cilindro', desc: 'Más potencia y mejor aprovechamiento del combustible.', cost: { pieza_mecanica: 2, placa_metal: 4, componentes: 1 }, buildTime: 80, effects: { powerGen: 8, fuelEfficiency: 1.3 } },
-    { tier: 3, name: 'Generador turbo', desc: 'Turbocompresor recuperado de un pesquero: potente y eficiente.', cost: { pieza_mecanica: 3, componentes: 3, placa_metal: 6 }, buildTime: 120, effects: { powerGen: 11, fuelEfficiency: 1.6 } },
+    { tier: 2, name: 'Generador de doble cilindro', desc: 'Más potencia y mejor aprovechamiento del combustible.', cost: { pieza_mecanica: 2, placa_metal: 6, componentes: 2 }, buildTime: 120, effects: { powerGen: 8, fuelEfficiency: 1.3 } },
+    { tier: 3, name: 'Generador turbo', desc: 'Turbocompresor recuperado de un pesquero: potente y eficiente.', cost: { pieza_mecanica: 4, componentes: 5, placa_metal: 10 }, buildTime: 180, effects: { powerGen: 11, fuelEfficiency: 1.6 } },
   ],
   bateria: [
-    { tier: 2, name: 'Baterías de alta capacidad', desc: 'Celdas nuevas: casi el doble de carga.', cost: { componentes: 3, placa_metal: 2 }, buildTime: 50, effects: { batteryKWh: 45 } },
+    { tier: 2, name: 'Baterías de alta capacidad', desc: 'Celdas nuevas: casi el doble de carga.', cost: { componentes: 4, placa_metal: 4 }, buildTime: 75, effects: { batteryKWh: 45 } },
   ],
   panel_solar: [
-    { tier: 2, name: 'Panel orientable', desc: 'Sigue al sol y rinde más.', cost: { celula_solar: 2, placa_metal: 1, tornillos: 4 }, buildTime: 45, effects: { powerGen: 2.4 } },
+    { tier: 2, name: 'Panel orientable', desc: 'Sigue al sol y rinde la mitad más.', cost: { celula_solar: 2, placa_metal: 2, tornillos: 6 }, buildTime: 70, effects: { powerGen: 2.4 } },
   ],
   banco_trabajo: [
-    { tier: 2, name: 'Banco con tornillo de banco', desc: 'Herramientas mejores: se trabaja más rápido.', cost: { madera: 6, tornillos: 6, placa_metal: 2 }, buildTime: 30, effects: { workSpeed: 1.5, storageSlots: 10 } },
+    { tier: 2, name: 'Banco con tornillo de banco', desc: 'Herramientas mejores: se trabaja más rápido.', cost: { madera: 8, tornillos: 8, placa_metal: 3 }, buildTime: 45, effects: { workSpeed: 1.5, storageSlots: 10 } },
   ],
   taller: [
-    { tier: 2, name: 'Taller con fresadora', desc: 'Fabrica más rápido y sus máquinas duran más.', cost: { pieza_mecanica: 2, componentes: 2, placa_metal: 4 }, buildTime: 90, effects: { workSpeed: 1.6, wearMult: 0.7 } },
+    { tier: 2, name: 'Taller con fresadora', desc: 'Fabrica más rápido y se desgasta menos.', cost: { pieza_mecanica: 3, componentes: 3, placa_metal: 6 }, buildTime: 135, effects: { workSpeed: 1.6, wearMult: 0.7 } },
   ],
   cocina: [
-    { tier: 2, name: 'Cocina de hierro', desc: 'Fogón de hierro colado: cocina antes y gasta menos leña.', cost: { placa_metal: 4, tornillos: 6, chatarra: 6 }, buildTime: 60, effects: { workSpeed: 1.5, fuelEfficiency: 1.5, storageSlots: 18 } },
+    { tier: 2, name: 'Cocina de hierro', desc: 'Fogón de hierro colado: cocina antes y gasta menos leña.', cost: { placa_metal: 6, tornillos: 8, chatarra: 6 }, buildTime: 90, effects: { workSpeed: 1.5, fuelEfficiency: 1.5, storageSlots: 18 } },
   ],
   huerto: [
-    { tier: 2, name: 'Huerto con riego por goteo', desc: 'Gomas y botellas agujereadas: menos agua y plantas más sanas.', cost: { plastico: 6, cuerda: 2, tornillos: 4 }, buildTime: 40, effects: { waterUseMult: 0.6, growthMult: 1.2 } },
-    { tier: 3, name: 'Huerto abonado', desc: 'Tierra nueva con compost de algas: crece mucho más.', cost: { madera: 10, plastico: 4, placa_metal: 2, fibra: 10 }, buildTime: 60, effects: { waterUseMult: 0.6, growthMult: 1.5 } },
+    { tier: 2, name: 'Huerto con riego por goteo', desc: 'Gomas y botellas agujereadas: gasta menos agua y crece algo más rápido.', cost: { plastico: 8, cuerda: 3, tornillos: 6 }, buildTime: 60, effects: { waterUseMult: 0.6, growthMult: 1.2 } },
+    { tier: 3, name: 'Huerto abonado', desc: 'Tierra nueva con compost de algas: crece mucho más rápido.', cost: { madera: 20, plastico: 8, placa_metal: 4, fibra: 20 }, buildTime: 90, unlock: 'invernadero', effects: { waterUseMult: 0.6, growthMult: 1.5 } },
   ],
   camarote: [
-    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 4, madera: 6 }, buildTime: 30, effects: { comfort: 5 } },
+    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 5, madera: 10 }, buildTime: 45, effects: { comfort: 5 } },
   ],
   dormitorio: [
-    { tier: 2, name: 'Dormitorio con taquillas', desc: 'Cada cual con su rincón: más descanso y menos roces.', cost: { tela: 6, madera: 8 }, buildTime: 45, effects: { comfort: 3 } },
+    { tier: 2, name: 'Dormitorio con taquillas', desc: 'Taquillas y cortinas: cada cual con su rincón. Quien duerme aquí está de mejor ánimo.', cost: { tela: 8, madera: 14 }, buildTime: 70, effects: { comfort: 3 } },
   ],
   comedor: [
-    { tier: 2, name: 'Comedor con despensa a la vista', desc: 'Manteles, farolillos y sitio para todos.', cost: { madera: 8, tela: 4 }, buildTime: 40, effects: { comfort: 5 } },
+    { tier: 2, name: 'Comedor con despensa a la vista', desc: 'Manteles y farolillos: comer aquí levanta más el ánimo.', cost: { madera: 14, tela: 5 }, buildTime: 60, effects: { comfort: 5 } },
   ],
   enfermeria: [
-    { tier: 2, name: 'Enfermería equipada', desc: 'Instrumental y medicinas ordenadas: se cura antes.', cost: { componentes: 2, tela: 4, plastico: 2 }, buildTime: 60, effects: { healMult: 1.5 } },
+    { tier: 2, name: 'Enfermería equipada', desc: 'Instrumental y medicinas ordenadas: se cura antes.', cost: { componentes: 3, tela: 6, plastico: 4 }, buildTime: 90, effects: { healMult: 1.5 } },
   ],
   sala_comun: [
-    { tier: 2, name: 'Sala común con estufa', desc: 'Una estufa de hierro y cojines: el mejor sitio del barco.', cost: { madera: 6, placa_metal: 2, chatarra: 4, tela: 4 }, buildTime: 45, effects: { comfort: 6 } },
+    { tier: 2, name: 'Sala común con estufa', desc: 'Cojines, mantas y una vieja estufa de hierro: el rincón más acogedor del barco para pasar el rato.', cost: { madera: 12, placa_metal: 4, chatarra: 4, tela: 6 }, buildTime: 70, effects: { comfort: 6 } },
   ],
   ahumadero: [
-    { tier: 2, name: 'Ahumadero de tiro doble', desc: 'Dos cámaras de humo: ahúma más rápido con la misma leña.', cost: { madera: 8, placa_metal: 2, tornillos: 4 }, buildTime: 40, effects: { workSpeed: 1.6 } },
+    { tier: 2, name: 'Ahumadero de tiro doble', desc: 'Dos cámaras de humo: ahúma más rápido con la misma leña.', cost: { madera: 12, placa_metal: 3, tornillos: 6 }, buildTime: 60, effects: { workSpeed: 1.6 } },
   ],
   vivero: [
-    { tier: 2, name: 'Vivero con aireadores', desc: 'Burbujeadores y sombra: los peces crecen antes.', cost: { componentes: 2, plastico: 4, tornillos: 4 }, buildTime: 60, effects: { workSpeed: 1.6 } },
+    { tier: 2, name: 'Vivero con aireadores', desc: 'Burbujeadores y sombra: los peces crecen antes.', cost: { componentes: 3, plastico: 8, tornillos: 6 }, buildTime: 90, effects: { workSpeed: 1.6 } },
   ],
   grua: [
-    { tier: 2, name: 'Grúa de pluma larga', desc: 'Más alcance y un torno más rápido.', cost: { placa_metal: 4, pieza_mecanica: 2, cuerda: 4 }, buildTime: 80, effects: { workSpeed: 1.6 } },
+    { tier: 2, name: 'Grúa de pluma larga', desc: 'Más alcance y un torno más rápido.', cost: { placa_metal: 6, pieza_mecanica: 3, cuerda: 6 }, buildTime: 120, effects: { workSpeed: 1.6 } },
   ],
   motor: [
-    { tier: 2, name: 'Motor con hélice de paso variable', desc: 'Más velocidad con la misma energía.', cost: { pieza_mecanica: 4, componentes: 4 }, buildTime: 120, effects: { speedBonus: 5 } },
+    { tier: 2, name: 'Motor con hélice de paso variable', desc: 'Más velocidad con la misma energía.', cost: { pieza_mecanica: 6, componentes: 6 }, buildTime: 180, effects: { speedBonus: 5 } },
   ],
 };
 for (const d of defs) if (UPGRADES[d.id]) d.upgrades = UPGRADES[d.id];

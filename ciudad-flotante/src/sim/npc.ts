@@ -59,18 +59,19 @@ import { bedProp } from './actions';
 import { HOOK_RANGE, SHIP_ORIGIN_X, WATER_PER_DRINK } from './constants';
 import { expansionWorkPoint, REPAIR_THRESHOLD, repair, repairInfo } from './construction';
 import { COLLECT_RANGE, driftSpeed, fishingMultiplier, hullBounds, rollCatch } from './debris';
-import { activeEvent, burningModules, discussionOf, distanceToModule, isBreakdownTarget, mediateDiscussion, npcCollectDebris, onFishCaught, onNpcCured, onNpcDied, startEvent } from './events';
+import { activeEvent, burningModules, discussionOf, distanceToModule, isBreakdownTarget, mediateDiscussion, moduleLabel, npcCollectDebris, onFishCaught, onNpcCured, onNpcDied, startEvent } from './events';
 import { depositToStorage, findModule, itemName, payInventories, pruneCrates, spawnCrate, storageModules } from './helpers';
 import { addItem, countIn, countItem, missingFor, removeItem, spaceFor, takeFromSlot } from './inventory';
 import { moduleDisplayName, moduleStat } from './moduleStats';
 import { NAV_RES, type NavGrid, type NavPoint } from './nav';
+import { bedComfortBonus, healingBedMults } from './needs';
 import { makeNpc } from './newGame';
 import { cellAtPoint, cellCenter, levelOfY, levelY, moduleCells, moduleCenter, type PropInstance } from './ship';
 import type { ActionResult, NpcTalk, Simulation } from './Simulation';
 import { harvest, plant, queueCraft, tendPlot } from './stations';
-import { hourOf } from './time';
+import { hourOf, minuteOfDay } from './time';
 import type { ActiveEvent, Inventory, ItemId, ItemStack, LooseCrate, ModuleInstance, NpcActivity, NpcRole, NpcState, Vec3 } from './types';
-import { fuelMinutes, isHealingBedPowered, moduleHasSky, withArticle } from './utilities';
+import { currentDemand, fuelMinutes, isConsumer, moduleHasSky } from './utilities';
 
 /* ------------------------------------------------------------------ */
 /* Parámetros de equilibrio                                            */
@@ -88,7 +89,10 @@ export const NPC_RATES = {
   /** Una enfermedad sin tratar (sin botiquín, enfermería ni cama) deja la salud baja en un día. */
   sickDamagePerHour: 2.5,
   fireDamagePerHour: 10,
-  /** Recuperación de salud bien comido y bebido (×1,5 durmiendo, ×3 en la enfermería). */
+  /**
+   * Recuperación de salud bien comido y bebido (×1,5 durmiendo; en la camilla de una enfermería con
+   * energía, ×3 × el `healMult` de su mejora, como el jugador: `healingBedMults`).
+   */
   regenPerHour: 2,
   moodPerHour: 4,
 };
@@ -1643,8 +1647,8 @@ function takeFromSource(sim: Simulation, s: Source, id: ItemId, qty: number): nu
  * no se puede llegar (tapiado por una obra, en una zona aislada) no cuenta, y se prueba el siguiente.
  * Con `from`, el almacén más cercano primero.
  */
-function findSource(sim: Simulation, id: ItemId, from?: Vec3): Source | null {
-  const mods = storageModules(sim).filter((mm) => mm.fire <= 0 && countItem(mm.inventory, id) > 0);
+function findSource(sim: Simulation, id: ItemId, from?: Vec3, ok?: (s: Source) => boolean): Source | null {
+  const mods = storageModules(sim).filter((mm) => mm.fire <= 0 && countItem(mm.inventory, id) > 0 && (!ok || ok({ m: mm, crate: null })));
   if (from && mods.length > 1) {
     const d = (m: ModuleInstance) => {
       const c = moduleCenter(m, sim.state.ship.width);
@@ -1657,7 +1661,7 @@ function findSource(sim: Simulation, id: ItemId, from?: Vec3): Source | null {
     if (sourceSpot(sim, s)) return s;
   }
   for (const c of sim.state.crates) {
-    if (countItem(c.inventory, id) > 0 && snapReachable(sim, c.pos, 2.5)) return { m: null, crate: c };
+    if (countItem(c.inventory, id) > 0 && (!ok || ok({ m: null, crate: c })) && snapReachable(sim, c.pos, 2.5)) return { m: null, crate: c };
   }
   return null;
 }
@@ -1667,13 +1671,33 @@ function anywhereAboard(sim: Simulation, id: ItemId): boolean {
   return storageModules(sim).some((m) => countItem(m.inventory, id) > 0) || sim.state.crates.some((c) => countItem(c.inventory, id) > 0);
 }
 
+/** ¿Es la misma fuente (almacén o caja suelta)? */
+function sameSource(d: TaskData, s: Source): boolean {
+  return s.m ? d['moduleId'] === s.m.id && typeof d['crateId'] !== 'number' : d['crateId'] === s.crate?.id;
+}
+
+/**
+ * Raciones de `id` de una fuente que otros habitantes ya van a recoger (tarea «comer» camino de esa
+ * fuente a por esa comida): así no van tres a por la misma lata.
+ */
+function reservedFood(sim: Simulation, npc: NpcState | undefined, s: Source, id: ItemId): number {
+  let n = 0;
+  for (const o of sim.state.npcs) {
+    if (o === npc || o.task?.kind !== 'comer') continue;
+    const d = td(o);
+    if (d.stage === 'recoger' && d.phase === 'go' && d['food'] === id && sameSource(d, s)) n++;
+  }
+  return n;
+}
+
 /**
  * La mejor comida disponible (por preferencia) en una fuente alcanzable, y dónde está: si la
- * preferida está donde no se llega, se pasa a la siguiente.
+ * preferida está donde no se llega, se pasa a la siguiente. Con `npc`, descuenta las raciones que
+ * otros ya van a recoger (si en el almacén más cercano no queda ninguna libre, prueba en otro).
  */
-function bestFood(sim: Simulation, from?: Vec3): { src: Source; id: ItemId } | null {
+function bestFood(sim: Simulation, from?: Vec3, npc?: NpcState): { src: Source; id: ItemId } | null {
   for (const id of FOOD_PREFERENCE) {
-    const src = findSource(sim, id, from);
+    const src = findSource(sim, id, from, npc ? (s) => countItem(sourceInv(s), id) > reservedFood(sim, npc, s, id) : undefined);
     if (src) return { src, id };
   }
   return null;
@@ -1693,21 +1717,42 @@ function storageSpot(sim: Simulation, m: ModuleInstance): Vec3 | null {
   return moduleSpot(sim, m, m.type === 'cocina' ? ['despensa'] : ['estanteria', 'banco', 'torno'])?.pos ?? moduleSpot(sim, m)?.pos ?? null;
 }
 
+/** Hambre a partir de la que ya no se espera a asar el pescado: se come crudo (desesperación). */
+const RAW_DESPERATE_HUNGER = 8;
+
+/**
+ * ¿Lo que lleva en la mano es una ración para comérsela tal cual? Una sola unidad de comida (una
+ * pila de la bandeja del ahumadero o de una caja va al almacén, no a la boca) y, salvo desesperación,
+ * que no sea pescado crudo (eso se asa).
+ */
+function mealInHand(npc: NpcState): boolean {
+  const c = npc.carry;
+  return !!c && c.qty === 1 && ITEMS[c.id]?.category === 'comida' && (c.id !== 'pescado_crudo' || npc.needs.hunger <= RAW_DESPERATE_HUNGER);
+}
+
+/** A la mesa (silla libre, comedor primero) con lo que lleva en la mano. */
+function tablePlan(sim: Simulation, npc: NpcState, prio: number): Plan {
+  const seat = freeSeat(sim, npc);
+  return { kind: 'comer', prio, target: seat?.pos ?? null, data: { stage: 'mesa', seatKey: seat?.key ?? null, comedor: seat?.comedor ?? false }, duration: EAT_MINUTES };
+}
+
 function eatPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
-  if (npc.carry && ITEMS[npc.carry.id]?.category === 'comida') {
-    const seat = freeSeat(sim, npc);
-    return { kind: 'comer', prio, target: seat?.pos ?? null, data: { stage: 'mesa', seatKey: seat?.key ?? null, comedor: seat?.comedor ?? false }, duration: EAT_MINUTES };
-  }
-  const food = bestFood(sim, npc.pos);
-  if (!food) return null;
-  // Solo queda pescado crudo: mejor asarlo un momento que arriesgarse a enfermar (salvo desesperación).
-  if (food.id === 'pescado_crudo' && npc.needs.hunger > 8) {
+  if (mealInHand(npc)) return tablePlan(sim, npc, prio);
+  const hand = npc.carry && ITEMS[npc.carry.id]?.category === 'comida' ? npc.carry : null;
+  const food = bestFood(sim, npc.pos, npc);
+  // Solo queda pescado crudo (en el almacén o en la mano): mejor asarlo un momento que arriesgarse a
+  // enfermar (salvo desesperación).
+  const rawOnly = food ? food.id === 'pescado_crudo' : hand?.id === 'pescado_crudo';
+  if (rawOnly && npc.needs.hunger > RAW_DESPERATE_HUNGER) {
     const roast = roastPlan(sim, npc, prio);
     if (roast) return roast;
   }
+  // Lo único que hay a mano es lo que lleva: se come una ración y el resto vuelve al almacén.
+  if (!food) return hand ? tablePlan(sim, npc, prio) : null;
   const spot = sourceSpot(sim, food.src);
   if (!spot) return null;
-  return { kind: 'comer', prio, target: spot, ...(food.src.m ? { moduleId: food.src.m.id } : {}), data: { stage: 'recoger', ...sourceData(food.src) }, duration: EAT_MINUTES };
+  // `food`: lo que va a buscar (si al llegar ya no está, no se conforma con pescado crudo).
+  return { kind: 'comer', prio, target: spot, ...(food.src.m ? { moduleId: food.src.m.id } : {}), data: { stage: 'recoger', food: food.id, ...sourceData(food.src) }, duration: EAT_MINUTES };
 }
 
 /**
@@ -1728,7 +1773,11 @@ function roastPlan(sim: Simulation, npc: NpcState, prio: number): Plan | null {
   if (fuelMinutes(k) <= 0 && !fuelInStorage(sim, k)) return null;
   if (k.queue.length >= 6) return null;
   const r = RECIPES['pescado_asado'];
-  if (!r || Object.keys(missingFor(storageInvs(sim), r.inputs)).length) return null;
+  if (!r) return null;
+  // El pescado puede ser el que lleva en la mano (lo deja en la despensa al ponerse a asar).
+  const miss = missingFor(storageInvs(sim), r.inputs);
+  if (npc.carry?.id === 'pescado_crudo' && (miss['pescado_crudo'] ?? 0) <= npc.carry.qty) delete miss['pescado_crudo'];
+  if (Object.keys(miss).length) return null;
   return {
     kind: 'trabajar',
     prio,
@@ -1948,12 +1997,19 @@ function endLounge(sim: Simulation, npc: NpcState): void {
   }
 }
 
+/**
+ * Llega a la fuente: coge la mejor ración que quede. Pescado crudo solo si eso es lo que vino a
+ * buscar (no había nada más y no se podía asar, o está desesperado): si alguien se llevó la última
+ * lata, no se conforma con un pescado crudo, sino que vuelve a decidir (otra fuente, o asarlo).
+ */
 function pickUpFood(sim: Simulation, npc: NpcState): void {
   const d = td(npc);
   const src = sourceOf(sim, d);
+  const rawOk = d['food'] === 'pescado_crudo' || npc.needs.hunger <= RAW_DESPERATE_HUNGER;
   let got: ItemId | null = null;
   if (src && sourceInv(src)) {
     for (const id of FOOD_PREFERENCE) {
+      if (id === 'pescado_crudo' && !rawOk) continue;
       if (takeFromSource(sim, src, id, 1) === 1) {
         got = id;
         break;
@@ -1961,18 +2017,19 @@ function pickUpFood(sim: Simulation, npc: NpcState): void {
     }
   }
   if (!got) {
-    // Se la han llevado: probar en otro sitio (una vez).
+    // Se la han llevado: volver a decidir (otra fuente o asar el pescado), como mucho dos veces.
     const tries = (d['tries'] as number | undefined) ?? 0;
-    const food = tries < 1 ? bestFood(sim, npc.pos) : null;
-    const spot = food ? sourceSpot(sim, food.src) : null;
-    if (food && spot) {
-      startPlan(sim, npc, { kind: 'comer', prio: d.prio, target: spot, ...(food.src.m ? { moduleId: food.src.m.id } : {}), data: { stage: 'recoger', ...sourceData(food.src), tries: tries + 1 }, duration: EAT_MINUTES });
-    } else abortTask(sim, npc, 'comer', 15);
+    const prio = d.prio;
+    const alt = tries < 2 ? eatPlan(sim, npc, prio) : null;
+    if (alt) {
+      if (alt.kind === 'comer') alt.data = { ...(alt.data ?? {}), tries: tries + 1 };
+      if (startPlan(sim, npc, alt)) return;
+    }
+    abortTask(sim, npc, 'comer', 15);
     return;
   }
   npc.carry = { id: got, qty: 1 };
-  const seat = freeSeat(sim, npc);
-  startPlan(sim, npc, { kind: 'comer', prio: d.prio, target: seat?.pos ?? null, data: { stage: 'mesa', seatKey: seat?.key ?? null, comedor: seat?.comedor ?? false }, duration: EAT_MINUTES });
+  startPlan(sim, npc, tablePlan(sim, npc, d.prio));
 }
 
 function finishEating(sim: Simulation, npc: NpcState): void {
@@ -1982,7 +2039,9 @@ function finishEating(sim: Simulation, npc: NpcState): void {
   if (!c) return;
   const def = ITEMS[c.id];
   const eff = def?.consume;
+  // Se come UNA ración; si llevaba una pila (de una bandeja o una caja), el resto vuelve al almacén.
   npc.carry = null;
+  if (c.qty > 1) storeOrDrop(sim, [{ id: c.id, qty: c.qty - 1 }], npc.pos, 'Comida');
   if (eff) {
     npc.needs.hunger = clamp(npc.needs.hunger + (eff.hunger ?? 0), 0, 100);
     npc.needs.thirst = clamp(npc.needs.thirst + (eff.thirst ?? 0), 0, 100);
@@ -2041,8 +2100,11 @@ function finishDrinking(sim: Simulation, npc: NpcState): void {
     }
     return;
   }
-  if (npc.carry?.id === 'agua_potable') {
+  const c = npc.carry;
+  if (c?.id === 'agua_potable') {
+    // Una botella; las demás (de una caja que estaba ordenando), al almacén.
     npc.carry = null;
+    if (c.qty > 1) storeOrDrop(sim, [{ id: c.id, qty: c.qty - 1 }], npc.pos, 'Botellas');
     npc.needs.thirst = clamp(npc.needs.thirst + (ITEMS['agua_potable']?.consume?.thirst ?? DRINK_THIRST), 0, 100);
   }
 }
@@ -2236,7 +2298,9 @@ function planTakesCarry(plan: Plan): boolean {
     (plan.kind === 'apagar' && plan.data?.stage === 'coger') ||
     job === 'coger_cubo' ||
     job === 'ordenar' ||
-    job === 'bandeja'
+    job === 'bandeja' ||
+    // Asar: el pescado que lleve va a la despensa y de ahí al fuego.
+    job === 'asar'
   );
 }
 
@@ -2253,15 +2317,16 @@ function planUsesCarry(plan: Plan, id: ItemId): boolean {
 
 /**
  * El habitante deja en los almacenes lo que lleva en la mano si la nueva tarea no lo usa (nunca se
- * pierde nada). La comida y las botellas que lleva para tomárselas las conserva salvo que necesite
- * las manos para coger otra cosa; cubos y materiales solo sirven para su propia tarea.
+ * pierde nada). La ración o la botella que lleva para tomársela la conserva salvo que necesite las
+ * manos para coger otra cosa; una pila de comida o de botellas (de una bandeja o una caja) es
+ * material para guardar, como los cubos y lo demás: solo la conserva la tarea que la usa.
  */
 function stashCarry(sim: Simulation, npc: NpcState, plan: Plan): void {
   const c = npc.carry;
   if (!c) return;
   if (!planTakesCarry(plan)) {
     if (planUsesCarry(plan, c.id)) return;
-    if (ITEMS[c.id]?.category === 'comida' || c.id === 'agua_potable') return;
+    if (c.qty === 1 && (ITEMS[c.id]?.category === 'comida' || c.id === 'agua_potable')) return;
   }
   storeOrDrop(sim, [c], npc.pos, 'Objetos');
   npc.carry = null;
@@ -2564,7 +2629,7 @@ function mechanicPlan(sim: Simulation, npc: NpcState): Plan | null {
     const craft = partsPlan(sim, npc, missingPart.part);
     if (craft) return craft;
     if (!partInProduction(sim, missingPart.part)) {
-      const target = withArticle(moduleDef(missingPart.m.type).name);
+      const target = moduleLabel(missingPart.m);
       const what = missingPart.part === 'pieza_mecanica' ? 'piezas mecánicas' : 'kits de reparación';
       const how = missingPart.part === 'pieza_mecanica' ? 'chatarra, placas y tornillería para hacer una en el banco' : 'madera, tornillería y cuerda para hacer uno en el banco';
       complain(sim, npc, `Necesito ${what} para arreglar ${target}, o ${how}.`, `${npc.name}: «Para reparar ${target} necesito ${what} en el almacén, o ${how}»`);
@@ -2976,7 +3041,7 @@ function emergencyPlan(sim: Simulation, npc: NpcState): Plan | null {
   if (fire) {
     const p = firePlan(sim, npc, fire);
     if (p) {
-      const lugar = withArticle(moduleDef(fire.type).name);
+      const lugar = moduleLabel(fire);
       p.say = hashPick(LINES.fireAlarm, npc.id + fire.id).replace('{lugar}', lugar);
       return p;
     }
@@ -3515,7 +3580,7 @@ function tickWork(sim: Simulation, npc: NpcState, dt: number): void {
         const r = repair(sim, m.id, { by: 'npc' });
         if (r.ok) {
           say(sim, npc, '¡Arreglado!');
-          sim.notify(`${npc.name} ha reparado ${withArticle(moduleDef(m.type).name)}`, 'good');
+          sim.notify(`${npc.name} ha reparado ${moduleLabel(m)}`, 'good');
         } else memoOf(sim, npc).blocked[`reparar:${m.id}`] = now + 60;
       }
       break;
@@ -3597,13 +3662,15 @@ function onBed(npc: NpcState): boolean {
   return k === 'dormir' && d['bed'] === true;
 }
 
-function inHealingBed(sim: Simulation, npc: NpcState): boolean {
-  if (npc.task?.kind !== 'descansar' || npc.activity !== 'sleeping') return false;
-  const id = td(npc)['restModuleId'];
-  if (typeof id !== 'number') return false;
-  const m = findModule(sim, id);
-  // La camilla solo cura más rápido si la enfermería tiene energía (igual que para el jugador).
-  return !!m && isHealingBedPowered(sim, m);
+/**
+ * Módulo de la cama o camilla en la que está tumbado (null en el suelo o despierto): la camilla de
+ * la enfermería que reservó al descansar, o su propia cama.
+ */
+function bedModuleOf(sim: Simulation, npc: NpcState): ModuleInstance | null {
+  if (npc.activity !== 'sleeping' || !onBed(npc)) return null;
+  const rest = td(npc)['restModuleId'];
+  if (npc.task?.kind === 'descansar' && typeof rest === 'number') return findModule(sim, rest) ?? null;
+  return npc.bed ? (findModule(sim, npc.bed.moduleId) ?? null) : null;
 }
 
 function nearFire(sim: Simulation, npc: NpcState): boolean {
@@ -3690,7 +3757,10 @@ function tickNeedsOf(sim: Simulation, npc: NpcState, dt: number): void {
   const k = sleeping ? 0.5 : 1;
   n.hunger = clamp(n.hunger - NPC_RATES.hungerPerHour * (tr.hungerMult ?? 1) * k * h, 0, 100);
   n.thirst = clamp(n.thirst - NPC_RATES.thirstPerHour * k * h, 0, 100);
-  if (sleeping) n.energy = clamp(n.energy + (onBed(npc) ? NPC_RATES.sleepBedPerHour : NPC_RATES.sleepFloorPerHour) * h, 0, 100);
+  // Cama, camilla o suelo: el confort de la habitación (camarote acogedor) repone algo más, como al
+  // jugador (`bedComfortBonus`), y la enfermería equipada cura antes (`healingBedMults`).
+  const bedMod = sleeping ? bedModuleOf(sim, npc) : null;
+  if (sleeping) n.energy = clamp(n.energy + (onBed(npc) ? NPC_RATES.sleepBedPerHour + bedComfortBonus(bedMod) : NPC_RATES.sleepFloorPerHour) * h, 0, 100);
   else {
     const effort = npc.activity === 'firefighting' || npc.activity === 'building' || npc.activity === 'working' ? 1.15 : 1;
     n.energy = clamp(n.energy - NPC_RATES.energyPerHour * (tr.energyMult ?? 1) * effort * h, 0, 100);
@@ -3709,9 +3779,11 @@ function tickNeedsOf(sim: Simulation, npc: NpcState, dt: number): void {
     dmg += NPC_RATES.fireDamagePerHour;
     mem.lastHarm = 'fuego';
   }
-  const healing = inHealingBed(sim, npc);
+  // Solo cura más rápido la camilla de una enfermería con energía (igual que para el jugador).
+  const heal = npc.task?.kind === 'descansar' ? healingBedMults(sim, bedMod) : null;
+  const healing = !!heal && heal.regen > 1;
   if (dmg > 0) n.health = clamp(n.health - dmg * h, 0, 100);
-  else if (n.hunger > 30 && n.thirst > 30) n.health = clamp(n.health + NPC_RATES.regenPerHour * (healing ? 3 : 1) * (sleeping ? 1.5 : 1) * h, 0, 100);
+  else if (n.hunger > 30 && n.thirst > 30) n.health = clamp(n.health + NPC_RATES.regenPerHour * (heal?.regen ?? 1) * (sleeping ? 1.5 : 1) * h, 0, 100);
   // Aviso (una vez) de que está grave, para que el jugador pueda intervenir a tiempo.
   if (dmg > 0 && n.health > 0 && n.health < GRAVE_HEALTH && !mem.graveWarned) {
     mem.graveWarned = true;
@@ -3726,7 +3798,9 @@ function tickNeedsOf(sim: Simulation, npc: NpcState, dt: number): void {
   if (npc.sick) {
     const resting = sleeping && onBed(npc);
     const cureRate = healing ? CURE_PER_HOUR_INFIRMARY : resting ? CURE_PER_HOUR_RESTING : 0;
-    if (cureRate > 0 && sim.rng.chance(1 - Math.pow(1 - cureRate, h))) {
+    // La enfermería equipada acorta la enfermedad en su `healMult` (las horas cuentan ×1,5).
+    const cureHours = h * (healing ? heal!.heal : 1);
+    if (cureRate > 0 && sim.rng.chance(1 - Math.pow(1 - cureRate, cureHours))) {
       npc.sick = false;
       say(sim, npc, '¡Por fin se me ha pasado la fiebre!');
       onNpcCured(sim, npc, healing ? 'enfermeria' : 'cama');
@@ -4079,7 +4153,7 @@ export function npcStatusText(sim: Simulation, npc: NpcState): string {
   const d = t ? td(npc) : null;
   const go = d?.phase === 'go';
   const mod = t?.targetModuleId !== undefined ? findModule(sim, t.targetModuleId) : undefined;
-  const at = mod ? withArticle(mod.type === 'radar' ? 'Radar' : moduleDisplayName(mod)) : 'el barco';
+  const at = mod ? moduleLabel(mod) : 'el barco';
   switch (t?.kind) {
     case 'dormir':
       return go ? 'Va a dormir' : 'Durmiendo';
@@ -4201,7 +4275,7 @@ function petitionLines(sim: Simulation, npc: NpcState): string[] {
       const broken = sim.state.ship.modules.find((m) => needsFixing(sim, m) && !repairInfo(sim, m.id, { by: 'npc' }).ok);
       if (broken) {
         const part = repairInfo(sim, broken.id, { by: 'npc' }).part;
-        out.push(`Para arreglar ${withArticle(moduleDef(broken.type).name)} necesito ${part === 'pieza_mecanica' ? 'piezas mecánicas' : 'kits de reparación'} en el almacén.`);
+        out.push(`Para arreglar ${moduleLabel(broken)} necesito ${part === 'pieza_mecanica' ? 'piezas mecánicas' : 'kits de reparación'} en el almacén.`);
       }
       break;
     }
@@ -4393,7 +4467,9 @@ export function giveItem(sim: Simulation, npcId: string, slot: number): ActionRe
   if (c && (def.category === 'comida' || def.category === 'bebida')) {
     const useful = ((c.hunger ?? 0) > 0 && n.hunger < 92) || ((c.thirst ?? 0) > 0 && n.thirst < 92);
     if (!useful) return fail(`${npc.name} no tiene hambre ni sed ahora`);
-    if ((c.thirst ?? 0) < 0) return fail(`${npc.name} no piensa beber agua salada`);
+    // Solo se rechaza el agua de mar (como al beberla el jugador, `actions.consumeItem`): una comida
+    // algo salada, como el pescado ahumado (sed −3), se come igual.
+    if (s.id === 'cubo_agua' || /salada/i.test(c.verb ?? '')) return fail(`${npc.name} no piensa beber agua salada`);
     takeFromSlot(inv, slot, 1);
     n.hunger = clamp(n.hunger + (c.hunger ?? 0), 0, 100);
     n.thirst = clamp(n.thirst + (c.thirst ?? 0), 0, 100);

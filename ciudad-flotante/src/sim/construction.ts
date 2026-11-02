@@ -15,7 +15,7 @@
  *   dormía allí. `checkDemolishModule` avisa antes del agua y la carga que se perderían.
  * - Ampliación del casco: obra especial `ship.expansion` (+2 celdas por proa, máx. 18). Cuesta
  *   `HULL_EXPANSION.cost × (1 + ampliaciones hechas)`; cancelarla devuelve lo pagado.
- * - Desgaste: las máquinas funcionando pierden 1 de condición cada 8 h (× `wearMult` de su
+ * - Desgaste: las máquinas funcionando pierden 1 de condición cada 5 h (× `wearMult` de su
  *   mejora); a 0 se averían.
  * - Reparación: máquinas → llave inglesa + pieza mecánica; estructuras → martillo + kit. Si falta
  *   el repuesto, se dice dónde conseguirlo (`partSourceHint`).
@@ -85,13 +85,13 @@ import {
 export const NPC_HELP_BONUS = 0.75;
 /** Ritmo del jugador con martillo respecto al avance base de la obra. */
 export const PLAYER_HELP_RATE = 2;
-/** Horas de funcionamiento por punto de condición perdido (desgaste). */
-export const WEAR_HOURS_PER_POINT = 8;
+/** Horas de funcionamiento por punto de condición perdido (desgaste): un gasto continuo de repuestos. */
+export const WEAR_HOURS_PER_POINT = 5;
 /** Fracción del coste que se recupera al desmontar un módulo terminado. */
 export const DEMOLISH_REFUND = 0.5;
 /**
  * Condición por debajo de la cual se ofrece reparar (además de averías y fugas). El desgaste
- * normal (1 punto cada 8 h) pide repuestos tras unas 40 h de funcionamiento.
+ * normal (1 punto cada 5 h) pide repuestos tras unas 25 h de funcionamiento.
  */
 export const REPAIR_THRESHOLD = 95;
 
@@ -616,8 +616,8 @@ function moduleOfStation(kind: string): string | undefined {
 
 /**
  * Dónde conseguir un repuesto, para orientar al jugador: las estaciones del barco que pueden
- * fabricarlo ahora mismo (una averiada solo si puede hacer su propio repuesto; el taller, solo con
- * energía), o pecios y mercantes si ninguna puede.
+ * fabricarlo ahora mismo (una averiada solo si puede hacer su propio repuesto; el taller, si está
+ * encendido: sin electricidad va a mano, despacio), o pecios y mercantes si ninguna puede.
  * Ej.: "fabrícala en el taller o improvísala en el banco de trabajo".
  */
 export function partSourceHint(sim: Simulation, part: ItemId): string {
@@ -633,8 +633,8 @@ export function partSourceHint(sim: Simulation, part: ItemId): string {
       if (mm.type !== type || mm.fire > 0) return false;
       if (mm.status === 'broken') return craftableWhileBroken(mm, r);
       if (mm.status !== 'active') return false;
-      // El taller solo sirve si tiene (o tendría) energía.
-      return r.station !== 'taller' || (mm.on && mm.powered);
+      // El taller sirve si está encendido (sin electricidad trabaja a mano, más despacio).
+      return r.station !== 'taller' || mm.on;
     });
     if (!station) continue;
     const verb = /improvisad/i.test(r.name) ? `improvísa${pron}` : `fabríca${pron}`;

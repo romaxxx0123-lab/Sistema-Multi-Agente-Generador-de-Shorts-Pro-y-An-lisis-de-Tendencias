@@ -9,7 +9,9 @@
  *   encargos del jugador van delante de los de los habitantes (`by: 'npc'`), que conservan su avance.
  * - El primer trabajo avanza `dt × velocidad`: banco y ahumadero siempre (×1; el ahumadero no tiene
  *   ranura de combustible: la leña es un ingrediente de la receta), taller con energía
- *   (× satisfacción), cocina quemando combustible de su ranura (si se acaba, se pausa y avisa).
+ *   (× satisfacción) o, sin electricidad, a mano a `WORKSHOP_HAND_SPEED` (el torno y la prensa a
+ *   manivela: el primer plano sirve desde el día 1 y el generador lo hace ir 4 veces más rápido),
+ *   cocina quemando combustible de su ranura (si se acaba, se pausa y avisa).
  *   La velocidad se multiplica por la mejora (`workSpeed`) y la cocina mejorada gasta menos
  *   combustible (`fuelEfficiency`, ver `runOnFuel`).
  * - Productos → bandeja de la estación → almacén → caja junto a la estación (nunca se pierden). Las
@@ -75,6 +77,11 @@ export const NIGHT_GROWTH = 0.3;
 const DRY_WARN_HOURS = 3;
 /** Intensidad de lluvia que basta para regar por completo un huerto a cielo abierto. */
 export const RAIN_WATERS = 0.5;
+/**
+ * Ritmo del taller sin electricidad (o con tan poca que no arranca): el torno y la prensa a
+ * manivela. Con energía trabaja a velocidad × satisfacción, nunca por debajo de este ritmo.
+ */
+export const WORKSHOP_HAND_SPEED = 0.25;
 
 /** Estación de cada tipo de módulo. */
 export const STATION_OF_MODULE: Readonly<Record<string, StationKind>> = {
@@ -446,14 +453,30 @@ function workSpeed(m: ModuleInstance): number {
 }
 
 /**
+ * Ritmo de la red eléctrica que aprovecha el taller (0..1): la satisfacción si recibe energía; si
+ * no, 0 (entonces trabaja a mano).
+ */
+function workshopPower(sim: Simulation, m: ModuleInstance): number {
+  return m.powered ? Math.max(0, Math.min(1, finite(sim.state.utilities.power.satisfaction))) : 0;
+}
+
+/** ¿El taller trabaja a mano ahora (encendido, terminado y sin electricidad suficiente)? */
+export function workshopByHand(sim: Simulation, m: ModuleInstance): boolean {
+  return m.type === 'taller' && m.status === 'active' && m.fire <= 0 && m.on && workshopPower(sim, m) < WORKSHOP_HAND_SPEED;
+}
+
+/**
  * Velocidad actual de una estación (0 = parada), con la mejora (`workSpeed`). No tiene en cuenta
- * el combustible.
+ * el combustible. El taller encendido nunca se para del todo: sin electricidad va a mano.
  */
 function stationSpeed(sim: Simulation, m: ModuleInstance, kind: StationKind): number {
   if (m.fire > 0) return 0;
   if (m.status === 'broken') return workIndex(m) >= 0 ? 1 : 0;
   if (m.status !== 'active') return 0;
-  if (kind === 'taller') return m.on && m.powered ? finite(sim.state.utilities.power.satisfaction) * conditionFactor(m) * workSpeed(m) : 0;
+  if (kind === 'taller') {
+    if (!m.on) return 0;
+    return Math.max(WORKSHOP_HAND_SPEED, workshopPower(sim, m)) * conditionFactor(m) * workSpeed(m);
+  }
   return workSpeed(m);
 }
 
@@ -483,15 +506,13 @@ export function stationStatus(sim: Simulation, moduleId: number): StationStatus 
   } else if (m.fire > 0) status = '¡Ardiendo!';
   else if (kind === 'taller' && !m.on) status = agree(name, 'Apagado');
   else if (m.queue.length) {
-    if (kind === 'taller' && speed <= 0) status = 'Sin energía';
-    else if (kind === 'cocina' && !hasFuel(m)) {
+    // Porcentaje respecto al ritmo pleno de esta estación (con su mejora): lo que falta es energía o desgaste.
+    const rel = speed / workSpeed(m);
+    if (kind === 'cocina' && !hasFuel(m)) {
       status = 'Sin combustible';
       speed = 0;
-    } else {
-      // Porcentaje respecto al ritmo pleno de esta estación (con su mejora): lo que falta es energía o desgaste.
-      const rel = speed / workSpeed(m);
-      status = rel < 0.99 ? `Trabajando (${Math.round(rel * 100)} %)` : 'Trabajando';
-    }
+    } else if (workshopByHand(sim, m)) status = `A mano, sin electricidad (${Math.round(rel * 100)} %)`;
+    else status = rel < 0.99 ? `Trabajando (${Math.round(rel * 100)} %)` : 'Trabajando';
   }
   let eta = 0;
   const jobs = m.queue.map((j, index) => {
@@ -543,17 +564,18 @@ function tickStation(sim: Simulation, m: ModuleInstance, kind: StationKind, dt: 
   let lit = false;
   const speed = m.queue.length ? stationSpeed(sim, m, kind) : 0;
   if (kind === 'taller' && m.status === 'active' && m.fire <= 0) {
-    // Apagado con el interruptor no es lo mismo que sin energía: cada caso, su aviso.
-    if (!m.queue.length || speed > 0) {
-      clearWarn(sim, `workshop:${m.id}`);
+    // Apagado con el interruptor no es lo mismo que sin energía (va a mano): cada caso, su aviso.
+    if (!m.queue.length) {
       clearWarn(sim, `workshop-off:${m.id}`);
     } else if (!m.on) {
-      clearWarn(sim, `workshop:${m.id}`);
       const name = moduleDef(m.type).name;
       warnOnce(sim, `workshop-off:${m.id}`, `${withArticle(name, true)} está ${agree(name, 'apagado')}: enciénde${isFeminineName(name) ? 'la' : 'lo'} para seguir trabajando`, 'warn');
     } else {
       clearWarn(sim, `workshop-off:${m.id}`);
-      warnOnce(sim, `workshop:${m.id}`, 'El taller no tiene energía: el trabajo está en pausa hasta que la haya', 'warn');
+      // Una sola vez hasta que tenga electricidad: no es una avería, es el ritmo de la manivela.
+      if (workshopByHand(sim, m)) {
+        warnOnce(sim, `workshop:${m.id}`, 'Sin electricidad, el taller trabaja a mano y muy despacio: con energía irá hasta cuatro veces más rápido', 'info');
+      } else clearWarn(sim, `workshop:${m.id}`);
     }
   }
   let time = dt;

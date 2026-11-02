@@ -263,6 +263,30 @@ export function sleepEnergyPerHour(sim: Simulation): number | null {
   return NEED_RATES.energyPerHourBed + bedComfortBonus(spot.module);
 }
 
+/** Multiplicadores de curación de una camilla (ver `healingBedMults`). */
+export interface HealingMults {
+  /** Regeneración de salud: ×3 × `healMult` en una camilla que funciona; 1 si no. */
+  regen: number;
+  /** Recuperación de la enfermedad del jugador: ×2 × `healMult`; 1 si no. */
+  sickness: number;
+  /** El `healMult` de la mejora (1 en el nivel básico o fuera de una camilla que funcione). */
+  heal: number;
+}
+
+const NO_HEALING: HealingMults = { regen: 1, sickness: 1, heal: 1 };
+
+/**
+ * Multiplicadores de curación de quien descansa en una cama de este módulo. Solo las camillas de
+ * una enfermería que funciona (activa, encendida y con energía: `isHealingBedPowered`) curan más
+ * rápido, y la mejora «Enfermería equipada» multiplica todo por su `healMult`. Lo comparten el
+ * jugador (`infirmaryMults`) y los habitantes (npc.ts), así que la mejora vale para los dos.
+ */
+export function healingBedMults(sim: Simulation, m: ModuleInstance | null | undefined): HealingMults {
+  if (!m || !MODULES[m.type]?.healingBeds || !isHealingBedPowered(sim, m)) return NO_HEALING;
+  const heal = Math.max(0, moduleMult(m, 'healMult'));
+  return { regen: INFIRMARY_REGEN_MULT * heal, sickness: INFIRMARY_SICK_MULT * heal, heal };
+}
+
 /**
  * Multiplicadores de la camilla en la que duerme el jugador: regeneración de salud (×3 × `healMult`
  * de la mejora) y recuperación de la enfermedad (×2 × `healMult`). 1 si no está en una camilla que
@@ -271,8 +295,8 @@ export function sleepEnergyPerHour(sim: Simulation): number | null {
 export function infirmaryMults(sim: Simulation): { regen: number; sickness: number } {
   const spot = sleepSpot(sim);
   if (spot?.kind !== 'infirmary' || !spot.module) return { regen: 1, sickness: 1 };
-  const heal = Math.max(0, moduleMult(spot.module, 'healMult'));
-  return { regen: INFIRMARY_REGEN_MULT * heal, sickness: INFIRMARY_SICK_MULT * heal };
+  const h = healingBedMults(sim, spot.module);
+  return { regen: h.regen, sickness: h.sickness };
 }
 
 /* ------------------------------------------------------------------ */

@@ -71,8 +71,8 @@ const defs: ItemDef[] = [
   { id: 'pescado_asado', name: 'Pescado asado', desc: 'Pescado a la brasa. Sencillo y sabroso.', category: 'comida', stack: 10, color: '#e9a25f', consume: { hunger: 30, verb: 'Comer' }, value: 4 },
   { id: 'hortaliza', name: 'Hortalizas', desc: 'Verduras del huerto de a bordo.', category: 'comida', stack: 20, color: '#90be6d', consume: { hunger: 12, thirst: 4, verb: 'Comer' }, value: 2 },
   { id: 'fruta', name: 'Fruta tropical', desc: 'Traída de una isla. Dulce y jugosa.', category: 'comida', stack: 20, color: '#f9c74f', consume: { hunger: 14, thirst: 10, verb: 'Comer' }, value: 3 },
-  { id: 'pescado_ahumado', name: 'Pescado ahumado', desc: 'Ahumado con leña: aguanta lo que haga falta y llena bastante. Algo salado.', category: 'comida', stack: 20, color: '#c97c3d', consume: { hunger: 26, thirst: -3, verb: 'Comer' }, value: 5 },
-  { id: 'conserva', name: 'Lata de conserva', desc: 'Comida en lata. No caduca y llena bastante.', category: 'comida', stack: 20, color: '#adb5bd', consume: { hunger: 35, verb: 'Comer' }, value: 5 },
+  { id: 'pescado_ahumado', name: 'Pescado ahumado', desc: 'Ahumado con leña: alimenta más que el asado y no hay que cocinarlo. Algo salado.', category: 'comida', stack: 20, color: '#c97c3d', consume: { hunger: 34, thirst: -2, verb: 'Comer' }, value: 5 },
+  { id: 'conserva', name: 'Lata de conserva', desc: 'Comida en lata: llena bastante y no hay que cocinarla.', category: 'comida', stack: 20, color: '#adb5bd', consume: { hunger: 35, verb: 'Comer' }, value: 5 },
   { id: 'sopa', name: 'Sopa de verduras', desc: 'Caliente y reconfortante. Quita el hambre, la sed y el frío.', category: 'comida', stack: 10, color: '#f4a261', consume: { hunger: 28, thirst: 18, warmth: 15, verb: 'Tomar' }, value: 6 },
   { id: 'guiso', name: 'Guiso marinero', desc: 'Pescado con verduras a fuego lento. La mejor comida a bordo.', category: 'comida', stack: 10, color: '#bc6c25', consume: { hunger: 50, thirst: 10, warmth: 20, energy: 6, verb: 'Comer' }, value: 9 },
   // Bebida

@@ -256,6 +256,26 @@ function listName(m: ModuleInstance): string {
   return moduleDef(m.type).name;
 }
 
+/** Nombre del plano que concede una clave de desbloqueo («Plano: Energía»). */
+function planName(unlockKey: string): string {
+  for (const it of Object.values(ITEMS)) if (it.unlocks === unlockKey) return it.name;
+  return 'plano correspondiente';
+}
+
+/**
+ * Qué hacer cuando falta energía: revisar la red si hay con qué producirla; si no hay ningún
+ * generador, panel ni batería, construirlos o, sin sus planos, conseguir el de energía.
+ */
+function powerHint(sim: Simulation, hasSources: boolean): string {
+  if (hasSources) return 'Revisa generadores, paneles y baterías';
+  const gen = sim.state.unlocks.includes('energia');
+  const solar = sim.state.unlocks.includes('solar');
+  if (gen && solar) return 'Aún no hay generadores ni paneles solares a bordo: construye alguno';
+  if (gen) return 'Aún no hay ningún generador a bordo: construye uno';
+  if (solar) return 'Aún no hay paneles solares a bordo: construye alguno';
+  return `Aún no hay con qué producir electricidad: hace falta el ${planName('energia')}`;
+}
+
 function isGenerator(def: ModuleDef): boolean {
   return !!def.powerGen && !!def.fuelSlots;
 }
@@ -637,12 +657,15 @@ export function tickUtilities(sim: Simulation, dt: number): void {
   u.power.demand = demand;
   u.power.satisfaction = satisfaction;
 
-  if (demand > 0 && satisfaction < 0.5) {
-    const names = [...new Set(consumers.filter((c) => c.demand > 0).map((c) => listName(c.m)))];
+  // El taller no se detiene sin electricidad (trabaja a mano y lo avisa él): no entra en la lista.
+  const stopped = demand > 0 && satisfaction < 0.5 ? consumers.filter((c) => c.demand > 0 && c.m.type !== 'taller') : [];
+  if (stopped.length) {
+    const names = [...new Set(stopped.map((c) => listName(c.m)))];
     const list = names.map((n) => withArticle(n)).join(', ').replace(/, ([^,]*)$/, ' y $1');
     const verb = names.length > 1 || isPluralName(names[0] ?? '') ? 'se detienen' : 'se detiene';
-    warnOnce(sim, 'power-low', `Falta energía: ${list} ${verb}. Revisa generadores, paneles y baterías`, 'warn');
-  } else if (demand <= 0 || satisfaction >= 0.95) {
+    const sources = [...generators, ...panels, ...batteries].some((m) => m.status !== 'construction');
+    warnOnce(sim, 'power-low', `Falta energía: ${list} ${verb}. ${powerHint(sim, sources)}`, 'warn');
+  } else if (demand <= 0 || satisfaction >= 0.95 || !consumers.some((c) => c.demand > 0 && c.m.type !== 'taller')) {
     clearWarn(sim, 'power-low');
   }
 
