@@ -27,14 +27,20 @@ export function col(c: ColorLike): THREE.Color {
   return v;
 }
 
+/** Variantes cacheadas por color base (identidad del Color de `col`) y factor. */
+const shadeCache = new WeakMap<THREE.Color, Map<number, THREE.Color>>();
+const mixCache = new WeakMap<THREE.Color, WeakMap<THREE.Color, Map<number, THREE.Color>>>();
+
 /** Variante más clara (f > 1) u oscura (f < 1) de un color, cacheada. */
 export function shade(c: ColorLike, f: number): THREE.Color {
   const base = col(c);
-  const key = `${base.getHexString()}*${f.toFixed(3)}`;
-  let v = colorCache.get(key);
+  let byF = shadeCache.get(base);
+  if (!byF) shadeCache.set(base, (byF = new Map()));
+  const k = Math.round(f * 1000);
+  let v = byF.get(k);
   if (!v) {
     v = base.clone().multiplyScalar(f);
-    colorCache.set(key, v);
+    byF.set(k, v);
   }
   return v;
 }
@@ -43,11 +49,15 @@ export function shade(c: ColorLike, f: number): THREE.Color {
 export function mix(a: ColorLike, b: ColorLike, t: number): THREE.Color {
   const ca = col(a);
   const cb = col(b);
-  const key = `${ca.getHexString()}~${cb.getHexString()}~${t.toFixed(3)}`;
-  let v = colorCache.get(key);
+  let byB = mixCache.get(ca);
+  if (!byB) mixCache.set(ca, (byB = new WeakMap()));
+  let byT = byB.get(cb);
+  if (!byT) byB.set(cb, (byT = new Map()));
+  const k = Math.round(t * 1000);
+  let v = byT.get(k);
   if (!v) {
     v = ca.clone().lerp(cb, t);
-    colorCache.set(key, v);
+    byT.set(k, v);
   }
   return v;
 }
@@ -115,6 +125,24 @@ export class GeoBuilder {
   private flip = false;
   /** Multiplicador de brillo aplicado a todos los colores (módulos dañados más oscuros). */
   tint = 1;
+  /**
+   * Etiqueta por vértice (id del módulo dueño, -1 = ninguno) si se activó con `trackTags()`:
+   * ShipView la usa para oscurecer los módulos dañados cambiando solo los colores, sin rehacer
+   * ni volver a fusionar la geometría.
+   */
+  tag = -1;
+  private tagBuf: Int32Array | null = null;
+
+  /** Empieza a guardar la etiqueta `tag` de cada vértice (ver `tags()`). */
+  trackTags(): this {
+    if (!this.tagBuf) this.tagBuf = new Int32Array(this.pos.length / 3).fill(-1);
+    return this;
+  }
+
+  /** Etiquetas por vértice (vacío si no se activaron). */
+  tags(): Int32Array {
+    return this.tagBuf ? this.tagBuf.slice(0, this.n / 3) : new Int32Array(0);
+  }
 
   get vertexCount(): number {
     return this.n / 3;
@@ -142,6 +170,11 @@ export class GeoBuilder {
     this.pos = grow(this.pos);
     this.nrm = grow(this.nrm);
     this.clr = grow(this.clr);
+    if (this.tagBuf) {
+      const t = new Int32Array(cap / 3).fill(-1);
+      t.set(this.tagBuf.subarray(0, this.n / 3));
+      this.tagBuf = t;
+    }
   }
 
   /* ---------------- Transformaciones ---------------- */
@@ -261,6 +294,12 @@ export class GeoBuilder {
       C[i + k2] = r;
       C[i + k2 + 1] = g;
       C[i + k2 + 2] = bl;
+    }
+    if (this.tagBuf) {
+      const v = i / 3;
+      this.tagBuf[v] = this.tag;
+      this.tagBuf[v + 1] = this.tag;
+      this.tagBuf[v + 2] = this.tag;
     }
     this.n = i + 9;
   }
@@ -513,6 +552,7 @@ export class GeoBuilder {
         this.clr[j + 2] = tmpCol.b * t;
         j += 3;
       }
+      if (this.tagBuf) this.tagBuf.fill(this.tag, o / 3, o / 3 + 3);
       this.n = o + 9;
     }
   }
@@ -540,6 +580,7 @@ export class GeoBuilder {
     this.stack = [];
     this.flip = false;
     this.tint = 1;
+    this.tag = -1;
   }
 }
 

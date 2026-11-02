@@ -28,7 +28,18 @@ import type { GameState } from '../../sim/types';
 import type { Atmosphere } from './atmosphere';
 import { Birds } from './birds';
 import { createLitUniforms, GlowPoints, glowGeometry, lightsLevel, litMaterial, type GlowShared, type LitUniforms } from './glow';
-import { channelBuoyModel, greenTowerModel, HARBOR_BOAT_KINDS, harborBoatModel, houseboatClusterModel, TOWER_LIGHT_Y, type HarborBoatKind, type HarborModel } from './harborModels';
+import {
+  channelBuoyModel,
+  greenTowerModel,
+  HARBOR_BOAT_KINDS,
+  harborBoatModel,
+  houseboatClusterModel,
+  PROMENADE_LEN,
+  promenadeModel,
+  TOWER_LIGHT_Y,
+  type HarborBoatKind,
+  type HarborModel,
+} from './harborModels';
 
 type WaterFn = (x: number, z: number) => number;
 
@@ -44,17 +55,24 @@ export const APPROACH_MILES = 40;
 export const TOWER_ENTRY_X = 700;
 export const TOWER_HORIZON_X = 2500;
 /** Distancia lateral de la torre (a estribor). */
-export const TOWER_Z = 320;
+export const TOWER_Z = 300;
 /** Fracción del ritmo del agua con que se desplaza la torre (paralaje de lo grande y lejano). */
 export const TOWER_PARALLAX = 0.45;
 /** Media anchura de la franja lateral reservada a la torre y su muelle. */
-export const TOWER_BAND = 120;
+export const TOWER_BAND = 130;
 /** Separación entre amarres a lo largo del puerto (m). */
-export const SLOT_SPACING = 130;
+export const SLOT_SPACING = 80;
 /** Media anchura del canal libre por el que navega el barco (m). */
-export const CHANNEL_HALF = 85;
+export const CHANNEL_HALF = 45;
 /** Distancia lateral de las boyas de la bocana. */
-export const BUOY_Z = 48;
+export const BUOY_Z = 38;
+/** Eje de los pantalanes que bordean el canal (a ambos lados). */
+export const PROMENADE_Z = CHANNEL_HALF + 4;
+/** Distancia mínima del centro de un grupo al eje del canal (amarrado por fuera del pantalán). */
+export const MOOR_MIN_Z = PROMENADE_Z + 22;
+/** Primer tramo de pantalán tras la bocana (m) y variantes de tramo. */
+export const PROMENADE_START = 60;
+const PROMENADE_VARIANTS = 4;
 /** Millas tras dejar el puerto en que aún se ve a popa. */
 const LEAVE_MILES = 75;
 
@@ -128,24 +146,27 @@ export interface HarborSlot {
 /** Número de variantes de grupos de barcos-hogar. */
 export const CLUSTER_VARIANTS = 8;
 
-/** Grupos de barcos-hogar del amarre `k` (0, 1 o 2; deterministas por semilla). */
+/**
+ * Grupos de barcos-hogar del amarre `k` (de 0 a 3, deterministas por semilla): uno junto al canal
+ * casi siempre, a menudo otro enfrente y, más allá, alguno en segunda fila. La franja de la torre
+ * (a estribor) queda libre.
+ */
 export function harborSlots(seed: number, k: number): HarborSlot[] {
   const out: HarborSlot[] = [];
-  const p = 160 + k * SLOT_SPACING + (hash01(k, seed, 1) - 0.5) * SLOT_SPACING * 0.5;
+  const p = 120 + k * SLOT_SPACING + (hash01(k, seed, 1) - 0.5) * 30;
   const side = hash01(k, seed, 2) < 0.5 ? 1 : -1;
-  const lateral = (sd: number, salt: number, near: boolean): number => {
-    const h = hash01(k, seed, salt);
-    let z: number;
-    if (near) z = CHANNEL_HALF + 15 + h * 120;
-    else z = 260 + h * 440;
-    // Franja de la torre (a estribor): ni un amarre.
-    if (sd > 0 && Math.abs(z - TOWER_Z) < TOWER_BAND + 25) z = z < TOWER_Z ? TOWER_Z - TOWER_BAND - 25 : TOWER_Z + TOWER_BAND + 25;
-    return sd * Math.max(CHANNEL_HALF + 15, z);
-  };
-  const near = hash01(k, seed, 3) < 0.6;
-  out.push({ key: `${k}a`, p, z: lateral(side, 4, near), variant: Math.floor(hash01(k, seed, 5) * CLUSTER_VARIANTS), yaw: (hash01(k, seed, 6) - 0.5) * 1.2 + (hash01(k, seed, 7) < 0.25 ? Math.PI / 2 : 0) });
-  if (hash01(k, seed, 8) < 0.45) {
-    out.push({ key: `${k}b`, p: p + (hash01(k, seed, 9) - 0.5) * 40, z: lateral(-side, 10, false), variant: Math.floor(hash01(k, seed, 11) * CLUSTER_VARIANTS), yaw: (hash01(k, seed, 12) - 0.5) * 1.4 });
+  const variant = (salt: number): number => Math.floor(hash01(k, seed, salt) * CLUSTER_VARIANTS);
+  const yaw = (salt: number): number => (hash01(k, seed, salt) - 0.5) * 0.9 + (hash01(k, seed, salt + 1) < 0.3 ? Math.PI / 2 : 0);
+  // Primera fila, junto al canal
+  if (hash01(k, seed, 3) < 0.9) out.push({ key: `${k}a`, p, z: side * (MOOR_MIN_Z + hash01(k, seed, 4) * 45), variant: variant(5), yaw: yaw(6) });
+  if (hash01(k, seed, 8) < 0.7) out.push({ key: `${k}b`, p: p + (hash01(k, seed, 9) - 0.5) * 40, z: -side * (MOOR_MIN_Z + hash01(k, seed, 10) * 45), variant: variant(11), yaw: yaw(12) });
+  // Segunda fila
+  if (hash01(k, seed, 14) < 0.55) {
+    const sd = hash01(k, seed, 15) < 0.5 ? 1 : -1;
+    const h = hash01(k, seed, 16);
+    // A estribor, más allá de la franja de la torre; a babor, entre 190 y 450 m.
+    const z = sd > 0 ? TOWER_Z + TOWER_BAND + 10 + h * 160 : 160 + h * 260;
+    out.push({ key: `${k}c`, p: p + (hash01(k, seed, 17) - 0.5) * 50, z: sd * z, variant: variant(18), yaw: yaw(19) });
   }
   return out;
 }
@@ -154,8 +175,10 @@ export function harborSlots(seed: number, k: number): HarborSlot[] {
 /* Vista                                                               */
 /* ------------------------------------------------------------------ */
 
-const SPAWN_X = 1500;
-const REMOVE_X = -1550;
+/** Ventana del puerto que se dibuja (m por delante y por detrás) según la calidad. */
+const WINDOW: Record<Quality, [number, number]> = { baja: [-650, 950], media: [-900, 1300], alta: [-1000, 1450] };
+/** Los reflejos de las luces solo se dibujan cerca (m). */
+const MIRROR_DIST = 480;
 const FADE_S = 3;
 
 interface Entry {
@@ -198,6 +221,7 @@ export class HarborView {
   private readonly variants = new Map<string, Variant>();
   private clusters = new Map<string, Entry>();
   private buoys = new Map<string, Entry>();
+  private piers = new Map<string, Entry>();
   private tower: (Entry & { star: GlowPoints; beam: THREE.Mesh; birds: Birds }) | null = null;
   private boats: Boat[] = [];
   private boatSeed = 1;
@@ -257,11 +281,11 @@ export class HarborView {
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     group.add(mesh);
-    const halos = new GlowPoints(this.shared, v.halos, { minPx: 1.6, maxPx: 56, fogFloor: 0.22 });
+    const halos = new GlowPoints(this.shared, v.halos, { minPx: 3, maxPx: 64, fogFloor: 0.22 });
     group.add(halos.points);
     let mirror: GlowPoints | null = null;
     if (withMirror && this.quality !== 'baja' && v.model.lights.length) {
-      mirror = new GlowPoints(this.shared, v.halos, { mirror: true, minPx: 2, maxPx: 70, fogFloor: 0.15 });
+      mirror = new GlowPoints(this.shared, v.halos, { mirror: true, minPx: 3, maxPx: 80, fogFloor: 0.15 });
       group.add(mirror.points);
     }
     group.rotation.y = yaw;
@@ -303,13 +327,14 @@ export class HarborView {
     this.span = span;
     this.level = lightsLevel(atm.day, atm.overcast, atm.fogAmount);
     const seed = (Math.abs(Math.floor(fin(st.seed, 1))) % 9973) + 1;
+    const [REMOVE_X, SPAWN_X] = WINDOW[this.quality];
 
     // --- Grupos de barcos-hogar ---
     const want = new Set<string>();
     if (span) {
       const Lm = (span.end - span.start) - 120;
-      const kMin = Math.max(0, Math.floor((REMOVE_X - span.start - 160) / SLOT_SPACING) - 1);
-      const kMax = Math.floor((SPAWN_X - span.start - 160) / SLOT_SPACING) + 1;
+      const kMin = Math.max(0, Math.floor((REMOVE_X - span.start - 120) / SLOT_SPACING) - 1);
+      const kMax = Math.floor((SPAWN_X - span.start - 120) / SLOT_SPACING) + 1;
       for (let k = kMin; k <= kMax; k++) {
         for (const s of harborSlots(seed, k)) {
           if (s.p < 120 || s.p > Lm) continue;
@@ -330,6 +355,38 @@ export class HarborView {
     }
     for (const [k, e] of this.clusters) {
       if (!want.has(k)) {
+        e.leaving = true;
+        e.x -= ds;
+      }
+    }
+
+    // --- Pantalanes a ambos lados del canal (tramos largos: pocas llamadas de dibujo) ---
+    const pierWant = new Set<string>();
+    if (span) {
+      const Lm = span.end - span.start - PROMENADE_START;
+      const jMin = Math.max(0, Math.floor((REMOVE_X - span.start - PROMENADE_START) / PROMENADE_LEN) - 1);
+      const jMax = Math.floor((SPAWN_X - span.start - PROMENADE_START) / PROMENADE_LEN) + 1;
+      for (let j = jMin; j <= jMax; j++) {
+        const p0 = PROMENADE_START + j * PROMENADE_LEN;
+        if (p0 + PROMENADE_LEN > Lm) break;
+        const x = span.start + p0 + PROMENADE_LEN / 2;
+        if (x + PROMENADE_LEN / 2 < REMOVE_X || x - PROMENADE_LEN / 2 > SPAWN_X) continue;
+        const key = `pantalan-${j}`;
+        pierWant.add(key);
+        let e = this.piers.get(key);
+        if (!e) {
+          const vi = Math.floor(hash01(j, seed, 61) * PROMENADE_VARIANTS);
+          const v = this.variant(`pantalan:${vi}`, () => promenadeModel(500 + vi * 17, PROMENADE_Z));
+          e = this.makeEntry(key, v, x, 0, 0, newSim, true);
+          e.bob = 0.12;
+          this.piers.set(key, e);
+        }
+        e.leaving = false;
+        e.x = x;
+      }
+    }
+    for (const [k, e] of this.piers) {
+      if (!pierWant.has(k)) {
         e.leaving = true;
         e.x -= ds;
       }
@@ -412,7 +469,7 @@ export class HarborView {
       e.group.rotation.z = e.pitch;
       e.lit.uLights.value = this.level * op;
       e.halos.intensity = this.level * op;
-      if (e.mirror) e.mirror.intensity = this.level * op * 0.75 * (1 - 0.6 * atm.storm);
+      if (e.mirror) e.mirror.intensity = Math.hypot(e.x, e.z) < MIRROR_DIST + e.radius ? this.level * op * 0.75 * (1 - 0.6 * atm.storm) : 0;
       return true;
     };
     const sweep = (m: Map<string, Entry>): void => {
@@ -424,6 +481,7 @@ export class HarborView {
       }
     };
     sweep(this.clusters);
+    sweep(this.piers);
     sweep(this.buoys);
     // Destellos de las boyas: un segundo encendidas cada 3–4 s, de día y de noche.
     for (const e of this.buoys.values()) {
@@ -489,8 +547,9 @@ export class HarborView {
         tx = d[0];
         tz = d[1];
       } else {
+        // Por el canal, entre el barco y los pantalanes de primera fila.
         tx = -200 + hash01(this.boatSeed, tries, 19) * 1000;
-        tz = (hash01(this.boatSeed, tries, 23) < 0.5 ? -1 : 1) * (40 + hash01(this.boatSeed, tries, 29) * 60);
+        tz = (hash01(this.boatSeed, tries, 23) < 0.5 ? -1 : 1) * (18 + hash01(this.boatSeed, tries, 29) * 22);
       }
       const bx = b.entry.x;
       const bz = b.entry.z;
@@ -526,11 +585,17 @@ export class HarborView {
       for (const b of this.boats) this.disposeEntry(b.entry);
       this.boats = [];
     }
-    // Crear los que falten, junto a un grupo cercano o en el canal (dentro del puerto).
+    // Crear los que falten junto al pantalán de un grupo cercano o en el canal (dentro del puerto).
+    const near = [...this.clusters.values()].filter((e) => !e.leaving && e.x > -150 && e.x < 750);
     for (let tries = 0; this.boats.length < want && tries < 24; tries++) {
       const i = this.boats.length;
-      const x = -150 + hash01(i, this.boatSeed++, 31) * 900;
-      const z = (hash01(i, this.boatSeed, 37) < 0.5 ? -1 : 1) * (45 + hash01(i, this.boatSeed, 41) * 140);
+      let x = -150 + hash01(i, this.boatSeed++, 31) * 900;
+      let z = (hash01(i, this.boatSeed, 37) < 0.5 ? -1 : 1) * (18 + hash01(i, this.boatSeed, 41) * 22);
+      if (near.length && hash01(i, this.boatSeed, 43) < 0.7) {
+        const c = near[Math.floor(hash01(i, this.boatSeed, 47) * near.length)]!;
+        x = c.x + (hash01(i, this.boatSeed, 53) - 0.5) * 20;
+        z = c.z - Math.sign(c.z) * (c.radius * 0.7 + 8);
+      }
       if (span && (x < span.start + 60 || x > span.end - 60)) continue;
       if (x > hull.xMin - 30 && x < hull.xMax + 60 && Math.abs(z) < hull.halfWidth + 25) continue;
       const b = this.spawnBoat(i, x, z, newSim);
@@ -548,7 +613,7 @@ export class HarborView {
           // Se pierde a popa: reaparece más adelante, junto a otro pantalán.
           e.fade = 0;
           e.x = 250 + hash01(this.boatSeed++, e.z, 43) * 700;
-          e.z = (hash01(this.boatSeed, e.x, 47) < 0.5 ? -1 : 1) * (60 + hash01(this.boatSeed, e.x, 53) * 160);
+          e.z = (hash01(this.boatSeed, e.x, 47) < 0.5 ? -1 : 1) * (18 + hash01(this.boatSeed, e.x, 53) * 22);
           this.boatTarget(b, hull, true);
         }
         if (b.wait > 0) {
@@ -642,6 +707,7 @@ export class HarborView {
       millas: this.span ? +this.span.s.toFixed(2) : null,
       torre: t ? [+t.x.toFixed(1), +t.z.toFixed(1)] : null,
       grupos: this.clusters.size,
+      pantalanes: this.piers.size,
       boyas: this.buoys.size,
       botes: this.boats.length,
       luces: +this.level.toFixed(2),
@@ -650,10 +716,12 @@ export class HarborView {
 
   dispose(): void {
     for (const e of this.clusters.values()) this.disposeEntry(e);
+    for (const e of this.piers.values()) this.disposeEntry(e);
     for (const e of this.buoys.values()) this.disposeEntry(e);
     for (const b of this.boats) this.disposeEntry(b.entry);
     this.disposeTower();
     this.clusters.clear();
+    this.piers.clear();
     this.buoys.clear();
     this.boats = [];
     for (const v of this.variants.values()) {

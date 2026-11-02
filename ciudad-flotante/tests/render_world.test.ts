@@ -682,13 +682,13 @@ describe('geografía del puerto', () => {
     for (let k = 0; k < 400; k++) {
       for (const s of harborSlots(7, k)) {
         n++;
-        expect(Math.abs(s.z)).toBeGreaterThanOrEqual(CHANNEL_HALF + 15);
+        expect(Math.abs(s.z)).toBeGreaterThanOrEqual(CHANNEL_HALF + 12);
         if (s.z > 0) expect(Math.abs(s.z - TOWER_Z)).toBeGreaterThanOrEqual(TOWER_BAND);
         expect(s.variant).toBeGreaterThanOrEqual(0);
         expect(s.variant).toBeLessThan(CLUSTER_VARIANTS);
       }
     }
-    expect(n).toBeGreaterThan(450);
+    expect(n).toBeGreaterThan(700);
   });
   it('segmentHitsBox detecta un rumbo que atraviesa el casco', () => {
     expect(segmentHitsBox(0, -50, 0, 50, -10, 12, 6)).toBe(true);
@@ -730,15 +730,15 @@ describe('vista del puerto', () => {
     expect(h.mode).toBe('port');
     expect(h.clusterCount).toBeGreaterThan(10);
     expect(h.boatCount).toBe(7);
-    const groups = h.root.children.filter((c) => /^\d+[ab]$/.test(String(c.userData['harbor'])));
+    const groups = h.root.children.filter((c) => /^\d+[abc]$/.test(String(c.userData['harbor'])));
     expect(groups.some((g) => g.position.z > 0)).toBe(true);
     expect(groups.some((g) => g.position.z < 0)).toBe(true);
-    for (const g of groups) expect(Math.abs(g.position.z)).toBeGreaterThanOrEqual(CHANNEL_HALF + 15);
+    for (const g of groups) expect(Math.abs(g.position.z)).toBeGreaterThanOrEqual(CHANNEL_HALF + 12);
     // de día no hay halos; de noche sí, con reflejo en el agua
     const halos = (): THREE.Points[] => {
       const out: THREE.Points[] = [];
       for (const g of h.root.children) {
-        if (!/^\d+[ab]$/.test(String(g.userData['harbor']))) continue;
+        if (!/^\d+[abc]$/.test(String(g.userData['harbor']))) continue;
         g.traverse((o) => {
           if (o.name === 'halos-luces') out.push(o as THREE.Points);
         });
@@ -762,7 +762,7 @@ describe('vista del puerto', () => {
     const h = new HarborView(shared, 'baja');
     const st = harborState('port', 30);
     h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
-    const g = h.root.children.find((c) => /^\d+a$/.test(String(c.userData['harbor'])) && c.position.x > 0 && c.position.x < 800)!;
+    const g = h.root.children.find((c) => /^\d+[ab]$/.test(String(c.userData['harbor'])) && c.position.x > 0 && c.position.x < 800)!;
     const x0 = g.position.x;
     st.voyage.regionDistance += 2;
     h.update(st, 0.1, 2 * DRIFT_PER_MILE, water, atmAt(12), false, HULL);
@@ -815,7 +815,7 @@ describe('vista del puerto', () => {
     b.update(JSON.parse(JSON.stringify(st)) as GameState, 0.1, 0, water, atmAt(12), true, HULL);
     const sig = (h: HarborView): string =>
       h.root.children
-        .filter((c) => /^\d+[ab]$/.test(String(c.userData['harbor'])))
+        .filter((c) => /^\d+[abc]$/.test(String(c.userData['harbor'])))
         .map((c) => `${c.userData['harbor']}:${c.position.x.toFixed(2)},${c.position.z.toFixed(2)}`)
         .sort()
         .join('|');

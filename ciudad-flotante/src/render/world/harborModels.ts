@@ -125,14 +125,14 @@ function house(kit: Kit, lights: GlowSpot[], x: number, y: number, z: number, le
         kit.rock(0.2, 0, rnd() < 0.5 ? HARBOR_COL.leaf : HARBOR_COL.leafLight, { p: [wx - 0.15, y + h * 0.58 - 0.32, wz + side * 0.14] }, 0.2);
         kit.rock(0.08, 0, pick(FLOWERS, rnd()), { p: [wx + 0.15, y + h * 0.58 - 0.28, wz + side * 0.16] }, 0);
       }
-      light(kit, lights, [wx, y + h * 0.58, wz + side * 0.15], '#ffc874', 1.5, 0.08);
+      light(kit, lights, [wx, y + h * 0.58, wz + side * 0.15], '#ffc874', 2.6, 0.08);
     }
   }
   // Ventana en el testero de proa
   kit.emit(HARBOR_COL.window);
   kit.box(0.06, 0.5, 0.55, HARBOR_COL.glass, { p: [x + len / 2 + 0.03, y + h * 0.6, z] });
   kit.emit(null);
-  light(kit, lights, [x + len / 2 + 0.2, y + h * 0.6, z], '#ffc874', 1.3, 0.08);
+  light(kit, lights, [x + len / 2 + 0.2, y + h * 0.6, z], '#ffc874', 2.2, 0.08);
   // Puerta en popa
   if (opts.door !== 0) {
     kit.box(0.06, 1.55, 0.8, HARBOR_COL.wood, { p: [x - len / 2 - 0.03, y + 0.8, z + (opts.door ?? 0) * d * 0.2] });
@@ -151,7 +151,7 @@ function lanternString(kit: Kit, lights: GlowSpot[], a: V3, b: V3, n: number, sa
     kit.emit(LANTERN_GLOW[k]!);
     kit.add(new THREE.OctahedronGeometry(0.17, 0), LANTERN_PAPER[k]!, { p: [p[0], p[1] - 0.2, p[2]], s: [1, 1.35, 1] });
     kit.emit(null);
-    light(kit, lights, [p[0], p[1] - 0.2, p[2]], LANTERN_GLOW[k]!, 1.15, 0.55);
+    light(kit, lights, [p[0], p[1] - 0.2, p[2]], LANTERN_GLOW[k]!, 1.9, 0.55);
     prev = p;
   }
   segment(kit, prev, b, 0.025, HARBOR_COL.woodDark);
@@ -177,7 +177,7 @@ function lampPost(kit: Kit, lights: GlowSpot[], x: number, y: number, z: number,
   kit.emit(HARBOR_COL.lamp);
   kit.box(0.26, 0.32, 0.26, '#f1e3b5', { p: [x, y + h + 0.15, z] });
   kit.emit(null);
-  light(kit, lights, [x, y + h + 0.15, z], '#ffe3a6', 2.4, 0.04);
+  light(kit, lights, [x, y + h + 0.15, z], '#ffe3a6', 3.8, 0.04);
 }
 
 /** Huerto colgante: jardinera con matas, flores y enredaderas que caen por el costado. */
@@ -418,6 +418,69 @@ export function houseboatClusterModel(seed: number): HarborModel {
   const geo = kit.build(true);
   geo.computeBoundingSphere();
   return { geo, lights, radius: Math.max(14, geo.boundingSphere!.radius), starY: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Pantalán del canal                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Largo de un tramo de pantalán (m). */
+export const PROMENADE_LEN = 240;
+
+/**
+ * Tramo de los pantalanes flotantes que bordean el canal por ambos lados (a ±`z`): tablones sobre
+ * flotadores, farolas del lado del canal con ristras de farolillos entre ellas, bolardos, bancos y
+ * macetas. Algunos huecos dejan pasar a los botes. Centrado en x = 0.
+ */
+export function promenadeModel(seed: number, z: number): HarborModel {
+  const kit = new Kit(seed, 0.05);
+  const rnd = (): number => kit.random();
+  const lights: GlowSpot[] = [];
+  const L = PROMENADE_LEN;
+  const w = 3;
+  for (const side of [-1, 1] as const) {
+    const zc = side * z;
+    const edge = zc - side * (w / 2 - 0.25); // lado del canal
+    // Tramos de 40 m; alguno falta (bocana para los botes).
+    const n = L / 40;
+    let prevLamp: V3 | null = null;
+    for (let i = 0; i < n; i++) {
+      const x0 = -L / 2 + i * 40;
+      if (i > 0 && i < n - 1 && rnd() < 0.18) {
+        prevLamp = null;
+        continue;
+      }
+      kit.box(39.6, 0.22, w, i % 2 ? HARBOR_COL.woodLight : '#c09a66', { p: [x0 + 20, 0.45, zc] });
+      for (let f = 0; f < 5; f++) kit.box(6.5, 0.45, w - 0.3, '#d9d6cf', { p: [x0 + 4 + f * 8, 0.12, zc] });
+      // Bordillo y bolardos
+      kit.box(39.6, 0.14, 0.18, HARBOR_COL.woodDark, { p: [x0 + 20, 0.62, edge] });
+      for (const bx of [6, 26]) kit.cyl(0.13, 0.17, 0.42, 6, HARBOR_COL.steelDark, { p: [x0 + bx, 0.75, edge + side * 0.25] });
+      // Farolas cada 20 m con farolillos colgando entre ellas
+      for (const lx of [10, 30]) {
+        const lamp: V3 = [x0 + lx, 0.56, zc + side * 0.6];
+        lampPost(kit, lights, lamp[0], lamp[1], lamp[2], 2.8);
+        const top: V3 = [lamp[0], lamp[1] + 2.75, lamp[2]];
+        if (prevLamp && rnd() < 0.85) lanternString(kit, lights, prevLamp, top, 6, 0.9, rnd);
+        prevLamp = top;
+      }
+      // Banco o maceta con flores
+      if (rnd() < 0.6) {
+        const bx = x0 + 20 + (rnd() - 0.5) * 8;
+        kit.box(1.6, 0.12, 0.5, HARBOR_COL.wood, { p: [bx, 0.95, zc + side * 0.9] });
+        kit.box(1.6, 0.5, 0.08, HARBOR_COL.wood, { p: [bx, 1.2, zc + side * 1.18] });
+        kit.box(0.1, 0.4, 0.45, HARBOR_COL.steelDark, { p: [bx - 0.7, 0.75, zc + side * 0.9] });
+        kit.box(0.1, 0.4, 0.45, HARBOR_COL.steelDark, { p: [bx + 0.7, 0.75, zc + side * 0.9] });
+      } else {
+        const bx = x0 + 20;
+        kit.cyl(0.4, 0.3, 0.55, 6, '#b5651d', { p: [bx, 0.83, zc + side * 0.9] });
+        kit.rock(0.42, 0, HARBOR_COL.leaf, { p: [bx, 1.25, zc + side * 0.9] }, 0.25);
+        kit.rock(0.1, 0, pick(FLOWERS, rnd()), { p: [bx + 0.2, 1.5, zc + side * 0.8] }, 0);
+      }
+    }
+  }
+  const geo = kit.build(true);
+  geo.computeBoundingSphere();
+  return { geo, lights, radius: geo.boundingSphere!.radius, starY: null };
 }
 
 /* ------------------------------------------------------------------ */

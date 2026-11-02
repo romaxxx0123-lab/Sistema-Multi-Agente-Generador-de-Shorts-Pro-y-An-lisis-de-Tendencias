@@ -6,10 +6,13 @@
  *
  * Todo se escribe en constructores por nivel (`LevelBuilders`) que ShipView fusiona en
  * pocas mallas. Devuelve los puntos de luz para el pool de luces dinámicas. Con `only` se
- * construye un único nivel (ShipView rehace solo los niveles que han cambiado).
+ * construye un único nivel y con `chunk` una sola columna de celdas de ese nivel (ShipView rehace
+ * solo lo que ha cambiado). Cada elemento pertenece a la columna de su centro (`chunkOfX`); su
+ * forma solo depende de lo que hay en su columna y en las dos vecinas (ninguna influencia pasa
+ * de 1,6 m y las celdas miden 4 m).
  */
 import * as THREE from 'three';
-import { CELL, DOOR_H, LEVEL_H, RAIL_H, WALL_H } from '../../sim/constants';
+import { CELL, DOOR_H, LEVEL_H, RAIL_H, SHIP_ORIGIN_X, WALL_H } from '../../sim/constants';
 import { cellMin, getCell, levelY, pointToCell, type DoorInfo, type LayoutCell, type PropInstance, type Ramp, type ShipLayout, type WallSeg } from '../../sim/ship';
 import type { ModuleInstance } from '../../sim/types';
 import { PALETTE } from '../palette';
@@ -30,7 +33,7 @@ export interface LevelBuilders {
 }
 
 export function makeLevelBuilders(): LevelBuilders {
-  return { solid: new GeoBuilder(), glassOut: new GeoBuilder(), glassIn: new GeoBuilder(), lamps: new GeoBuilder(), lanterns: new GeoBuilder() };
+  return { solid: new GeoBuilder().trackTags(), glassOut: new GeoBuilder(), glassIn: new GeoBuilder(), lamps: new GeoBuilder(), lanterns: new GeoBuilder() };
 }
 
 export interface LightSpot {
@@ -52,6 +55,13 @@ export interface StructureInput {
   levels: LevelBuilders[];
   /** Construir solo este nivel (índice de `levels`); los demás constructores no se tocan. */
   only?: number;
+  /** Construir solo los elementos de esta columna de celdas (x) del nivel `only`. */
+  chunk?: number;
+}
+
+/** Columna de celdas (x) a la que pertenece un punto del barco. */
+export function chunkOfX(length: number, x: number): number {
+  return Math.max(0, Math.min(length - 1, Math.floor((x + SHIP_ORIGIN_X) / CELL)));
 }
 
 interface Band {
@@ -209,6 +219,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   const { layout, modules, tintOf } = inp;
   const lights: LightSpot[] = [];
   const want = (l: number): boolean => inp.only === undefined || inp.only === l;
+  const inChunk = (cx: number): boolean => inp.chunk === undefined || inp.chunk === cx;
   const W = layout.width;
   const moduleType = (id: number | null): string | null => (id === null ? null : (modules.get(id)?.type ?? null));
   const cellAt = (l: number, x: number, z: number): LayoutCell | null => getCell(layout, l, x, z);
@@ -243,7 +254,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   }
 
   for (const s of slabs) {
-    if (!want(Math.min(s.level, inp.levels.length - 1))) continue;
+    if (!want(Math.min(s.level, inp.levels.length - 1)) || !inChunk(s.x)) continue;
     const isTop = s.kind === 'top';
     const lb = inp.levels[Math.min(s.level, inp.levels.length - 1)]!;
     const g = lb.solid;
@@ -262,6 +273,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
     const modType = moduleType(s.moduleId);
     // Solo las habitaciones oscurecen su suelo al dañarse (el equipamiento ya se ve en el prop).
     g.tint = s.kind === 'roomFloor' || s.kind === 'top' ? tintOf(s.moduleId) : 1;
+    g.tag = s.kind === 'roomFloor' || s.kind === 'top' ? (s.moduleId ?? -1) : -1;
     const seed = s.level * 1000 + s.x * 37 + s.z * 11;
     // Superficie superior
     if (isTop) corrugated(g, x0, z0, x1, z1, yTop);
@@ -303,6 +315,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
       }
     }
     g.tint = 1;
+    g.tag = -1;
   }
 
   /* ---------------- Paredes ---------------- */
@@ -384,7 +397,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   const rampByModule = new Map<number, Ramp>(layout.ramps.map((r) => [r.moduleId, r]));
 
   for (const w of layout.walls) {
-    if (!want(w.level)) continue;
+    if (!want(w.level) || !inChunk(chunkOfX(layout.length, (w.x0 + w.x1) / 2))) continue;
     const lb = inp.levels[w.level]!;
     const fr = wallFrame(w);
     const e0 = endMode(w, w.x0, w.z0);
@@ -425,6 +438,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
       inFrame([lb.solid, lb.glassOut, lb.glassIn], fr.mx, w.y0, fr.mz, fr.yaw, () => {
         const g = lb.solid;
         g.tint = tintOf(w.moduleId);
+        g.tag = w.moduleId ?? -1;
         const capC = outdoor ? PALETTE.wallTrim : own.trim;
         // en las esquinas (extremos prolongados) la tapa quedaría coplanaria con la otra pared
         panel(g, u0, u1, 0, WALL_H, T, inBands, outBands, openings, null, modeLo === 'cap' ? capC : null, modeHi === 'cap' ? capC : null);
@@ -447,6 +461,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
           if (!windowBlocked(w, dx0, dz0, dx1, dz1, 1.15)) wallDecor(g, mod.type, ucD, hash01(w.x0, w.z0, w.level, 13));
         }
         g.tint = 1;
+        g.tag = -1;
       });
     } else if (w.kind === 'hull') {
       const own = cellOwn(w);
@@ -492,13 +507,13 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
 
   /* ---------------- Puertas ---------------- */
   for (const d of layout.doors) {
-    if (!want(d.level)) continue;
+    if (!want(d.level) || !inChunk(chunkOfX(layout.length, d.x))) continue;
     door(inp, d, cellAt, moduleType, propsByLevel.get(d.level) ?? [], (x, y, z) => lights.push({ x, y, z, level: d.level, kind: 'deck', moduleId: d.moduleId }));
   }
 
   /* ---------------- Escaleras ---------------- */
   for (const r of layout.ramps) {
-    if (!want(r.level)) continue;
+    if (!want(r.level) || !inChunk(r.x)) continue;
     const lb = inp.levels[r.level]!;
     stairs(lb.solid, r);
   }
@@ -508,6 +523,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
     if (!want(l)) continue;
     const lb = inp.levels[l]!;
     for (let x = 0; x < layout.length; x++) {
+      if (!inChunk(x)) continue;
       for (let z = 0; z < W; z++) {
         const c = layout.cells[l]![x]![z]!;
         if (c.kind !== 'room') continue;
@@ -528,7 +544,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
     const holdProps = propsByLevel.get(0) ?? [];
     const zMid = 0;
     for (let x = 0; x < layout.length; x++) {
-      if (x % 2 === 0) continue;
+      if (x % 2 === 0 || !inChunk(x)) continue;
       const mn = cellMin(x, 0, W);
       const lx = mn.x + 3.0; // bajo un bao
       const zCells = [Math.floor(W / 2) - 1, Math.floor(W / 2)];
@@ -977,6 +993,7 @@ function door(
 
   inFrame([g, lb.glassIn], d.x, d.y, d.z, yaw, () => {
     g.tint = inp.tintOf(d.moduleId);
+    g.tag = d.moduleId ?? -1;
     // dintel de pared sobre el hueco
     panel(g, -hw, hw, DOOR_H, WALL_H, T, interiorBands(own), outBands, [], null, null, null);
     // marco
@@ -1020,6 +1037,7 @@ function door(
       bulkheadLamp(g, lb.lamps, hw + 0.28, DOOR_H + 0.05, -T / 2);
     }
     g.tint = 1;
+    g.tag = -1;
   });
   if (!otherRoom && d.level >= 1) {
     const u = hw + 0.28;
