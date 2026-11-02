@@ -54,7 +54,8 @@ import { CATEGORY_NAMES, moduleSubtitle, radioMessages, upgradeEffectsText } fro
 import { finalRegionOnChart, renderHelm } from '../src/ui/panels/helm';
 import { renderInventory } from '../src/ui/panels/inventory';
 import { relationTone, renderNpc } from '../src/ui/panels/npc';
-import { renderStation, upgradeLine } from '../src/ui/panels/station';
+import { gruaObjective, renderStation, upgradeLine } from '../src/ui/panels/station';
+import { DEBRIS_NAMES } from '../src/sim/debris';
 import { renderTrade } from '../src/ui/panels/trade';
 import { arrivalStats, arrivalView, defaultPage, listNames, newPages, PageReader, pageDestination, paragraphs, readingSeconds } from '../src/ui/story';
 
@@ -933,6 +934,16 @@ describe('c2-ui: paneles de estación por nivel y módulos nuevos', () => {
     expect(t).toContain('Objetivo');
     expect(t).toContain('Restos a su alcance');
     expect(t).toContain('Tomar todo');
+  });
+
+  it('grúa: el objetivo no dice «ninguno» si hay restos a su alcance mientras recoge el cable o iza', () => {
+    const target = { debrisId: 1, kind: 'barril' as const, pos: { x: 3, z: 4 }, progress: 0.5 };
+    expect(gruaObjective({ phase: 'enganchando', target, inRange: 1 }, 5, true)).toBe(`${DEBRIS_NAMES.barril} a 5 m`);
+    expect(gruaObjective({ phase: 'recargando', target: null, inRange: 2 }, null, true)).toBe('El más cercano, en cuanto recoja el cable');
+    expect(gruaObjective({ phase: 'recargando', target: null, inRange: 0 }, null, true)).toBe('Ninguno a su alcance');
+    expect(gruaObjective({ phase: 'izando', target: null, inRange: 3 }, null, true)).toBe('Subiendo la carga a bordo');
+    expect(gruaObjective({ phase: 'esperando', target: null, inRange: 0 }, null, true)).toBe('Ninguno a su alcance');
+    expect(gruaObjective({ phase: 'parada', target: null, inRange: 4 }, null, false)).toBe('—');
   });
 
   it('radar: estado, avistamientos y los últimos mensajes de radio', () => {

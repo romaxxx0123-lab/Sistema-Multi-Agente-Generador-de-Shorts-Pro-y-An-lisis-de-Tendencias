@@ -20,7 +20,7 @@ import { ITEMS } from '../../data/items';
 import { moduleDef, type ModuleDef } from '../../data/modules';
 import { WATER_PER_DRINK } from '../../sim/constants';
 import { demolishLosses, REPAIR_THRESHOLD } from '../../sim/construction';
-import { DEBRIS_NAMES } from '../../sim/debris';
+import { DEBRIS_NAMES, type GruaStatus } from '../../sim/debris';
 import { findModule, payInventories } from '../../sim/helpers';
 import { countIn, countItem } from '../../sim/inventory';
 import { maxTier, moduleDisplayName, moduleMult, moduleStat, moduleTier, nextUpgrade } from '../../sim/moduleStats';
@@ -898,6 +898,19 @@ const GRUA_PHASE: Record<string, string> = {
   parada: 'Parada',
 };
 
+/**
+ * Línea «Objetivo» del panel de la grúa: el resto que engancha y a qué distancia; mientras sube una
+ * carga o recoge el cable no hay objetivo, pero si quedan restos a su alcance se dice que irá a por
+ * el más cercano (y no «ninguno», que contradiría la fila de restos a su alcance).
+ */
+export function gruaObjective(gs: Pick<GruaStatus, 'phase' | 'target' | 'inRange'>, dist: number | null, working: boolean): string {
+  if (gs.target) return `${DEBRIS_NAMES[gs.target.kind]} a ${Math.round(dist ?? 0)} m`;
+  if (!working) return '—';
+  if (gs.phase === 'izando') return 'Subiendo la carga a bordo';
+  if (gs.inRange > 0) return gs.phase === 'recargando' ? 'El más cercano, en cuanto recoja el cable' : 'El más cercano de su costado';
+  return 'Ninguno a su alcance';
+}
+
 function gruaBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
   const gs = sim.gruaStatus(m.id);
@@ -919,7 +932,7 @@ function gruaBody(env: UiEnv, m: ModuleInstance): VNode {
       h(
         'div',
         { class: 'kv' },
-        kvRow('Objetivo', target ? `${DEBRIS_NAMES[target.kind]} a ${Math.round(dist ?? 0)} m` : working ? 'Ninguno a su alcance' : '—'),
+        kvRow('Objetivo', gruaObjective(gs, dist, working)),
         kvRow(`Restos a su alcance (${side})`, String(gs.inRange)),
         kvRow('Ritmo', gs.rate > 0 ? `×${num(gs.rate, 2)}` : 'Parada'),
         kvRow('Consumo', `${num(moduleStat(m, 'powerUse'), 1)} kW encendida`),
