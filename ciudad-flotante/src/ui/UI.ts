@@ -24,7 +24,7 @@ import { refKey, type PanelState, type UiEnv } from './env';
 import { Hud } from './hud';
 import { Menus } from './menus';
 import { renderPanel } from './panels/index';
-import { newPages, PageReader } from './story';
+import { newPages, PageReader, pageDestination } from './story';
 import { Tooltip } from './tooltip';
 import { cx, h, patch } from './vdom';
 import { gl, kbd } from './widgets';
@@ -87,7 +87,6 @@ export class UI {
     this.layer.appendChild(this.panelLayer);
 
     this.reader = new PageReader(this.layer);
-    this.reader.onOpenNotebook = (n) => this.openNotebook(n);
 
     this.overLayer = document.createElement('div');
     this.overLayer.className = 'ui-layer ui-over';
@@ -188,12 +187,13 @@ export class UI {
       this.ps = {};
       if (p.kind === 'inventory') this.ps.tab = p.tab ?? 'objetos';
     } else if (p.kind === 'inventory' && p.tab) this.ps.tab = p.tab;
-    // Con una hoja en el lector, el Diario (J) se abre en el Cuaderno por esa hoja.
+    // Con una hoja en el lector, el Diario (J) se abre en el Cuaderno por esa hoja. Cualquier otro
+    // panel retira el lector: no debe tapar sus botones (la hoja ya está en el Cuaderno).
     if (p.kind === 'inventory' && p.tab === 'diario' && this.reader.visible) {
       this.ps.diary = 'cuaderno';
       this.ps.page = this.reader.current;
       this.reader.hide();
-    }
+    } else if (!same && this.reader.visible) this.reader.hide();
     if (!this.panel) this.sfx('ui_abrir');
     this.panel = p;
     this.skipE = true;
@@ -263,16 +263,6 @@ export class UI {
     this.arrivalPending = false;
   }
 
-  /** Abre el Diario en el Cuaderno del Albatros por la hoja `n`. */
-  openNotebook(n: number | null): void {
-    if (this.ctx.mode !== 'play' || this.menuOpen) return;
-    this.reader.hide();
-    this.openPanel({ kind: 'inventory', tab: 'diario' });
-    this.ps.diary = 'cuaderno';
-    this.ps.page = n;
-    this.renderPanelNow();
-  }
-
   /**
    * Pantalla de llegada a Puerto Esperanza (si ya se llegó). Pausa la partida, sale del modo
    * construcción y cierra el panel abierto; «Seguir navegando» (o Esc) la cierra.
@@ -305,8 +295,11 @@ export class UI {
       this.seenPages = [...pages];
       const last = fresh[fresh.length - 1];
       if (last !== undefined && ctx.mode === 'play') {
-        // Con el Cuaderno a la vista, la hoja nueva se abre ahí mismo; si no, en el lector.
-        if (this.panel?.kind === 'inventory' && this.ps.tab === 'diario' && this.ps.diary === 'cuaderno') {
+        // Leída desde la mochila (o con el Cuaderno a la vista): el inventario pasa al Cuaderno del
+        // Diario por esa hoja. Si no, el lector (con otro panel abierto, espera oculto a que se cierre).
+        if (pageDestination(this.panel?.kind) === 'cuaderno') {
+          this.ps.tab = 'diario';
+          this.ps.diary = 'cuaderno';
           this.ps.page = last;
           this.renderPanelNow();
         } else this.reader.show(last);
@@ -340,7 +333,7 @@ export class UI {
     this.watchStory();
     // La pantalla de llegada se ve sola, sobre la celebración: sin HUD ni avisos encima.
     this.hud.update(dtReal, { panelOpen: this.panelOpen, menuOpen: this.menuOpen, quiet: this.menus.screen === 'arrival' });
-    this.reader.update(dtReal, { hidden: this.menuOpen || ctx.mode !== 'play' || !ctx.sim.state.player.alive, panelOpen: this.panelOpen });
+    this.reader.update(dtReal, { hidden: this.menuOpen || this.panelOpen || ctx.mode !== 'play' || !ctx.sim.state.player.alive });
     this.menus.update(dtReal);
     this.tip.update(dtReal);
     if (ctx.mode === 'menu') this.menuCamera(dtReal);

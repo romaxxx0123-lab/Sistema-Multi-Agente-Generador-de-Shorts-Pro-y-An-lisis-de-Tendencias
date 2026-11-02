@@ -56,7 +56,7 @@ import { renderInventory } from '../src/ui/panels/inventory';
 import { relationTone, renderNpc } from '../src/ui/panels/npc';
 import { renderStation, upgradeLine } from '../src/ui/panels/station';
 import { renderTrade } from '../src/ui/panels/trade';
-import { arrivalStats, arrivalView, defaultPage, listNames, newPages, PageReader, paragraphs, readingSeconds } from '../src/ui/story';
+import { arrivalStats, arrivalView, defaultPage, listNames, newPages, PageReader, pageDestination, paragraphs, readingSeconds } from '../src/ui/story';
 
 /* ------------------------------------------------------------------ */
 /* Utilidades                                                          */
@@ -1082,7 +1082,7 @@ describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
     g.document = saved;
   });
 
-  it('el lector enseña la hoja, no corre con un menú abierto ni con el cursor encima, y se cierra solo', () => {
+  it('el lector enseña la hoja, no corre oculto (menú o panel abierto) y se cierra solo', () => {
     const layer = new FElement('div');
     const r = new PageReader(layer as unknown as HTMLElement);
     expect(r.visible).toBe(false);
@@ -1090,32 +1090,27 @@ describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
     expect(r.current).toBe(2);
     const total = r.remaining;
     expect(total).toBe(readingSeconds(`${STORY_PAGES[1]!.title} ${STORY_PAGES[1]!.text}`));
-    r.update(1, { hidden: false, panelOpen: false });
+    r.update(1, { hidden: false });
     expect(r.remaining).toBeCloseTo(total - 1, 5);
     const el = layer.childNodes[0] as FElement;
     expect(el.textContent).toContain(STORY_PAGES[1]!.title);
     expect(el.textContent).toContain('abre el cuaderno');
-    // Con un menú abierto el tiempo no corre.
-    r.update(5, { hidden: true, panelOpen: false });
+    expect(el.className).not.toContain('hidden');
+    // Oculto (con un menú o un panel abierto) no se ve y el tiempo no corre: espera a que se cierre.
+    r.update(5, { hidden: true });
     expect(r.remaining).toBeCloseTo(total - 1, 5);
-    // Con un panel abierto ofrece botones (el ratón está libre).
-    let opened = -1;
-    r.onOpenNotebook = (n) => (opened = n);
-    r.update(0, { hidden: false, panelOpen: true });
-    expect(el.textContent).toContain('Ver en el cuaderno');
-    const findBtn = (n: FElement, text: string): FElement | null => {
-      if (n.localName === 'button' && n.textContent.includes(text)) return n;
-      for (const c of n.childNodes) if (c instanceof FElement) {
-        const f = findBtn(c, text);
-        if (f) return f;
-      }
-      return null;
-    };
-    (findBtn(el, 'Ver en el cuaderno')!['onclick'] as (e: unknown) => void)({ stopPropagation() {} });
-    expect(opened).toBe(2);
-    r.update(total, { hidden: false, panelOpen: false });
+    expect(el.className).toContain('hidden');
+    expect(r.visible).toBe(true);
+    r.update(0, { hidden: false });
+    expect(el.className).not.toContain('hidden');
+    r.update(total, { hidden: false });
     expect(r.visible).toBe(false);
     expect(layer.childNodes[0]?.childNodes.length ?? 0).toBe(0);
+  });
+
+  it('una hoja leída desde la mochila se abre en el Cuaderno; si no, en el lector (que nunca tapa un panel)', () => {
+    expect(pageDestination('inventory')).toBe('cuaderno');
+    for (const k of [null, undefined, 'station', 'helm', 'npc', 'trade', 'crate']) expect(pageDestination(k)).toBe('lector');
   });
 
   it('[P3] «Valores por defecto» también aplica la perspectiva de la cámara', () => {

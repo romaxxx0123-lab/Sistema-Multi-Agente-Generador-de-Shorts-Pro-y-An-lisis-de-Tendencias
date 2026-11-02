@@ -7,7 +7,9 @@
  *    de `storyStatus` y, con el rumbo revelado, «Rumbo de la capitana: elígelo en el timón».
  *  - `PageReader`: al leer una hoja aparece una cuartilla junto al borde de la pantalla con el texto
  *    completo. No bloquea: el juego sigue, no suelta el ratón y se cierra sola cuando da tiempo a
- *    leerla (se detiene con el cursor encima). J la abre en el Cuaderno.
+ *    leerla (se detiene con el cursor encima). J la abre en el Cuaderno. Nunca tapa un panel: al
+ *    abrir uno se retira (la hoja ya está en el Cuaderno) y, si se lee desde la mochila, la hoja se
+ *    abre directamente en el Cuaderno del Diario (`pageDestination`).
  *  - `arrivalView`: la pantalla de llegada a Puerto Esperanza (textos de story.ts y estadísticas
  *    de la travesía), con «Seguir navegando» y, mientras está abierto, «Ir al mercado del muelle».
  *
@@ -59,6 +61,15 @@ export function readingSeconds(text: string): number {
 export function newPages(prev: readonly number[], now: readonly number[]): number[] {
   const seen = new Set(prev);
   return now.filter((n) => !seen.has(n));
+}
+
+/**
+ * Dónde se enseña una hoja recién leída según el panel abierto: con el inventario a la vista (se
+ * leyó desde la mochila), en el Cuaderno del Diario por esa hoja; si no, en el lector, que con otro
+ * panel abierto espera oculto a que se cierre (nunca tapa los botones de un panel).
+ */
+export function pageDestination(panelKind: string | null | undefined): 'cuaderno' | 'lector' {
+  return panelKind === 'inventory' ? 'cuaderno' : 'lector';
 }
 
 /** Hoja que abre el Cuaderno: la pedida si existe; si no, la última leída; si no, la primera. */
@@ -181,9 +192,6 @@ export class PageReader {
   private left = 0;
   private total = 1;
   private hovered = false;
-  private panelMode = false;
-  /** «Ver en el cuaderno»: la UI abre el Diario en esta hoja. */
-  onOpenNotebook: (n: number) => void = () => {};
 
   constructor(layer: HTMLElement) {
     this.el = document.createElement('div');
@@ -223,17 +231,16 @@ export class PageReader {
   }
 
   /**
-   * Un frame: descuenta el tiempo (no mientras el cursor está encima ni con un menú abierto) y
-   * repinta. `panelOpen`: el ratón está libre, así que se ofrecen botones en vez de la tecla J.
+   * Un frame: descuenta el tiempo y repinta. `hidden` (menú o panel abierto, otro modo de juego):
+   * la hoja no se ve y su tiempo no corre; tampoco corre con el cursor encima.
    */
-  update(dt: number, opts: { hidden: boolean; panelOpen: boolean }): void {
+  update(dt: number, opts: { hidden: boolean }): void {
     if (this.page === null) return;
     if (!opts.hidden && !this.hovered) this.left -= Math.max(0, dt);
     if (this.left <= 0) {
       this.hide();
       return;
     }
-    this.panelMode = opts.panelOpen;
     patch(this.el, this.render(opts.hidden));
   }
 
@@ -268,12 +275,7 @@ export class PageReader {
       h(
         'div',
         { class: 'pr-foot' },
-        this.panelMode
-          ? [
-              btn('Ver en el cuaderno', () => this.onOpenNotebook(n), { small: true, glyph: 'book', key: 'nb' }),
-              btn('Cerrar', () => this.hide(), { small: true, glyph: 'close', key: 'x' }),
-            ]
-          : h('span', { class: 'pr-keys' }, kbd('J'), ' abre el cuaderno · se cierra sola'),
+        h('span', { class: 'pr-keys' }, kbd('J'), ' abre el cuaderno · se cierra sola'),
         h('div', { class: 'pr-timer' }, h('i', { style: { width: `${Math.round(frac * 1000) / 10}%` } })),
       ),
     );
