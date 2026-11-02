@@ -718,7 +718,8 @@ export interface CraneView {
 export function craneView(m: ModuleInstance | undefined, state: GameState): CraneView {
   const none: CraneView = { phase: 'parada', progress: 0, target: null };
   if (!m || m.type !== 'grua') return none;
-  const ready = m.status === 'active' && m.fire <= 0 && m.on && m.powered && state.utilities.power.satisfaction > 0;
+  // como gruaWorkRate: una satisfacción no numérica cuenta como plena (nunca para la grúa)
+  const ready = m.status === 'active' && m.fire <= 0 && m.on && m.powered && !(state.utilities.power.satisfaction <= 0);
   if (!ready) return none;
   if (state.weather.kind === 'tormenta') return { phase: 'tormenta', progress: 0, target: null };
   const w = Number.isFinite(m.prodProgress) ? Math.max(0, m.prodProgress!) : GRUA_LIFT_MIN;

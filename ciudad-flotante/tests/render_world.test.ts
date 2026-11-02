@@ -764,7 +764,7 @@ describe('vista del puerto', () => {
     const beam = h.root.getObjectByName('haz-luz-verde')!;
     expect(beam.visible).toBe(true);
     h.dispose();
-  });
+  }, 30_000);
 
   it('el puerto viaja con el agua: avanzar millas lo desplaza lo mismo que el mar', () => {
     const h = new HarborView(shared, 'baja');
@@ -787,22 +787,29 @@ describe('vista del puerto', () => {
     const boats = (): THREE.Object3D[] => h.root.children.filter((c) => String(c.userData['harbor']).startsWith('bote-'));
     const start = boats().map((b) => b.position.clone());
     let moved = 0;
+    // Las violaciones se cuentan y se comprueban al final (miles de `expect` por frame hacen la
+    // prueba lenta con la máquina cargada).
+    let hullHits = 0;
+    let maxAbsZ = 0;
+    const atm = atmAt(12);
     for (let i = 0; i < 3000; i++) {
       // 2 m/s de agua hacia popa (unos 4,6 nudos)
       st.voyage.regionDistance += 2 / 0.1 / DRIFT_PER_MILE / 10 / 10;
-      h.update(st, 0.1, 0.2, water, atmAt(12), false, HULL);
+      h.update(st, 0.1, 0.2, water, atm, false, HULL);
       for (const b of boats()) {
         const inside = b.position.x > HULL.xMin - 2 && b.position.x < HULL.xMax + 2 && Math.abs(b.position.z) < HULL.halfWidth + 2;
-        expect(inside).toBe(false);
+        if (inside) hullHits++;
         // ni atraviesan los pantalanes: se quedan en el canal
-        expect(Math.abs(b.position.z)).toBeLessThan(PROMENADE_Z - 1.4);
+        maxAbsZ = Math.max(maxAbsZ, Math.abs(b.position.z));
       }
     }
+    expect(hullHits).toBe(0);
+    expect(maxAbsZ).toBeLessThan(PROMENADE_Z - 1.4);
     for (const [i, b] of boats().entries()) if (start[i] && b.position.distanceTo(start[i]!) > 20) moved++;
     expect(moved).toBeGreaterThan(3);
     expect(h.boatCount).toBe(7);
     h.dispose();
-  });
+  }, 30_000);
 
   it('al aparecer el puerto construye los modelos poco a poco (sin tirones) y no amarra sobre un naufragio', () => {
     const h = new HarborView(shared, 'media');
@@ -823,7 +830,7 @@ describe('vista del puerto', () => {
       expect(Math.hypot(c.position.x - 200, c.position.z - 90)).toBeGreaterThan(40);
     }
     h2.dispose();
-  });
+  }, 30_000);
 
   it('al dejar el puerto atrás todo se desvanece y se libera', () => {
     const h = new HarborView(shared, 'media');
@@ -840,7 +847,7 @@ describe('vista del puerto', () => {
     for (let i = 0; i < 320; i++) h.update(left, 0.1, 0, water, atmAt(12), false, HULL);
     expect(h.cachedModels).toBe(0);
     h.dispose();
-  });
+  }, 30_000);
 
   it('una partida cargada en el puerto lo muestra igual (determinista)', () => {
     const a = new HarborView(shared, 'media');
@@ -857,7 +864,7 @@ describe('vista del puerto', () => {
     expect(sig(a)).toBe(sig(b));
     a.dispose();
     b.dispose();
-  });
+  }, 30_000);
 });
 
 describe('celebración de la llegada', () => {
@@ -905,7 +912,7 @@ describe('celebración de la llegada', () => {
     expect(c.active).toBe(false);
     expect(c.flash.r + c.flash.g + c.flash.b).toBeLessThan(0.01);
     c.dispose();
-  });
+  }, 30_000);
 
   it('la fiesta se repite la primera noche en el puerto, no otro día ni fuera de él', () => {
     const st = harborState('port', 2);

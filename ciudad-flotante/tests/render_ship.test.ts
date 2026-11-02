@@ -22,11 +22,13 @@ import { MODELLED_KINDS, localDims, propModel, propTier, stoolOffsets, type Prop
 import { buildStructure, makeLevelBuilders } from '../src/render/ship/structure';
 import { brassPlaque, freeCorner, mainDoor, romanNumeral, storeLoft, tierPlaque } from '../src/render/ship/tiers';
 import { CELL, LEVEL_H, WATERLINE_Y } from '../src/sim/constants';
-import { GRUA_CYCLE_MIN, GRUA_HOOK_MIN } from '../src/sim/debris';
+import { GRUA_CYCLE_MIN, GRUA_HOOK_MIN, gruaOrigin, gruaStatus, gruaTarget, spawnDebris } from '../src/sim/debris';
+import { SCRIPT } from '../src/sim/events';
+import { addItem } from '../src/sim/inventory';
 import { createNewGame } from '../src/sim/newGame';
 import { GAME_REACH, SOFA_SEATS, seatPose } from '../src/sim/npc';
-import { computeLayout, instantiateModule, pointToCell, type PropInstance, type ShipLayout } from '../src/sim/ship';
-import type { Simulation } from '../src/sim/Simulation';
+import { checkPlacement, computeLayout, instantiateModule, pointToCell, type PropInstance, type ShipLayout } from '../src/sim/ship';
+import { Simulation } from '../src/sim/Simulation';
 import type { GameState, ModuleInstance } from '../src/sim/types';
 
 function hasNaN(g: THREE.BufferGeometry): boolean {
@@ -798,6 +800,74 @@ describe('módulos especializados: animación', () => {
     expect(v.target).toMatchObject({ id: 9, x: 12, z: -20 });
     st.weather.kind = 'tormenta';
     expect(craneView(m, st).phase).toBe('tormenta');
+  });
+
+  it('grúa: en una partida real, la vista coincide minuto a minuto con gruaStatus y gruaTarget', () => {
+    const unlocks = ['energia', 'grua'];
+    const sim = new Simulation(createNewGame(11));
+    const st = sim.state;
+    st.events.nextRollAt = 1e12;
+    st.events.scripted = SCRIPT.map((s) => s.id);
+    st.weather.kind = 'despejado';
+    st.weather.remaining = 1e9;
+    st.npcs = [];
+    st.debris = [];
+    st.voyage.anchoredUntil = 1e9;
+    st.voyage.anchorReason = 'pruebas';
+    st.voyage.speed = 0;
+    const place = (type: string, level: number, ok: (z: number) => boolean): ModuleInstance => {
+      for (let x = st.ship.length - 1; x >= 0; x--)
+        for (let z = 0; z < st.ship.width; z++) {
+          if (!ok(z)) continue;
+          for (const rot of [0, 1, 2, 3] as const) {
+            if (!checkPlacement(st.ship, unlocks, type, level, x, z, rot).ok) continue;
+            const m = instantiateModule(sim.nextId(), type, level, x, z, rot, 'active');
+            st.ship.modules.push(m);
+            sim.shipChanged();
+            return m;
+          }
+        }
+      throw new Error(`no cabe ${type}`);
+    };
+    addItem(place('generador', 0, () => true).fuelInv!, 'combustible', 8);
+    const crane = place('grua', 1, (z) => z === 0);
+    const keep = () => {
+      const n = st.player.needs;
+      n.hunger = n.thirst = n.energy = 90;
+      n.health = 100;
+    };
+    keep();
+    sim.tick(1);
+    const o = gruaOrigin(sim, crane);
+    const seen = new Set<string>();
+    const check = () => {
+      const s = gruaStatus(sim, crane.id)!;
+      const t = gruaTarget(sim, crane.id);
+      const v = craneView(crane, st);
+      const want = s.phase === 'llena' ? 'esperando' : s.phase;
+      expect(v.phase).toBe(want);
+      seen.add(v.phase);
+      if (want === 'izando' || want === 'recargando' || want === 'enganchando') expect(v.progress).toBeCloseTo(s.progress, 6);
+      if (t) expect(v.target).toMatchObject({ id: t.debrisId, kind: t.kind, x: t.pos.x, z: t.pos.z });
+      else expect(v.target).toBeNull();
+    };
+    const run = (min: number) => {
+      for (let i = 0; i < min; i++) {
+        keep();
+        sim.tick(1);
+        check();
+      }
+    };
+    check();
+    spawnDebris(sim, 'tablones', { x: o.x, z: o.z - 12 }, { loot: [{ id: 'madera', qty: 3 }], lateral: 0 });
+    spawnDebris(sim, 'barril', { x: o.x + 5, z: o.z - 18 }, { loot: [{ id: 'tela', qty: 1 }], lateral: 0 });
+    run(70);
+    crane.on = false;
+    run(3);
+    crane.on = true;
+    st.weather.kind = 'tormenta';
+    run(3);
+    expect([...seen].sort()).toEqual(['enganchando', 'esperando', 'izando', 'parada', 'recargando', 'tormenta']);
   });
 
   it('grúa: la torreta gira hacia el resto, el gancho llega a él e iza la red; sin trabajo vigila su costado', () => {
