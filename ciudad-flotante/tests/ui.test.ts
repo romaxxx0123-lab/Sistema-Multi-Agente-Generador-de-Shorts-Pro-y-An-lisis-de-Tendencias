@@ -1142,4 +1142,94 @@ describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
     const bare = new Menus(new FElement('div') as unknown as HTMLElement, { settings: { ...DEFAULT_SETTINGS } } as never, {} as never);
     expect(bare.qualityNeedsReload()).toBe(false);
   });
+
+  it('[P7] en los menús, Tab / Mayús+Tab y las flechas recorren los botones (saltando los desactivados); Intro y Espacio pulsan el enfocado', () => {
+    /** Elemento del mini-DOM con foco, clic, `contains`, `classList` y `querySelectorAll` sencillos. */
+    class FFocus extends FElement {
+      classList = { add: () => {}, remove: () => {} };
+      get tagName(): string {
+        return this.localName.toUpperCase();
+      }
+      get offsetParent(): unknown {
+        return this.parentNode;
+      }
+      focus(): void {
+        (g.document as { activeElement?: unknown }).activeElement = this;
+      }
+      click(): void {
+        (this['onclick'] as ((e: unknown) => void) | null)?.({ stopPropagation() {}, detail: 0 });
+      }
+      contains(n: unknown): boolean {
+        for (let p = n as FNode | null; p; p = p.parentNode) if (p === this) return true;
+        return false;
+      }
+      querySelectorAll(): FElement[] {
+        const out: FElement[] = [];
+        const walk = (e: FElement): void => {
+          for (const c of e.childNodes) {
+            if (!(c instanceof FElement)) continue;
+            const ti = c.getAttribute('tabindex');
+            if (c.localName === 'button' || c.localName === 'input' || (ti !== null && ti !== '-1')) out.push(c);
+            walk(c);
+          }
+        };
+        walk(this);
+        return out;
+      }
+    }
+    const doc = g.document as { activeElement?: unknown; createElement: (t: string) => FElement };
+    doc.createElement = (t: string) => new FFocus(t);
+    const gh = globalThis as unknown as { HTMLElement?: unknown };
+    const savedHE = gh.HTMLElement;
+    gh.HTMLElement = FElement;
+    try {
+      const sim = newSim();
+      const ctx = { sim, settings: { ...DEFAULT_SETTINGS }, paused: true, bus: { emit() {} }, listSaves: () => [] };
+      const layer = new FFocus('div');
+      const menus = new Menus(layer as unknown as HTMLElement, ctx as never, {} as never);
+      menus.showPause();
+      const key = (code: string, shiftKey = false): { used: boolean; prevented: boolean } => {
+        let prevented = false;
+        const used = menus.onKey({ code, shiftKey, repeat: false, preventDefault: () => (prevented = true) } as unknown as KeyboardEvent);
+        return { used, prevented };
+      };
+      const focused = (): string => ((doc.activeElement as FElement | undefined)?.textContent ?? '').trim();
+      // El primer Tab entra en el menú por el primer botón.
+      expect(key('Tab')).toEqual({ used: true, prevented: true });
+      expect(focused()).toContain('Continuar');
+      key('Tab');
+      expect(focused()).toBe('Guardar partida');
+      // «Cargar partida» está desactivado (no hay guardados): el foco lo salta.
+      key('Tab');
+      expect(focused()).toBe('Ajustes');
+      key('Tab', true);
+      expect(focused()).toBe('Guardar partida');
+      key('ArrowUp');
+      expect(focused()).toContain('Continuar');
+      // Da la vuelta por los extremos.
+      key('ArrowUp');
+      expect(focused()).toBe('Salir al menú principal');
+      key('ArrowDown');
+      expect(focused()).toContain('Continuar');
+      key('ArrowDown');
+      key('ArrowDown');
+      expect(focused()).toBe('Ajustes');
+      // Intro pulsa «Ajustes»: se abre la subpantalla y el foco pasa a su primer control.
+      expect(key('Enter')).toEqual({ used: true, prevented: true });
+      expect(menus.screen).toBe('pause/settings');
+      expect(layer.contains(doc.activeElement)).toBe(true);
+      // Esc vuelve a la pausa con el foco otra vez dentro del menú (en «Continuar»).
+      expect(key('Escape').used).toBe(true);
+      expect(menus.screen).toBe('pause');
+      expect(focused()).toContain('Continuar');
+      // Espacio sobre «Continuar» reanuda la partida y cierra el menú.
+      expect(key('Space')).toEqual({ used: true, prevented: true });
+      expect(ctx.paused).toBe(false);
+      expect(menus.open).toBe(false);
+      // Sin menú abierto, el teclado es del juego.
+      expect(key('Tab')).toEqual({ used: false, prevented: false });
+    } finally {
+      gh.HTMLElement = savedHE;
+    }
+  });
 });

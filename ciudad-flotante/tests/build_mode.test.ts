@@ -735,6 +735,55 @@ describe('paleta: módulos especializados de la ronda 2', () => {
     const lines = moduleInfo(sim, grua).lines.join(' | ');
     expect(lines).toMatch(/Alcance 30 m por estribor · \d+ restos? a su alcance/);
   });
+
+  it('el estado automático no repite lo que ya dice la ficha y los adjetivos concuerdan', () => {
+    const sim = Simulation.newGame(16);
+    sim.state.unlocks.push('grua', 'acuicultura');
+    const build = (type: string, x: number, z: number) => {
+      giveFor(sim, moduleDef(type).cost);
+      const r = sim.placeModule(type, 1, x, z, 0);
+      expect(r.ok, `${type}: ${r.msg}`).toBe(true);
+      const m = sim.state.ship.modules.find((mm) => mm.id === r.moduleId)!;
+      m.status = 'active';
+      m.buildProgress = 1;
+      return m;
+    };
+    const grua = build('grua', 7, 3);
+    const viv = build('vivero', 8, 0);
+    sim.shipChanged();
+    // El barco inicial no genera electricidad: los dos están parados por falta de energía.
+    for (const p of sim.state.ship.modules) if (moduleDef(p.type).powerGen) p.on = false;
+    sim.tick(1);
+    const count = (s: string, re: RegExp) => (s.match(re) ?? []).length;
+    let g = moduleInfo(sim, grua).lines.join(' | ');
+    expect(grua.powered).toBe(false);
+    expect(count(g, /Sin energía/g), g).toBe(1);
+    let v = moduleInfo(sim, viv).lines.join(' | ');
+    expect(count(v, /Sin energía/g), v).toBe(1);
+    expect(v).toMatch(/0\/\d+ pescados en la bandeja/);
+
+    // Apagados: «Apagada» la grúa, «Apagado» el vivero, una sola vez cada uno.
+    grua.on = false;
+    viv.on = false;
+    sim.tick(1);
+    g = moduleInfo(sim, grua).lines.join(' | ');
+    v = moduleInfo(sim, viv).lines.join(' | ');
+    expect(count(g, /Apagad[ao]/g), g).toBe(1);
+    expect(g).toContain('Apagada');
+    expect(count(v, /Apagad[ao]/g), v).toBe(1);
+    expect(v).toContain('Apagado');
+
+    // Averiada (con el nombre femenino de la grúa); el estado de la ficha ya lo dice.
+    grua.on = true;
+    grua.status = 'broken';
+    grua.brokenReason = 'cable roto';
+    const info = moduleInfo(sim, grua);
+    expect(info.state).toBe('Averiada: cable roto');
+    expect(info.lines.join(' | ')).not.toMatch(/Averiad/);
+    const coc = sim.state.ship.modules.find((m) => m.type === 'cocina')!;
+    coc.condition = 30;
+    expect(moduleInfo(sim, coc).state).toBe('Dañada');
+  });
 });
 
 describe('grúa: junto a la borda', () => {

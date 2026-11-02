@@ -20,7 +20,7 @@ import type { Simulation } from '../sim/Simulation';
 import { moduleCells, unreachableModules } from '../sim/ship';
 import { blueprintName, viveroStatus } from '../sim/stations';
 import type { ItemId, ModuleInstance } from '../sim/types';
-import { finite, isConsumer, isFeminineName, isRadarActive, VIVERO_MINUTES, withArticle } from '../sim/utilities';
+import { agree, finite, isConsumer, isFeminineName, isRadarActive, VIVERO_MINUTES, withArticle } from '../sim/utilities';
 import { RADAR_STORM_LEAD } from '../sim/weather';
 
 /* ------------------------------------------------------------------ */
@@ -573,6 +573,8 @@ export function moduleInfo(sim: Simulation, m: ModuleInstance): ModuleInfo {
   let progress: number | null = null;
   let condition: number | null = null;
 
+  // Los adjetivos concuerdan con el nombre: «Averiada», «Apagada» (grúa, cocina, batería…).
+  const name = moduleDisplayName(m);
   if (m.status === 'construction') {
     const cs = sim.constructionStatus(m.id);
     progress = cs?.progress ?? m.buildProgress;
@@ -585,10 +587,10 @@ export function moduleInfo(sim: Simulation, m: ModuleInstance): ModuleInfo {
   } else {
     condition = m.condition;
     if (m.status === 'broken') {
-      state = m.brokenReason ? `Averiado: ${m.brokenReason}` : 'Averiado';
+      state = m.brokenReason ? `${agree(name, 'Averiado')}: ${m.brokenReason}` : agree(name, 'Averiado');
       tone = 'bad';
     } else if (m.condition < 50) {
-      state = 'Dañado';
+      state = agree(name, 'Dañado');
       tone = 'warn';
     }
     if (m.fire > 0) {
@@ -597,10 +599,10 @@ export function moduleInfo(sim: Simulation, m: ModuleInstance): ModuleInfo {
     }
     if (m.leak) lines.push('Fuga de agua: repárala con martillo y kit');
     if (isConsumer(sim, m)) {
-      if (!m.on) lines.push('Apagado');
+      if (!m.on) lines.push(agree(name, 'Apagado'));
       else if (!m.powered && m.status === 'active') lines.push('Sin energía suficiente');
     }
-    if (def.powerGen && !m.on) lines.push('Apagado');
+    if (def.powerGen && !m.on) lines.push(agree(name, 'Apagado'));
     if (m.beds.length) {
       const word = def.healingBeds ? 'Camilla' : 'Cama';
       if (m.beds.length <= 2) {
@@ -627,22 +629,34 @@ export function moduleInfo(sim: Simulation, m: ModuleInstance): ModuleInfo {
     const cs = sim.constructionStatus(m.id);
     upgrade = { name: up.name, toTier: up.tier, progress: cs?.progress ?? finite(m.upgrade?.progress), etaMin: cs?.etaMin ?? 0, builders: cs?.builders ?? 0 };
   }
-  return { id: m.id, name: moduleDisplayName(m), type: m.type, level: m.level, state, tone, progress, condition, lines, tier: moduleTier(m), maxTier: maxTier(m.type), upgrade };
+  return { id: m.id, name, type: m.type, level: m.level, state, tone, progress, condition, lines, tier: moduleTier(m), maxTier: maxTier(m.type), upgrade };
+}
+
+/**
+ * El módulo está parado por algo que la ficha ya dice en su estado o en sus líneas generales
+ * (averiado, ardiendo, apagado o sin energía): su estado automático no lo repite.
+ */
+function stopAlreadyShown(sim: Simulation, m: ModuleInstance): boolean {
+  return m.status !== 'active' || m.fire > 0 || !m.on || (isConsumer(sim, m) && !m.powered);
 }
 
 /** Estado de los módulos automáticos (vivero, grúa, radar) para la ficha. */
 function specialLines(sim: Simulation, m: ModuleInstance): string[] {
   const out: string[] = [];
+  const stopped = stopAlreadyShown(sim, m);
   if (m.type === 'vivero') {
     const v = viveroStatus(sim, m.id);
     if (v) {
-      out.push(`${v.status} · ${v.stock}/${v.capacity} ${v.capacity === 1 ? 'pescado' : 'pescados'} en la bandeja`);
+      const tray = `${v.stock}/${v.capacity} ${v.capacity === 1 ? 'pescado' : 'pescados'} en la bandeja`;
+      // Parado y con sitio en la bandeja: el motivo ya está arriba («Apagado», «Sin energía»…).
+      const hide = !v.working && stopped && v.stock < v.capacity;
+      out.push(hide ? tray : `${v.status} · ${tray}`);
       if (v.working && v.etaMin !== null) out.push(`Próximo pescado en ${durationText(v.etaMin)}`);
     }
   } else if (m.type === 'grua') {
     const g = sim.gruaStatus(m.id);
     if (g) {
-      out.push(g.status);
+      if (!(g.phase === 'parada' && stopped)) out.push(g.status);
       const side = g.side > 0 ? 'estribor' : 'babor';
       out.push(`Alcance ${fmtNum(g.range)} m por ${side} · ${g.inRange} ${g.inRange === 1 ? 'resto' : 'restos'} a su alcance`);
     }
