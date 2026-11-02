@@ -49,6 +49,12 @@ export class UI {
   private panel: PanelRequest | null = null;
   private ps: PanelState = {};
   private panelTimer = 0;
+  /** Vista del panel pintada la última vez (tipo y pestaña): al cambiar, el panel se monta de nuevo. */
+  private panelView: string | null = null;
+  /** El panel montado viene de un cambio de pestaña (sin animación de entrada mientras viva). */
+  private panelSwap = false;
+  /** Repintados del panel montado (al segundo se marca `pn-settled`, que fuerza un repintado entero). */
+  private panelPaints = 0;
   /** El panel se abrió en este frame: la E que lo abrió no debe cerrarlo. */
   private skipE = false;
   private scale = 1;
@@ -207,6 +213,9 @@ export class UI {
     this.sfx('ui_cerrar');
     this.panel = null;
     this.ps = {};
+    this.panelView = null;
+    this.panelSwap = false;
+    this.panelPaints = 0;
     this.env.hover = null;
     this.tip.hide();
     this.drag.cancel();
@@ -403,6 +412,21 @@ export class UI {
       return;
     }
     this.panelLayer.classList.add('open');
+    // Al cambiar de pestaña (Objetos → Diario → Cuaderno…) el panel se monta entero otra vez, sin la
+    // animación de entrada: reutilizar el mismo elemento con un contenido muy distinto dejaba sin
+    // repintar parte de su fondo en Chromium.
+    const viewKey = panelViewKey(req, this.ps);
+    if (viewKey !== this.panelView) {
+      // La clase se queda mientras viva este elemento: quitarla relanzaría la animación de entrada.
+      this.panelSwap = this.panelView !== null && this.panelView.split(':')[0] === req.kind;
+      if (this.panelSwap) this.tip.hide();
+      this.panelView = viewKey;
+      this.panelPaints = 0;
+    }
+    const swapped = this.panelSwap;
+    // Al segundo repintado (≈0,15 s después de montarlo) una clase sin efecto visible obliga a repintar
+    // el panel entero: con mucho contenido nuevo, Chromium podía dejar sin pintar parte de su fondo.
+    const settled = this.panelPaints++ > 0;
     patch(
       this.panelLayer,
       h(
@@ -416,7 +440,7 @@ export class UI {
         }),
         h(
           'div',
-          { key: `pn-${req.kind}`, class: cx('pn', 'interactive', `pn-${req.kind}`, view.cls), role: 'dialog', 'aria-label': view.title },
+          { key: `pn-${viewKey}`, class: cx('pn', 'interactive', `pn-${req.kind}`, swapped && 'pn-swap', settled && 'pn-settled', view.cls), role: 'dialog', 'aria-label': view.title },
           h(
             'header',
             { class: 'pn-head' },
@@ -504,4 +528,12 @@ export class UI {
   get hoverKey(): string | null {
     return this.env.hover ? `${refKey(this.env.hover.ref)}#${this.env.hover.slot}` : null;
   }
+}
+
+/**
+ * Clave de la vista de un panel: el tipo y, en el inventario, la pestaña y la vista del Diario.
+ * Cambia al cambiar de pestaña (y entonces el panel se monta de nuevo); no cambia al repintar.
+ */
+export function panelViewKey(req: PanelRequest, ps: PanelState): string {
+  return req.kind === 'inventory' ? `${req.kind}:${ps.tab ?? 'objetos'}:${ps.tab === 'diario' ? (ps.diary ?? 'log') : ''}` : req.kind;
 }

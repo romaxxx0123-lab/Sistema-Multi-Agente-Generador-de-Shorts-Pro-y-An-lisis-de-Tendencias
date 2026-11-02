@@ -53,6 +53,16 @@
   }
 }
 
+/* Cambio de pestaña: el panel se monta de nuevo, pero sin volver a animar la entrada. */
+.pn.pn-swap {
+  animation: none;
+}
+
+/* Sin efecto visible: al aparecer tras montar el panel, obliga a Chromium a repintarlo entero. */
+.pn.pn-settled {
+  outline: 1px solid transparent;
+}
+
 .pn.pn-mid {
   width: min(800px, calc(100% - 32px));
   height: auto;

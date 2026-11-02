@@ -50,6 +50,7 @@ import type { ModuleInstance } from '../src/sim/types';
 import { CAPTAIN_COURSE_LABEL } from '../src/sim/voyage';
 import { SIGHTING_GLYPH } from '../src/ui/icons';
 import { Menus } from '../src/ui/menus';
+import { panelViewKey } from '../src/ui/UI';
 import { CATEGORY_NAMES, moduleSubtitle, radioMessages, upgradeEffectsText } from '../src/ui/model';
 import { finalRegionOnChart, renderHelm } from '../src/ui/panels/helm';
 import { renderInventory } from '../src/ui/panels/inventory';
@@ -1119,6 +1120,18 @@ describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
     r.update(total, { hidden: false });
     expect(r.visible).toBe(false);
     expect(layer.childNodes[0]?.childNodes.length ?? 0).toBe(0);
+  });
+
+  it('la clave de vista del panel cambia con la pestaña y la vista del Diario (el panel se monta de nuevo), no al repintar', () => {
+    const inv = { kind: 'inventory' } as const;
+    expect(panelViewKey(inv, {})).toBe(panelViewKey(inv, { tab: 'objetos' }));
+    expect(panelViewKey(inv, { tab: 'objetos' })).not.toBe(panelViewKey(inv, { tab: 'diario' }));
+    expect(panelViewKey(inv, { tab: 'diario' })).toBe(panelViewKey(inv, { tab: 'diario', diary: 'log' }));
+    expect(panelViewKey(inv, { tab: 'diario', diary: 'log' })).not.toBe(panelViewKey(inv, { tab: 'diario', diary: 'cuaderno' }));
+    // La hoja abierta, el objeto seleccionado o la vista del Diario fuera de esa pestaña no cuentan.
+    expect(panelViewKey(inv, { tab: 'diario', diary: 'cuaderno', page: 2 })).toBe(panelViewKey(inv, { tab: 'diario', diary: 'cuaderno', page: 5 }));
+    expect(panelViewKey(inv, { tab: 'objetos', diary: 'cuaderno' })).toBe(panelViewKey(inv, { tab: 'objetos' }));
+    expect(panelViewKey({ kind: 'station', moduleId: 3 }, { tab: 'x' })).toBe('station');
   });
 
   it('una hoja leída desde la mochila se abre en el Cuaderno; si no, en el lector (que nunca tapa un panel)', () => {
