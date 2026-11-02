@@ -128,19 +128,21 @@ void main() {
 const GLOW_FRAG = /* glsl */ `
 uniform float uMirror;
 uniform float uTime;
+uniform float uCoreWhite;
 varying vec3 vCol;
 varying float vA;
 void main() {
   vec2 q = gl_PointCoord * 2.0 - 1.0;
   float a;
 #ifdef STAR
+  // Baliza: núcleo saturado (blanco solo de noche, cuando deslumbra), halo y cuatro rayos.
   float r = length(q);
-  float core = smoothstep(0.22, 0.0, r);
-  float halo = exp(-r * r * 6.0) * 0.55;
-  float rays = exp(-abs(q.x) * 14.0) * exp(-abs(q.y) * 1.8) + exp(-abs(q.y) * 14.0) * exp(-abs(q.x) * 1.8);
-  a = clamp(core + halo + rays * 0.5, 0.0, 1.0) * vA;
+  float core = smoothstep(0.3, 0.05, r);
+  float halo = exp(-r * r * 4.0) * 0.7;
+  float rays = exp(-abs(q.x) * 12.0) * exp(-abs(q.y) * 1.6) + exp(-abs(q.y) * 12.0) * exp(-abs(q.x) * 1.6);
+  a = clamp(core + halo + rays * 0.6, 0.0, 1.0) * vA;
   if (a < 0.004) discard;
-  gl_FragColor = vec4(mix(vCol, vec3(1.0), core * 0.55), a);
+  gl_FragColor = vec4(mix(vCol, vec3(1.0), core * uCoreWhite * 0.6), a);
 #else
   if (uMirror > 0.5) {
     // Reflejo: estela vertical estrecha que tiembla con el agua.
@@ -257,6 +259,7 @@ export class GlowPoints {
         uMaxPx: { value: opts.maxPx ?? 96 },
         uMirror: { value: opts.mirror ? 1 : 0 },
         uDimSmall: { value: opts.dimSmall === false ? 0 : 1 },
+        uCoreWhite: { value: 0 },
       },
     });
     this.points = new THREE.Points(this.geometry, this.material);
@@ -279,6 +282,11 @@ export class GlowPoints {
   /** Visibilidad mínima con niebla (0..1). */
   set fogFloor(v: number) {
     (this.material.uniforms['uFogFloor'] as { value: number }).value = v;
+  }
+
+  /** Estilo baliza: cuánto se blanquea el núcleo (de noche deslumbra; de día, verde saturado). */
+  set coreWhite(v: number) {
+    (this.material.uniforms['uCoreWhite'] as { value: number }).value = v;
   }
 
   /** Mueve un halo dinámico (chispas, farolillos). Llamar a `commit` al terminar. */

@@ -107,6 +107,18 @@ export function tierPlaque(g: GeoBuilder, m: ModuleInstance, layout: ShipLayout,
   return true;
 }
 
+/** ¿Un rectángulo en planta pisa el hueco de una puerta (con un pequeño margen)? */
+function overDoor(doors: readonly DoorInfo[], ax: number, az: number, bx: number, bz: number): boolean {
+  return doors.some((d) => {
+    const hw = d.width / 2 + 0.05;
+    const dx0 = d.axis === 'x' ? d.x - hw : d.x - 0.3;
+    const dx1 = d.axis === 'x' ? d.x + hw : d.x + 0.3;
+    const dz0 = d.axis === 'z' ? d.z - hw : d.z - 0.3;
+    const dz1 = d.axis === 'z' ? d.z + hw : d.z + 0.3;
+    return dx1 > ax && dx0 < bx && dz1 > az && dz0 < bz;
+  });
+}
+
 /** Esquina libre de un módulo cerrado para un altillo de `size` m: sin muebles altos ni la puerta debajo. */
 export function freeCorner(m: ModuleInstance, layout: ShipLayout, props: readonly PropInstance[], size: number, clearH: number): { x: number; z: number; sx: number; sz: number } | null {
   const cells = moduleCells(m).filter((c) => c.level === m.level);
@@ -136,16 +148,7 @@ export function freeCorner(m: ModuleInstance, layout: ShipLayout, props: readonl
     const az = Math.min(cz, cz + sz * size);
     const bz = Math.max(cz, cz + sz * size);
     const tallHit = props.some((p) => p.moduleId === m.id && p.y - levelY(m.level) + p.height > clearH && p.x + p.hx > ax && p.x - p.hx < bx && p.z + p.hz > az && p.z - p.hz < bz);
-    if (tallHit) continue;
-    const doorHit = doors.some((d) => {
-      const hw = d.width / 2 + 0.15;
-      const dx0 = d.axis === 'x' ? d.x - hw : d.x - 0.3;
-      const dx1 = d.axis === 'x' ? d.x + hw : d.x + 0.3;
-      const dz0 = d.axis === 'z' ? d.z - hw : d.z - 0.3;
-      const dz1 = d.axis === 'z' ? d.z + hw : d.z + 0.3;
-      return dx1 > ax && dx0 < bx && dz1 > az && dz0 < bz;
-    });
-    if (doorHit) continue;
+    if (tallHit || overDoor(doors, ax, az, bx, bz)) continue;
     return { x: cx, z: cz, sx, sz };
   }
   return null;
@@ -154,9 +157,10 @@ export function freeCorner(m: ModuleInstance, layout: ShipLayout, props: readonl
 /** Altillo del almacén mejorado: plataforma sobre escuadras, barandilla, escala y género. */
 export function storeLoft(g: GeoBuilder, m: ModuleInstance, layout: ShipLayout, props: readonly PropInstance[]): boolean {
   if (m.type !== 'almacen' || moduleTier(m) < 2 || m.status === 'construction') return false;
-  const size = 1.3;
   const y = levelY(m.level) + 2.2;
-  const c = freeCorner(m, layout, props, size, 2.05);
+  let size = 1.3;
+  let c = freeCorner(m, layout, props, size, 2.05);
+  if (!c) c = freeCorner(m, layout, props, (size = 1.05), 2.05);
   if (!c) return false;
   const { x, z, sx, sz } = c;
   const X = (u: number): number => x + sx * u;
@@ -183,10 +187,26 @@ export function storeLoft(g: GeoBuilder, m: ModuleInstance, layout: ShipLayout, 
   for (const v of [0.05, size * 0.5]) box(size - 0.06, y + 0.05, v - 0.025, size - 0.01, y + rh, v + 0.025, dark);
   box(0, y + rh - 0.05, size - 0.06, size, y + rh, size - 0.01, plank);
   box(size - 0.06, y + rh - 0.05, 0, size - 0.01, y + rh, size, plank);
-  // escala pegada a la pared, junto al altillo
-  const lu = size + 0.18;
-  for (const du of [-0.17, 0.17]) box(lu + du - 0.025, levelY(m.level), 0.02, lu + du + 0.025, y + 0.6, 0.07, plank);
-  for (let k = 1; k * 0.3 < y - levelY(m.level) + 0.5; k++) box(lu - 0.17, levelY(m.level) + k * 0.3, 0.03, lu + 0.17, levelY(m.level) + k * 0.3 + 0.035, 0.08, plank);
+  // escala pegada a una de las dos paredes, junto al altillo (la que no tiene la puerta al lado)
+  const lu = size + 0.2;
+  const doors = layout.doors.filter((d) => d.level === m.level);
+  const y0 = levelY(m.level);
+  const along = (u: number, v: number): [number, number] => [u, v];
+  const ladderOn = [false, true].find((swap) => {
+    const [u0, v0] = swap ? along(0, lu - 0.25) : along(lu - 0.25, 0);
+    const [u1, v1] = swap ? along(0.12, lu + 0.25) : along(lu + 0.25, 0.12);
+    const ax = Math.min(X(u0), X(u1));
+    const bx = Math.max(X(u0), X(u1));
+    const az = Math.min(Z(v0), Z(v1));
+    const bz = Math.max(Z(v0), Z(v1));
+    const blocked = props.some((p) => p.moduleId === m.id && p.x + p.hx > ax && p.x - p.hx < bx && p.z + p.hz > az && p.z - p.hz < bz);
+    return !blocked && !overDoor(doors, ax, az, bx, bz);
+  });
+  if (ladderOn !== undefined) {
+    const lbox = (a: number, yy0: number, b: number, a1: number, yy1: number, b1: number): void => (ladderOn ? box(b, yy0, a, b1, yy1, a1, plank) : box(a, yy0, b, a1, yy1, b1, plank));
+    for (const du of [-0.17, 0.17]) lbox(lu + du - 0.025, y0, 0.02, lu + du + 0.025, y + 0.6, 0.07);
+    for (let k = 1; k * 0.3 < y - y0 + 0.5; k++) lbox(lu - 0.17, y0 + k * 0.3, 0.03, lu + 0.17, y0 + k * 0.3 + 0.035, 0.08);
+  }
   // género almacenado arriba
   crate(g, X(0.35), y + 0.05, Z(0.35), 0.42, 0.34, 0.42, '#c8995f', 0.1);
   crate(g, X(0.8), y + 0.05, Z(0.3), 0.36, 0.3, 0.36, '#b8895a', -0.2);

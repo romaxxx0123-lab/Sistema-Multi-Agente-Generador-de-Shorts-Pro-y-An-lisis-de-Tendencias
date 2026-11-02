@@ -215,7 +215,7 @@ interface Boat {
   wake: number;
 }
 
-const BEAM_COLOR = '#7dffb0';
+const BEAM_COLOR = '#55ff8c';
 
 export class HarborView {
   readonly root = new THREE.Group();
@@ -308,7 +308,7 @@ export class HarborView {
     const v = this.variant('torre', () => greenTowerModel(77));
     const e = this.makeEntry('torre', v, x, TOWER_Z, -0.35, instant, true);
     e.bob = 0;
-    const star = new GlowPoints(this.shared, [{ p: [0, TOWER_LIGHT_Y, 0], color: '#3dff8a', size: 30 }], { style: 'star', minPx: 10, maxPx: 120, fogFloor: 0.55, dimSmall: false });
+    const star = new GlowPoints(this.shared, [{ p: [0, TOWER_LIGHT_Y, 0], color: '#22e86a', size: 36 }], { style: 'star', minPx: 15, maxPx: 140, fogFloor: 0.85, dimSmall: false });
     star.points.name = 'luz-verde';
     e.group.add(star.points);
     const beam = greenBeam(320, 18);
@@ -503,9 +503,11 @@ export class HarborView {
         this.disposeTower();
       } else {
         const op = THREE.MathUtils.clamp(t.fade, 0, 1) * vis;
-        // La luz verde se ve de día y de noche; con niebla espesa apenas.
-        t.star.intensity = op * (0.75 + 0.25 * this.level) * (1 - 0.7 * atm.fogAmount);
-        t.star.fogFloor = 0.55 * (1 - 0.8 * atm.fogAmount);
+        // La luz verde se ve de día y de noche (late despacio); con niebla espesa apenas.
+        const pulse = 0.88 + 0.12 * Math.sin(this.time * 1.3);
+        t.star.intensity = op * pulse * (1 - 0.7 * atm.fogAmount);
+        t.star.fogFloor = 0.85 * (1 - 0.8 * atm.fogAmount);
+        t.star.coreWhite = this.level;
         // La linterna siempre luce algo (también de día).
         t.lit.uLights.value = Math.max(this.level, 0.45) * op;
         const beamK = THREE.MathUtils.clamp((1 - atm.day) * 1.25 + atm.fogAmount * 0.4, 0, 1) * op;
@@ -513,7 +515,7 @@ export class HarborView {
         t.beam.rotation.y = this.time * 0.55;
         const bm = t.beam.material as THREE.MeshBasicMaterial;
         const dist = Math.hypot(t.x, t.z);
-        bm.opacity = 0.2 * beamK * Math.max(0.2, Math.exp(-((atm.fogDensity * dist) ** 2)));
+        bm.opacity = 0.15 * beamK * Math.max(0.25, Math.exp(-((atm.fogDensity * dist) ** 2)));
         // Gaviotas sobre la torre (de día, en el puerto)
         const gulls = span?.mode === 'port' ? THREE.MathUtils.smoothstep(atm.day, 0.35, 0.8) * (1 - atm.storm) * op : 0;
         t.birds.update(dt, gulls * 0.75, 0);

@@ -5,22 +5,29 @@
  */
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { MODULE_LIST, type PropKind } from '../src/data/modules';
+import { MODULE_LIST, moduleDef, type PropKind } from '../src/data/modules';
 import { DebrisView } from '../src/render/DebrisView';
 import { NpcView, decideNpcPose } from '../src/render/NpcView';
 import { PlayerAvatar } from '../src/render/PlayerAvatar';
 import { ShipView, moduleTint } from '../src/render/ShipView';
 import { wrapText } from '../src/render/ship/bubble';
-import { buildPlantGeometry } from '../src/render/ship/dynamic';
-import { bedPose, seatsOf } from '../src/render/ship/furniture';
+import { CharacterRig, lookFromAppearance, type RigPose } from '../src/render/ship/character';
+import { buildPlantGeometry, craneView, createDynamic, radarActive, smokerWorking, viveroRunning, type DynContext } from '../src/render/ship/dynamic';
+import { bedPose, gameStools, seatsOf } from '../src/render/ship/furniture';
 import { GeoBuilder } from '../src/render/ship/geo';
 import { BOW_LENGTH, KEEL_Y, bowStartX, buildHull, hullOutline, insideHull, sternX } from '../src/render/ship/hull';
-import { MODELLED_KINDS, propModel } from '../src/render/ship/props';
+import { ShipMaterials } from '../src/render/ship/materials';
+import { Particles } from '../src/render/ship/particles';
+import { MODELLED_KINDS, localDims, propModel, propTier, stoolOffsets, type PropModel } from '../src/render/ship/props';
 import { buildStructure, makeLevelBuilders } from '../src/render/ship/structure';
-import { CELL, LEVEL_H } from '../src/sim/constants';
+import { brassPlaque, freeCorner, mainDoor, romanNumeral, storeLoft, tierPlaque } from '../src/render/ship/tiers';
+import { CELL, LEVEL_H, WATERLINE_Y } from '../src/sim/constants';
+import { GRUA_CYCLE_MIN, GRUA_HOOK_MIN } from '../src/sim/debris';
 import { createNewGame } from '../src/sim/newGame';
-import { computeLayout, instantiateModule } from '../src/sim/ship';
-import type { GameState } from '../src/sim/types';
+import { GAME_REACH, SOFA_SEATS, seatPose } from '../src/sim/npc';
+import { computeLayout, instantiateModule, pointToCell, type PropInstance, type ShipLayout } from '../src/sim/ship';
+import type { Simulation } from '../src/sim/Simulation';
+import type { GameState, ModuleInstance } from '../src/sim/types';
 
 function hasNaN(g: THREE.BufferGeometry): boolean {
   const a = g.getAttribute('position').array as ArrayLike<number>;
@@ -39,8 +46,37 @@ camera.position.set(0, 5, 0);
 function newView(): { view: ShipView; root: THREE.Group; state: GameState } {
   const root = new THREE.Group();
   const view = new ShipView(root);
+  // en las pruebas, cada cambio se aplica entero en el mismo frame (salvo donde se prueba el reparto)
+  view.rebuildBudgetMs = Infinity;
   const state = createNewGame(3);
   return { view, root, state };
+}
+
+const OPTS = { hideAboveLevel: null, cutaway: false, highlight: null };
+
+/** Añade un módulo terminado al barco y devuelve el módulo y el layout nuevo. */
+function addModule(state: GameState, type: string, level: number, x: number, z: number, rot: 0 | 1 | 2 | 3 = 0): { m: ModuleInstance; layout: ShipLayout } {
+  const m = instantiateModule(state.nextId++, type, level, x, z, rot, 'active');
+  state.ship.modules.push(m);
+  state.ship.revision++;
+  return { m, layout: computeLayout(state.ship) };
+}
+
+/** Malla sólida fusionada de un nivel. */
+function levelSolid(root: THREE.Object3D, l: number): THREE.Mesh {
+  return root.getObjectByName(`nivel-${l}-solido`) as THREE.Mesh;
+}
+
+function sumAttr(mesh: THREE.Mesh, name: string): number {
+  const a = mesh.geometry.getAttribute(name).array as ArrayLike<number>;
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i]!;
+  return s;
+}
+
+/** Contexto de animación suelto para probar un comportamiento dinámico fuera de ShipView. */
+function dynCtx(state: GameState, module: ModuleInstance | undefined, t: number, mats: ShipMaterials, particles: Particles): DynContext {
+  return { state, module, t, dt: 1 / 30, night: 0.8, particles, lights: [], mats, maxLevel: 9 };
 }
 
 describe('constructor de geometría', () => {
@@ -99,7 +135,8 @@ describe('modelos de props', () => {
         const bb = model.solid.boundingBox!;
         // Margen: tubo del fogón, gotero de la camilla, flecos de la alfombra…
         const tol = 0.45;
-        if (p.kind !== 'alfombra' && p.kind !== 'silla') {
+        // La alfombra y la silla no colisionan; la mesa de juegos lleva sus taburetes alrededor (tampoco).
+        if (p.kind !== 'alfombra' && p.kind !== 'silla' && p.kind !== 'mesa_juegos') {
           expect(bb.max.x, p.kind).toBeLessThan(hx + tol);
           expect(bb.min.x, p.kind).toBeGreaterThan(-hx - tol);
           expect(bb.max.z, p.kind).toBeLessThan(hz + tol);
@@ -178,25 +215,31 @@ describe('ShipView', () => {
   it('construye pocas mallas fusionadas y solo reconstruye cuando cambia el barco', () => {
     const { view, state } = newView();
     const layout = computeLayout(state.ship);
-    const opts = { hideAboveLevel: null, cutaway: false, highlight: null };
-    view.sync(state, layout, opts, 1 / 60, camera);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.rebuilds).toBe(1);
+    expect(view.stats.levelRebuilds).toBe(layout.levels + 1);
     expect(view.stats.staticMeshes).toBeLessThanOrEqual(5 * (layout.levels + 1));
-    view.sync(state, layout, opts, 1 / 60, camera);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.rebuilds).toBe(1);
-    // un módulo dañado se ve más oscuro → reconstrucción
-    state.ship.modules[0]!.condition = 30;
-    view.sync(state, layout, opts, 1 / 60, camera);
-    expect(view.stats.rebuilds).toBe(2);
-    expect(moduleTint(state.ship.modules[0])).toBeLessThan(1);
-    // nueva distribución → reconstrucción
+    // subir la revisión sin cambiar nada de lo que se dibuja no rehace ningún nivel
     state.ship.revision++;
     const l2 = computeLayout(state.ship);
-    view.sync(state, l2, opts, 1 / 60, camera);
-    expect(view.stats.rebuilds).toBe(3);
+    view.sync(state, l2, OPTS, 1 / 60, camera);
+    expect(view.stats.levelRebuilds).toBe(layout.levels + 1);
+    // un módulo nuevo rehace su nivel
+    addModule(state, 'deposito', 0, 1, 0);
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.stats.rebuilds).toBe(2);
+    expect(view.stats.lastRebuildLevels).toBe(1);
+    // un módulo dañado se ve más oscuro, pero sin reconstruir (ver «reconstrucción por niveles»)
+    state.ship.modules[0]!.condition = 30;
+    expect(moduleTint(state.ship.modules[0])).toBeLessThan(1);
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.stats.rebuilds).toBe(2);
     view.reset();
-    view.sync(state, l2, opts, 1 / 60, camera);
-    expect(view.stats.rebuilds).toBe(4);
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.stats.rebuilds).toBe(3);
+    expect(view.stats.lastRebuildLevels).toBe(layout.levels + 1);
   });
 
   it('expone el objeto 3D de cada prop con sus datos', () => {
@@ -391,5 +434,556 @@ describe('restos flotantes', () => {
     v.sync(st, 1 / 30, () => 1.2);
     expect(v.objectOf(5)).toBeNull();
     expect(root.getObjectByName('aro-resaltado')!.visible).toBe(false);
+  });
+});
+
+/* ================================================================== */
+/* Ronda de contenido 2                                                */
+/* ================================================================== */
+
+/** Triángulos de todo lo que dibuja un modelo (sólido, cristal, luz, partes móviles y articuladas). */
+function modelTris(m: PropModel): number {
+  return triCount(m.solid) + triCount(m.glass) + triCount(m.glow) + triCount(m.moving) + triCount(m.contents) + Object.values(m.parts).reduce((a, g) => a + triCount(g), 0);
+}
+
+describe('módulos especializados: modelos', () => {
+  const NEW_KINDS: PropKind[] = ['sofa', 'mesa_juegos', 'estanteria_libros', 'ahumadero', 'tanque_peces', 'grua', 'radar'];
+
+  it('los siete muebles nuevos tienen un modelo propio y detallado (no una caja)', () => {
+    for (const k of NEW_KINDS) {
+      const spec = MODULE_LIST.flatMap((m) => m.props).find((p) => p.kind === k)!;
+      const [hx, hz, h] = spec.collider!;
+      const m = propModel(k, { hx, hz, h });
+      expect(modelTris(m), k).toBeGreaterThan(150);
+      expect(hasNaN(m.solid), k).toBe(false);
+      for (const g of Object.values(m.parts)) expect(hasNaN(g), k).toBe(false);
+    }
+  });
+
+  it('ahumadero con chimenea, vivero con agua y peces, grúa articulada y radar con antena giratoria', () => {
+    const sm = propModel('ahumadero', { hx: 1, hz: 0.7, h: 2 });
+    expect(sm.anchors.chimney).toBeDefined();
+    expect(sm.anchors.firebox).toBeDefined();
+    expect(sm.anchors.chimney2).toBeUndefined();
+    // el de tiro doble tiene dos chimeneas y dos hogares
+    const sm2 = propModel('ahumadero', { hx: 1, hz: 0.7, h: 2 }, 2, 'ahumadero');
+    expect(sm2.anchors.chimney2).toBeDefined();
+    expect(sm2.anchors.firebox2).toBeDefined();
+    const tank = propModel('tanque_peces', { hx: 1.4, hz: 1, h: 1.3 });
+    expect(tank.glass).not.toBeNull();
+    expect(tank.anchors.water).toBeDefined();
+    expect(tank.anchors.tank!.y).toBeGreaterThan(0.5);
+    const crane = propModel('grua', { hx: 0.8, hz: 0.8, h: 3.2 });
+    for (const p of ['turret', 'boom', 'jib', 'hook', 'ram', 'drum', 'load']) expect(crane.parts[p], p).toBeDefined();
+    for (const a of ['turret', 'boomPivot', 'boomTip', 'jibTip']) expect(crane.anchors[a], a).toBeDefined();
+    // la pluma larga de la mejora es más larga
+    const crane2 = propModel('grua', { hx: 0.8, hz: 0.8, h: 3.2 }, 2, 'grua');
+    expect(-crane2.anchors.boomTip!.z).toBeGreaterThan(-crane.anchors.boomTip!.z + 0.4);
+    const radar = propModel('radar', { hx: 0.6, hz: 0.6, h: 2.6 });
+    expect(radar.parts.antenna).toBeDefined();
+    expect(radar.anchors.antenna!.y).toBeGreaterThan(2);
+  });
+
+  it('la mesa de juegos tiene tablero, fichas y un taburete en cada puesto de los lados', () => {
+    const offs = stoolOffsets();
+    expect(offs).toHaveLength(4);
+    for (const [x, z] of offs) expect(Math.hypot(x, z)).toBeCloseTo(GAME_REACH, 5);
+    const m = propModel('mesa_juegos', { hx: 0.7, hz: 0.7, h: 0.8 });
+    m.solid.computeBoundingBox();
+    expect(m.solid.boundingBox!.max.x).toBeGreaterThan(GAME_REACH);
+    expect(m.anchors.lamp).toBeDefined();
+  });
+});
+
+describe('niveles de mejora', () => {
+  const upgradable = MODULE_LIST.filter((d) => d.upgrades?.length);
+
+  it('cada nivel de cada módulo mejorable cambia el aspecto de sus muebles, sin romper su geometría', () => {
+    for (const def of upgradable) {
+      let prev = -1;
+      for (let tier = 1; tier <= Math.max(...def.upgrades!.map((u) => u.tier)); tier++) {
+        let total = 0;
+        for (const p of def.props) {
+          const [hx, hz, h] = p.collider ?? [0.4, 0.4, 0.5];
+          const m = propModel(p.kind, { hx, hz, h }, tier, def.id);
+          expect(hasNaN(m.solid), `${def.id} ${p.kind} ${tier}`).toBe(false);
+          m.solid.computeBoundingBox();
+          const bb = m.solid.boundingBox!;
+          expect(bb.min.y, `${def.id} ${p.kind} ${tier}`).toBeGreaterThan(-0.05);
+          // nada atraviesa el techo de una habitación (3 m) salvo las tuberías que ya llegaban a él
+          if (def.enclosed) expect(bb.max.y, `${def.id} ${p.kind} ${tier}`).toBeLessThanOrEqual(3.0 + 1e-3);
+          if (p.kind !== 'alfombra' && p.kind !== 'silla' && p.kind !== 'mesa_juegos') {
+            expect(bb.max.x, `${def.id} ${p.kind} ${tier}`).toBeLessThan(hx + 0.45);
+            expect(bb.min.x, `${def.id} ${p.kind} ${tier}`).toBeGreaterThan(-hx - 0.45);
+            expect(bb.max.z, `${def.id} ${p.kind} ${tier}`).toBeLessThan(hz + 0.45);
+            expect(bb.min.z, `${def.id} ${p.kind} ${tier}`).toBeGreaterThan(-hz - 0.45);
+          }
+          total += modelTris(m);
+        }
+        if (tier > 1) expect(total, `${def.id}: el nivel ${tier} se ve distinto del ${tier - 1}`).not.toBe(prev);
+        prev = total;
+      }
+    }
+  });
+
+  it('la variante solo se aplica a los muebles de su módulo (la mesa de la cocina no lleva mantel)', () => {
+    expect(propTier('mesa', 'comedor', 2)).toBe(2);
+    expect(propTier('mesa', 'cocina', 2)).toBe(1);
+    expect(propTier('estanteria', 'almacen', 7)).toBe(3);
+    expect(propTier('timon', 'puente', 2)).toBe(1);
+    const a = propModel('mesa', { hx: 0.9, hz: 0.6, h: 0.8 }, 2, 'cocina');
+    const b = propModel('mesa', { hx: 0.9, hz: 0.6, h: 0.8 }, 1, 'cocina');
+    expect(a).toBe(b);
+    expect(propModel('mesa', { hx: 0.9, hz: 0.6, h: 0.8 }, 2, 'comedor')).not.toBe(b);
+  });
+
+  it('placa de latón con el número romano: junto a la puerta (fuera) o en el frente del mueble principal', () => {
+    expect(romanNumeral(2)).toBe('II');
+    expect(romanNumeral(3)).toBe('III');
+    const g2 = new GeoBuilder();
+    brassPlaque(g2, 2);
+    const g3 = new GeoBuilder();
+    brassPlaque(g3, 3);
+    expect(g3.triangleCount).toBeGreaterThan(g2.triangleCount);
+    const st = createNewGame(1);
+    const { m: dep, layout } = addModule(st, 'deposito', 0, 1, 0);
+    const modelOf = (p: PropInstance): PropModel => propModel(p.kind, localDims(p), 2, p.moduleType);
+    const cam = st.ship.modules.find((m) => m.type === 'camarote')!;
+    const g = new GeoBuilder();
+    // nivel 1: sin placa
+    expect(tierPlaque(g, cam, layout, layout.props, modelOf)).toBe(false);
+    cam.tier = 2;
+    expect(tierPlaque(g, cam, layout, layout.props, modelOf)).toBe(true);
+    const geo = g.build();
+    const c = geo.boundingBox!.getCenter(new THREE.Vector3());
+    // fuera de la habitación, a la altura de los ojos, junto a la puerta principal
+    const cell = pointToCell(c.x, c.z, layout.width);
+    expect(layout.cells[cam.level]![cell.x]![cell.z]!.moduleId).not.toBe(cam.id);
+    expect(c.y - LEVEL_H * cam.level).toBeCloseTo(1.55, 1);
+    const door = mainDoor(cam, layout)!.door;
+    expect(Math.hypot(c.x - door.x, c.z - door.z)).toBeLessThan(1.3);
+    // módulo abierto: en su mueble principal
+    dep.tier = 3;
+    const gd = new GeoBuilder();
+    expect(tierPlaque(gd, dep, layout, layout.props, modelOf)).toBe(true);
+    const cd = gd.build().boundingBox!.getCenter(new THREE.Vector3());
+    const prop = layout.props.find((p) => p.moduleId === dep.id)!;
+    expect(Math.hypot(cd.x - prop.x, cd.z - prop.z)).toBeLessThan(1.4);
+  });
+
+  it('el almacén mejorado tiene un altillo en una esquina sin muebles altos ni la puerta debajo', () => {
+    const st = createNewGame(1);
+    const layout = computeLayout(st.ship);
+    const alm = st.ship.modules.find((m) => m.type === 'almacen')!;
+    const g = new GeoBuilder();
+    expect(storeLoft(g, alm, layout, layout.props)).toBe(false);
+    alm.tier = 2;
+    expect(storeLoft(g, alm, layout, layout.props)).toBe(true);
+    const size = freeCorner(alm, layout, layout.props, 1.3, 2.05) ? 1.3 : 1.05;
+    const corner = freeCorner(alm, layout, layout.props, size, 2.05)!;
+    expect(corner).not.toBeNull();
+    const x0 = Math.min(corner.x, corner.x + corner.sx * size);
+    const x1 = Math.max(corner.x, corner.x + corner.sx * size);
+    const z0 = Math.min(corner.z, corner.z + corner.sz * size);
+    const z1 = Math.max(corner.z, corner.z + corner.sz * size);
+    for (const p of layout.props) {
+      if (p.moduleId !== alm.id || p.height <= 2.05) continue;
+      const overlap = p.x + p.hx > x0 && p.x - p.hx < x1 && p.z + p.hz > z0 && p.z - p.hz < z1;
+      expect(overlap, p.kind).toBe(false);
+    }
+    const door = mainDoor(alm, layout)!.door;
+    const overlapX = door.axis === 'x' ? door.x + door.width / 2 > x0 && door.x - door.width / 2 < x1 : door.x > x0 - 0.2 && door.x < x1 + 0.2;
+    const overlapZ = door.axis === 'z' ? door.z + door.width / 2 > z0 && door.z - door.width / 2 < z1 : door.z > z0 - 0.2 && door.z < z1 + 0.2;
+    expect(overlapX && overlapZ).toBe(false);
+    // el altillo queda por encima de la cabeza
+    const bb = g.build().boundingBox!;
+    expect(bb.max.y - LEVEL_H * alm.level).toBeGreaterThan(2.2);
+  });
+
+  it('ShipView: al subir de nivel cambia el mueble y aparece la placa sin rehacer la estructura', () => {
+    const { view, root, state } = newView();
+    let layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    const alm = state.ship.modules.find((m) => m.type === 'almacen')!;
+    const shelf = layout.props.find((p) => p.moduleId === alm.id && p.kind === 'estanteria')!;
+    expect(view.getPropDynamic(shelf.key)!.model.tier).toBe(1);
+    const tris0 = view.stats.triangles;
+    const struct0 = view.stats.structRebuilds;
+    const other = levelSolid(root, 0);
+    alm.tier = 2;
+    state.ship.revision++;
+    layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.getPropDynamic(shelf.key)!.model.tier).toBe(2);
+    expect(view.stats.triangles).toBeGreaterThan(tris0);
+    expect(view.stats.lastRebuildLevels).toBe(1);
+    expect(view.stats.structRebuilds).toBe(struct0);
+    expect(levelSolid(root, 0)).toBe(other);
+  });
+
+  it('una mejora en obras muestra andamio o caballete y un cartel con su barra de progreso', () => {
+    const { view, state } = newView();
+    const alm = state.ship.modules.find((m) => m.type === 'almacen')!;
+    const { m: dep, layout } = addModule(state, 'deposito', 0, 1, 0);
+    alm.upgrade = { toTier: 2, progress: 0.25 };
+    dep.upgrade = { toTier: 2, progress: 0.6 };
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    for (const [m, p] of [[alm, 0.25], [dep, 0.6]] as const) {
+      const o = view.getUpgradeObject(m.id)!;
+      expect(o, m.type).not.toBeNull();
+      const bar = o.getObjectByName('progreso-obra') as THREE.Mesh;
+      expect(bar.scale.x).toBeCloseTo(p * (bar.userData.len as number), 3);
+      // el módulo sigue en uso: sus muebles siguen ahí
+      expect(view.getPropObject(layout.props.find((pp) => pp.moduleId === m.id)!.key)).not.toBeNull();
+    }
+    // el andamio del depósito rodea su mueble; el almacén lleva caballete dentro y cartel fuera
+    const depBox = new THREE.Box3().setFromObject(view.getUpgradeObject(dep.id)!);
+    const prop = layout.props.find((pp) => pp.moduleId === dep.id)!;
+    expect(depBox.containsPoint(new THREE.Vector3(prop.x, prop.y + 1, prop.z))).toBe(true);
+    dep.upgrade.progress = 0.9;
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    const bar = view.getUpgradeObject(dep.id)!.getObjectByName('progreso-obra') as THREE.Mesh;
+    expect(bar.scale.x).toBeCloseTo(0.9 * (bar.userData.len as number), 3);
+    alm.upgrade = null;
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.getUpgradeObject(alm.id)).toBeNull();
+    expect(view.getUpgradeObject(dep.id)).not.toBeNull();
+  });
+});
+
+describe('reconstrucción por niveles (QA P4)', () => {
+  it('los daños oscurecen el módulo cambiando solo los colores, sin reconstruir', () => {
+    const { view, root, state } = newView();
+    const layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    const alm = state.ship.modules.find((m) => m.type === 'almacen')!;
+    const mesh = levelSolid(root, alm.level);
+    const before = sumAttr(mesh, 'color');
+    const lr = view.stats.levelRebuilds;
+    alm.condition = 30;
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.levelRebuilds).toBe(lr);
+    expect(levelSolid(root, alm.level)).toBe(mesh);
+    const dark = sumAttr(mesh, 'color');
+    expect(dark).toBeLessThan(before - 1);
+    alm.status = 'broken';
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(sumAttr(mesh, 'color')).toBeLessThan(dark - 1);
+    alm.status = 'active';
+    alm.condition = 100;
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(sumAttr(mesh, 'color')).toBeCloseTo(before, 2);
+    // y coincide con una vista nueva del mismo barco dañado
+    alm.condition = 30;
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    const fresh = newView();
+    fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(sumAttr(levelSolid(fresh.root, alm.level), 'color')).toBeCloseTo(sumAttr(mesh, 'color'), 2);
+  });
+
+  it('una obra nueva no rehace nada; al terminarla solo cambia su nivel y el resultado es idéntico a reconstruir', () => {
+    const { view, root, state } = newView();
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    const lr = view.stats.levelRebuilds;
+    const sr = view.stats.structRebuilds;
+    const m = instantiateModule(state.nextId++, 'generador', 1, 6, 0, 0, 'construction');
+    state.ship.modules.push(m);
+    state.ship.revision++;
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.stats.levelRebuilds).toBe(lr);
+    expect(view.getSiteObject(m.id)).not.toBeNull();
+    const l0 = levelSolid(root, 0);
+    const l2 = levelSolid(root, 2);
+    m.status = 'active';
+    state.ship.revision++;
+    const layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.lastRebuildLevels).toBe(1);
+    expect(levelSolid(root, 0)).toBe(l0);
+    expect(levelSolid(root, 2)).toBe(l2);
+    expect(view.getPropObject(layout.props.find((p) => p.moduleId === m.id)!.key)).not.toBeNull();
+    // estructura reconstruida solo en su columna y las vecinas
+    expect(view.stats.structRebuilds - sr).toBeLessThanOrEqual(3);
+    const fresh = newView();
+    fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
+    for (let l = 0; l <= layout.levels; l++) {
+      const a = levelSolid(root, l);
+      const b = levelSolid(fresh.root, l);
+      expect(a.geometry.getAttribute('position').count, `nivel ${l}`).toBe(b.geometry.getAttribute('position').count);
+      expect(sumAttr(a, 'position'), `nivel ${l}`).toBeCloseTo(sumAttr(b, 'position'), 1);
+    }
+  });
+
+  it('con poco presupuesto por frame reparte los niveles entre frames sin dejar ninguno a medias', () => {
+    const { view, root, state } = newView();
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    view.rebuildBudgetMs = 0;
+    // una habitación en cubierta cambia su nivel y el techo de abajo del nivel superior
+    const { layout } = addModule(state, 'camarote', 1, 6, 0);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.lastRebuildLevels).toBe(1);
+    const pending = view.pendingLevels;
+    expect(pending).toBeGreaterThan(0);
+    for (let i = 0; i < 5 && view.pendingLevels; i++) view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.pendingLevels).toBe(0);
+    const fresh = newView();
+    fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
+    for (let l = 0; l <= layout.levels; l++) expect(levelSolid(root, l).geometry.getAttribute('position').count).toBe(levelSolid(fresh.root, l).geometry.getAttribute('position').count);
+  });
+
+  it('la firma de cada nivel solo cambia con lo que dibuja', () => {
+    const { view, state } = newView();
+    const layout = computeLayout(state.ship);
+    const mods = new Map(state.ship.modules.map((m) => [m.id, m]));
+    const sigs = [0, 1, 2, 3].map((l) => view.levelSignature(l, state, layout, mods));
+    // dañar un módulo no cambia ninguna firma (va por colores)
+    state.ship.modules[0]!.condition = 10;
+    expect([0, 1, 2, 3].map((l) => view.levelSignature(l, state, layout, mods))).toEqual(sigs);
+    // mejorar el almacén solo cambia su nivel
+    const alm = state.ship.modules.find((m) => m.type === 'almacen')!;
+    alm.tier = 2;
+    const after = [0, 1, 2, 3].map((l) => view.levelSignature(l, state, layout, mods));
+    for (let l = 0; l < 4; l++) expect(after[l] === sigs[l], `nivel ${l}`).toBe(l !== alm.level);
+  });
+});
+
+describe('módulos especializados: animación', () => {
+  it('grúa: sigue el estado guardado en el módulo como gruaStatus/gruaTarget', () => {
+    const st = createNewGame(1);
+    const { m } = addModule(st, 'grua', 1, 6, 0);
+    expect(craneView(m, st).phase).toBe('parada');
+    m.powered = true;
+    m.on = true;
+    m.prodProgress = 1;
+    expect(craneView(m, st).phase).toBe('izando');
+    m.prodProgress = 10;
+    expect(craneView(m, st).phase).toBe('recargando');
+    m.prodProgress = GRUA_CYCLE_MIN;
+    expect(craneView(m, st).phase).toBe('esperando');
+    st.debris.push({ id: 9, kind: 'barril', pos: { x: 12, z: -20 }, vel: { x: 0, z: 0 }, loot: [], spin: 0 });
+    m.prodTarget = 9;
+    m.prodProgress = GRUA_CYCLE_MIN + GRUA_HOOK_MIN / 2;
+    const v = craneView(m, st);
+    expect(v.phase).toBe('enganchando');
+    expect(v.progress).toBeCloseTo(0.5, 5);
+    expect(v.target).toMatchObject({ id: 9, x: 12, z: -20 });
+    st.weather.kind = 'tormenta';
+    expect(craneView(m, st).phase).toBe('tormenta');
+  });
+
+  it('grúa: la torreta gira hacia el resto, el gancho llega a él e iza la red; sin trabajo vigila su costado', () => {
+    const { view, state } = newView();
+    const { m, layout } = addModule(state, 'grua', 1, 6, 0);
+    m.on = true;
+    m.powered = true;
+    const prop = layout.props.find((p) => p.moduleId === m.id)!;
+    const side = prop.z < 0 ? -1 : 1;
+    const target = { x: prop.x + 12, z: prop.z + side * 10 };
+    state.debris.push({ id: 31, kind: 'caja', pos: target, vel: { x: 0, z: 0 }, loot: [], spin: 0 });
+    m.prodTarget = 31;
+    m.prodProgress = GRUA_CYCLE_MIN + GRUA_HOOK_MIN * 0.999;
+    for (let i = 0; i < 150; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
+    const dyn = view.getPropDynamic(prop.key) as unknown as { yaw: number; phase: string };
+    expect(dyn.phase).toBe('enganchando');
+    const dirYaw = prop.yaw + dyn.yaw;
+    const fwd = new THREE.Vector2(-Math.sin(dirYaw), -Math.cos(dirYaw));
+    const want = new THREE.Vector2(target.x - prop.x, target.z - prop.z).normalize();
+    expect(fwd.dot(want)).toBeGreaterThan(Math.cos(0.12));
+    const proxy = view.getPropObject(prop.key)!;
+    proxy.updateMatrix();
+    const hook = proxy.getObjectByName('gancho')!.position.clone().applyMatrix4(proxy.matrix);
+    expect(Math.hypot(hook.x - target.x, hook.z - target.z)).toBeLessThan(0.3);
+    expect(hook.y).toBeLessThan(WATERLINE_Y + 0.6);
+    // izando: la red sube junto al costado
+    state.debris = [];
+    m.prodTarget = null;
+    m.prodProgress = 2;
+    view.sync(state, layout, OPTS, 1 / 30, camera);
+    expect(proxy.getObjectByName('carga')!.visible).toBe(true);
+    // esperando: la pluma apunta hacia fuera de la borda
+    m.prodProgress = GRUA_CYCLE_MIN;
+    for (let i = 0; i < 200; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
+    expect(proxy.getObjectByName('carga')!.visible).toBe(false);
+    expect(-Math.cos(prop.yaw + dyn.yaw) * side).toBeGreaterThan(0.6);
+  });
+
+  it('radar: la antena gira solo con el radar en marcha', () => {
+    const { view, state } = newView();
+    const { m, layout } = addModule(state, 'radar', 1, 6, 0);
+    const prop = layout.props.find((p) => p.moduleId === m.id)!;
+    const ant = (): number => view.getPropObject(prop.key)!.getObjectByName('antena-radar')!.rotation.y;
+    expect(radarActive(m)).toBe(false);
+    for (let i = 0; i < 30; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
+    expect(ant()).toBeCloseTo(0, 3);
+    m.on = true;
+    m.powered = true;
+    for (let i = 0; i < 60; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
+    const a = ant();
+    view.sync(state, layout, OPTS, 1 / 30, camera);
+    expect(Math.abs(ant() - a)).toBeGreaterThan(0.02);
+  });
+
+  it('ahumadero: humo por la chimenea, brasas y pescado colgado mientras ahúma', () => {
+    const st = createNewGame(1);
+    const { m, layout } = addModule(st, 'ahumadero', 1, 6, 0);
+    const prop = layout.props.find((p) => p.moduleId === m.id)!;
+    const model = propModel(prop.kind, localDims(prop), 1, prop.moduleType);
+    const proxy = new THREE.Group();
+    const mats = new ShipMaterials();
+    const parts = new Particles(new THREE.Group());
+    const dyn = createDynamic(prop, proxy, model, 1, mats, null)!;
+    for (let i = 0; i < 60; i++) dyn.update(dynCtx(st, m, i / 30, mats, parts));
+    expect(parts.puffCount).toBe(0);
+    expect(smokerWorking(m)).toBe(false);
+    m.queue.push({ recipeId: 'ahumar', progress: 0 });
+    const lights: DynContext['lights'] = [];
+    for (let i = 0; i < 90; i++) {
+      const c = dynCtx(st, m, 2 + i / 30, mats, parts);
+      dyn.update(c);
+      if (i === 89) lights.push(...c.lights);
+    }
+    expect(parts.puffCount).toBeGreaterThan(5);
+    expect(proxy.getObjectByName('pescado-colgado')!.visible).toBe(true);
+    expect(proxy.getObjectByName('brasas')!.visible).toBe(true);
+    expect(lights.some((l) => l.id.startsWith('ahumadero:'))).toBe(true);
+  });
+
+  it('vivero: los peces nadan siempre y los aireadores burbujean con energía', () => {
+    const st = createNewGame(1);
+    const { m, layout } = addModule(st, 'vivero', 0, 1, 0);
+    m.tier = 2;
+    const prop = layout.props.find((p) => p.moduleId === m.id)!;
+    const model = propModel(prop.kind, localDims(prop), 2, prop.moduleType);
+    const proxy = new THREE.Group();
+    const mats = new ShipMaterials();
+    const parts = new Particles(new THREE.Group());
+    const dyn = createDynamic(prop, proxy, model, 0, mats, null)!;
+    const fish = proxy.children.filter((c) => c.name === 'pez');
+    expect(fish.length).toBeGreaterThanOrEqual(5);
+    dyn.update(dynCtx(st, m, 0, mats, parts));
+    const p0 = fish[0]!.position.clone();
+    for (let i = 0; i < 20; i++) dyn.update(dynCtx(st, m, i / 30, mats, parts));
+    expect(fish[0]!.position.distanceTo(p0)).toBeGreaterThan(0.01);
+    // dentro del tanque
+    const w = model.anchors.water!;
+    const t = model.anchors.tank!;
+    for (const f of fish) {
+      expect(Math.abs(f.position.x)).toBeLessThan(t.x);
+      expect(Math.abs(f.position.z)).toBeLessThan(t.z);
+      expect(f.position.y).toBeGreaterThan(w.y);
+      expect(f.position.y).toBeLessThan(w.y + t.y);
+    }
+    const bubbles = proxy.children.filter((c) => c.name === 'burbuja');
+    expect(bubbles.length).toBeGreaterThan(0);
+    expect(bubbles.every((b) => !b.visible)).toBe(true);
+    m.on = true;
+    m.powered = true;
+    expect(viveroRunning(m)).toBe(true);
+    dyn.update(dynCtx(st, m, 2, mats, parts));
+    expect(bubbles.every((b) => b.visible)).toBe(true);
+  });
+
+  it('sala común: luz cálida del quinqué y, con la estufa, llamas y su resplandor', () => {
+    const st = createNewGame(1);
+    const { m, layout } = addModule(st, 'sala_comun', 0, 1, 0);
+    const mats = new ShipMaterials();
+    const parts = new Particles(new THREE.Group());
+    const table = layout.props.find((p) => p.moduleId === m.id && p.kind === 'mesa_juegos')!;
+    const tdyn = createDynamic(table, new THREE.Group(), propModel(table.kind, localDims(table), 1, table.moduleType), 0, mats, 3)!;
+    const c = dynCtx(st, m, 0, mats, parts);
+    tdyn.update(c);
+    expect(c.lights.some((l) => l.id.startsWith('quinque:'))).toBe(true);
+    const books = layout.props.find((p) => p.moduleId === m.id && p.kind === 'estanteria_libros')!;
+    expect(createDynamic(books, new THREE.Group(), propModel(books.kind, localDims(books), 1, books.moduleType), 0, mats, 3)).toBeNull();
+    const proxy = new THREE.Group();
+    const sdyn = createDynamic(books, proxy, propModel(books.kind, localDims(books), 2, books.moduleType), 0, mats, 3)!;
+    const c2 = dynCtx(st, m, 1, mats, parts);
+    sdyn.update(c2);
+    expect(c2.lights.some((l) => l.id.startsWith('estufa:'))).toBe(true);
+    expect(proxy.getObjectByName('llama-estufa')!.visible).toBe(true);
+  });
+});
+
+describe('habitantes en la sala común', () => {
+  it('las plazas del sofá coinciden con las de la IA y los taburetes rodean la mesa mirándola', () => {
+    const st = createNewGame(1);
+    const { m, layout } = addModule(st, 'sala_comun', 0, 1, 0);
+    const fakeSim = { layout } as unknown as Simulation;
+    const sofa = layout.props.find((p) => p.moduleId === m.id && p.kind === 'sofa')!;
+    const seats = seatsOf(st).filter((s) => s.kind === 'sofa' && s.moduleId === m.id);
+    expect(seats).toHaveLength(SOFA_SEATS.length);
+    SOFA_SEATS.forEach((_, i) => {
+      const ai = seatPose(fakeSim, `${sofa.key}@${i}`)!;
+      expect(seats[i]!.x).toBeCloseTo(ai.x, 5);
+      expect(seats[i]!.z).toBeCloseTo(ai.z, 5);
+      expect(seats[i]!.yaw).toBeCloseTo(ai.yaw, 5);
+    });
+    const table = layout.props.find((p) => p.moduleId === m.id && p.kind === 'mesa_juegos')!;
+    const stools = gameStools(st).filter((s) => s.moduleId === m.id);
+    expect(stools).toHaveLength(4);
+    for (const s of stools) {
+      expect(Math.hypot(s.x - table.x, s.z - table.z)).toBeCloseTo(GAME_REACH, 5);
+      const fx = -Math.sin(s.yaw);
+      const fz = -Math.cos(s.yaw);
+      expect(fx * (table.x - s.x) + fz * (table.z - s.z)).toBeCloseTo(GAME_REACH, 4);
+    }
+  });
+
+  it('juegan a las cartas sentados en su taburete (o de pie si no hay) y leen en el sofá', () => {
+    const st = createNewGame(1);
+    addModule(st, 'sala_comun', 0, 1, 0);
+    const n = st.npcs[0]!;
+    const stools = gameStools(st);
+    const seats = seatsOf(st);
+    n.activity = 'socializing';
+    n.task = { kind: 'ocio', prio: 1, target: null, targetModuleId: null, data: { job: 'sala', game: true, anim: 'jugar', faceYaw: 1.2 } } as unknown as NonNullable<typeof n.task>;
+    n.pos = { x: stools[0]!.x + 0.2, y: stools[0]!.y, z: stools[0]!.z };
+    const sit = decideNpcPose(n, st, 0, seats, stools);
+    expect(sit.pose).toBe('cards');
+    expect(sit.tool).toBe('cartas');
+    expect(sit.x).toBeCloseTo(stools[0]!.x);
+    expect(sit.yaw).toBeCloseTo(stools[0]!.yaw);
+    n.pos = { x: stools[0]!.x + 3, y: stools[0]!.y, z: stools[0]!.z };
+    const stand = decideNpcPose(n, st, 0, seats, stools);
+    expect(stand.pose).toBe('cardsStand');
+    expect(stand.yaw).toBeCloseTo(1.2);
+    expect(decideNpcPose(n, st, 1.5, seats, stools).pose).toBe('walk');
+    const sofaSeat = seats.find((s) => s.kind === 'sofa')!;
+    n.activity = 'idle';
+    n.task = { kind: 'ocio', prio: 1, target: null, targetModuleId: null, data: { job: 'sala', read: true, seated: true } } as unknown as NonNullable<typeof n.task>;
+    n.pos = { x: sofaSeat.x, y: sofaSeat.y, z: sofaSeat.z };
+    const read = decideNpcPose(n, st, 0, seats, stools);
+    expect(read.pose).toBe('read');
+    expect(read.tool).toBe('libro');
+    (n.task!.data as { read: boolean }).read = false;
+    expect(decideNpcPose(n, st, 0, seats, stools).pose).toBe('sit');
+  });
+
+  it('las poses nuevas del personaje son estables y llevan su objeto en la mano', () => {
+    for (const pose of ['cards', 'cardsStand', 'read'] as RigPose[]) {
+      const rig = new CharacterRig(lookFromAppearance({ skin: 1, shirt: 2, pants: 1, hair: 0, hat: false, height: 1 }, 4), 4);
+      for (let i = 0; i < 40; i++) rig.animate({ pose, speed: 0, tool: pose === 'read' ? 'libro' : 'cartas' }, 1 / 30);
+      rig.root.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(rig.root);
+      expect(Number.isFinite(box.min.y) && Number.isFinite(box.max.y), pose).toBe(true);
+      // sentado: la cabeza más baja que de pie
+      expect(box.max.y, pose).toBeLessThan(pose === 'cardsStand' ? 1.95 : 1.55);
+      const tool = rig.root.getObjectByProperty('visible', true);
+      expect(tool).toBeDefined();
+    }
+  });
+});
+
+describe('definiciones usadas por la vista', () => {
+  it('cada módulo mejorable abierto tiene dónde poner su placa', () => {
+    for (const def of MODULE_LIST) {
+      if (!def.upgrades?.length || def.enclosed) continue;
+      const p = def.props.find((pp) => pp.interact) ?? def.props[0]!;
+      const [hx, hz, h] = p.collider ?? [0.4, 0.4, 0.5];
+      expect(propModel(p.kind, { hx, hz, h }, 2, def.id).anchors.plaque, def.id).toBeDefined();
+    }
+    expect(moduleDef('grua').edge).toBe(true);
   });
 });
