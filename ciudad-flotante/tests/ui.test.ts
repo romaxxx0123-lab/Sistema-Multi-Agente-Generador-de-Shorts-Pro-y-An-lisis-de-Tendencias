@@ -1095,14 +1095,16 @@ describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
     const el = layer.childNodes[0] as FElement;
     expect(el.textContent).toContain(STORY_PAGES[1]!.title);
     expect(el.textContent).toContain('abre el cuaderno');
-    expect(el.className).not.toContain('hidden');
+    const sheetClass = (): string => (el.childNodes[0] as FElement).className;
+    expect(sheetClass()).toContain('page-reader');
+    expect(sheetClass()).not.toContain('hidden');
     // Oculto (con un menú o un panel abierto) no se ve y el tiempo no corre: espera a que se cierre.
     r.update(5, { hidden: true });
     expect(r.remaining).toBeCloseTo(total - 1, 5);
-    expect(el.className).toContain('hidden');
+    expect(sheetClass()).toContain('hidden');
     expect(r.visible).toBe(true);
     r.update(0, { hidden: false });
-    expect(el.className).not.toContain('hidden');
+    expect(sheetClass()).not.toContain('hidden');
     r.update(total, { hidden: false });
     expect(r.visible).toBe(false);
     expect(layer.childNodes[0]?.childNodes.length ?? 0).toBe(0);

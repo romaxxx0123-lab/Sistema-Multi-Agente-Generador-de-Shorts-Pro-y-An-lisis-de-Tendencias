@@ -23,6 +23,7 @@ import {
   upgradeList,
   upgradePreview,
 } from '../src/build/catalog';
+import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, upgradeConfirmModel } from '../src/build/confirm';
 import { buildGhostGeometry, dashedRibbon, GridView, reachArcPoints } from '../src/build/ghost';
 import { HUD_GLYPHS } from '../src/build/hud';
 import { hasGlyph, MODULE_GLYPH } from '../src/ui/icons';
@@ -41,6 +42,12 @@ import {
   stairSteps,
   type PlaceSpot,
 } from '../src/build/advice';
+
+/**
+ * Pruebas exhaustivas (cada caso valida la colocación completa con `sim.checkPlace`): ~1-3 s a solas,
+ * pero la batería corre en paralelo con otras y no deben fallar por el límite de 5 s.
+ */
+const HEAVY_TIMEOUT = 30_000;
 
 /* ------------------------------------------------------------------ */
 
@@ -478,7 +485,7 @@ describe('motivos y pistas de colocación', () => {
       }
     }
     expect(proposals).toBeGreaterThan(0);
-  });
+  }, HEAVY_TIMEOUT);
 
   it('todo motivo espacial de rechazo trae una pista de qué hacer', () => {
     const sim = Simulation.newGame(1);
@@ -500,7 +507,7 @@ describe('motivos y pistas de colocación', () => {
     // Motivos de la validación fina (muebles que tapan puertas): también orientan.
     for (const r of ['Taparía la puerta de la cocina', 'Dejaría la cama del camarote sin acceso', 'Bloquearía el paso por una escalera', 'Su puerta quedaría tapada: no se podría entrar', 'No quedaría sitio para usar el fogón'])
       expect(fallbackHint(r), r).toBeTruthy();
-  });
+  }, HEAVY_TIMEOUT);
 });
 
 /* ------------------------------------------------------------------ */
@@ -661,6 +668,58 @@ describe('herramienta Mejorar: estado de cada módulo', () => {
     expect(list.find((u) => u.id === alm.id)?.state).toBe('ok');
     expect(list[list.length - 1]!.state).toBe('max');
     expect(list[list.length - 1]!.type).toBe('camarote');
+  });
+
+  it('diálogos de mejorar y de cancelar la mejora: efectos, coste, tiempo y reembolso', () => {
+    const sim = Simulation.newGame(17);
+    const alm = sim.state.ship.modules.find((m) => m.type === 'almacen')!;
+    giveFor(sim, moduleDef('almacen').upgrades![0]!.cost);
+    const c = upgradeConfirmModel(upgradePreview(sim, alm));
+    expect(c.kind).toBe('upgrade');
+    expect(c.title).toBe('¿Mejorar el almacén?');
+    expect(c.lines[0]).toMatch(/^Nivel 2: Almacén con altillo\. /);
+    // Sin «unas 45 min» (minuto es masculino): la duración va sin artículo.
+    expect(c.lines[1]).toMatch(/^La obra dura 45 min y el almacén se sigue usando mientras tanto\./);
+    expect(c.chips?.map((e) => e.text)).toEqual(['+12 huecos']);
+    expect(c.items.every((i) => i.have !== undefined && i.have >= i.qty)).toBe(true);
+    expect(c.danger).toBe(false);
+
+    expect(sim.startUpgrade(alm.id).ok).toBe(true);
+    sim.tick(5);
+    const k = cancelUpgradeConfirmModel(upgradePreview(sim, alm));
+    expect(k.kind).toBe('cancelUpgrade');
+    expect(k.title).toBe('¿Cancelar la mejora: Almacén con altillo?');
+    expect(k.lines[0]).toMatch(/^La obra va por el \d+ % y le faltan \d+ min\. Si la cancelas, el almacén se queda en el nivel 1\.$/);
+    expect(k.lines.join(' ')).not.toMatch(/\bunas\b/);
+    expect(k.progress).toBeGreaterThan(0);
+    expect(k.items.map((i) => [i.id, i.qty])).toEqual(Object.entries(moduleDef('almacen').upgrades![0]!.cost));
+    expect(k.itemsLabel).toBe('Recuperas');
+    expect(k.danger).toBe(true);
+  });
+
+  it('diálogos de desmontar (pérdidas, mejoras) y de ampliar (coste escalado)', () => {
+    const sim = Simulation.newGame(18);
+    sim.tick(1);
+    const dep = sim.state.ship.modules.find((m) => m.type === 'deposito')!;
+    dep.tier = 2;
+    sim.tick(1);
+    const u = sim.state.utilities;
+    u.waterL = u.water.capacityL;
+    const d = demolishConfirmModel(demolishPreview(sim, dep));
+    expect(d.title).toBe('¿Desmontar el depósito ampliado?');
+    expect(d.lines[0]).toMatch(/también de sus mejoras/);
+    expect(d.warnings?.[0]).toMatch(/^Se perderán \d+ L de agua: la capacidad baja a \d+ L$/);
+    expect(d.confirmLabel).toBe('Desmontar');
+
+    sim.state.unlocks.push(HULL_EXPANSION.unlock);
+    sim.state.ship.hullTier = 1;
+    giveFor(sim, sim.checkExpandHull().cost);
+    const info = expansionInfo(sim, stock(sim));
+    const x = expandConfirmModel(info);
+    expect(x.lines[1]).toBe(`La obra dura ${info.timeText}; puedes ayudar con el martillo en la proa.`);
+    expect(x.lines[2]).toBe('Cada ampliación cuesta más que la anterior: esta es la 2.ª.');
+    // El coste del diálogo es el escalado de la simulación, no el base de los datos.
+    expect(Object.fromEntries(x.items.map((i) => [i.id, i.qty]))).toEqual(sim.checkExpandHull().cost);
   });
 
   it('desmontar: nombre con su nivel, mejora en obras y pérdidas con la capacidad mejorada', () => {

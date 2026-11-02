@@ -10,6 +10,7 @@
  *  - `picking.ts` rayo del ratón → espacio local de `shipRoot` (el barco se balancea) → celda/módulo.
  *  - `ghost.ts`   fantasma de colocación, rejilla del nivel, cajas de demolición y ampliación.
  *  - `catalog.ts` datos de la paleta, resumen del barco, información de módulos (lógica pura).
+ *  - `confirm.ts` textos de los diálogos de confirmación (lógica pura).
  *  - `hud.ts`     interfaz DOM (paleta, niveles, resumen, atajos, rótulos y confirmación).
  *
  * Decisión de marcos: la cámara vive en el MUNDO (no cuelga de `shipRoot`): el barco se mece
@@ -32,14 +33,13 @@ import { registerDebug } from '../game/debug';
 import { CELL, HULL_EXPANSION_CELLS, LEVEL_H, RAIL_H, SHIP_ORIGIN_X, WATERLINE_Y } from '../sim/constants';
 import { cellMin, footprintSize, halfWidthM, levelOfY, levelY, moduleCells, moduleCenter } from '../sim/ship';
 import type { Simulation } from '../sim/Simulation';
-import { durationText } from '../sim/construction';
 import { GRUA_RANGE, gruaRange } from '../sim/debris';
 import { daylight } from '../sim/time';
 import type { ModuleInstance, Rotation } from '../sim/types';
-import { withArticle } from '../sim/utilities';
 import { explainPlacement, levelReason, placeHintSteps, type PlaceSpot } from './advice';
 import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, fmtNum, moduleInfo, paletteModules, shipSummary, stock, upgradeList, upgradePreview, type DemolishPreview, type UpgradePreview } from './catalog';
 import { BoxMarker, GHOST_COLORS, GhostView, GridView, Pulse, ReachArc } from './ghost';
+import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, upgradeConfirmModel } from './confirm';
 import { BuildHud, esc, type ConfirmModel, type HudActions, type TipModel } from './hud';
 import { DEFAULT_PITCH, DEFAULT_YAW, fitDistance, OrbitRig, rescaleDistance } from './orbit';
 import { anchorFor, continuousCell, intersectLevel, moduleBox, pickModule, toShipLocalRay } from './picking';
@@ -964,33 +964,8 @@ export class BuildMode {
       return;
     }
     this.confirm = { kind: 'demolish', moduleId: m.id };
-    this.hud!.showConfirm(this.demolishConfirm(prev));
+    this.hud!.showConfirm(demolishConfirmModel(prev));
     this.ctx.bus.emit('sfx', { name: 'ui_click' });
-  }
-
-  private demolishConfirm(p: DemolishPreview): ConfirmModel {
-    const lines = p.inConstruction
-      ? ['La obra se cancela y se recuperan todos los materiales.']
-      : [
-          `Se recupera la mitad de los materiales${p.tier > 1 ? ' (también de sus mejoras)' : ''}. Los habitantes que dormían o trabajaban aquí buscarán otro sitio.`,
-          ...(p.upgradeInProgress ? [`La mejora en obras (${p.upgradeInProgress}) se cancela y se recupera entera.`] : []),
-        ];
-    return {
-      kind: 'demolish',
-      title: p.inConstruction ? `¿Cancelar la obra: ${p.name}?` : `¿Desmontar ${withArticle(p.name)}?`,
-      glyph: 'trash',
-      lines,
-      items: p.refund.map((r) => ({ id: r.id, name: r.name, qty: r.qty })),
-      itemsLabel: 'Recuperas',
-      // El agua y la carga no caben en la caja: se avisa antes, no después.
-      warnings: p.losses,
-      note:
-        p.contents > 0
-          ? `Lo que contenga (${p.contents} ${p.contents === 1 ? 'objeto' : 'objetos'}) quedará en una caja en el suelo, junto con los materiales.`
-          : 'Lo que contenga quedará en una caja en el suelo, junto con los materiales.',
-      confirmLabel: p.inConstruction ? 'Cancelar obra' : 'Desmontar',
-      danger: true,
-    };
   }
 
   /** Clic con la herramienta Mejorar sobre un módulo del barco. */
@@ -1014,7 +989,7 @@ export class BuildMode {
     }
     const u = upgradePreview(sim, m);
     if (u.state === 'busy') {
-      this.openConfirm({ kind: 'cancelUpgrade', moduleId: m.id }, this.cancelUpgradeConfirm(u));
+      this.openConfirm({ kind: 'cancelUpgrade', moduleId: m.id }, cancelUpgradeConfirmModel(u));
       return;
     }
     if (u.state !== 'ok') {
@@ -1022,7 +997,7 @@ export class BuildMode {
       this.ctx.bus.emit('sfx', { name: 'ui_error' });
       return;
     }
-    this.openConfirm({ kind: 'upgrade', moduleId: m.id }, this.upgradeConfirm(u));
+    this.openConfirm({ kind: 'upgrade', moduleId: m.id }, upgradeConfirmModel(u));
   }
 
   private openConfirm(c: Confirm, model: ConfirmModel): void {
@@ -1030,40 +1005,6 @@ export class BuildMode {
     this.hud!.showConfirm(model);
     this.hudDirty = true;
     this.ctx.bus.emit('sfx', { name: 'ui_click' });
-  }
-
-  private upgradeConfirm(u: UpgradePreview): ConfirmModel {
-    return {
-      kind: 'upgrade',
-      title: `¿Mejorar ${withArticle(u.name)}?`,
-      glyph: 'star',
-      lines: [
-        `Nivel ${u.toTier ?? u.tier + 1}: ${u.nextName ?? ''}. ${u.desc ?? ''}`.trim(),
-        `La obra dura unas ${u.timeText ?? '—'} y se sigue usando mientras tanto. Los habitantes libres ayudan, y tú también con el martillo.`,
-      ],
-      chips: u.effects,
-      items: u.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need, have: c.have })),
-      itemsLabel: 'Coste (se paga ahora)',
-      note: 'Si cancelas la mejora antes de que termine, recuperas todo lo pagado.',
-      confirmLabel: 'Mejorar',
-      danger: false,
-    };
-  }
-
-  private cancelUpgradeConfirm(u: UpgradePreview): ConfirmModel {
-    const p = Math.floor((u.progress ?? 0) * 100);
-    return {
-      kind: 'cancelUpgrade',
-      title: `¿Cancelar la mejora: ${u.nextName ?? ''}?`,
-      glyph: 'trash',
-      lines: [`La obra va por el ${p} %${u.etaMin !== null ? ` y le faltan unas ${durationText(u.etaMin)}` : ''}. Si la cancelas, ${withArticle(u.name)} se queda en el nivel ${u.tier}.`],
-      progress: u.progress ?? 0,
-      items: u.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need })),
-      itemsLabel: 'Recuperas',
-      note: 'Lo que no quepa en tu mochila quedará en una caja a tus pies.',
-      confirmLabel: 'Cancelar mejora',
-      danger: true,
-    };
   }
 
   requestExpand(): void {
@@ -1077,21 +1018,9 @@ export class BuildMode {
     this.confirm = { kind: 'expand' };
     this.selected = null;
     this.demolishing = false;
+    this.upgrading = false;
     this.hudDirty = true;
-    this.hud!.showConfirm({
-      kind: 'expand',
-      title: '¿Ampliar el casco?',
-      glyph: 'ship',
-      lines: [
-        `El barco crecerá dos secciones por la proa: de ${info.lengthNowM} m a ${info.lengthAfterM} m de eslora, con más cubierta y más bodega.`,
-        `La obra dura unas ${info.timeText}; puedes ayudar con el martillo en la proa.`,
-        ...(info.done > 0 ? [`Cada ampliación cuesta más que la anterior: esta es la ${info.done + 1}.ª.`] : []),
-      ],
-      items: info.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need, have: c.have })),
-      itemsLabel: 'Coste',
-      confirmLabel: 'Ampliar',
-      danger: false,
-    });
+    this.hud!.showConfirm(expandConfirmModel(info));
     this.ctx.bus.emit('sfx', { name: 'ui_click' });
   }
 
