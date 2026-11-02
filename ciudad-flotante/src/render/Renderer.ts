@@ -13,17 +13,26 @@
  * estrellas (`sky`), nubes, lluvia, relámpagos, rociones de proa, gaviotas, movimiento del barco
  * (`shipMotion`) y avistamientos/decorado lejano (`sightings`, `models`, `kit`).
  *
+ * Puerto Esperanza (`harbor`, `harborModels`, `glow`): la luz verde en el horizonte al acercarse
+ * con ese rumbo, el fondeadero de barcos-hogar y, al llegar (`story.arrived` pasa a true), la
+ * celebración con fuegos artificiales y farolillos (`celebration`), que se repite la primera noche.
+ *
  * Calidad: 'baja' sin sombras ni antialias, malla del mar gruesa y menos nubes/lluvia; 'media'
- * sombras 1024; 'alta' sombras 2048, más resolución. (El antialias se fija al crear el contexto.)
+ * sombras 1024; 'alta' sombras 2048, más resolución. El antialias (MSAA) solo puede fijarse al
+ * crear el contexto WebGL: `needsReloadFor(q)` dice si la calidad pedida necesita recargar la
+ * página para aplicarlo (la interfaz lo avisa); todo lo demás cambia en caliente.
  *
  * Depuración (`window.__game.cmd`): `vista(px,py,pz, tx,ty,tz[, fov])` cámara libre (sin
  * argumentos vuelve a la del juego), `clima('tormenta')`, `avistamiento(tipo, x, distancia, lado,
- * nombre)`, `decorado()` (repuebla el decorado lejano), `delfines(s)`, `peces(true|false)` y
- * `mundo()` (estado resumido).
+ * nombre)`, `decorado()` (repuebla el decorado lejano), `delfines(s)`, `peces(true|false)`,
+ * `puerto(millas)` (lleva el barco a Puerto Esperanza), `luzVerde(millasRestantes)` (rumbo a
+ * Puerto Esperanza al final de la región actual), `fiesta()` (fuegos y farolillos) y `mundo()`
+ * (estado resumido).
  */
 import * as THREE from 'three';
 import { clamp } from '../core/math';
 import { REGIONS, START_REGION } from '../data/regions';
+import { FINAL_REGION } from '../data/story';
 import { registerDebug } from '../game/debug';
 import type { Quality } from '../game/types';
 import { VISUAL_DRIFT, WATERLINE_Y } from '../sim/constants';
@@ -32,6 +41,9 @@ import { hourOf } from '../sim/time';
 import type { GameState, WeatherKind } from '../sim/types';
 import { computeAtmosphere, createAtmosphere, lerpRegionColors, regionColors, type RegionColors } from './world/atmosphere';
 import { Birds } from './world/birds';
+import { Celebration, fiestaLevel } from './world/celebration';
+import { createGlowShared } from './world/glow';
+import { HarborView } from './world/harbor';
 import { Clouds } from './world/clouds';
 import { waterlineProfile } from './world/hullProfile';
 import { Lightning } from './world/lightning';
@@ -62,6 +74,11 @@ const WEATHER_PRESETS: Record<WeatherKind, { cloudiness: number; rain: number; f
 
 const num = (v: number, d: number): number => (Number.isFinite(v) ? v : d);
 
+/** Antialias (MSAA del contexto) que pide cada calidad. */
+export function antialiasFor(q: Quality): boolean {
+  return q !== 'baja';
+}
+
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -81,6 +98,15 @@ export class Renderer {
   private readonly birds: Birds;
   private readonly spray = new Spray();
   private readonly marine = new MarineLife();
+  /** Uniformes compartidos por los halos de luz (puerto, fuegos). */
+  private readonly glowShared = createGlowShared();
+  private readonly harbor: HarborView;
+  private readonly celebration: Celebration;
+  private lastArrived = false;
+  private readonly flashTint = new THREE.Color();
+  private readonly bufSize = new THREE.Vector2();
+  /** Antialias con el que se creó el contexto (no puede cambiar sin recargar). */
+  readonly antialias: boolean;
   private readonly bow = new THREE.Vector3();
   private readonly sprayColor = new THREE.Color();
   private readonly motion = new ShipMotion();
@@ -113,7 +139,8 @@ export class Renderer {
   ) {
     this.quality = quality;
     // El antialias solo puede fijarse al crear el contexto (cambiarlo requiere recargar).
-    this.renderer = new THREE.WebGLRenderer({ antialias: quality !== 'baja', powerPreference: 'high-performance' });
+    this.antialias = antialiasFor(quality);
+    this.renderer = new THREE.WebGLRenderer({ antialias: this.antialias, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].pixelRatio));
     this.renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -147,6 +174,10 @@ export class Renderer {
     this.lightning = new Lightning();
     this.sightings = new SightingsView(this.worldRoot);
     this.birds = new Birds();
+    this.harbor = new HarborView(this.glowShared, quality);
+    this.worldRoot.add(this.harbor.root);
+    this.celebration = new Celebration(this.glowShared);
+    this.scene.add(this.celebration.group);
     this.scene.add(this.sky.group, this.ocean.mesh, this.clouds.mesh, this.rain.lines, this.rain.splashes, this.lightning.mesh, this.birds.mesh, this.spray.points, this.marine.fishMesh, this.marine.dolphinMesh);
     this.applyQuality(quality, false);
     this.registerDebug();
@@ -174,6 +205,15 @@ export class Renderer {
     this.applyQuality(q, true);
   }
 
+  /**
+   * ¿Hace falta recargar la página para que la calidad `q` quede completa? Solo el antialias
+   * (MSAA) depende del contexto WebGL, que no puede cambiarse en caliente: al pasar de baja a
+   * media/alta (o al revés) el resto se aplica ya y el suavizado de bordes, al recargar.
+   */
+  needsReloadFor(q: Quality): boolean {
+    return antialiasFor(q) !== this.antialias;
+  }
+
   private applyQuality(q: Quality, recompile: boolean): void {
     this.quality = q;
     const cfg = QUALITY[q];
@@ -189,6 +229,7 @@ export class Renderer {
     this.ocean.setQuality(q);
     this.clouds.setQuality(q);
     this.rain.setQuality(q);
+    this.harbor.setQuality(q);
     if (recompile) {
       // Activar/desactivar sombras cambia los programas de los materiales iluminados.
       this.scene.traverse((o) => {
@@ -353,14 +394,39 @@ export class Renderer {
     // --- Avistamientos y decorado lejano ---
     this.sightings.update(state, dt, ds, this.waterFn, atm, newSim);
 
+    // --- Puerto Esperanza: luz verde en el horizonte, fondeadero y celebración ---
+    const g = this.glowShared;
+    g.uTime.value = (g.uTime.value + dt) % 10000;
+    this.renderer.getDrawingBufferSize(this.bufSize);
+    g.uViewH.value = Math.max(1, this.bufSize.y);
+    g.uPix.value = this.renderer.getPixelRatio();
+    g.uFogDensity.value = atm.fogDensity;
+    g.uWaterY.value = WATERLINE_Y;
+    let hwMax = 0;
+    for (let i = 0; i < HULL_SAMPLES; i++) hwMax = Math.max(hwMax, this.hull.hw[i]!);
+    this.harbor.update(state, dt, ds, this.waterFn, atm, newSim, { xMin: this.hull.xMin, xMax: this.hull.xMax, halfWidth: hwMax });
+    const arrived = !!state.story?.arrived;
+    if (newSim) this.celebration.clear();
+    else if (arrived && !this.lastArrived && v.regionId === FINAL_REGION) this.celebration.start();
+    this.lastArrived = arrived;
+    const fiesta = fiestaLevel(state);
+    if (this.celebration.active || fiesta > 0) this.celebration.update(dt, ds, atm, () => this.harbor.launchSpots(), { x: wx, z: wz }, fiesta);
+    // Los estallidos tiñen un instante la luz ambiente (sobre todo de noche).
+    const fl = this.celebration.flash;
+    if (fl.r + fl.g + fl.b > 0.002) {
+      const k = 0.35 + 0.65 * (1 - atm.day);
+      this.hemi.color.add(this.flashTint.copy(fl).multiplyScalar(k));
+      this.hemi.intensity += (fl.r + fl.g + fl.b) * 0.25 * k;
+    }
+
     // --- Gaviotas: de día, más cerca de tierra o con banco de peces ---
-    const land = reg.id === 'archipielago' || v.sightings.some((x) => x.kind === 'isla' || x.kind === 'naufragio');
+    const land = reg.id === 'archipielago' || reg.id === FINAL_REGION || v.sightings.some((x) => x.kind === 'isla' || x.kind === 'naufragio');
     const fish = this.forceFish || state.events.active.some((e) => e.type === 'banco_peces');
     const want = (fish ? 0.9 : land ? 0.65 : 0.35) * THREE.MathUtils.smoothstep(atm.day, 0.35, 0.8) * (1 - atm.storm) * (1 - 0.6 * atm.fogAmount);
     this.birds.update(dt, want, cx);
 
     // --- Vida marina: peces con banco de peces; delfines con buen tiempo en aguas cálidas ---
-    const warm = reg.id === 'templadas' || reg.id === 'archipielago' || reg.id === 'sargazos';
+    const warm = reg.id === 'templadas' || reg.id === 'archipielago' || reg.id === 'sargazos' || reg.id === FINAL_REGION;
     const dolphinsOk = warm && atm.day > 0.6 && atm.storm < 0.1 && this.waves.ampTotal < 0.6 && this.waves.wake.sf > 0.4;
     this.marine.update(dt, fish, dolphinsOk, ds, this.hull, this.waves.wake.sf, this.waterFn, this.splashFn);
   }
@@ -376,6 +442,8 @@ export class Renderer {
     this.rain.dispose();
     this.lightning.dispose();
     this.sightings.dispose();
+    this.harbor.dispose();
+    this.celebration.dispose();
     this.birds.dispose();
     this.spray.dispose();
     this.marine.dispose();
@@ -393,6 +461,7 @@ export class Renderer {
     return {
       region: this.regionId,
       calidad: this.quality,
+      antialias: this.antialias,
       cabeceo: +d.pitch.toFixed(2),
       balanceo: +d.roll.toFixed(2),
       arfada: +d.heave.toFixed(2),
@@ -401,6 +470,9 @@ export class Renderer {
       luz: +this.sun.intensity.toFixed(2),
       casco: [+this.hull.xMin.toFixed(2), +this.hull.xMax.toFixed(2)],
       avistamientos: this.sightings.count,
+      puerto: this.harbor.debugInfo(),
+      fuegos: this.celebration.sparkCount,
+      farolillos: this.celebration.lanternCount,
     };
   }
 
@@ -441,6 +513,45 @@ export class Renderer {
     registerDebug('delfines', ((s = 40) => this.marine.startPod(s)) as never);
     // Fuerza (o quita) el banco de peces visual: peces('si') / peces().
     registerDebug('peces', ((on?: unknown) => (this.forceFish = !!on)) as never);
+    // Lleva el barco a Puerto Esperanza, `millas` dentro del puerto (pruebas visuales). Con
+    // `llegado` (por defecto) se da la llegada por hecha para que no salte la pantalla final.
+    registerDebug('puerto', ((millas = 6, llegado = true) => {
+      const st = this.lastState;
+      const port = REGIONS[FINAL_REGION];
+      if (!st || !port) return null;
+      const vv = st.voyage;
+      vv.regionId = port.id;
+      vv.regionLength = port.length;
+      vv.regionDistance = Math.max(0, Math.min(port.length - 0.5, millas));
+      vv.nextChoices = null;
+      vv.chosenNext = null;
+      if (vv.route[vv.route.length - 1] !== port.id) vv.route.push(port.id);
+      st.story ??= { pages: [], revealed: false, arrived: false };
+      st.story.revealed = true;
+      if (llegado) st.story.arrived = true;
+      this.lastArrived = st.story.arrived;
+      this.region = null;
+      return this.harbor.debugInfo();
+    }) as never);
+    // Rumbo a Puerto Esperanza con la luz verde en el horizonte: faltan `millas` para la bocana.
+    registerDebug('luzVerde', ((millas = 25) => {
+      const st = this.lastState;
+      if (!st) return null;
+      const vv = st.voyage;
+      if (vv.regionId === FINAL_REGION) return 'ya estamos en Puerto Esperanza';
+      st.story ??= { pages: [], revealed: false, arrived: false };
+      st.story.revealed = true;
+      st.story.arrived = false;
+      this.lastArrived = false;
+      vv.regionDistance = Math.max(0, vv.regionLength - Math.max(0.5, millas));
+      vv.chosenNext = FINAL_REGION;
+      return this.harbor.debugInfo();
+    }) as never);
+    // Fuegos artificiales y farolillos de la llegada (sin tocar la partida).
+    registerDebug('fiesta', (() => {
+      this.celebration.start();
+      return 'fiesta';
+    }) as never);
     // Repuebla el decorado lejano de la región actual (pruebas visuales).
     registerDebug('decorado', (() => {
       this.sightings.populate(this.regionId);

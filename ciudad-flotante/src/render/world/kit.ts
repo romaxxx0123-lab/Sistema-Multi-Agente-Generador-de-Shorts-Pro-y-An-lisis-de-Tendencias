@@ -85,6 +85,12 @@ export class Kit {
     return this;
   }
 
+  /** Un punto en coordenadas del modelo (aplica la transformación de grupo actual). */
+  toModel(p: V3): V3 {
+    const v = new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(this.stack[this.stack.length - 1]!);
+    return [v.x, v.y, v.z];
+  }
+
   /**
    * Color con el que lucirá de noche todo lo que se añada a continuación (`null` = no luce).
    * El color de día sigue siendo el de cada pieza (cristal oscuro, papel del farolillo…).

@@ -66,6 +66,10 @@ export class ShipMaterials {
   readonly outline = new THREE.MeshBasicMaterial({ color: '#ffd27d', side: THREE.BackSide, transparent: true, opacity: 0.85, depthWrite: false });
   /** Agua del indicador de nivel de los depósitos. */
   readonly water = new THREE.MeshLambertMaterial({ color: '#3fa7d6', emissive: new THREE.Color('#1d6f99'), emissiveIntensity: 0.35, transparent: true, opacity: 0.85 });
+  /** Agua de los tanques del vivero: translúcida, deja ver los peces. */
+  readonly aquarium = new THREE.MeshLambertMaterial({ color: '#2d8fa8', emissive: new THREE.Color('#0f4f66'), emissiveIntensity: 0.3, transparent: true, opacity: 0.42, depthWrite: false });
+  /** Burbujas de los aireadores. */
+  readonly bubble = new THREE.MeshBasicMaterial({ color: '#e8fbff', transparent: true, opacity: 0.75, depthWrite: false });
   /** LEDs de estado. */
   readonly ledGreen = new THREE.MeshBasicMaterial({ color: '#5dff7a' });
   readonly ledAmber = new THREE.MeshBasicMaterial({ color: '#ffb547' });
@@ -75,7 +79,7 @@ export class ShipMaterials {
   readonly decals: THREE.Material[] = [];
 
   private all(): THREE.Material[] {
-    return [this.solid, this.hull, this.portIn, this.glassOut, this.glassIn, this.lamp, this.lantern, this.beacon, this.fire, this.ghost, this.highlight, this.outline, this.water, this.ledGreen, this.ledAmber, this.ledRed, this.ledOff, ...this.decals];
+    return [this.solid, this.hull, this.portIn, this.glassOut, this.glassIn, this.lamp, this.lantern, this.beacon, this.fire, this.ghost, this.highlight, this.outline, this.water, this.aquarium, this.bubble, this.ledGreen, this.ledAmber, this.ledRed, this.ledOff, ...this.decals];
   }
 
   /**

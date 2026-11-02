@@ -100,6 +100,7 @@ uniform float uMinPx;
 uniform float uMaxPx;
 uniform float uMirror;
 uniform float uWaterY;
+uniform float uDimSmall;
 varying vec3 vCol;
 varying float vA;
 void main() {
@@ -118,7 +119,7 @@ void main() {
   float t = uTime * (1.7 + aSeed * 2.3) + aSeed * 37.0;
   float flick = 1.0 - aFlicker * (0.22 + 0.18 * sin(t) * sin(t * 2.7 + 1.3));
   float fogF = exp(-pow(uFogDensity * d, 2.0));
-  vA = uIntensity * flick * max(fogF, uFogFloor) * sqrt(a);
+  vA = uIntensity * flick * max(fogF, uFogFloor) * mix(1.0, sqrt(a), uDimSmall);
   vCol = aColor;
   gl_Position = projectionMatrix * mv;
 }
@@ -168,6 +169,50 @@ export interface GlowOptions {
   mirror?: boolean;
   /** Capacidad (para halos dinámicos: chispas, farolillos). */
   capacity?: number;
+  /** Las luces más pequeñas que el tamaño mínimo se atenúan (por defecto sí; no en una baliza). */
+  dimSmall?: boolean;
+}
+
+/** Geometría de halos (se puede compartir entre varios `GlowPoints`). */
+export function glowGeometry(spots: readonly GlowSpot[], capacity = 0): THREE.BufferGeometry {
+  const n = Math.max(spots.length, capacity);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(n), 1));
+  g.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(n), 1));
+  g.setAttribute('aFlicker', new THREE.BufferAttribute(new Float32Array(n), 1));
+  writeSpots(g, spots);
+  return g;
+}
+
+function writeSpots(g: THREE.BufferGeometry, spots: readonly GlowSpot[]): void {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  const n = Math.min(pos.count, spots.length);
+  const col = g.getAttribute('aColor') as THREE.BufferAttribute;
+  const size = g.getAttribute('aSize') as THREE.BufferAttribute;
+  const seed = g.getAttribute('aSeed') as THREE.BufferAttribute;
+  const flick = g.getAttribute('aFlicker') as THREE.BufferAttribute;
+  const c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const s = spots[i]!;
+    pos.setXYZ(i, s.p[0], s.p[1], s.p[2]);
+    srgb(s.color, c);
+    col.setXYZ(i, c.r, c.g, c.b);
+    size.setX(i, s.size);
+    seed.setX(i, fract(Math.sin((i + 1) * 12.9898 + s.p[0] * 0.37 + s.p[2] * 0.71) * 43758.5453));
+    flick.setX(i, s.flicker ?? 0);
+  }
+  for (const a of [pos, col, size, seed, flick]) a.needsUpdate = true;
+  g.setDrawRange(0, n);
+  g.computeBoundingSphere();
+}
+
+/** Componentes sRGB de un color (sin pasarlo al espacio lineal de trabajo). */
+export function srgb(color: THREE.ColorRepresentation, out = new THREE.Color()): THREE.Color {
+  if (typeof color === 'string') return out.setStyle(color, THREE.NoColorSpace);
+  if (typeof color === 'number') return out.setHex(color, THREE.NoColorSpace);
+  return out.copy(color).convertLinearToSRGB();
 }
 
 /** Conjunto de halos de luz en un solo `THREE.Points`. */
@@ -176,23 +221,22 @@ export class GlowPoints {
   readonly material: THREE.ShaderMaterial;
   readonly geometry: THREE.BufferGeometry;
   private readonly cap: number;
+  private readonly ownsGeometry: boolean;
 
-  constructor(shared: GlowShared, spots: readonly GlowSpot[], opts: GlowOptions = {}) {
+  /**
+   * @param source luces (crea su propia geometría) o una geometría de `glowGeometry` compartida
+   *   (no se libera con este objeto).
+   */
+  constructor(shared: GlowShared, source: readonly GlowSpot[] | THREE.BufferGeometry, opts: GlowOptions = {}) {
     const star = opts.style === 'star';
-    this.cap = Math.max(spots.length, opts.capacity ?? 0);
-    const n = this.cap;
-    const pos = new Float32Array(n * 3);
-    const col = new Float32Array(n * 3);
-    const size = new Float32Array(n);
-    const seed = new Float32Array(n);
-    const flick = new Float32Array(n);
-    this.geometry = new THREE.BufferGeometry();
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.geometry.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-    this.geometry.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
-    this.geometry.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
-    this.geometry.setAttribute('aFlicker', new THREE.BufferAttribute(flick, 1));
-    this.setSpots(spots);
+    if (source instanceof THREE.BufferGeometry) {
+      this.geometry = source;
+      this.ownsGeometry = false;
+    } else {
+      this.geometry = glowGeometry(source, opts.capacity ?? 0);
+      this.ownsGeometry = true;
+    }
+    this.cap = this.geometry.getAttribute('position').count;
     this.material = new THREE.ShaderMaterial({
       vertexShader: GLOW_VERT,
       fragmentShader: GLOW_FRAG,
@@ -212,11 +256,14 @@ export class GlowPoints {
         uMinPx: { value: opts.minPx ?? 2 },
         uMaxPx: { value: opts.maxPx ?? 96 },
         uMirror: { value: opts.mirror ? 1 : 0 },
+        uDimSmall: { value: opts.dimSmall === false ? 0 : 1 },
       },
     });
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.name = opts.mirror ? 'reflejos-luces' : star ? 'luz-estrella' : 'halos-luces';
     this.points.renderOrder = star ? 7 : 5;
+    // El reflejo se dibuja bajo el agua: la esfera de la geometría no lo contiene.
+    if (opts.mirror) this.points.frustumCulled = false;
     this.points.visible = false;
   }
 
@@ -226,26 +273,12 @@ export class GlowPoints {
 
   /** Sustituye las luces (hasta la capacidad). */
   setSpots(spots: readonly GlowSpot[]): void {
-    const n = Math.min(this.cap, spots.length);
-    const pos = this.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const col = this.geometry.getAttribute('aColor') as THREE.BufferAttribute;
-    const size = this.geometry.getAttribute('aSize') as THREE.BufferAttribute;
-    const seed = this.geometry.getAttribute('aSeed') as THREE.BufferAttribute;
-    const flick = this.geometry.getAttribute('aFlicker') as THREE.BufferAttribute;
-    const c = new THREE.Color();
-    for (let i = 0; i < n; i++) {
-      const s = spots[i]!;
-      pos.setXYZ(i, s.p[0], s.p[1], s.p[2]);
-      // Color sRGB tal cual (sin pasar al espacio lineal de trabajo).
-      c.setStyle(typeof s.color === 'string' ? s.color : `#${new THREE.Color(s.color).getHexString()}`, THREE.NoColorSpace);
-      col.setXYZ(i, c.r, c.g, c.b);
-      size.setX(i, s.size);
-      seed.setX(i, fract(Math.sin((i + 1) * 12.9898 + s.p[0] * 0.37 + s.p[2] * 0.71) * 43758.5453));
-      flick.setX(i, s.flicker ?? 0);
-    }
-    for (const a of [pos, col, size, seed, flick]) a.needsUpdate = true;
-    this.geometry.setDrawRange(0, n);
-    this.geometry.computeBoundingSphere();
+    writeSpots(this.geometry, spots);
+  }
+
+  /** Visibilidad mínima con niebla (0..1). */
+  set fogFloor(v: number) {
+    (this.material.uniforms['uFogFloor'] as { value: number }).value = v;
   }
 
   /** Mueve un halo dinámico (chispas, farolillos). Llamar a `commit` al terminar. */
@@ -285,7 +318,7 @@ export class GlowPoints {
 
   dispose(): void {
     this.points.removeFromParent();
-    this.geometry.dispose();
+    if (this.ownsGeometry) this.geometry.dispose();
     this.material.dispose();
   }
 }

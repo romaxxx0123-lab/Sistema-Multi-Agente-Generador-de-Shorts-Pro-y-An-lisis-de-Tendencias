@@ -376,6 +376,9 @@ export class SightingsView {
       if (e.solidMat.transparent !== transparent) {
         e.solidMat.transparent = transparent;
         e.solidMat.depthWrite = !transparent;
+        // `transparent` forma parte del programa (OPAQUE): sin esto, un modelo creado ya opaco
+        // (al cargar partida) no se fundiría al desaparecer.
+        e.solidMat.needsUpdate = true;
       }
       e.solidMat.opacity = op;
       // Flotación
@@ -401,7 +404,10 @@ export class SightingsView {
           const blink = 0.75 + 0.25 * Math.sin(this.time * 3 + e.seed);
           e.glowMat.color.multiplyScalar(blink);
         }
-        e.glowMat.transparent = transparent;
+        if (e.glowMat.transparent !== transparent) {
+          e.glowMat.transparent = transparent;
+          e.glowMat.needsUpdate = true;
+        }
         e.glowMat.opacity = op;
       }
       if (e.kind === 'faro-apagado' && e.glowMat) e.glowMat.color.setRGB(0.3, 0.3, 0.32);
