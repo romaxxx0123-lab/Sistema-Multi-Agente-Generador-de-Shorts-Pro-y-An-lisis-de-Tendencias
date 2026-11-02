@@ -191,10 +191,10 @@ export function storeLoft(g: GeoBuilder, m: ModuleInstance, layout: ShipLayout, 
   const lu = size + 0.2;
   const doors = layout.doors.filter((d) => d.level === m.level);
   const y0 = levelY(m.level);
-  const along = (u: number, v: number): [number, number] => [u, v];
+  // swap = false: contra la pared v = 0 (a lo largo de u); true: contra la pared u = 0
   const ladderOn = [false, true].find((swap) => {
-    const [u0, v0] = swap ? along(0, lu - 0.25) : along(lu - 0.25, 0);
-    const [u1, v1] = swap ? along(0.12, lu + 0.25) : along(lu + 0.25, 0.12);
+    const [u0, v0] = swap ? [0, lu - 0.25] : [lu - 0.25, 0];
+    const [u1, v1] = swap ? [0.12, lu + 0.25] : [lu + 0.25, 0.12];
     const ax = Math.min(X(u0), X(u1));
     const bx = Math.max(X(u0), X(u1));
     const az = Math.min(Z(v0), Z(v1));

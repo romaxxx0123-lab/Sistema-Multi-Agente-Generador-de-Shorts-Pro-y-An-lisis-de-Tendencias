@@ -284,6 +284,11 @@ export class GlowPoints {
     (this.material.uniforms['uFogFloor'] as { value: number }).value = v;
   }
 
+  /** Tamaño mínimo en píxeles CSS. */
+  set minPx(v: number) {
+    (this.material.uniforms['uMinPx'] as { value: number }).value = v;
+  }
+
   /** Estilo baliza: cuánto se blanquea el núcleo (de noche deslumbra; de día, verde saturado). */
   set coreWhite(v: number) {
     (this.material.uniforms['uCoreWhite'] as { value: number }).value = v;

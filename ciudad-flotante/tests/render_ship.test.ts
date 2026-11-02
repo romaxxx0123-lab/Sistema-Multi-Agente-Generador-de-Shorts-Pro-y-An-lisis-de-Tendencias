@@ -809,6 +809,39 @@ describe('módulos especializados: animación', () => {
     expect(-Math.cos(prop.yaw + dyn.yaw) * side).toBeGreaterThan(0.6);
   });
 
+  it('grúa: la pluma no atraviesa habitaciones, escaleras ni muebles altos aunque el resto esté detrás', () => {
+    const { view, state } = newView();
+    const { m, layout } = addModule(state, 'grua', 1, 5, 0);
+    m.on = true;
+    m.powered = true;
+    const prop = layout.props.find((p) => p.moduleId === m.id)!;
+    const side = prop.z < 0 ? -1 : 1;
+    // resto hacia popa y un poco hacia fuera: el camino directo pasa por encima de la escalera de al lado (x=4)
+    const target = { x: prop.x - 16, z: prop.z + side * 3 };
+    state.debris.push({ id: 41, kind: 'barril', pos: target, vel: { x: 0, z: 0 }, loot: [], spin: 0 });
+    m.prodTarget = 41;
+    m.prodProgress = GRUA_CYCLE_MIN + 1;
+    for (let i = 0; i < 200; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
+    const dyn = view.getPropDynamic(prop.key) as unknown as { yaw: number };
+    const a = prop.yaw + dyn.yaw;
+    const direct = Math.atan2(-(target.x - prop.x), -(target.z - prop.z));
+    expect(Math.abs(Math.atan2(Math.sin(a - direct), Math.cos(a - direct)))).toBeGreaterThan(0.2);
+    // ningún punto de la pluma queda sobre una habitación o una escalera
+    for (let r = 0.7; r < 3.6; r += 0.3) {
+      const c = pointToCell(prop.x - Math.sin(a) * r, prop.z - Math.cos(a) * r, layout.width);
+      const k = layout.cells[1]![c.x]?.[c.z]?.kind;
+      expect(k === 'room' || k === 'stairLow' || k === 'stairHigh', `r=${r.toFixed(1)} ${k}`).toBe(false);
+    }
+    // el cable sí llega al resto
+    const proxy = view.getPropObject(prop.key)!;
+    proxy.updateMatrix();
+    const hook = proxy.getObjectByName('gancho')!.position.clone().applyMatrix4(proxy.matrix);
+    m.prodProgress = GRUA_CYCLE_MIN + GRUA_HOOK_MIN * 0.999;
+    view.sync(state, layout, OPTS, 1 / 30, camera);
+    hook.copy(proxy.getObjectByName('gancho')!.position).applyMatrix4(proxy.matrix);
+    expect(Math.hypot(hook.x - target.x, hook.z - target.z)).toBeLessThan(0.3);
+  });
+
   it('radar: la antena gira solo con el radar en marcha', () => {
     const { view, state } = newView();
     const { m, layout } = addModule(state, 'radar', 1, 6, 0);

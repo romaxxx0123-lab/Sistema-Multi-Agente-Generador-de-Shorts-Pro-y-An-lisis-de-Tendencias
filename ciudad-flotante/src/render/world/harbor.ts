@@ -508,6 +508,8 @@ export class HarborView {
         t.star.intensity = op * pulse * (1 - 0.7 * atm.fogAmount);
         t.star.fogFloor = 0.85 * (1 - 0.8 * atm.fogAmount);
         t.star.coreWhite = this.level;
+        // De noche deslumbra más (se ve como una estrella verde en el horizonte).
+        t.star.minPx = 16 + 12 * this.level;
         // La linterna siempre luce algo (también de día).
         t.lit.uLights.value = Math.max(this.level, 0.45) * op;
         const beamK = THREE.MathUtils.clamp((1 - atm.day) * 1.25 + atm.fogAmount * 0.4, 0, 1) * op;
