@@ -342,7 +342,10 @@ export class GridView {
   });
   private readonly cursorMat = new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
   private readonly cursorFillMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
+  /** Contorno de las celdas válidas del borde (piezas que van junto a la borda). */
+  private readonly edgeMat = new THREE.LineBasicMaterial({ color: '#7ee08a', transparent: true, opacity: 0.95, depthWrite: false });
   private readonly lines = new THREE.LineSegments(new THREE.BufferGeometry(), this.lineMat);
+  private readonly edgeLines = new THREE.LineSegments(new THREE.BufferGeometry(), this.edgeMat);
   private readonly fills = new THREE.Mesh(new THREE.BufferGeometry(), this.fillMat);
   private readonly cursor = new THREE.LineSegments(rectLines(0.1, 0.1, CELL - 0.1, CELL - 0.1, 0), this.cursorMat);
   private readonly cursorFill = new THREE.Mesh(new THREE.PlaneGeometry(CELL - 0.2, CELL - 0.2).rotateX(-Math.PI / 2).translate(CELL / 2, 0, CELL / 2), this.cursorFillMat);
@@ -355,9 +358,10 @@ export class GridView {
     this.fills.renderOrder = 14;
     this.cursor.renderOrder = 24;
     this.cursorFill.renderOrder = 16;
+    this.edgeLines.renderOrder = 17;
     this.cursor.visible = false;
     this.cursorFill.visible = false;
-    this.group.add(this.fills, this.lines, this.cursor, this.cursorFill);
+    this.group.add(this.fills, this.lines, this.edgeLines, this.cursor, this.cursorFill);
   }
 
   /**
@@ -393,6 +397,7 @@ export class GridView {
 
     const pos: number[] = [];
     const col: number[] = [];
+    const edgePos: number[] = [];
     const inset = 0.12;
     for (let x = 0; x < L; x++) {
       for (let z = 0; z < Wc; z++) {
@@ -402,7 +407,7 @@ export class GridView {
         // suelo de la cubierta superior quedan vacías y se ve a través de ellas.
         if (cell.kind === 'void') continue;
         const edge = z === 0 || z === Wc - 1;
-        const rgba = !edgeOnly ? [0.42, 0.86, 1, 0.16] : edge ? [0.49, 0.88, 0.54, 0.36] : [0.42, 0.86, 1, 0.05];
+        const rgba = !edgeOnly ? [0.42, 0.86, 1, 0.16] : edge ? [0.49, 0.88, 0.54, 0.42] : [0.42, 0.86, 1, 0.05];
         const mn = cellMin(x, z, Wc);
         const x0 = mn.x + inset;
         const z0 = mn.z + inset;
@@ -410,6 +415,16 @@ export class GridView {
         const z1 = mn.z + CELL - inset;
         pos.push(x0, y, z0, x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z1, x1, y, z0);
         for (let i = 0; i < 6; i++) col.push(...rgba);
+        if (edgeOnly && edge) {
+          const e = 0.22;
+          const ey = y + 0.01;
+          edgePos.push(
+            mn.x + e, ey, mn.z + e, mn.x + CELL - e, ey, mn.z + e,
+            mn.x + CELL - e, ey, mn.z + e, mn.x + CELL - e, ey, mn.z + CELL - e,
+            mn.x + CELL - e, ey, mn.z + CELL - e, mn.x + e, ey, mn.z + CELL - e,
+            mn.x + e, ey, mn.z + CELL - e, mn.x + e, ey, mn.z + e,
+          );
+        }
       }
     }
     const fg = new THREE.BufferGeometry();
@@ -417,6 +432,10 @@ export class GridView {
     fg.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
     this.fills.geometry.dispose();
     this.fills.geometry = fg;
+    const eg = new THREE.BufferGeometry();
+    eg.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3));
+    this.edgeLines.geometry.dispose();
+    this.edgeLines.geometry = eg;
   }
 
   /** Marca la celda bajo el cursor (null = ninguna). */
@@ -437,6 +456,7 @@ export class GridView {
     this.cursorFillMat.opacity = 0.09 + 0.06 * Math.sin(this.t * 4);
     this.lineMat.color.copy(GRID_DAY).lerp(GRID_NIGHT, night);
     this.lineMat.opacity = 0.5 - 0.12 * night;
+    this.edgeMat.opacity = 0.7 + 0.25 * Math.sin(this.t * 4);
   }
 
   /** Fuerza la reconstrucción (partida nueva o cargada). */
@@ -445,7 +465,8 @@ export class GridView {
   }
 
   dispose(): void {
-    for (const o of [this.lines, this.fills, this.cursor, this.cursorFill]) o.geometry.dispose();
+    for (const o of [this.lines, this.fills, this.edgeLines, this.cursor, this.cursorFill]) o.geometry.dispose();
+    this.edgeMat.dispose();
     this.lineMat.dispose();
     this.fillMat.dispose();
     this.cursorMat.dispose();
@@ -476,19 +497,57 @@ export function reachArcPoints(cx: number, cz: number, r: number, side: 1 | -1, 
   return out;
 }
 
+/**
+ * Trazos de una cinta discontinua sobre el plano y (cuadriláteros de `width` m de ancho): una línea
+ * de 1 px se pierde a 60 m de distancia; una cinta de medio metro se lee bien sobre el agua.
+ */
+export function dashedRibbon(points: { x: number; z: number }[], y: number, width: number, dash: number, gap: number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const hw = width / 2;
+  let along = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    if (len < 1e-6) continue;
+    const nx = -(b.z - a.z) / len;
+    const nz = (b.x - a.x) / len;
+    // Recorre el tramo en trozos que empiezan o acaban en un cambio trazo/hueco.
+    let s = 0;
+    while (s < len - 1e-6) {
+      const phase = (along + s) % (dash + gap);
+      const on = phase < dash;
+      const step = Math.min(len - s, on ? dash - phase : dash + gap - phase);
+      if (on) {
+        const p0x = a.x + ((b.x - a.x) * s) / len;
+        const p0z = a.z + ((b.z - a.z) * s) / len;
+        const p1x = a.x + ((b.x - a.x) * (s + step)) / len;
+        const p1z = a.z + ((b.z - a.z) * (s + step)) / len;
+        pos.push(p0x - nx * hw, y, p0z - nz * hw, p1x - nx * hw, y, p1z - nz * hw, p1x + nx * hw, y, p1z + nz * hw);
+        pos.push(p0x - nx * hw, y, p0z - nz * hw, p1x + nx * hw, y, p1z + nz * hw, p0x + nx * hw, y, p0z + nz * hw);
+      }
+      s += step;
+    }
+    along += len;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return g;
+}
+
 export class ReachArc {
   readonly group = new THREE.Group();
-  private readonly mat: THREE.LineDashedMaterial;
-  private readonly line: THREE.Line;
+  private readonly mat: THREE.MeshBasicMaterial;
+  private readonly mesh: THREE.Mesh;
   private key = '';
   private t = 0;
 
   constructor(name: string, color: string) {
     this.group.name = name;
-    this.mat = new THREE.LineDashedMaterial({ color, dashSize: 1.6, gapSize: 1.0, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
-    this.line = new THREE.Line(new THREE.BufferGeometry(), this.mat);
-    this.line.renderOrder = 19;
-    this.group.add(this.line);
+    this.mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
+    this.mesh.renderOrder = 19;
+    this.group.add(this.mesh);
     this.group.visible = false;
   }
 
@@ -497,11 +556,8 @@ export class ReachArc {
     const key = `${cx.toFixed(2)}|${cz.toFixed(2)}|${r.toFixed(2)}|${side}|${y.toFixed(2)}`;
     if (key !== this.key) {
       this.key = key;
-      const pts = reachArcPoints(cx, cz, r, side).map((p) => new THREE.Vector3(p.x, y, p.z));
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      this.line.geometry.dispose();
-      this.line.geometry = geo;
-      this.line.computeLineDistances();
+      this.mesh.geometry.dispose();
+      this.mesh.geometry = dashedRibbon(reachArcPoints(cx, cz, r, side, 96), y, 0.55, 2.2, 1.4);
     }
     this.group.visible = true;
   }
@@ -516,7 +572,7 @@ export class ReachArc {
   }
 
   dispose(): void {
-    this.line.geometry.dispose();
+    this.mesh.geometry.dispose();
     this.mat.dispose();
   }
 }
