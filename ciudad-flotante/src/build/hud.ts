@@ -137,6 +137,39 @@ export function uiScale(w: number, h: number): number {
   return Math.round(s * 100) / 100;
 }
 
+export interface TooltipBox {
+  /** Cursor y tamaño del rótulo, en px de pantalla. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Escala de la interfaz (los márgenes junto al cursor crecen con ella). */
+  scale: number;
+  viewW: number;
+  viewH: number;
+  /** Borde superior de la paleta si el rótulo no debe pisarla (null = puede llegar abajo del todo). */
+  paletteTop: number | null;
+}
+
+/**
+ * Posición (px de pantalla) de un rótulo junto al cursor: a su derecha y debajo; a la izquierda si no
+ * cabe; encima si no cabe debajo. Si no cabe ni debajo ni encima (fichas altas de la herramienta
+ * Mejorar), lo más abajo posible sin pisar la paleta: va a un lado del cursor, así que no lo tapa, y
+ * no sube hasta el borde superior, donde salen los avisos.
+ */
+export function tooltipPos(b: TooltipBox): { left: number; top: number } {
+  const s = b.scale;
+  const bottom = b.paletteTop !== null && b.y < b.paletteTop ? b.paletteTop - 6 : b.viewH - 8;
+  let left = b.x + 18 * s;
+  let top = b.y + 20 * s;
+  if (left + b.w > b.viewW - 8) left = b.x - b.w - 14 * s;
+  if (top + b.h > bottom) {
+    const above = b.y - b.h - 12 * s;
+    top = above >= 6 ? above : bottom - b.h;
+  }
+  return { left: Math.max(6, left), top: Math.max(6, top) };
+}
+
 /* ------------------------------------------------------------------ */
 /* Interfaz                                                            */
 /* ------------------------------------------------------------------ */
@@ -628,24 +661,25 @@ export class BuildHud {
   }
 
   /**
-   * Coloca un rótulo junto al cursor sin salirse de la pantalla (cálculo en px de pantalla).
-   * `avoidPalette`: si el cursor está por encima de la paleta, el rótulo no se mete encima de
-   * ella (se da la vuelta hacia arriba), para no tapar las pestañas ni las fichas.
+   * Coloca un rótulo junto al cursor sin salirse de la pantalla (ver `tooltipPos`).
+   * `avoidPalette`: si el cursor está por encima de la paleta, el rótulo no se mete encima de ella.
    */
   private position(e: HTMLElement, x: number, y: number, avoidPalette = false): void {
     const s = this.scale;
     const r = e.getBoundingClientRect();
-    const ew = r.width || 240 * s;
-    const eh = r.height || 80 * s;
-    const paletteTop = window.innerHeight - this.paletteHeightPx;
-    const bottom = avoidPalette && y < paletteTop ? paletteTop - 6 : window.innerHeight - 8;
-    let left = x + 18 * s;
-    let top = y + 20 * s;
-    if (left + ew > window.innerWidth - 8) left = x - ew - 14 * s;
-    if (top + eh > bottom) top = y - eh - 12 * s;
+    const p = tooltipPos({
+      x,
+      y,
+      w: r.width || 240 * s,
+      h: r.height || 80 * s,
+      scale: s,
+      viewW: window.innerWidth,
+      viewH: window.innerHeight,
+      paletteTop: avoidPalette ? window.innerHeight - this.paletteHeightPx : null,
+    });
     // Los px de estilo dentro de la capa se multiplican por su zoom.
-    e.style.left = `${Math.max(6, left) / s}px`;
-    e.style.top = `${Math.max(6, top) / s}px`;
+    e.style.left = `${p.left / s}px`;
+    e.style.top = `${p.top / s}px`;
   }
 
   /* ---------------- Confirmación ---------------- */

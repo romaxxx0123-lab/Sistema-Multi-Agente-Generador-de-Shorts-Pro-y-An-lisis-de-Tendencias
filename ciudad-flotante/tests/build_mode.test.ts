@@ -25,7 +25,7 @@ import {
 } from '../src/build/catalog';
 import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, upgradeConfirmModel } from '../src/build/confirm';
 import { buildGhostGeometry, dashedRibbon, GridView, reachArcPoints } from '../src/build/ghost';
-import { HUD_GLYPHS } from '../src/build/hud';
+import { HUD_GLYPHS, tooltipPos } from '../src/build/hud';
 import { hasGlyph, MODULE_GLYPH } from '../src/ui/icons';
 import { fitDistance, ORBIT_LIMITS, OrbitRig, rescaleDistance } from '../src/build/orbit';
 import { GRUA_RANGE } from '../src/sim/debris';
@@ -916,6 +916,28 @@ describe('grúa: junto a la borda', () => {
     }
     const arc = dashedRibbon(reachArcPoints(2, 6, GRUA_RANGE, 1), 1.25, 0.55, 2.2, 1.4);
     expect(arc.getAttribute('position').count).toBeGreaterThan(100);
+  });
+});
+
+describe('rótulos junto al cursor', () => {
+  const base = { scale: 1, viewW: 1280, viewH: 720, paletteTop: 470 };
+  it('a la derecha y debajo; a la izquierda o encima si no cabe', () => {
+    expect(tooltipPos({ ...base, x: 300, y: 100, w: 240, h: 80 })).toEqual({ left: 318, top: 120 });
+    expect(tooltipPos({ ...base, x: 1200, y: 100, w: 240, h: 80 }).left).toBe(1200 - 240 - 14);
+    // Debajo pisaría la paleta: encima del cursor.
+    expect(tooltipPos({ ...base, x: 300, y: 420, w: 240, h: 80 }).top).toBe(420 - 80 - 12);
+  });
+
+  it('una ficha alta que no cabe ni encima ni debajo queda sobre la paleta, no pegada a los avisos de arriba', () => {
+    // Ficha de 300 px con el cursor a 230 px: debajo acabaría en 550 (> 464) y encima empezaría en −82.
+    const p = tooltipPos({ ...base, x: 640, y: 230, w: 292, h: 300 });
+    expect(p.top).toBe(470 - 6 - 300);
+    expect(p.top + 300).toBeLessThanOrEqual(470 - 6);
+    expect(p.left).toBe(658);
+    // Más alta que el hueco: se queda en el margen superior.
+    expect(tooltipPos({ ...base, x: 640, y: 230, w: 292, h: 600 }).top).toBe(6);
+    // Con el cursor sobre la paleta (o sin paleta), el límite es el borde de la ventana.
+    expect(tooltipPos({ ...base, paletteTop: null, x: 640, y: 230, w: 292, h: 300 }).top).toBe(250);
   });
 });
 
