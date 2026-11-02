@@ -106,7 +106,17 @@ varying float vA;
 void main() {
   vec3 p = position;
   vec4 wp = modelMatrix * vec4(p, 1.0);
-  if (uMirror > 0.5) wp.y = 2.0 * uWaterY - wp.y;
+  // Reflejo: la luz reflejada bajo la superficie, pero con la profundidad del punto del agua donde
+  // se refleja (entre la cámara y la luz); si no, el propio mar la taparía. El casco y los
+  // pantalanes de delante sí la tapan.
+  vec4 surf = wp;
+  if (uMirror > 0.5) {
+    float hc = max(cameraPosition.y - uWaterY, 0.1);
+    float hl = max(wp.y - uWaterY, 0.0);
+    float f = hc / (hc + hl);
+    surf = vec4(mix(cameraPosition.x, wp.x, f), uWaterY + 0.45, mix(cameraPosition.z, wp.z, f), 1.0);
+    wp.y = 2.0 * uWaterY - wp.y;
+  }
   vec4 mv = viewMatrix * wp;
   float d = max(-mv.z, 0.1);
   float px = aSize * projectionMatrix[1][1] * 0.5 * uViewH / d;
@@ -122,6 +132,10 @@ void main() {
   vA = uIntensity * flick * max(fogF, uFogFloor) * mix(1.0, sqrt(a), uDimSmall);
   vCol = aColor;
   gl_Position = projectionMatrix * mv;
+  if (uMirror > 0.5) {
+    vec4 cs = projectionMatrix * (viewMatrix * surf);
+    if (cs.w > 0.0) gl_Position.z = clamp(cs.z / cs.w, -1.0, 1.0) * gl_Position.w;
+  }
 }
 `;
 
