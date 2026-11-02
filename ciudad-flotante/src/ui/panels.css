@@ -2570,3 +2570,275 @@ body.ui-dragging * {
 .util-main .help-line {
   margin-top: 0;
 }
+
+/* ================================================================== */
+/* Ronda de contenido 2: mejoras, módulos especializados, relaciones,  */
+/* diario con cuaderno y rumbo de la capitana                           */
+/* ================================================================== */
+
+/* ---------- Nivel de mejora (pie de los paneles de estación) ---------- */
+
+.tier-row {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px 2px 6px;
+  border-radius: 999px;
+  background: rgba(224, 164, 88, 0.16);
+  border: 1px solid rgba(224, 164, 88, 0.45);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.tier-row.max .tier-badge {
+  background: rgba(138, 198, 107, 0.14);
+  border-color: rgba(138, 198, 107, 0.5);
+  color: var(--good);
+}
+
+.tier-next {
+  flex: 1;
+  min-width: 0;
+}
+
+.tier-next b {
+  color: var(--ink);
+}
+
+.tier-row .good .gl {
+  margin-right: 3px;
+}
+
+.tier-row.upgrading {
+  align-items: flex-start;
+}
+
+.tier-main {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tier-main .meter-label .gl {
+  margin-right: 4px;
+  color: var(--accent);
+}
+
+/* ---------- Radio ---------- */
+
+.radio-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.radio-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(124, 196, 232, 0.07);
+  border-left: 3px solid rgba(124, 196, 232, 0.55);
+}
+
+.radio-text {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.radar-panel .util-side {
+  max-width: 330px;
+}
+
+/* ---------- Relaciones (ficha del habitante) ---------- */
+
+.relations li {
+  display: grid;
+  grid-template-columns: auto minmax(70px, 1fr) 90px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.rel-name {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rel-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.rel-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rel-bar::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: rgba(232, 220, 192, 0.35);
+}
+
+.rel-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+}
+
+.rel-bar i.pos {
+  left: 50%;
+  background: var(--good);
+}
+
+.rel-bar i.neg {
+  right: 50%;
+  background: var(--danger);
+}
+
+.relations .ml-val.good {
+  color: var(--good);
+}
+
+.relations .ml-val.warn {
+  color: var(--warn);
+}
+
+.relations .ml-val.danger {
+  color: #ff8a78;
+}
+
+/* ---------- Diario: diario de a bordo / cuaderno ---------- */
+
+.diary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+}
+
+.diary-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.diary > .log-layout,
+.diary > .notebook {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.seg-n.pulse {
+  background: var(--accent);
+  animation: seg-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes seg-pulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(224, 164, 88, 0.25);
+  }
+}
+
+/* ---------- Timón: Puerto Esperanza y el rumbo de la capitana ---------- */
+
+.ch-edge.captain {
+  stroke: #9be8b4;
+  stroke-width: 2.2;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(95, 211, 141, 0.8));
+}
+
+.ch-edge.captain.next {
+  stroke: #b8f5c9;
+  stroke-width: 2.6;
+  animation: dash 1.2s linear infinite;
+}
+
+.ch-glow {
+  fill: rgba(95, 211, 141, 0.18) !important;
+  stroke: rgba(155, 232, 180, 0.55) !important;
+  stroke-width: 1.2 !important;
+  animation: final-glow 2.4s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes final-glow {
+  50% {
+    opacity: 0.45;
+    transform: scale(1.18);
+  }
+}
+
+.ch-node.final text {
+  fill: #b8f5c9;
+  font-size: 10px;
+}
+
+.route.captain {
+  border-color: rgba(95, 211, 141, 0.65);
+  background: linear-gradient(180deg, rgba(95, 211, 141, 0.12), rgba(95, 211, 141, 0.03));
+}
+
+.captain-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 7px;
+  border-radius: 999px;
+  background: rgba(95, 211, 141, 0.22);
+  color: #b8f5c9;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.baro-note {
+  flex-wrap: wrap;
+}
+
+.baro-note > span:not(.gl):not(.chip) {
+  flex: 1;
+  min-width: 0;
+}

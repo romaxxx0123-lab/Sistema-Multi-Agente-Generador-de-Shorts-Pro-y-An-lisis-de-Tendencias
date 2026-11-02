@@ -166,6 +166,14 @@
   text-shadow: none;
 }
 
+.tl-radar {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--good);
+  opacity: 0.9;
+}
+
 .tl-region {
   margin-top: 2px;
   min-width: 210px;
@@ -1228,15 +1236,16 @@
   width: min(720px, 70%);
 }
 
+/* Con un panel abierto: un solo aviso, como mucho en dos líneas (se lee entero sin tapar el panel). */
 .hud-toasts.compact .toast {
-  white-space: nowrap;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 13.5px;
+  line-height: 1.3;
 }
 
 .hud-toasts.compact .toast > span:not(.gl):not(.toast-n) {
-  display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .toast-n {

@@ -41,6 +41,21 @@ import { addFuel, demolishLossNote, FUEL_BATCH, stationTutorial } from '../src/u
 import { clickMode, modeQty, playerSlotFor, quickMove, storeAll, takeAllFrom } from '../src/ui/panels/transfer';
 import { HOTBAR_SLOTS } from '../src/sim/constants';
 import type { InvRef } from '../src/sim/Simulation';
+import { STORY_PAGES } from '../src/data/story';
+import { DEFAULT_SETTINGS } from '../src/game/types';
+import { storyStatus } from '../src/sim/actions';
+import { startEvent } from '../src/sim/events';
+import { checkPlacement, instantiateModule } from '../src/sim/ship';
+import type { ModuleInstance } from '../src/sim/types';
+import { CAPTAIN_COURSE_LABEL } from '../src/sim/voyage';
+import { SIGHTING_GLYPH } from '../src/ui/icons';
+import { Menus } from '../src/ui/menus';
+import { CATEGORY_NAMES, moduleSubtitle, radioMessages, upgradeEffectsText } from '../src/ui/model';
+import { finalRegionOnChart, renderHelm } from '../src/ui/panels/helm';
+import { renderInventory } from '../src/ui/panels/inventory';
+import { relationTone, renderNpc } from '../src/ui/panels/npc';
+import { renderStation, upgradeLine } from '../src/ui/panels/station';
+import { arrivalStats, arrivalView, defaultPage, listNames, newPages, PageReader, paragraphs, readingSeconds } from '../src/ui/story';
 
 /* ------------------------------------------------------------------ */
 /* Utilidades                                                          */
@@ -397,6 +412,9 @@ describe('paneles: pilas, combustible, guardar y avisos', () => {
     const alm = mod(sim, 'almacen');
     const ref: InvRef = { kind: 'module', id: alm.id, slot: 'inventory' };
     const pinv = sim.state.player.inventory;
+    // La partida nueva lleva la hoja 1 del cuaderno en la mochila: este caso es el de la mochila vacía.
+    expect(pinv.slots[8]?.id).toBe('pagina_1');
+    pinv.slots[8] = null;
     // Lo de la QA: materiales en la barra rápida y la mochila vacía.
     pinv.slots[5] = { id: 'madera', qty: 4 };
     pinv.slots[6] = { id: 'tela', qty: 2 };
@@ -675,5 +693,437 @@ describe('DOM virtual', () => {
     const root = new FElement('div');
     patch(root as unknown as Element, h('p', null, 'a', null, false, ['b', ['c', 3]], undefined));
     expect((root.childNodes[0] as FElement).textContent).toBe('abc3');
+  });
+});
+
+
+/* ------------------------------------------------------------------ */
+/* Ronda de contenido 2 (c2-ui)                                        */
+/* ------------------------------------------------------------------ */
+
+/** Texto plano de un árbol de nodos virtuales (o de un PanelView entero). */
+function vtext(v: unknown): string {
+  if (v === null || v === undefined || v === false || v === true) return '';
+  if (typeof v === 'string' || typeof v === 'number') return String(v);
+  if (Array.isArray(v)) return v.map(vtext).join('');
+  const n = v as { tag?: string; children?: unknown[]; title?: unknown; body?: unknown };
+  if (n.tag !== undefined) return vtext(n.children ?? []);
+  // PanelView
+  const pv = v as Record<string, unknown>;
+  return ['title', 'subtitle', 'head', 'tabs', 'body', 'foot'].map((k) => vtext(pv[k])).join(' | ');
+}
+
+/** Busca nodos por clase en un árbol virtual. */
+function findByClass(v: unknown, cls: string, out: VNode[] = []): VNode[] {
+  if (!v || typeof v !== 'object') return out;
+  if (Array.isArray(v)) {
+    for (const c of v) findByClass(c, cls, out);
+    return out;
+  }
+  const n = v as VNode;
+  if (n.tag !== undefined) {
+    if (String(n.props?.['class'] ?? '').split(/\s+/).includes(cls)) out.push(n);
+    for (const c of n.children) findByClass(c, cls, out);
+    return out;
+  }
+  for (const k of ['head', 'tabs', 'body', 'foot']) findByClass((v as Record<string, unknown>)[k], cls, out);
+  return out;
+}
+
+const C2_UNLOCKS = ['taller', 'energia', 'agua', 'enfermeria', 'solar', 'invernadero', 'motor', 'acuicultura', 'grua', 'radar', 'casco'];
+
+/** Coloca un módulo terminado en el primer hueco válido del nivel dado. */
+function placeModule(sim: Simulation, type: string, level: number): ModuleInstance {
+  const ship = sim.state.ship;
+  for (let x = ship.length - 1; x >= 0; x--) {
+    for (let z = 0; z < ship.width; z++) {
+      for (const rot of [0, 1, 2, 3] as const) {
+        if (!checkPlacement(ship, C2_UNLOCKS, type, level, x, z, rot).ok) continue;
+        const m = instantiateModule(sim.nextId(), type, level, x, z, rot, 'active');
+        ship.modules.push(m);
+        sim.shipChanged();
+        return m;
+      }
+    }
+  }
+  throw new Error(`no cabe ${type} en el nivel ${level}`);
+}
+
+describe('c2-ui: objetos, glifos y datos nuevos', () => {
+  it('iconos propios para el pescado ahumado, los planos nuevos y las siete hojas (con su número)', () => {
+    for (const id of ['pescado_ahumado', 'plano_acuicultura', 'plano_grua', 'plano_radar']) expect(hasItemIcon(id), id).toBe(true);
+    const pages = [1, 2, 3, 4, 5, 6, 7].map((n) => itemIcon(`pagina_${n}`));
+    expect(new Set(pages).size).toBe(7);
+    pages.forEach((svg, i) => {
+      expect(wellFormed(svg)).toBe(true);
+      expect(svg).toContain(`>${i + 1}</text>`);
+    });
+    // El pescado ahumado no es el crudo ni el asado.
+    expect(itemIcon('pescado_ahumado')).not.toBe(itemIcon('pescado_crudo'));
+    expect(itemIcon('pescado_ahumado')).not.toBe(itemIcon('pescado_asado'));
+  });
+
+  it('glifos de los módulos nuevos, de la llegada y de las herramientas de mejora y del cuaderno', () => {
+    expect(MODULE_GLYPH['sala_comun']).toBe('sofa');
+    expect(MODULE_GLYPH['grua']).toBe('crane');
+    expect(MODULE_GLYPH['radar']).toBe('radar');
+    expect(EVENT_GLYPH['llegada']).toBe('anchor');
+    for (const g of ['sofa', 'smoke', 'crane', 'radar', 'radio', 'upgrade', 'chevrons', 'page', 'quill', 'heart', 'flag', 'lighthouse']) {
+      expect(hasGlyph(g), g).toBe(true);
+      expect(wellFormed(glyph(g)), g).toBe(true);
+    }
+    for (const k of ['naufragio', 'isla', 'balsa', 'mercante', 'estructura']) expect(hasGlyph(SIGHTING_GLYPH[k] ?? ''), k).toBe(true);
+  });
+
+  it('las hojas del cuaderno se leen, tienen categoría propia y se ordenan junto a los planos', () => {
+    const page = ITEMS['pagina_3']!;
+    expect(useVerb(page, 10)).toBe('Leer');
+    expect(CATEGORY_NAMES['documento']).toBe('Hoja del cuaderno');
+    expect(itemEffects(page).some((e) => /Cuaderno del Diario/.test(e.label))).toBe(true);
+    // La U de la herramienta Mejorar se resalta como tecla en los consejos.
+    const rk = richKeys('Pulsa U para mejorar');
+    expect(rk.some((x) => typeof x === 'object' && x !== null && (x as VNode).props?.['class'] === 'kbd' && (x as VNode).children[0] === 'U')).toBe(true);
+    const inv = createInventory(6);
+    inv.slots[0] = { id: 'madera', qty: 3 };
+    inv.slots[1] = { id: 'pagina_2', qty: 1 };
+    inv.slots[2] = { id: 'plano_grua', qty: 1 };
+    inv.slots[3] = { id: 'pescado_ahumado', qty: 2 };
+    sortInventory(inv, 0, 6, (a, b) => moveStack(inv, a, inv, b));
+    expect(inv.slots.slice(0, 4).map((x) => x?.id)).toEqual(['pescado_ahumado', 'plano_grua', 'pagina_2', 'madera']);
+  });
+
+  it('«Guardar todo» deja contigo las hojas sin leer y lo explica', () => {
+    const sim = newSim();
+    const { env, toasts } = fakeEnv(sim);
+    const alm = mod(sim, 'almacen');
+    const ref: InvRef = { kind: 'module', id: alm.id, slot: 'inventory' };
+    const pinv = sim.state.player.inventory;
+    pinv.slots[12] = { id: 'chatarra', qty: 3 };
+    storeAll(env, ref);
+    expect(pinv.slots[8]?.id).toBe('pagina_1');
+    expect(pinv.slots[12]).toBeNull();
+    expect(toasts.at(-1)!.text).toBe('Guardas todo lo de la mochila (la hoja del cuaderno se queda contigo: léela con clic derecho)');
+    // Solo la hoja en la mochila (y comida en la barra): no hay nada más que guardar.
+    storeAll(env, ref);
+    expect(toasts.at(-1)!.text).toMatch(/^En la mochila solo llevas hojas del cuaderno, que se quedan contigo\. Para guardar también la barra rápida/);
+    // Con la barra, la hoja sigue sin guardarse.
+    storeAll(env, ref, true);
+    expect(pinv.slots[8]?.id).toBe('pagina_1');
+    expect(countItem(alm.inventory!, 'pagina_1')).toBe(0);
+  });
+
+  it('la carta sitúa Puerto Esperanza más allá del faro y solo la muestra con el rumbo revelado', () => {
+    expect(CHART_POS['esperanza']!.x).toBeGreaterThan(CHART_POS['faro']!.x);
+    const sim = newSim();
+    expect(finalRegionOnChart(sim)).toBe(false);
+    let helm = vtext(renderHelm(fakeEnv(sim).env));
+    expect(helm).not.toContain('Puerto Esperanza');
+    expect(helm).not.toContain(CAPTAIN_COURSE_LABEL);
+    sim.state.story!.pages = [1, 2, 3, 4, 5];
+    sim.state.story!.revealed = true;
+    expect(finalRegionOnChart(sim)).toBe(true);
+    const view = renderHelm(fakeEnv(sim).env);
+    helm = vtext(view);
+    expect(helm).toContain('Puerto Esperanza');
+    expect(helm).toContain(CAPTAIN_COURSE_LABEL);
+    expect(findByClass(view, 'captain-badge').length).toBe(1);
+    // El rumbo dorado de la región actual a Puerto Esperanza, en la carta.
+    expect(findByClass(view, 'captain').some((n) => n.tag === 'path')).toBe(true);
+  });
+
+  it('efectos de una mejora en pocas palabras y subtítulo según el nivel', () => {
+    expect(upgradeEffectsText('almacen', { storageSlots: 32 })).toBe('32 huecos');
+    expect(upgradeEffectsText('generador', { powerGen: 8, fuelEfficiency: 1.3 })).toBe('8 kW, combustible ×1,3');
+    expect(upgradeEffectsText('huerto', { waterUseMult: 0.6, growthMult: 1.2 })).toBe('crecimiento ×1,2, agua ×0,6');
+    expect(upgradeEffectsText('grua', { workSpeed: 1.6 }, 2)).toMatch(/^velocidad ×1,6, alcance \d+ m$/);
+    expect(moduleSubtitle({ type: 'almacen', tier: 1 })).toBe(MODULE_LIST.find((m) => m.id === 'almacen')!.desc);
+    expect(moduleSubtitle({ type: 'almacen', tier: 2 })).toMatch(/^Un altillo y más baldas/);
+  });
+
+  it('mensajes de radio del diario, del más reciente al más antiguo', () => {
+    const log = [
+      { at: 10, text: 'Radio: el «Marea» saluda.', kind: 'info' as const },
+      { at: 20, text: 'Cosechas hortalizas', kind: 'good' as const },
+      { at: 30, text: 'Radio: se espera mar de fondo.', kind: 'info' as const },
+    ];
+    expect(radioMessages(log, 5)).toEqual([
+      { at: 30, text: 'Se espera mar de fondo.' },
+      { at: 10, text: 'El «Marea» saluda.' },
+    ]);
+    expect(radioMessages(log, 1).length).toBe(1);
+  });
+});
+
+describe('c2-ui: paneles de estación por nivel y módulos nuevos', () => {
+  it('el pie dice «Nivel N/M» y la mejora siguiente; con la mejora en obras, su progreso', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const alm = mod(sim, 'almacen');
+    let t = vtext(renderStation(env, alm.id));
+    expect(t).toContain('Nivel 1/3');
+    expect(t).toContain('Mejorable en el modo construcción (B, herramienta Mejorar): Almacén con altillo (32 huecos)');
+    // Mejora en obras: se paga y el panel enseña el progreso (el módulo sigue en uso).
+    addItem(sim.state.player.inventory, 'tornillos', 10);
+    addItem(sim.state.player.inventory, 'madera', 12);
+    expect(sim.startUpgrade(alm.id).ok).toBe(true);
+    alm.upgrade!.progress = 0.4;
+    t = vtext(renderStation(env, alm.id));
+    expect(t).toContain('Mejorando a «Almacén con altillo»');
+    expect(t).toContain('40 %');
+    expect(t).not.toContain('Mejorable en el modo construcción');
+    expect(moduleIssues(sim).some((i) => i.module === alm && /Mejorando a nivel 2 · 40 %/.test(i.text))).toBe(true);
+    // Terminada: el título es el del nivel y la siguiente mejora es la tercera.
+    alm.tier = 2;
+    alm.upgrade = null;
+    const view = renderStation(env, alm.id)!;
+    expect(view.title).toBe('Almacén con altillo');
+    t = vtext(view);
+    expect(t).toContain('Nivel 2/3');
+    expect(t).toContain('Almacén reforzado (48 huecos)');
+    alm.tier = 3;
+    expect(vtext(renderStation(env, alm.id))).toContain('Nivel máximo');
+  });
+
+  it('los paneles leen las capacidades del nivel actual (moduleStat), no las de la definición', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const dep = mod(sim, 'deposito');
+    expect(vtext(renderStation(env, dep.id))).toMatch(/aporta 120 L de capacidad/);
+    dep.tier = 2;
+    expect(vtext(renderStation(env, dep.id))).toMatch(/aporta 220 L de capacidad/);
+    // Un módulo sin mejoras no enseña niveles.
+    const esc = sim.state.ship.modules.find((m) => m.type === 'escalera');
+    if (esc) expect(upgradeLine(env, esc)).toBeNull();
+  });
+
+  it('ahumadero: estación con la receta de ahumar, verbo propio y bandeja', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const m = placeModule(sim, 'ahumadero', 1);
+    const view = renderStation(env, m.id)!;
+    const t = vtext(view);
+    expect(view.title).toBe('Ahumadero');
+    expect(t).toContain('Ahumar ×1');
+    expect(t).toContain('Bandeja de salida');
+    expect(t).toMatch(/La leña va en la receta/);
+    expect(t).toContain('Nivel 1/2');
+  });
+
+  it('vivero: estado, avance hacia el siguiente pescado, consumo e interruptor; bandeja con «Tomar todo»', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const m = placeModule(sim, 'vivero', 1);
+    const t = vtext(renderStation(env, m.id));
+    expect(t).toContain('Siguiente pescado');
+    expect(t).toMatch(/un pescado cada \d/);
+    expect(t).toContain('kW mientras cría');
+    expect(t).toContain('Tomar todo');
+    expect(findByClass(renderStation(env, m.id), 'switch').length).toBe(1);
+  });
+
+  it('grúa: estado, costado y alcance, objetivo y bandeja de lo rescatado', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const m = placeModule(sim, 'grua', 1);
+    const gs = sim.gruaStatus(m.id)!;
+    const t = vtext(renderStation(env, m.id));
+    expect(t).toContain(gs.status);
+    expect(t).toMatch(new RegExp(`trabaja por (babor|estribor) · alcance ${Math.round(gs.range)} m`));
+    expect(t).toContain('Objetivo');
+    expect(t).toContain('Restos a su alcance');
+    expect(t).toContain('Tomar todo');
+  });
+
+  it('radar: estado, avistamientos y los últimos mensajes de radio', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const m = placeModule(sim, 'radar', 2);
+    sim.state.voyage.sightings.push({ id: 991, kind: 'isla', name: 'Isla del Loro', expiresAt: sim.state.time + 120, side: -1, distance: 140, x: 60 } as never);
+    sim.state.log.push({ at: sim.state.time - 30, text: 'Radio: el «Marea» avisa de mar de fondo.', kind: 'info' });
+    const t = vtext(renderStation(env, m.id));
+    expect(t).toContain('Avistamientos');
+    expect(t).toContain('Isla del Loro');
+    expect(t).toContain('babor · 140 m');
+    expect(t).toContain('El «Marea» avisa de mar de fondo.');
+    expect(t).toContain('Barómetro');
+  });
+});
+
+describe('c2-ui: relaciones, cuaderno y llegada', () => {
+  it('la ficha del habitante muestra sus relaciones de la mejor a la peor', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const [a, b] = sim.state.npcs;
+    expect(a && b).toBeTruthy();
+    let t = vtext(renderNpc(env, a!.id));
+    expect(t).toContain('Relaciones');
+    expect(t).toMatch(/Aún no ha hecho amistades ni tiene roces a bordo/);
+    (a!.relations ??= {})[b!.id] = 60;
+    (b!.relations ??= {})[a!.id] = 60;
+    const view = renderNpc(env, a!.id);
+    t = vtext(view);
+    const rel = sim.npcRelations(a!.id)[0]!;
+    expect(rel.name).toBe(b!.name);
+    expect(t).toContain(rel.label);
+    expect(findByClass(view, 'rel-name').length).toBe(1);
+    expect(relationTone(60).glyph).toBe('heart');
+    expect(relationTone(-60).tone).toBe('danger');
+  });
+
+  it('el Cuaderno del Diario: resumen, huecos con pista y la hoja leída con su texto completo', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    env.ps.tab = 'diario';
+    env.ps.diary = 'cuaderno';
+    let t = vtext(renderInventory(env));
+    expect(t).toContain('Cuaderno del Albatros');
+    expect(t).toContain(storyStatus(sim).summary);
+    expect(t).toContain('Pág. 1');
+    expect(t).toContain('¿?');
+    // La hoja 1 está en la mochila sin leer: la pista lo dice.
+    expect(t).toMatch(/La llevas en la mochila sin leer/);
+    // Leerla (clic derecho) la archiva: el cuaderno enseña su título y sus párrafos.
+    expect(sim.useItem(8).ok).toBe(true);
+    env.ps.page = 1;
+    t = vtext(renderInventory(env));
+    expect(t).toContain('«A quien encuentre esto»');
+    for (const p of paragraphs(STORY_PAGES[0]!.text)) expect(t).toContain(p);
+    expect(t).toContain('Elena Duarte, capitana del Albatros');
+    // Una hoja que falta: hueco con la región donde suele aparecer.
+    env.ps.page = 4;
+    t = vtext(renderInventory(env));
+    expect(t).toMatch(/Esta hoja falta/);
+    expect(t).toContain(storyStatus(sim).pages[3]!.hint!);
+    // Con el rumbo revelado, se destaca en el cuaderno.
+    sim.state.story!.revealed = true;
+    expect(vtext(renderInventory(env))).toMatch(new RegExp(`${CAPTAIN_COURSE_LABEL}: elígelo en el timón`));
+    // El diario de a bordo sigue siendo la vista por defecto.
+    env.ps.diary = undefined;
+    expect(vtext(renderInventory(env))).toContain('Situaciones en curso');
+  });
+
+  it('utilidades del lector: hojas nuevas, párrafos, tiempo de lectura y hoja por defecto', () => {
+    expect(newPages([1, 2], [1, 2, 4])).toEqual([4]);
+    expect(newPages([], [])).toEqual([]);
+    expect(paragraphs('Uno.\n\nDos.\n\n\nTres.')).toEqual(['Uno.', 'Dos.', 'Tres.']);
+    const sec = readingSeconds(STORY_PAGES[0]!.text);
+    expect(sec).toBeGreaterThanOrEqual(16);
+    expect(sec).toBeLessThanOrEqual(50);
+    expect(readingSeconds('pocas palabras')).toBe(16);
+    const st = storyStatus(newSim());
+    expect(defaultPage(st)).toBe(1);
+    expect(defaultPage({ ...st, read: [1, 3] }, null)).toBe(3);
+    expect(defaultPage(st, 6)).toBe(6);
+    expect(defaultPage(st, 99)).toBe(1);
+    expect(listNames(['Ana'])).toBe('Ana');
+    expect(listNames(['Ana', 'Luis', 'Marta'])).toBe('Ana, Luis y Marta');
+  });
+
+  it('pantalla de llegada: textos de story.ts, estadísticas de la travesía y botones', () => {
+    const sim = newSim(21);
+    sim.state.voyage.regionId = 'esperanza';
+    sim.state.story!.pages = [1, 2, 3, 4, 5];
+    sim.state.story!.revealed = true;
+    sim.state.player.stats.debrisCollected = 37;
+    expect(startEvent(sim, 'llegada')).not.toBeNull();
+    const sum = sim.arrivalSummary()!;
+    const stats = arrivalStats(sim, sum);
+    expect(stats.find((s) => s.label === 'Restos rescatados')!.value).toBe('37');
+    expect(stats.find((s) => s.label === 'Hojas del cuaderno')!.value).toBe('5 de 7');
+    expect(stats.find((s) => /Habitantes a bordo/.test(s.label))!.value).toBe(String(sum.crew.length));
+    let cont = 0;
+    let market = -1;
+    const view = arrivalView(sim, sum, { onContinue: () => cont++, onMarket: (id) => (market = id) });
+    const t = vtext(view);
+    expect(t).toContain('Puerto Esperanza');
+    for (const p of sum.paragraphs) expect(t).toContain(p);
+    expect(t).toContain(sum.epilogue);
+    expect(t).toContain('Seguir navegando');
+    if (sum.newcomers.length) expect(t).toContain(listNames(sum.newcomers));
+    // Los botones llaman a sus acciones (el del mercado, con el evento del muelle).
+    const buttons = findByClass(view, 'btn');
+    (buttons.find((b) => vtext(b).includes('Seguir navegando'))!.props['onclick'] as (e: unknown) => void)({ stopPropagation() {} });
+    expect(cont).toBe(1);
+    expect(sum.marketEventId).not.toBeNull();
+    (buttons.find((b) => vtext(b).includes('Ir al mercado'))!.props['onclick'] as (e: unknown) => void)({ stopPropagation() {} });
+    expect(market).toBe(sum.marketEventId);
+  });
+});
+
+describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
+  const g = globalThis as unknown as { document?: unknown };
+  let saved: unknown;
+  beforeEach(() => {
+    saved = g.document;
+    g.document = {
+      createElement: (t: string) => new FElement(t),
+      createElementNS: (ns: string, t: string) => new FElement(t, ns),
+      createTextNode: (t: string) => new FText(t),
+      head: null,
+    };
+  });
+  afterEach(() => {
+    g.document = saved;
+  });
+
+  it('el lector enseña la hoja, no corre con un menú abierto ni con el cursor encima, y se cierra solo', () => {
+    const layer = new FElement('div');
+    const r = new PageReader(layer as unknown as HTMLElement);
+    expect(r.visible).toBe(false);
+    r.show(2);
+    expect(r.current).toBe(2);
+    const total = r.remaining;
+    expect(total).toBe(readingSeconds(`${STORY_PAGES[1]!.title} ${STORY_PAGES[1]!.text}`));
+    r.update(1, { hidden: false, panelOpen: false });
+    expect(r.remaining).toBeCloseTo(total - 1, 5);
+    const el = layer.childNodes[0] as FElement;
+    expect(el.textContent).toContain(STORY_PAGES[1]!.title);
+    expect(el.textContent).toContain('abre el cuaderno');
+    // Con un menú abierto el tiempo no corre.
+    r.update(5, { hidden: true, panelOpen: false });
+    expect(r.remaining).toBeCloseTo(total - 1, 5);
+    // Con un panel abierto ofrece botones (el ratón está libre).
+    let opened = -1;
+    r.onOpenNotebook = (n) => (opened = n);
+    r.update(0, { hidden: false, panelOpen: true });
+    expect(el.textContent).toContain('Ver en el cuaderno');
+    const findBtn = (n: FElement, text: string): FElement | null => {
+      if (n.localName === 'button' && n.textContent.includes(text)) return n;
+      for (const c of n.childNodes) if (c instanceof FElement) {
+        const f = findBtn(c, text);
+        if (f) return f;
+      }
+      return null;
+    };
+    (findBtn(el, 'Ver en el cuaderno')!['onclick'] as (e: unknown) => void)({ stopPropagation() {} });
+    expect(opened).toBe(2);
+    r.update(total, { hidden: false, panelOpen: false });
+    expect(r.visible).toBe(false);
+    expect(layer.childNodes[0]?.childNodes.length ?? 0).toBe(0);
+  });
+
+  it('[P3] «Valores por defecto» también aplica la perspectiva de la cámara', () => {
+    const settings = { ...DEFAULT_SETTINGS, perspective: 'third' as const, fov: 90 };
+    const player = { perspective: 'third' };
+    let saves = 0;
+    const ctx = { settings, player, saveSettings: () => saves++, renderer: { needsReloadFor: () => false } };
+    const menus = new Menus(new FElement('div') as unknown as HTMLElement, ctx as never, {} as never);
+    menus.resetSettings();
+    expect(settings.perspective).toBe('first');
+    expect(settings.fov).toBe(DEFAULT_SETTINGS.fov);
+    expect(player.perspective).toBe('first');
+    expect(saves).toBe(1);
+  });
+
+  it('[P6] los ajustes avisan si la calidad elegida necesita recargar para el suavizado de bordes', () => {
+    let need = true;
+    const ctx = { settings: { ...DEFAULT_SETTINGS }, renderer: { needsReloadFor: () => need } };
+    const menus = new Menus(new FElement('div') as unknown as HTMLElement, ctx as never, {} as never);
+    expect(menus.qualityNeedsReload()).toBe(true);
+    need = false;
+    expect(menus.qualityNeedsReload()).toBe(false);
+    // Sin renderizador (pruebas) no avisa ni falla.
+    const bare = new Menus(new FElement('div') as unknown as HTMLElement, { settings: { ...DEFAULT_SETTINGS } } as never, {} as never);
+    expect(bare.qualityNeedsReload()).toBe(false);
   });
 });

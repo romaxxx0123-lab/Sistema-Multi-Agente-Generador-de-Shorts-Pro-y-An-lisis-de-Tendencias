@@ -38,10 +38,10 @@ import { daylight } from '../sim/time';
 import type { ModuleInstance, Rotation } from '../sim/types';
 import { withArticle } from '../sim/utilities';
 import { explainPlacement, levelReason, placeHintSteps, type PlaceSpot } from './advice';
-import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, fmtNum, moduleInfo, paletteModules, shipSummary, stock, tierRoman, upgradeList, upgradePreview, type DemolishPreview, type UpgradePreview } from './catalog';
+import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, fmtNum, moduleInfo, paletteModules, shipSummary, stock, upgradeList, upgradePreview, type DemolishPreview, type UpgradePreview } from './catalog';
 import { BoxMarker, GHOST_COLORS, GhostView, GridView, Pulse, ReachArc } from './ghost';
 import { BuildHud, esc, type ConfirmModel, type HudActions, type TipModel } from './hud';
-import { DEFAULT_PITCH, DEFAULT_YAW, fitDistance, OrbitRig } from './orbit';
+import { DEFAULT_PITCH, DEFAULT_YAW, fitDistance, OrbitRig, rescaleDistance } from './orbit';
 import { anchorFor, continuousCell, intersectLevel, moduleBox, pickModule, toShipLocalRay } from './picking';
 
 /** Duración de la transición de cámara al entrar (s). */
@@ -232,7 +232,7 @@ export class BuildMode {
     } else {
       // El casco ha crecido o la ventana cambió de forma desde la última vez: se reencuadra
       // manteniendo el ángulo y el zoom relativo elegidos.
-      this.rig.snap({ dist: this.rig.goal.dist * (fit / this.fitDist), tx: center, ty: this.levelTargetY(), tz: 0 });
+      this.rig.snap({ dist: rescaleDistance(this.rig.goal.dist, this.fitDist, fit), tx: center, ty: this.levelTargetY(), tz: 0 });
     }
     this.fitDist = fit;
     const pc = ctx.player.camera;
@@ -261,6 +261,7 @@ export class BuildMode {
     this._active = false;
     this.cleanup();
     this.rigReady = false;
+    this.fitDist = 0;
     this.category = 'vivienda';
     this.rot = 0;
     this.simRef = null;
@@ -510,7 +511,7 @@ export class BuildMode {
   /** Reencuadre si cambió la distancia de encuadre (ventana redimensionada o casco ampliado). */
   private refit(): void {
     const fit = this.defaultDist();
-    if (this.fitDist > 0 && Math.abs(fit - this.fitDist) > 0.01) this.rig.set({ dist: this.rig.goal.dist * (fit / this.fitDist) });
+    if (this.fitDist > 0 && Math.abs(fit - this.fitDist) > 0.01) this.rig.set({ dist: rescaleDistance(this.rig.goal.dist, this.fitDist, fit) });
     this.fitDist = fit;
   }
 
@@ -767,7 +768,16 @@ export class BuildMode {
     if (um) {
       const u = this.hoverUpgrade && this.hoverUpgrade.id === um.id ? this.hoverUpgrade : upgradePreview(sim, um);
       moduleBox(um, ship.width, _box).expandByScalar(0.16);
-      const color = u.state === 'ok' || u.state === 'busy' ? GHOST_COLORS.upgrade : u.state === 'cost' ? GHOST_COLORS.blocked : u.state === 'max' ? GHOST_COLORS.ok : GHOST_COLORS.bad;
+      const color =
+        u.state === 'ok' || u.state === 'busy'
+          ? GHOST_COLORS.upgrade
+          : u.state === 'cost'
+            ? GHOST_COLORS.blocked
+            : u.state === 'max'
+              ? GHOST_COLORS.ok
+              : u.state === 'none'
+                ? GHOST_COLORS.neutral
+                : GHOST_COLORS.bad;
       ubox.show(_box, color, u.state === 'ok' || u.state === 'busy' ? 0.24 : 0.12);
     } else ubox.hide();
     ubox.update(dt);
@@ -1027,7 +1037,7 @@ export class BuildMode {
       title: `¿Mejorar ${withArticle(u.name)}?`,
       glyph: 'star',
       lines: [
-        `Nivel ${tierRoman(u.toTier ?? u.tier + 1)}: ${u.nextName ?? ''}. ${u.desc ?? ''}`.trim(),
+        `Nivel ${u.toTier ?? u.tier + 1}: ${u.nextName ?? ''}. ${u.desc ?? ''}`.trim(),
         `La obra dura unas ${u.timeText ?? '—'} y se sigue usando mientras tanto. Los habitantes libres ayudan, y tú también con el martillo.`,
       ],
       chips: u.effects,
@@ -1045,7 +1055,7 @@ export class BuildMode {
       kind: 'cancelUpgrade',
       title: `¿Cancelar la mejora: ${u.nextName ?? ''}?`,
       glyph: 'trash',
-      lines: [`La obra va por el ${p} %${u.etaMin !== null ? ` y le faltan unas ${durationText(u.etaMin)}` : ''}. Si la cancelas, ${withArticle(u.name)} se queda en el nivel ${tierRoman(u.tier)}.`],
+      lines: [`La obra va por el ${p} %${u.etaMin !== null ? ` y le faltan unas ${durationText(u.etaMin)}` : ''}. Si la cancelas, ${withArticle(u.name)} se queda en el nivel ${u.tier}.`],
       progress: u.progress ?? 0,
       items: u.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need })),
       itemsLabel: 'Recuperas',

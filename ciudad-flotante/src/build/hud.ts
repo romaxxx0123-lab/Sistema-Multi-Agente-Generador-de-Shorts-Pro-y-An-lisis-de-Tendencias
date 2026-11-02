@@ -404,7 +404,7 @@ export class BuildHud {
       foot = `<div class="bm-card-lock warn">${gl('trash')}<span>Clic: cancelar la mejora (recuperas todo)</span></div>`;
     } else {
       body =
-        `<div class="bm-up-next" title="${esc(u.desc ?? '')}">${gl('arrow')}<span>${esc(`${tierRoman(u.toTier ?? u.tier + 1)}: ${u.nextName ?? ''}`)}</span></div>` +
+        `<div class="bm-up-next" title="${esc(`Nivel ${u.toTier ?? u.tier + 1}: ${u.nextName ?? ''}. ${u.desc ?? ''}`)}">${gl('arrow')}<span>${esc(u.nextName ?? '')}</span></div>` +
         `<div class="bm-card-stats">${u.effects.map(statHtml).join('')}</div>` +
         `<div class="bm-card-cost">${u.cost.map(costHtml).join('')}</div>`;
       foot =
@@ -512,6 +512,7 @@ export class BuildHud {
     if (s.healingBeds) html += `<div class="bm-row sub">${gl('medical')}<span class="lbl">Camillas</span><span class="val">${s.healingBeds}</span></div>`;
     html += `<div class="bm-row" title="Eslora actual / máxima">${gl('ship')}<span class="lbl">Eslora</span><span class="val">${s.lengthM} m <span class="dim">/ ${s.maxLengthM} m</span></span></div>`;
     if (s.works) html += `<div class="bm-row">${gl('hammer')}<span class="lbl">Obras</span><span class="val warn">${s.works} en curso</span></div>`;
+    if (s.upgrades) html += `<div class="bm-row" title="Mejoras en obras: los módulos se siguen usando mientras tanto">${gl('star')}<span class="lbl">Mejoras</span><span class="val warn">${s.upgrades} en obras</span></div>`;
     if (s.expansion) {
       html += `<div class="bm-row">${gl('ship')}<span class="lbl">Ampliación</span><span class="val warn">${Math.floor(s.expansion.progress * 100)} % · ${esc(durationText(s.expansion.etaMin))}</span></div>`;
       html += bar(s.expansion.progress, 'work');

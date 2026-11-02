@@ -27,6 +27,8 @@ export const GHOST_COLORS = {
   blocked: new THREE.Color('#f2a541'),
   /** Herramienta Mejorar: dorado de las placas de latón. */
   upgrade: new THREE.Color('#ffd166'),
+  /** Módulo que no admite mejoras (ni bueno ni malo). */
+  neutral: new THREE.Color('#9fb3c8'),
 };
 
 const WHITE = new THREE.Color('#ffffff');

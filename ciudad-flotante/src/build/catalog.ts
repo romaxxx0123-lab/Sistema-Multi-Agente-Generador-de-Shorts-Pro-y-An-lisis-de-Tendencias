@@ -492,6 +492,8 @@ export interface ShipSummary {
   maxLengthM: number;
   /** Obras de módulos en curso. */
   works: number;
+  /** Mejoras en obras (módulos que siguen en uso mientras tanto). */
+  upgrades: number;
   expansion: { progress: number; etaMin: number } | null;
 }
 
@@ -501,11 +503,13 @@ export function shipSummary(sim: Simulation): ShipSummary {
   let beds = 0;
   let healingBeds = 0;
   let works = 0;
+  let upgrades = 0;
   for (const m of st.ship.modules) {
     if (m.status === 'construction') {
       works++;
       continue;
     }
+    if (activeUpgrade(m)) upgrades++;
     const def = moduleDef(m.type);
     if (def.healingBeds) healingBeds += m.beds.length;
     else beds += m.beds.length;
@@ -527,6 +531,7 @@ export function shipSummary(sim: Simulation): ShipSummary {
     lengthM: st.ship.length * CELL,
     maxLengthM: SHIP_MAX_LENGTH * CELL,
     works,
+    upgrades,
     expansion: ex ? { progress: ex.progress, etaMin: ex.etaMin } : null,
   };
 }

@@ -416,7 +416,9 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  height: 168px;
+  /* Alto mínimo común; si una ficha necesita más (cuatro materiales, varias estadísticas), la fila
+     entera crece con ella en vez de recortar el pie. */
+  min-height: 168px;
   overflow: hidden;
   padding: 8px 9px 8px;
   border-radius: var(--radius);
@@ -1160,6 +1162,14 @@
   }
 }
 
+/* Pantallas medianas: Girar, Vista y Salir solo con icono y tecla (caben pestañas y herramientas
+   en una sola fila de cabecera); Mejorar y Demoler conservan su nombre. */
+@media (max-width: 1440px) {
+  .bm-toolbtn:not(.upgrade):not(.demolish) span:not(.kbd) {
+    display: none;
+  }
+}
+
 /* Pantallas estrechas: herramientas solo con icono y tecla (una sola fila de cabecera). */
 @media (max-width: 1180px) {
   .bm-toolbtn span:not(.kbd) {
@@ -1178,7 +1188,7 @@
   }
 
   .bm-card {
-    height: 132px;
+    min-height: 132px;
   }
 
   .bm-keys {

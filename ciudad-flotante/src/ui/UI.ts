@@ -158,7 +158,9 @@ export class UI {
       (e) => {
         const b = (e.target as Element | null)?.closest?.('button');
         if (b) {
-          b.blur();
+          // Con el teclado (Tab + Intro/Espacio, `detail` 0) un botón de menú conserva el foco para
+          // seguir navegando; los menús desaparecen al volver al juego, así que no se repite nada.
+          if ((e as MouseEvent).detail !== 0 || !b.closest('.ui-menus')) b.blur();
           this.sfx('ui_clic');
         }
       },

@@ -145,3 +145,13 @@ export function fitDistance(lengthM: number, fovDeg: number, aspect: number): nu
   const d = half / (Math.tan(hHalf) * 0.62);
   return clamp(d, ORBIT_LIMITS.minDist + 6, ORBIT_LIMITS.maxDist - 5);
 }
+
+/**
+ * Distancia de la cámara cuando el encuadre ideal (`fitDistance`) pasa de `oldFit` a `newFit`
+ * (ventana redimensionada, casco ampliado): se conserva el zoom relativo que eligió el jugador.
+ * Si no había encuadre previo válido, el nuevo.
+ */
+export function rescaleDistance(dist: number, oldFit: number, newFit: number): number {
+  if (!(oldFit > 0) || !(newFit > 0) || !Number.isFinite(dist)) return newFit;
+  return clamp(dist * (newFit / oldFit), ORBIT_LIMITS.minDist, ORBIT_LIMITS.maxDist);
+}

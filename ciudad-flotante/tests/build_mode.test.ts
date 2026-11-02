@@ -19,11 +19,16 @@ import {
   paletteModules,
   shipSummary,
   stock,
+  upgradeEffects,
+  upgradeList,
+  upgradePreview,
 } from '../src/build/catalog';
-import { buildGhostGeometry } from '../src/build/ghost';
+import { buildGhostGeometry, GridView, reachArcPoints } from '../src/build/ghost';
 import { HUD_GLYPHS } from '../src/build/hud';
 import { hasGlyph, MODULE_GLYPH } from '../src/ui/icons';
-import { fitDistance, ORBIT_LIMITS, OrbitRig } from '../src/build/orbit';
+import { fitDistance, ORBIT_LIMITS, OrbitRig, rescaleDistance } from '../src/build/orbit';
+import { GRUA_RANGE } from '../src/sim/debris';
+import { moduleStat } from '../src/sim/moduleStats';
 import { anchorFor, continuousCell, intersectLevel, moduleAtCell, pickModule, toShipLocalRay } from '../src/build/picking';
 import {
   explainPlacement,
@@ -224,6 +229,7 @@ describe('catálogo de la paleta', () => {
     expect(s.inhabitants).toBe(3);
     expect(s.lengthM).toBe(40);
     expect(s.works).toBe(0);
+    expect(s.upgrades).toBe(0);
     expect(s.expansion).toBeNull();
   });
 
@@ -494,5 +500,320 @@ describe('motivos y pistas de colocación', () => {
     // Motivos de la validación fina (muebles que tapan puertas): también orientan.
     for (const r of ['Taparía la puerta de la cocina', 'Dejaría la cama del camarote sin acceso', 'Bloquearía el paso por una escalera', 'Su puerta quedaría tapada: no se podría entrar', 'No quedaría sitio para usar el fogón'])
       expect(fallbackHint(r), r).toBeTruthy();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Ronda de contenido 2: herramienta Mejorar, módulos nuevos, grúa y P5  */
+/* ------------------------------------------------------------------ */
+
+/** Pone en la mochila lo que falte para pagar `cost` (cuentan también los almacenes). */
+function giveFor(sim: Simulation, cost: Record<string, number>): void {
+  const have = stock(sim);
+  for (const [id, q] of Object.entries(cost)) addItem(sim.state.player.inventory, id, Math.max(0, q - (have[id] ?? 0)));
+}
+
+describe('herramienta Mejorar: efectos legibles', () => {
+  const texts = (type: string, a: number, b: number) => upgradeEffects(type, a, b).map((e) => e.text);
+
+  it('capacidades, producciones y confort como diferencias ("+12 huecos", "+100 L")', () => {
+    expect(texts('almacen', 1, 2)).toEqual(['+12 huecos']);
+    expect(texts('almacen', 2, 3)).toEqual(['+16 huecos']);
+    expect(texts('deposito', 1, 2)).toEqual(['+100 L']);
+    expect(texts('colector', 1, 2)).toEqual(['+15 L', '+8 L/h con lluvia']);
+    expect(texts('bateria', 1, 2)).toEqual(['+20 kWh']);
+    expect(texts('panel_solar', 1, 2)).toEqual(['+0,8 kW de día']);
+    expect(texts('camarote', 1, 2)).toEqual(['Confort +2']);
+    expect(texts('motor', 1, 2)).toEqual(['+2 nudos']);
+  });
+
+  it('multiplicadores: "×1,5 velocidad", "−40 % agua", "−33 % combustible"; si ya estaba mejorado, de → a', () => {
+    expect(texts('cocina', 1, 2)).toEqual(['+6 huecos', '×1,5 velocidad', '−33 % combustible']);
+    expect(texts('huerto', 1, 2)).toEqual(['×1,2 crecimiento', '−40 % agua']);
+    // El agua no cambia del nivel 2 al 3: no se anuncia.
+    expect(texts('huerto', 2, 3)).toEqual(['Crecimiento ×1,2 → ×1,5']);
+    expect(texts('generador', 1, 2)).toEqual(['+3 kW', '−23 % combustible']);
+    expect(texts('generador', 2, 3)).toEqual(['+3 kW', 'Combustible −23 % → −38 %']);
+    expect(texts('taller', 1, 2)).toEqual(['×1,6 velocidad', '−30 % desgaste']);
+    expect(texts('enfermeria', 1, 2)).toEqual(['×1,5 curación']);
+    expect(texts('potabilizadora', 1, 2)).toEqual(['+6 L/h', '−30 % desgaste']);
+  });
+
+  it('módulos nuevos: grúa con su alcance, vivero con su ritmo', () => {
+    expect(texts('grua', 1, 2)).toEqual(['×1,6 velocidad', 'Alcance 30 → 37,5 m']);
+    const viv = upgradeEffects('vivero', 1, 2);
+    expect(viv.map((e) => e.text)).toEqual(['×1,6 velocidad']);
+    expect(viv[0]!.title).toMatch(/Un pescado cada 1 h 34 min \(ahora cada 2 h 30 min\)/);
+    expect(texts('sala_comun', 1, 2)).toEqual(['Confort +2']);
+    expect(texts('ahumadero', 1, 2)).toEqual(['×1,6 velocidad']);
+  });
+
+  it('toda mejora definida anuncia algún efecto y sus glifos existen', () => {
+    for (const def of MODULE_LIST) {
+      for (const u of def.upgrades ?? []) {
+        const fx = upgradeEffects(def.id, u.tier - 1, u.tier);
+        expect(fx.length, `${def.id} → ${u.tier}`).toBeGreaterThan(0);
+        for (const e of fx) expect(hasGlyph(e.glyph), `${def.id}: ${e.glyph}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('herramienta Mejorar: estado de cada módulo', () => {
+  it('encargar, ver la obra, cancelarla (se recupera todo) y terminarla', () => {
+    const sim = Simulation.newGame(11);
+    const alm = sim.state.ship.modules.find((m) => m.type === 'almacen')!;
+    giveFor(sim, moduleDef('almacen').upgrades![0]!.cost);
+    let u = upgradePreview(sim, alm);
+    expect(u.state).toBe('ok');
+    expect(u.name).toBe('Almacén');
+    expect([u.tier, u.maxTier, u.toTier]).toEqual([1, 3, 2]);
+    expect(u.nextName).toBe('Almacén con altillo');
+    expect(u.timeText).toBe('45 min');
+    expect(u.effects.map((e) => e.text)).toEqual(['+12 huecos']);
+    expect(u.cost.every((c) => c.ok)).toBe(true);
+    const before = stock(sim);
+
+    expect(sim.startUpgrade(alm.id).ok).toBe(true);
+    sim.tick(5);
+    expect(shipSummary(sim).upgrades).toBe(1);
+    expect(shipSummary(sim).works).toBe(0);
+    u = upgradePreview(sim, alm);
+    expect(u.state).toBe('busy');
+    expect(u.progress).toBeGreaterThan(0);
+    expect(u.etaMin).toBeGreaterThan(0);
+    expect(u.cost.map((c) => [c.id, c.need])).toEqual(Object.entries(moduleDef('almacen').upgrades![0]!.cost));
+    // La ficha general también cuenta la obra de mejora.
+    const info = moduleInfo(sim, alm);
+    expect(info.upgrade?.name).toBe('Almacén con altillo');
+    expect(info.upgrade?.toTier).toBe(2);
+
+    expect(sim.cancelUpgrade(alm.id).ok).toBe(true);
+    expect(upgradePreview(sim, alm).state).toBe('ok');
+    const after = stock(sim);
+    for (const id of Object.keys(moduleDef('almacen').upgrades![0]!.cost)) expect(after[id], id).toBe(before[id]);
+
+    expect(sim.startUpgrade(alm.id).ok).toBe(true);
+    for (let i = 0; i < 60 && alm.upgrade; i++) sim.tick(1);
+    expect(alm.tier).toBe(2);
+    u = upgradePreview(sim, alm);
+    expect(u.name).toBe('Almacén con altillo');
+    expect(u.nextName).toBe('Almacén reforzado');
+    expect(moduleInfo(sim, alm).name).toBe('Almacén con altillo');
+    expect(moduleInfo(sim, alm).lines.join(' ')).toMatch(/\/32 huecos/);
+  });
+
+  it('motivos: faltan materiales, al máximo, no admite mejoras, averiado y ardiendo', () => {
+    const sim = Simulation.newGame(12);
+    const ship = sim.state.ship;
+    const dep = ship.modules.find((m) => m.type === 'deposito')!;
+    // Sin material suficiente: solo falta el coste (ámbar), con pista.
+    for (const inv of [sim.state.player.inventory]) inv.slots.fill(null);
+    for (const m of ship.modules) if (m.inventory) m.inventory.slots.fill(null);
+    let u = upgradePreview(sim, dep);
+    expect(u.state).toBe('cost');
+    expect(u.reason).toMatch(/^Faltan/);
+    expect(u.hint).toMatch(/materiales/);
+    expect(u.cost.some((c) => !c.ok)).toBe(true);
+
+    dep.tier = 3;
+    u = upgradePreview(sim, dep);
+    expect(u.state).toBe('max');
+    expect(u.reason).toBe('Nivel máximo (3 de 3)');
+
+    const esc = ship.modules.find((m) => m.type === 'escalera')!;
+    expect(upgradePreview(sim, esc).state).toBe('none');
+    expect(upgradePreview(sim, esc).reason).toBe('La escalera no admite mejoras');
+
+    const coc = ship.modules.find((m) => m.type === 'cocina')!;
+    coc.fire = 0.5;
+    u = upgradePreview(sim, coc);
+    expect(u.state).toBe('blocked');
+    expect(u.reason).toMatch(/arde/);
+    expect(u.hint).toMatch(/cubo/);
+    coc.fire = 0;
+
+    coc.status = 'broken';
+    u = upgradePreview(sim, coc);
+    expect(u.state).toBe('blocked');
+    expect(u.reason).toMatch(/averiada: repárala primero/);
+    expect(u.hint).toBe('Repárala con el martillo y un kit de reparación');
+    // Aun bloqueada, la ficha enseña qué daría la mejora y cuánto cuesta.
+    expect(u.nextName).toBe('Cocina de hierro');
+    expect(u.cost.length).toBeGreaterThan(0);
+  });
+
+  it('la lista de mejoras: solo lo mejorable y construido, primero lo que se puede hacer ya', () => {
+    const sim = Simulation.newGame(13);
+    const ship = sim.state.ship;
+    const alm = ship.modules.find((m) => m.type === 'almacen')!;
+    giveFor(sim, moduleDef('almacen').upgrades![0]!.cost);
+    ship.modules.find((m) => m.type === 'camarote')!.tier = 2;
+    // Una obra nueva no sale en la lista (aún no se puede mejorar).
+    giveFor(sim, moduleDef('camarote').cost);
+    const res = sim.placeModule('camarote', 1, 6, 0, 2);
+    expect(res.ok).toBe(true);
+    const list = upgradeList(sim);
+    expect(list.some((u) => u.id === res.moduleId)).toBe(false);
+    expect(list.some((u) => u.type === 'escalera' || u.type === 'puente')).toBe(false);
+    const order = { ok: 0, cost: 1, busy: 2, blocked: 3, max: 4, none: 5 } as const;
+    for (let i = 1; i < list.length; i++) expect(order[list[i - 1]!.state]).toBeLessThanOrEqual(order[list[i]!.state]);
+    expect(list.find((u) => u.id === alm.id)?.state).toBe('ok');
+    expect(list[list.length - 1]!.state).toBe('max');
+    expect(list[list.length - 1]!.type).toBe('camarote');
+  });
+
+  it('desmontar: nombre con su nivel, mejora en obras y pérdidas con la capacidad mejorada', () => {
+    const sim = Simulation.newGame(14);
+    sim.tick(1);
+    const dep = sim.state.ship.modules.find((m) => m.type === 'deposito')!;
+    dep.tier = 2;
+    const u = sim.state.utilities;
+    // La red reconoce la capacidad mejorada; se llena para que algo se pierda.
+    sim.tick(1);
+    u.waterL = u.water.capacityL;
+    const cap = moduleStat(dep, 'waterCapacity');
+    expect(cap).toBe(220);
+    const est = estimateLosses(sim, dep);
+    expect(est.waterLossL).toBeCloseTo(u.waterL - (u.water.capacityL - cap), 0);
+    const p = demolishPreview(sim, dep);
+    expect(p.name).toBe('Depósito ampliado');
+    expect(p.tier).toBe(2);
+    expect(p.waterLossL).toBeCloseTo(est.waterLossL, 0);
+    expect(p.upgradeInProgress).toBeNull();
+    giveFor(sim, moduleDef('deposito').upgrades![1]!.cost);
+    expect(sim.startUpgrade(dep.id).ok).toBe(true);
+    expect(demolishPreview(sim, dep).upgradeInProgress).toBe('Gran depósito');
+  });
+});
+
+describe('paleta: módulos especializados de la ronda 2', () => {
+  const txt = (id: string) => moduleStats(moduleDef(id)).map((s) => s.text);
+
+  it('cada módulo nuevo está en su categoría', () => {
+    expect(paletteModules('vivienda').map((d) => d.id)).toContain('sala_comun');
+    for (const id of ['ahumadero', 'vivero', 'grua']) expect(paletteModules('produccion').map((d) => d.id)).toContain(id);
+    expect(paletteModules('estructura').map((d) => d.id)).toContain('radar');
+    // Atajos 1-9: ninguna categoría tiene más piezas que teclas.
+    for (const c of CATEGORIES) expect(paletteModules(c.id).length + (c.id === 'estructura' ? 1 : 0)).toBeLessThanOrEqual(9);
+  });
+
+  it('estadísticas de lo que hace cada uno', () => {
+    expect(txt('sala_comun')).toEqual(expect.arrayContaining(['Confort +4', 'Ocio y relaciones']));
+    expect(txt('ahumadero')).toEqual(expect.arrayContaining(['3 en 1 h 30 min', '6 huecos', 'Cielo abierto']));
+    expect(txt('vivero')).toEqual(expect.arrayContaining(['1 cada 2 h 30 min', '−0,5 kW']));
+    expect(txt('grua')).toEqual(expect.arrayContaining([`Rescata a ${GRUA_RANGE} m`, 'Junto a la borda', '−0,4 kW']));
+    // La grúa (solo cubierta) no repite "Cielo abierto": lo dice su regla de la borda.
+    expect(txt('grua')).not.toContain('Cielo abierto');
+    expect(txt('radar')).toEqual(expect.arrayContaining(['Tormentas 3 h antes', '−0,3 kW']));
+    const ahum = moduleStats(moduleDef('ahumadero')).find((s) => s.text.startsWith('3 en'))!;
+    expect(ahum.title).toMatch(/3× Pescado crudo \+ 1× Madera → 3× Pescado ahumado/);
+  });
+
+  it('las fichas dicen hasta qué nivel se mejora cada pieza', () => {
+    const sim = Simulation.newGame(4);
+    const have = stock(sim);
+    const alm = cardInfo(sim, moduleDef('almacen'), have);
+    expect(alm.maxTier).toBe(3);
+    expect(alm.upgradesText).toMatch(/Nivel 2: Almacén con altillo · Nivel 3: Almacén reforzado/);
+    expect(cardInfo(sim, moduleDef('escalera'), have).maxTier).toBe(1);
+    expect(cardInfo(sim, moduleDef('escalera'), have).upgradesText).toBeNull();
+    expect(cardInfo(sim, moduleDef('radar'), have).maxTier).toBe(1);
+  });
+
+  it('ficha de una grúa y de un vivero construidos: su estado automático', () => {
+    const sim = Simulation.newGame(15);
+    sim.state.unlocks.push('grua', 'acuicultura');
+    giveFor(sim, moduleDef('grua').cost);
+    const g = sim.placeModule('grua', 1, 7, 3, 0);
+    expect(g.ok, g.msg).toBe(true);
+    const grua = sim.state.ship.modules.find((m) => m.id === g.moduleId)!;
+    grua.status = 'active';
+    grua.buildProgress = 1;
+    sim.shipChanged();
+    sim.tick(1);
+    const lines = moduleInfo(sim, grua).lines.join(' | ');
+    expect(lines).toMatch(/Alcance 30 m por estribor · \d+ restos? a su alcance/);
+  });
+});
+
+describe('grúa: junto a la borda', () => {
+  const spotAt = (id: string, level: number, x: number, z: number): PlaceSpot => ({ def: moduleDef(id), level, x, z, rot: 0, fx: x + 0.5, fz: z + 0.5 });
+
+  it('en el centro de la cubierta explica la regla y dónde va; en el borde vale', () => {
+    const sim = Simulation.newGame(1);
+    sim.state.unlocks.push('grua');
+    giveFor(sim, moduleDef('grua').cost);
+    const inner = spotAt('grua', 1, 7, 1);
+    const chk = sim.checkPlace('grua', 1, 7, 1, 0);
+    expect(chk.ok).toBe(false);
+    const ex = explainPlacement(sim, inner, chk.reason);
+    expect(ex.reason).toBe('La grúa de rescate debe ir junto a la borda');
+    expect(ex.hint).toBe('Colócala en una celda del borde de la cubierta (en verde en la rejilla)');
+    expect(placeHint(sim, inner, chk.reason, ex)).toBe(ex.hint);
+    expect(fallbackHint(chk.reason)).toMatch(/borde/);
+    // Borde de estribor y de babor.
+    expect(sim.checkPlace('grua', 1, 7, 3, 0).ok).toBe(true);
+    expect(sim.checkPlace('grua', 1, 8, 0, 0).ok).toBe(true);
+  });
+
+  it('la rejilla marca en verde las celdas libres del borde', () => {
+    const sim = Simulation.newGame(1);
+    const ship = sim.state.ship;
+    const alpha = (edgeOnly: boolean) => {
+      const grid = new GridView();
+      grid.sync(sim.layout, ship, 1, edgeOnly);
+      const fills = grid.group.children.find((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.getAttribute('color')) as THREE.Mesh;
+      const pos = fills.geometry.getAttribute('position');
+      const col = fills.geometry.getAttribute('color');
+      const out: { edge: boolean; a: number; g: number }[] = [];
+      const hw = (ship.width * CELL) / 2;
+      for (let i = 0; i < pos.count; i += 6) {
+        // Centro del cuadro (dos triángulos).
+        let z = 0;
+        for (let k = 0; k < 6; k++) z += pos.getZ(i + k) / 6;
+        out.push({ edge: Math.abs(z) > hw - CELL, a: col.getW(i), g: col.getY(i) });
+      }
+      return out;
+    };
+    const normal = alpha(false);
+    for (const c of normal) expect(c.a).toBeCloseTo(0.16, 5);
+    const edge = alpha(true);
+    expect(edge.some((c) => c.edge)).toBe(true);
+    for (const c of edge) expect(c.a).toBeCloseTo(c.edge ? 0.36 : 0.05, 5);
+  });
+
+  it('el arco de alcance cubre solo su costado y tiene el radio de la pluma', () => {
+    for (const side of [1, -1] as const) {
+      const cz = side * 6;
+      const pts = reachArcPoints(2, cz, GRUA_RANGE, side);
+      expect(pts.length).toBeGreaterThan(10);
+      for (const q of pts) {
+        expect(q.z * side).toBeGreaterThanOrEqual(-1e-6);
+        expect(Math.hypot(q.x - 2, q.z - cz)).toBeCloseTo(GRUA_RANGE, 6);
+      }
+      // Empieza y acaba en el eje del barco (z = 0) y pasa por el punto más alejado del costado.
+      expect(pts[0]!.z).toBeCloseTo(0, 6);
+      expect(pts[pts.length - 1]!.z).toBeCloseTo(0, 6);
+      expect(Math.max(...pts.map((q) => q.z * side))).toBeCloseTo(6 + GRUA_RANGE, 1);
+    }
+    expect(reachArcPoints(0, 0, 0, 1)).toEqual([]);
+  });
+});
+
+describe('P5: reencuadre de la cámara al redimensionar', () => {
+  it('conserva el zoom relativo y encuadra el casco en una ventana vertical', () => {
+    const wide = fitDistance(40, 50, 16 / 9);
+    const tall = fitDistance(40, 50, 700 / 900);
+    expect(tall).toBeGreaterThan(wide);
+    // En vertical ya no topa con el límite: el casco entero cabe.
+    expect(tall).toBeLessThan(ORBIT_LIMITS.maxDist - 5);
+    // Sin zoom propio: pasa justo al nuevo encuadre; con zoom ×0,5, sigue a la mitad.
+    expect(rescaleDistance(wide, wide, tall)).toBeCloseTo(tall);
+    expect(rescaleDistance(wide * 0.5, wide, tall)).toBeCloseTo(tall * 0.5);
+    // Límites y valores no válidos.
+    expect(rescaleDistance(ORBIT_LIMITS.maxDist, 20, 80)).toBe(ORBIT_LIMITS.maxDist);
+    expect(rescaleDistance(30, 0, 50)).toBe(50);
+    expect(rescaleDistance(Number.NaN, 40, 50)).toBe(50);
   });
 });

@@ -324,7 +324,12 @@ export class Hud {
         h('span', null, weatherName(w.kind)),
         h('span', { class: 'sep' }, '·'),
         h('span', null, `${Math.round(w.temperature)} °C`),
-        baro.trend === 'baja' && baro.next === 'tormenta' ? h('span', { class: 'tl-warn', title: 'Barómetro' }, gl('alert'), 'Tormenta en camino') : null,
+        // Con el radar en marcha, su lectura («Radar: frente de tormenta, llegará en 2 h») sustituye al aviso genérico.
+        baro.trend === 'baja' && baro.next === 'tormenta'
+          ? h('span', { class: 'tl-warn', title: `Barómetro: ${baro.text}` }, gl(baro.radar ? 'radar' : 'alert'), baro.radar && /^Radar:/.test(baro.text) ? baro.text : 'Tormenta en camino')
+          : baro.radar
+            ? h('span', { class: 'tl-radar', title: `Radar en marcha · Barómetro: ${baro.text}` }, gl('radar'))
+            : null,
       ),
       h(
         'div',
