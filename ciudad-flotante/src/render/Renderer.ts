@@ -200,6 +200,19 @@ export class Renderer {
     return { pitch: this.motion.pitch.x, roll: this.motion.roll.x, heave: this.motion.heave.x };
   }
 
+  /**
+   * Aviso de cada estallido de fuegos artificiales (posición en el marco del océano: el barco en el
+   * origen), para que el audio suene a la vez que se ve. null = sin aviso.
+   */
+  set onFirework(fn: ((x: number, y: number, z: number) => void) | null) {
+    this.celebration.onBurst = fn;
+  }
+
+  /** ¿Hay fuegos o farolillos en el cielo? (audio de fiesta, pruebas). */
+  get celebrating(): boolean {
+    return this.celebration.active;
+  }
+
   /** Altura del agua (coordenadas del océano, barco en el origen). Misma función que el shader. */
   waterHeight(x: number, z: number): number {
     return WATERLINE_Y + this.waves.heightAt(x, z);

@@ -81,8 +81,8 @@ export class Celebration {
   readonly group = new THREE.Group();
   /** Destello de las explosiones (color lineal, decae) para teñir la luz ambiente de noche. */
   readonly flash = new THREE.Color(0, 0, 0);
-  /** Avisa de cada explosión (distancia al barco) para el audio, si alguien lo engancha. */
-  onBurst: ((distance: number) => void) | null = null;
+  /** Avisa de cada explosión (posición en el marco del océano) para el audio, si alguien lo engancha. */
+  onBurst: ((x: number, y: number, z: number) => void) | null = null;
 
   private readonly sparks: THREE.InstancedMesh;
   private readonly sparkMat: THREE.MeshBasicMaterial;
@@ -282,7 +282,7 @@ export class Celebration {
     this.flash.r += main.r * 0.35;
     this.flash.g += main.g * 0.35;
     this.flash.b += main.b * 0.35;
-    this.onBurst?.(Math.hypot(x, y, z));
+    this.onBurst?.(x, y, z);
   }
 
   private releaseLantern(x: number, y: number, z: number): void {

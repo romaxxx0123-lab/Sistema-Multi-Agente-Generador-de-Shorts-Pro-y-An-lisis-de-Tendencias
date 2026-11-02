@@ -1543,8 +1543,9 @@ const BUILDERS: Record<PropKind, Builder> = {
       g.box(-0.13, 0.25, -hz - 0.05, 0.13, 0.52, -hz - 0.02, '#1b1d20');
       glow.box(-0.1, 0.28, -hz - 0.055, 0.1, 0.48, -hz - 0.05, '#ffffff');
       g.box(0.14, 0.38, -hz - 0.08, 0.17, 0.42, -hz - 0.04, BRASS);
-      g.cylinder(0, 0.7, -0.02, 0.07, 0.07, WALL_H - 0.7, 8, '#2b2f33');
-      g.cylinder(0, 1.3, -0.02, 0.085, 0.085, 0.05, 8, BRASS);
+      // tubo de humos corto: entra en el ladrillo y sale por la pared, detrás de la estantería
+      g.cylinder(0, 0.7, -hz + 0.12, 0.06, 0.06, 0.24, 8, '#2b2f33');
+      g.cylinder(0, 0.8, -hz + 0.12, 0.075, 0.075, 0.04, 8, BRASS);
       // leñero a un lado
       for (let k = 0; k < 4; k++) g.cylinderX(0.0, 0.12 + 0.07 * (k % 2), -hz + 0.12 + k * 0.08, 0.035, 0.3, 6, k % 2 ? '#8a5a44' : '#a47148');
       anchors.fire = new THREE.Vector3(0, 0.38, -hz - 0.06);

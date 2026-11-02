@@ -804,6 +804,27 @@ describe('vista del puerto', () => {
     h.dispose();
   });
 
+  it('al aparecer el puerto construye los modelos poco a poco (sin tirones) y no amarra sobre un naufragio', () => {
+    const h = new HarborView(shared, 'media');
+    const st = harborState('port', 20);
+    h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+    const first = h.clusterCount;
+    expect(first).toBeGreaterThan(0);
+    for (let i = 0; i < 20; i++) h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+    expect(h.clusterCount).toBeGreaterThan(first);
+    h.dispose();
+    // Con un naufragio a 90 m por estribor, ningún grupo a menos de su radio
+    const h2 = new HarborView(shared, 'media');
+    const st2 = harborState('port', 20);
+    st2.voyage.sightings = [{ id: 1, kind: 'naufragio', name: 'Restos', expiresAt: 1e6, side: 1, distance: 90, x: 200, eventId: 1 }];
+    h2.update(st2, 0.1, 0, water, atmAt(12), true, HULL);
+    for (const c of h2.root.children) {
+      if (!/^\d+[abc]$/.test(String(c.userData['harbor']))) continue;
+      expect(Math.hypot(c.position.x - 200, c.position.z - 90)).toBeGreaterThan(40);
+    }
+    h2.dispose();
+  });
+
   it('al dejar el puerto atrás todo se desvanece y se libera', () => {
     const h = new HarborView(shared, 'media');
     const st = harborState('port', 70);
