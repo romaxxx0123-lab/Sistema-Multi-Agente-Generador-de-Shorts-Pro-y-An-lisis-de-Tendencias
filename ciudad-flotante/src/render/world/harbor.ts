@@ -183,6 +183,8 @@ const WINDOW: Record<Quality, [number, number]> = { baja: [-650, 950], media: [-
 /** Los reflejos de las luces solo se dibujan cerca (m). */
 const MIRROR_DIST = 480;
 const FADE_S = 3;
+/** Segundos sin puerto tras los que se liberan sus modelos (se reconstruyen si vuelve). */
+const RELEASE_AFTER_S = 30;
 
 interface Entry {
   key: string;
@@ -235,6 +237,8 @@ export class HarborView {
   private obstacles: { x: number; z: number; r: number }[] = [];
   private builtThisFrame = 0;
   private towerVis = 0;
+  /** Segundos sin puerto a la vista (para liberar los modelos guardados). */
+  private idle = 0;
 
   constructor(
     private readonly shared: GlowShared,
@@ -546,6 +550,24 @@ export class HarborView {
         t.birds.mesh.visible = gulls > 0.01 || t.birds.mesh.count > 0;
       }
     }
+    this.releaseIfIdle(dt);
+  }
+
+  /** Libera los modelos guardados cuando el puerto lleva un rato fuera de la vista. */
+  private releaseIfIdle(dt: number): void {
+    const empty = !this.span && !this.tower && this.clusters.size === 0 && this.piers.size === 0 && this.buoys.size === 0 && this.boats.length === 0;
+    this.idle = empty ? this.idle + dt : 0;
+    if (this.idle < RELEASE_AFTER_S || this.variants.size === 0) return;
+    for (const v of this.variants.values()) {
+      v.model.geo.dispose();
+      v.halos.dispose();
+    }
+    this.variants.clear();
+  }
+
+  /** Modelos guardados (pruebas). */
+  get cachedModels(): number {
+    return this.variants.size;
   }
 
   private disposeTower(): void {

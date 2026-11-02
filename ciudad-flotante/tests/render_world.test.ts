@@ -835,6 +835,10 @@ describe('vista del puerto', () => {
     expect(h.clusterCount).toBe(0);
     expect(h.boatCount).toBe(0);
     expect(h.root.children.length).toBe(0);
+    // y al rato libera los modelos guardados
+    expect(h.cachedModels).toBeGreaterThan(0);
+    for (let i = 0; i < 320; i++) h.update(left, 0.1, 0, water, atmAt(12), false, HULL);
+    expect(h.cachedModels).toBe(0);
     h.dispose();
   });
 

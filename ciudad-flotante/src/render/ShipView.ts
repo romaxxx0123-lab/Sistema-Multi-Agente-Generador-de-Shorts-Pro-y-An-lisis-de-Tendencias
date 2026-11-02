@@ -33,7 +33,7 @@ import { moduleTier } from '../sim/moduleStats';
 import { cellMin, getCell, levelOfY, levelY, moduleCells, type CellKind, type PropInstance, type ShipLayout } from '../sim/ship';
 import { daylight } from '../sim/time';
 import type { GameState, ModuleInstance } from '../sim/types';
-import { createDynamic, type DynContext, type PropDynamic } from './ship/dynamic';
+import { createDynamic, radarActive, type DynContext, type PropDynamic } from './ship/dynamic';
 import { Flag, nameTexture } from './ship/decor';
 import { FireView } from './ship/fire';
 import { GeoBuilder, hash01 } from './ship/geo';
@@ -76,21 +76,33 @@ interface StructCache {
   lights: LightSpot[];
 }
 
-/** Lo construido en un nivel: firma con la que se hizo, mallas, puntos de luz y estadísticas. */
+/** Malla sólida con sus colores sin oscurecer y el módulo de cada vértice (tinte de daños). */
+interface TintMesh {
+  mesh: THREE.Mesh;
+  base: Float32Array;
+  tags: Int32Array;
+  /** Tinte aplicado ahora a cada módulo que aparece en la malla. */
+  tints: Map<number, number>;
+}
+
+/**
+ * Lo construido en un nivel: firma, mallas y puntos de luz. Las mallas de la ESTRUCTURA (suelos,
+ * paredes, cristal exterior, faroles) y las de los MUEBLES (props, placas, altillo, cristal y luces
+ * de los props) van por separado: si solo cambian los muebles (una mejora, una máquina nueva en
+ * cubierta) la estructura no se vuelve a fusionar ni a subir a la GPU.
+ */
 interface LevelBuild {
   key: string;
-  objs: THREE.Object3D[];
   lights: LightSpot[];
-  tris: number;
-  meshes: number;
   /** Estructura por columnas de celdas (una sola en el nivel de los techos). */
   struct: StructCache[];
-  /** Malla sólida fusionada, sus colores sin oscurecer y el módulo de cada vértice (tinte de daños). */
-  solid: THREE.Mesh | null;
-  base: Float32Array | null;
-  tags: Int32Array | null;
-  /** Tinte aplicado ahora a cada módulo de este nivel. */
-  tints: Map<number, number>;
+  structObjs: THREE.Object3D[];
+  propObjs: THREE.Object3D[];
+  structTris: number;
+  structMeshes: number;
+  propTris: number;
+  propMeshes: number;
+  tinted: TintMesh[];
 }
 
 const KIND_CODE: Record<CellKind, number> = { void: 0, hold: 1, deck: 2, roof: 3, room: 4, stairLow: 5, stairHigh: 6 };
@@ -133,6 +145,7 @@ const FLOOD_COLOR = new THREE.Color('#fff1d6');
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _m4 = new THREE.Matrix4();
+const _box = new THREE.Box3();
 
 /** Multiplicador de color de un módulo según su estado (dañado → más oscuro). */
 export function moduleTint(m: ModuleInstance | undefined): number {
@@ -153,6 +166,8 @@ export class ShipView {
   /** Reconstruir todo de una vez (partida nueva, carga, casco nuevo). */
   private forceFull = true;
   private upgrades = new Map<number, UpgradeSiteEntry>();
+  /** Modelos que conviene tener ya construidos (variantes de las mejoras en obras). */
+  private warmQueue: (() => void)[] = [];
   /** Constructores reutilizados entre reconstrucciones (un nivel cada vez). */
   private pool: LevelBuilders = makeLevelBuilders();
   private decorPool = new GeoBuilder().trackTags();
@@ -170,6 +185,7 @@ export class ShipView {
   private expansion: { object: THREE.Group; bars: THREE.Mesh[] } | null = null;
   private flags: Flag[] = [];
   private radar: THREE.Mesh | null = null;
+  private radarSpin = 0;
   private chimneyTop: THREE.Vector3 | null = null;
   private hull: HullGeometry | null = null;
   private hlOverlay: THREE.Mesh;
@@ -281,6 +297,9 @@ export class ShipView {
       this.structKey = structKey;
     }
     if (this.planned.size) this.flushLevels(state, layout);
+    // En los frames tranquilos se adelantan los modelos de las mejoras en obras (uno por frame):
+    // así, al terminar la mejora, el cambio de nivel no tiene que construirlos.
+    else if (this.warmQueue.length) this.warmQueue.shift()!();
     if (dmg !== this.tintKey) {
       this.applyTints(new Map(state.ship.modules.map((m) => [m.id, m])));
       this.tintKey = dmg;
@@ -333,7 +352,12 @@ export class ShipView {
     const windStrength = Math.min(1, wind.length() / 6);
     const windYaw = Math.atan2(-wind.z, wind.x);
     for (const f of this.flags) f.update(this.t, windStrength, windYaw);
-    if (this.radar) this.radar.rotation.y = this.t * 1.6;
+    // La antena del mástil del puente solo gira con un radar y radio en marcha (como el módulo).
+    if (this.radar) {
+      const on = state.ship.modules.some((m) => radarActive(m));
+      this.radarSpin += ((on ? 1.6 : 0) - this.radarSpin) * Math.min(1, dt * 0.8);
+      this.radar.rotation.y += this.radarSpin * dt;
+    }
 
     // --- Luces interiores ---
     for (const s of this.lightSpots) {
@@ -571,8 +595,8 @@ export class ShipView {
     this.dyns = [];
     for (const e of this.props.values()) if (e.dyn) this.dyns.push(e.dyn);
     this.lightSpots = this.levelBuilds.flatMap((b) => b?.lights ?? []);
-    this.stats.triangles = this.levelBuilds.reduce((a, b) => a + (b?.tris ?? 0), 0);
-    this.stats.staticMeshes = this.levelBuilds.reduce((a, b) => a + (b?.meshes ?? 0), 0);
+    this.stats.triangles = this.levelBuilds.reduce((a, b) => a + (b ? b.structTris + b.propTris : 0), 0);
+    this.stats.staticMeshes = this.levelBuilds.reduce((a, b) => a + (b ? b.structMeshes + b.propMeshes : 0), 0);
     this.stats.levelRebuilds += done;
     this.stats.lastRebuildLevels = done;
     this.stats.lastRebuildMs = now() - t0;
@@ -583,9 +607,8 @@ export class ShipView {
    * Oscurece los módulos dañados cambiando solo los colores de la malla sólida de cada nivel
    * (con la etiqueta de módulo de cada vértice): una tormenta que daña módulos no reconstruye nada.
    */
-  private applyTints(modules: Map<number, ModuleInstance>, only?: LevelBuild): void {
-    for (const b of only ? [only] : this.levelBuilds) {
-      if (!b?.solid || !b.base || !b.tags) continue;
+  private applyTints(modules: Map<number, ModuleInstance>, only?: TintMesh): void {
+    for (const b of only ? [only] : this.levelBuilds.flatMap((lb) => lb?.tinted ?? [])) {
       let changed = false;
       const want = new Map<number, number>();
       for (const id of b.tints.keys()) {
@@ -594,7 +617,7 @@ export class ShipView {
         if (t !== b.tints.get(id)) changed = true;
       }
       if (!changed) continue;
-      const col = b.solid.geometry.getAttribute('color') as THREE.BufferAttribute;
+      const col = b.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
       const out = col.array as Float32Array;
       const base = b.base;
       const tags = b.tags;
@@ -617,7 +640,7 @@ export class ShipView {
    * Estructura de un nivel por columnas de celdas: las columnas cuya firma no ha cambiado se
    * reutilizan tal cual; solo se construyen las que cambian (y su chimenea y radar en el techo).
    */
-  private levelStructure(l: number, keys: string[], state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>, objs: THREE.Object3D[]): StructCache[] {
+  private levelStructure(l: number, keys: string[], state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>): { chunks: StructCache[]; changed: boolean } {
     const prev = this.levelBuilds[l]?.struct ?? [];
     const top = layout.levels;
     const out: StructCache[] = [];
@@ -632,8 +655,7 @@ export class ShipView {
       out.push(this.buildStructChunk(l, top === l ? undefined : c, key, state, layout, modules));
     });
     for (const p of prev) if (!reused.has(p)) for (const g of [p.solid, p.glassOut, p.glassIn, p.lamps, p.lanterns]) g.dispose();
-    if (l === top && this.radar) objs.push(this.radar);
-    return out;
+    return { chunks: out, changed: reused.size !== out.length || prev.length !== out.length };
   }
 
   /** Construye la estructura de una columna (o del nivel de los techos entero, con el puente). */
@@ -677,6 +699,11 @@ export class ShipView {
     }
     const tags = lb.solid.tags();
     const ids = new Set<number>();
+    const geos = [lb.solid, lb.glassOut, lb.glassIn, lb.lamps, lb.lanterns].map((b) => {
+      const g = b.build(false);
+      if (g.getAttribute('position').count) g.computeBoundingBox();
+      return g;
+    });
     let last = -1;
     for (let i = 0; i < tags.length; i++) {
       const t = tags[i]!;
@@ -685,17 +712,7 @@ export class ShipView {
         last = t;
       }
     }
-    return {
-      key,
-      solid: lb.solid.build(false),
-      tags,
-      tagIds: [...ids],
-      glassOut: lb.glassOut.build(false),
-      glassIn: lb.glassIn.build(false),
-      lamps: lb.lamps.build(false),
-      lanterns: lb.lanterns.build(false),
-      lights,
-    };
+    return { key, solid: geos[0]!, tags, tagIds: [...ids], glassOut: geos[1]!, glassIn: geos[2]!, lamps: geos[3]!, lanterns: geos[4]!, lights };
   }
 
   /**
@@ -705,11 +722,13 @@ export class ShipView {
    */
   private rebuildLevel(l: number, key: string, state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>): void {
     const old = this.levelBuilds[l];
-    if (old) for (const o of old.objs) if (o !== this.radar) disposeObject(o);
-    const objs: THREE.Object3D[] = [];
     const ts = now();
-    const struct = this.levelStructure(l, this.plannedStruct.get(l) ?? this.structSignatures(l, state, layout, modules), state, layout, modules, objs);
+    const { chunks: struct, changed: structChanged } = this.levelStructure(l, this.plannedStruct.get(l) ?? this.structSignatures(l, state, layout, modules), state, layout, modules);
     this.stats.lastStructMs = now() - ts;
+    if (old) {
+      for (const o of old.propObjs) disposeObject(o);
+      if (structChanged || !old.structObjs.length) for (const o of old.structObjs) if (o !== this.radar) disposeObject(o);
+    }
 
     // Props del nivel: geometrías transformadas y objetos proxy (reutilizados si no cambian).
     const models = new Map<PropInstance, PropModel>();
@@ -724,6 +743,7 @@ export class ShipView {
     };
     const pg = { solid: [] as THREE.BufferGeometry[], glass: [] as THREE.BufferGeometry[], glow: [] as THREE.BufferGeometry[] };
     const propTags: [number, number][] = [];
+    const propBox = new THREE.Box3();
     const seen = new Set<string>();
     for (const p of layout.props) {
       if (propLevel(p, layout) !== l) continue;
@@ -731,6 +751,8 @@ export class ShipView {
       _m4.makeRotationY(p.yaw).setPosition(p.x, p.y, p.z);
       const sg = model.solid.clone().applyMatrix4(_m4);
       pg.solid.push(sg);
+      if (!model.solid.boundingBox) model.solid.computeBoundingBox();
+      propBox.union(_box.copy(model.solid.boundingBox!).applyMatrix4(_m4));
       propTags.push([p.moduleId, sg.getAttribute('position').count]);
       if (model.glass) pg.glass.push(model.glass.clone().applyMatrix4(_m4));
       if (model.glow) pg.glow.push(model.glow.clone().applyMatrix4(_m4));
@@ -780,66 +802,105 @@ export class ShipView {
     }
     const decorGeo = decor.build(false);
 
-    // Mallas fusionadas del nivel por material.
-    let tris = 0;
-    let meshes = 0;
-    const halfL = (layout.length * CELL) / 2;
-    const levelSphere = new THREE.Sphere(new THREE.Vector3(halfL - SHIP_ORIGIN_X, levelY(Math.min(l, layout.levels)) + LEVEL_H / 2, 0), Math.hypot(halfL + 4, (layout.width * CELL) / 2 + 2.5, LEVEL_H));
+    const decorCount = decorGeo.getAttribute('position')?.count ?? 0;
+    if (decorCount) {
+      decorGeo.computeBoundingBox();
+      propBox.union(decorGeo.boundingBox!);
+    }
+
+    // Mallas fusionadas por material: estructura (reutilizada si no ha cambiado) y muebles.
     const keep = new Set<THREE.BufferGeometry>(struct.flatMap((c) => [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]));
-    const mk = (parts: THREE.BufferGeometry[], mat: THREE.Material, shadow: boolean, name: string): THREE.Mesh | null => {
+    const mk = (parts: THREE.BufferGeometry[], mat: THREE.Material, shadow: boolean, name: string, into: THREE.Object3D[], box: THREE.Box3 | null): THREE.Mesh | null => {
       const valid = parts.filter((g) => (g.getAttribute('position')?.count ?? 0) > 0);
       let geo: THREE.BufferGeometry | null = null;
       if (valid.length === 1 && !keep.has(valid[0]!)) geo = valid[0]!;
       else if (valid.length) geo = mergeGeometries(valid, false);
       for (const g of parts) if (g !== geo && !keep.has(g)) g.dispose();
       if (!geo) return null;
-      // Esfera envolvente del nivel entero (recorrer los vértices costaría tanto como fusionarlos).
-      geo.boundingSphere = levelSphere.clone();
+      // Caja y esfera envolventes a partir de las de las piezas (sin recorrer los vértices otra vez).
+      const bb = box ?? new THREE.Box3();
+      if (!box) for (const g of valid) if (g.boundingBox) bb.union(g.boundingBox);
+      if (bb.isEmpty()) geo.computeBoundingSphere();
+      else {
+        geo.boundingBox = bb.clone();
+        geo.boundingSphere = bb.getBoundingSphere(new THREE.Sphere());
+      }
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = name;
       mesh.castShadow = shadow;
       mesh.receiveShadow = shadow;
       mesh.userData.ownGeometry = true;
       this.levelGroup(l).add(mesh);
-      objs.push(mesh);
-      tris += geo.getAttribute('position').count / 3;
-      meshes++;
+      into.push(mesh);
       return mesh;
     };
-    const solid = mk([...struct.map((c) => c.solid), decorGeo, ...pg.solid], this.mats.solid, true, `nivel-${l}-solido`);
-    mk(struct.map((c) => c.glassOut), this.mats.glassOut, false, `nivel-${l}-cristal-ext`);
-    mk([...struct.map((c) => c.glassIn), ...pg.glass], this.mats.glassIn, false, `nivel-${l}-cristal-int`);
-    mk([...struct.map((c) => c.lamps), ...pg.glow], this.mats.lamp, false, `nivel-${l}-lamparas`);
-    mk(struct.map((c) => c.lanterns), this.mats.lantern, false, `nivel-${l}-faroles`);
-
-    // Etiquetas de módulo por vértice (mismo orden que la fusión) para el tinte de daños.
-    let base: Float32Array | null = null;
-    let tags: Int32Array | null = null;
-    const tints = new Map<number, number>();
-    if (solid) {
-      const count = solid.geometry.getAttribute('position').count;
-      tags = new Int32Array(count).fill(-1);
-      let o = 0;
-      for (const c of struct) {
-        const sc = c.solid.getAttribute('position')?.count ?? 0;
-        if (sc) tags.set(c.tags.subarray(0, sc), o);
-        o += sc;
+    const count = (objs: THREE.Object3D[]): [number, number] => {
+      let tris = 0;
+      for (const o of objs) if (o instanceof THREE.Mesh && o !== this.radar) tris += o.geometry.getAttribute('position').count / 3;
+      return [tris, objs.filter((o) => o !== this.radar).length];
+    };
+    const tinted: TintMesh[] = [];
+    /** Prepara el tinte de daños de una malla sólida (etiquetas en el mismo orden que la fusión). */
+    const tintable = (mesh: THREE.Mesh | null, fill: (tags: Int32Array, ids: Map<number, number>) => void, prev?: TintMesh): void => {
+      if (!mesh) return;
+      if (prev && prev.mesh === mesh) {
+        tinted.push(prev);
+        return;
       }
-      const dc = decorGeo.getAttribute('position')?.count ?? 0;
-      if (dc) tags.set(decor.tags().subarray(0, dc), o);
-      o += dc;
+      const n = mesh.geometry.getAttribute('position').count;
+      const tags = new Int32Array(n).fill(-1);
+      const ids = new Map<number, number>();
+      fill(tags, ids);
+      const t: TintMesh = { mesh, base: (mesh.geometry.getAttribute('color').array as Float32Array).slice(), tags, tints: ids };
+      tinted.push(t);
+    };
+
+    // Estructura
+    let structObjs: THREE.Object3D[];
+    if (!old || structChanged || !old.structObjs.length) {
+      structObjs = [];
+      mk(struct.map((c) => c.solid), this.mats.solid, true, `nivel-${l}-solido`, structObjs, null);
+      mk(struct.map((c) => c.glassOut), this.mats.glassOut, false, `nivel-${l}-cristal-ext`, structObjs, null);
+      mk(struct.map((c) => c.lanterns), this.mats.lantern, false, `nivel-${l}-faroles`, structObjs, null);
+      if (l === layout.levels && this.radar) structObjs.push(this.radar);
+    } else structObjs = old.structObjs;
+    const structSolid = (structObjs.find((o) => o.name === `nivel-${l}-solido`) as THREE.Mesh | undefined) ?? null;
+    tintable(
+      structSolid,
+      (tags, ids) => {
+        let o = 0;
+        for (const c of struct) {
+          const sc = c.solid.getAttribute('position')?.count ?? 0;
+          if (sc) tags.set(c.tags.subarray(0, sc), o);
+          o += sc;
+          for (const id of c.tagIds) ids.set(id, 1);
+        }
+      },
+      old?.tinted.find((t) => t.mesh === structSolid),
+    );
+
+    // Muebles: props, placas y altillo, cristal y luces de los props (con los de la estructura)
+    const propObjs: THREE.Object3D[] = [];
+    const furniture = mk([decorGeo, ...pg.solid], this.mats.solid, true, `nivel-${l}-muebles`, propObjs, propBox.isEmpty() ? null : propBox);
+    tintable(furniture, (tags, ids) => {
+      let o = 0;
+      if (decorCount) tags.set(decor.tags().subarray(0, decorCount), o);
+      o += decorCount;
       for (const [id, n] of propTags) {
         if (n) tags.fill(id, o, o + n);
         o += n;
-        tints.set(id, 1);
+        ids.set(id, 1);
       }
-      for (const c of struct) for (const id of c.tagIds) tints.set(id, 1);
-      for (const m of state.ship.modules) if (m.level === l && m.status !== 'construction' && moduleTier(m) > 1) tints.set(m.id, 1);
-      base = (solid.geometry.getAttribute('color').array as Float32Array).slice();
-    }
-    const build: LevelBuild = { key, objs, lights: struct.flatMap((c) => c.lights), tris, meshes, struct, solid, base, tags, tints };
+      for (const m of state.ship.modules) if (m.level === l && m.status !== 'construction' && moduleTier(m) > 1) ids.set(m.id, 1);
+    });
+    mk([...struct.map((c) => c.glassIn), ...pg.glass], this.mats.glassIn, false, `nivel-${l}-cristal-int`, propObjs, null);
+    mk([...struct.map((c) => c.lamps), ...pg.glow], this.mats.lamp, false, `nivel-${l}-lamparas`, propObjs, null);
+
+    const [structTris, structMeshes] = count(structObjs);
+    const [propTris, propMeshes] = count(propObjs);
+    const build: LevelBuild = { key, lights: struct.flatMap((c) => c.lights), struct, structObjs, propObjs, structTris, structMeshes, propTris, propMeshes, tinted };
     this.levelBuilds[l] = build;
-    this.applyTints(modules, build);
+    for (const t of tinted) this.applyTints(modules, t);
   }
 
   /* ================================================================== */
@@ -864,6 +925,8 @@ export class ShipView {
     for (const m of state.ship.modules) {
       if (!m.upgrade || m.status === 'construction') continue;
       const e = buildUpgradeSite(m, layout, layout.props, this.mats);
+      const toTier = m.upgrade.toTier;
+      for (const p of layout.props) if (p.moduleId === m.id) this.warmQueue.push(() => void propModel(p.kind, localDims(p), toTier, p.moduleType));
       if (!e) continue;
       this.levelGroup(e.level).add(e.group);
       this.upgrades.set(m.id, e);
@@ -1117,7 +1180,7 @@ export class ShipView {
 
   /** Libera todo lo construido en un nivel (mallas y caché de estructura). */
   private disposeLevel(b: LevelBuild): void {
-    for (const o of b.objs) disposeObject(o);
+    for (const o of [...b.structObjs, ...b.propObjs]) disposeObject(o);
     for (const c of b.struct) for (const g of [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]) g.dispose();
     b.struct = [];
   }

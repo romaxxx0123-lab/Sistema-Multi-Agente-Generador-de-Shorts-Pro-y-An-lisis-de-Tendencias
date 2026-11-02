@@ -610,6 +610,8 @@ describe('niveles de mejora', () => {
     const tris0 = view.stats.triangles;
     const struct0 = view.stats.structRebuilds;
     const other = levelSolid(root, 0);
+    const walls = levelSolid(root, alm.level);
+    const furniture0 = root.getObjectByName(`nivel-${alm.level}-muebles`);
     alm.tier = 2;
     state.ship.revision++;
     layout = computeLayout(state.ship);
@@ -619,6 +621,9 @@ describe('niveles de mejora', () => {
     expect(view.stats.lastRebuildLevels).toBe(1);
     expect(view.stats.structRebuilds).toBe(struct0);
     expect(levelSolid(root, 0)).toBe(other);
+    // la estructura del nivel ni se reconstruye ni se vuelve a fusionar: solo cambian los muebles
+    expect(levelSolid(root, alm.level)).toBe(walls);
+    expect(root.getObjectByName(`nivel-${alm.level}-muebles`)).not.toBe(furniture0);
   });
 
   it('una mejora en obras muestra andamio o caballete y un cartel con su barra de progreso', () => {
@@ -708,10 +713,15 @@ describe('reconstrucción por niveles (QA P4)', () => {
     fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
     for (let l = 0; l <= layout.levels; l++) {
-      const a = levelSolid(root, l);
-      const b = levelSolid(fresh.root, l);
-      expect(a.geometry.getAttribute('position').count, `nivel ${l}`).toBe(b.geometry.getAttribute('position').count);
-      expect(sumAttr(a, 'position'), `nivel ${l}`).toBeCloseTo(sumAttr(b, 'position'), 1);
+      for (const name of [`nivel-${l}-solido`, `nivel-${l}-muebles`, `nivel-${l}-cristal-int`, `nivel-${l}-lamparas`]) {
+        const a = root.getObjectByName(name) as THREE.Mesh | undefined;
+        const b = fresh.root.getObjectByName(name) as THREE.Mesh | undefined;
+        expect(!!a, name).toBe(!!b);
+        if (!a || !b) continue;
+        expect(a.geometry.getAttribute('position').count, name).toBe(b.geometry.getAttribute('position').count);
+        expect(sumAttr(a, 'position'), name).toBeCloseTo(sumAttr(b, 'position'), 1);
+        expect(sumAttr(a, 'color'), name).toBeCloseTo(sumAttr(b, 'color'), 1);
+      }
     }
   });
 
@@ -731,6 +741,23 @@ describe('reconstrucción por niveles (QA P4)', () => {
     fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
     for (let l = 0; l <= layout.levels; l++) expect(levelSolid(root, l).geometry.getAttribute('position').count).toBe(levelSolid(fresh.root, l).geometry.getAttribute('position').count);
+  });
+
+  it('las esferas envolventes de las mallas fusionadas contienen todos sus vértices (recorte correcto)', () => {
+    const { view, root, state } = newView();
+    addModule(state, 'grua', 1, 6, 0);
+    const { layout } = addModule(state, 'sala_comun', 0, 1, 0);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    let meshes = 0;
+    root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || !o.name.startsWith('nivel-')) return;
+      meshes++;
+      const sph = o.geometry.boundingSphere!;
+      const pos = o.geometry.getAttribute('position');
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) expect(v.fromBufferAttribute(pos, i).distanceTo(sph.center), o.name).toBeLessThanOrEqual(sph.radius + 1e-3);
+    });
+    expect(meshes).toBeGreaterThan(8);
   });
 
   it('la firma de cada nivel solo cambia con lo que dibuja', () => {
@@ -842,20 +869,24 @@ describe('módulos especializados: animación', () => {
     expect(Math.hypot(hook.x - target.x, hook.z - target.z)).toBeLessThan(0.3);
   });
 
-  it('radar: la antena gira solo con el radar en marcha', () => {
-    const { view, state } = newView();
+  it('radar: la antena gira solo con el radar en marcha (y la del mástil del puente, también)', () => {
+    const { view, root, state } = newView();
     const { m, layout } = addModule(state, 'radar', 1, 6, 0);
     const prop = layout.props.find((p) => p.moduleId === m.id)!;
     const ant = (): number => view.getPropObject(prop.key)!.getObjectByName('antena-radar')!.rotation.y;
+    const bridge = (): number => root.getObjectByName('radar')!.rotation.y;
     expect(radarActive(m)).toBe(false);
     for (let i = 0; i < 30; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
     expect(ant()).toBeCloseTo(0, 3);
+    expect(bridge()).toBeCloseTo(0, 3);
     m.on = true;
     m.powered = true;
     for (let i = 0; i < 60; i++) view.sync(state, layout, OPTS, 1 / 30, camera);
     const a = ant();
+    const b = bridge();
     view.sync(state, layout, OPTS, 1 / 30, camera);
     expect(Math.abs(ant() - a)).toBeGreaterThan(0.02);
+    expect(Math.abs(bridge() - b)).toBeGreaterThan(0.02);
   });
 
   it('ahumadero: humo por la chimenea, brasas y pescado colgado mientras ahúma', () => {

@@ -425,7 +425,7 @@ export class Celebration {
       // De día, un poco más oscuras para destacar sobre el cielo claro.
       const gain = 0.75 + 0.6 * night;
       this.sparks.setColorAt(k, this.c.multiplyScalar(gain));
-      this.sparkHalos.setPoint(k, x, y, z, Math.max(0.1, sc * 2.6));
+      this.sparkHalos.setPoint(k, x, y, z, Math.max(0.1, sc * 3.4));
       this.c.convertLinearToSRGB();
       this.sparkHalos.setColor(k, this.c.r, this.c.g, this.c.b);
       k++;
