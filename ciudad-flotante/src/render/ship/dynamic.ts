@@ -641,7 +641,7 @@ class FishTankDyn extends PropDynamic {
       const h = hash01(prop.moduleId, prop.index, i);
       const mesh = new THREE.Mesh(geos[i % geos.length]!, mats.solid);
       mesh.name = 'pez';
-      const s = 0.8 + h * 0.5;
+      const s = 1.3 + h * 0.7;
       mesh.scale.setScalar(s);
       proxy.add(mesh);
       this.fish.push({ mesh, r: 0.35 + h * 0.5, speed: 0.35 + hash01(i, prop.moduleId, 3) * 0.35, phase: h * 6.28, y: this.y0 + 0.12 + hash01(i, 9, prop.index) * (t.y - 0.3), dir: i % 2 ? 1 : -1 });
@@ -671,8 +671,9 @@ class FishTankDyn extends PropDynamic {
     this.swim += c.dt * (run ? 1 : 0.45);
     for (const f of this.fish) {
       const a = f.phase + this.swim * f.speed * f.dir;
-      const ax = Math.min(this.tankX - 0.15, f.r * 1.6);
-      const az = Math.min(this.tankZ - 0.12, f.r);
+      // el pez mide hasta ~0,35 m: que no asome por el cristal en los extremos
+      const ax = Math.min(this.tankX - 0.3, f.r * 1.6);
+      const az = Math.min(this.tankZ - 0.25, f.r);
       const x = Math.cos(a) * ax;
       const z = Math.sin(a) * az;
       // dirección de avance (derivada de la elipse)
@@ -830,17 +831,20 @@ class CraneDyn extends PropDynamic {
     const reach = -(this.model.anchors.boomTip?.z ?? -2.2) - (this.model.anchors.jibTip?.z ?? -1.25) + 0.3;
     const floor = levelY(this.level);
     let hit = false;
-    for (let r = 0.7; r <= reach && !hit; r += 0.35) {
-      const x = this.prop.x + dx * r;
-      const z = this.prop.z + dz * r;
-      const cell = pointToCell(x, z, layout.width);
-      for (const l of [this.level, this.level + 1]) {
-        const k = getCell(layout, l, cell.x, cell.z)?.kind;
-        if (k === 'room' || k === 'stairLow' || k === 'stairHigh') hit = true;
-      }
-      for (const p of layout.props) {
-        if (p.key === this.prop.key || p.y - floor + p.height < 1.9 || Math.abs(p.y - floor) > 1) continue;
-        if (Math.abs(p.x - x) < p.hx + 0.25 && Math.abs(p.z - z) < p.hz + 0.25) hit = true;
+    // a lo largo de la pluma y a ambos lados de su eje (ancho de la pluma y del brazo con margen)
+    for (let r = 0.7; r <= reach && !hit; r += 0.3) {
+      for (const side of [-0.3, 0, 0.3]) {
+        const x = this.prop.x + dx * r - dz * side;
+        const z = this.prop.z + dz * r + dx * side;
+        const cell = pointToCell(x, z, layout.width);
+        for (const l of [this.level, this.level + 1]) {
+          const k = getCell(layout, l, cell.x, cell.z)?.kind;
+          if (k === 'room' || k === 'stairLow' || k === 'stairHigh') hit = true;
+        }
+        for (const p of layout.props) {
+          if (p.key === this.prop.key || p.y - floor + p.height < 1.9 || Math.abs(p.y - floor) > 1) continue;
+          if (Math.abs(p.x - x) < p.hx + 0.2 && Math.abs(p.z - z) < p.hz + 0.2) hit = true;
+        }
       }
     }
     this.blocked.set(q, hit);

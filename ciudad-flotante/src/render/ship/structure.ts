@@ -824,7 +824,9 @@ function wallDecor(g: GeoBuilder, type: string, uc: number, h: number): void {
         g.cylinderBetween(u, y, z + 0.02, u + 0.35, 2.55 - Math.sin(((k + 1) / 6) * Math.PI) * 0.14, z + 0.02, 0.006, 3, '#6e4a2e');
         if (k < 6) {
           const c = ['#e63946', '#e9c46a', '#2a9d8f', '#457b9d', '#f4a261', '#6d597a'][k]!;
-          g.tri(u + 0.06, y - 0.01, z + 0.025, u + 0.29, y - 0.01, z + 0.025, u + 0.175, y - 0.24, z + 0.025, c);
+          // banderín de tela (dos caras)
+          g.tri(u + 0.06, y - 0.01, z + 0.025, u + 0.175, y - 0.24, z + 0.025, u + 0.29, y - 0.01, z + 0.025, c);
+          g.tri(u + 0.06, y - 0.01, z + 0.024, u + 0.29, y - 0.01, z + 0.024, u + 0.175, y - 0.24, z + 0.024, shade(c, 0.8));
         }
       }
       break;
