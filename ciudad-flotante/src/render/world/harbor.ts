@@ -27,6 +27,7 @@ import { VISUAL_DRIFT, WATERLINE_Y } from '../../sim/constants';
 import type { GameState } from '../../sim/types';
 import type { Atmosphere } from './atmosphere';
 import { Birds } from './birds';
+import { MERCHANT_STATION_X } from './sightings';
 import { createLitUniforms, GlowPoints, glowGeometry, lightsLevel, litMaterial, type GlowShared, type LitUniforms } from './glow';
 import {
   channelBuoyModel,
@@ -229,6 +230,8 @@ export class HarborView {
   private quality: Quality = 'media';
   private span: HarborSpan | null = null;
   private level = 0;
+  /** Obstáculos para los botes (el mercado del muelle y los mercantes que navegan a la par). */
+  private obstacles: { x: number; z: number; r: number }[] = [];
 
   constructor(
     private readonly shared: GlowShared,
@@ -434,6 +437,7 @@ export class HarborView {
     }
 
     // --- Botes que van y vienen ---
+    this.obstacles = st.voyage.sightings.filter((x) => x.kind === 'mercante').map((x) => ({ x: Math.max(x.x, MERCHANT_STATION_X), z: (x.side < 0 ? -1 : 1) * Math.max(25, x.distance), r: 20 }));
     this.updateBoats(span, dt, ds, newSim, hull);
     this.animateBoats(water, dt);
 
@@ -531,12 +535,12 @@ export class HarborView {
   /* ---------------- Botes ---------------- */
 
   private boatTarget(b: Boat, hull: { xMin: number; xMax: number; halfWidth: number }, first: boolean): void {
-    // Destino: el pantalán de algún grupo cercano (hacia el canal) o un punto del canal.
+    // Destino: el pantalán frente a algún grupo de primera fila o un punto del canal (los botes
+    // no salen del canal: los pantalanes lo cierran a ambos lados).
     const docks: [number, number][] = [];
     for (const e of this.clusters.values()) {
-      if (e.leaving || e.x < -350 || e.x > 950) continue;
-      const toward = e.z > 0 ? -1 : 1;
-      docks.push([e.x + (hash01(b.tx, e.x, 3) - 0.5) * 20, e.z + toward * (e.radius * 0.7 + 8)]);
+      if (e.leaving || e.x < -350 || e.x > 950 || Math.abs(e.z) > MOOR_MIN_Z + 60) continue;
+      docks.push([e.x + (hash01(b.tx, e.x, 3) - 0.5) * 20, Math.sign(e.z) * (PROMENADE_Z - 5)]);
     }
     for (let tries = 0; tries < 8; tries++) {
       const r = hash01(this.boatSeed++, tries, 13);
@@ -557,8 +561,9 @@ export class HarborView {
       // Cruzar el canal solo lejos de la proa o ya a popa (el barco avanza hacia ellos).
       const crosses = Math.sign(tz) !== Math.sign(bz);
       if (crosses && !(Math.min(bx, tx) > 220 || Math.max(bx, tx) < hull.xMin - 40)) continue;
-      // Nunca a través del casco.
+      // Nunca a través del casco ni del mercado.
       if (segmentHitsBox(bx, bz, tx, tz, hull.xMin - 15, hull.xMax + 25, hull.halfWidth + 14)) continue;
+      if (this.obstacles.some((o) => segmentHitsBox(bx - o.x, bz - o.z, tx - o.x, tz - o.z, -o.r, o.r, o.r * 0.6))) continue;
       b.tx = tx;
       b.tz = tz;
       return;
@@ -586,7 +591,7 @@ export class HarborView {
       this.boats = [];
     }
     // Crear los que falten junto al pantalán de un grupo cercano o en el canal (dentro del puerto).
-    const near = [...this.clusters.values()].filter((e) => !e.leaving && e.x > -150 && e.x < 750);
+    const near = [...this.clusters.values()].filter((e) => !e.leaving && e.x > -150 && e.x < 750 && Math.abs(e.z) < MOOR_MIN_Z + 60);
     for (let tries = 0; this.boats.length < want && tries < 24; tries++) {
       const i = this.boats.length;
       let x = -150 + hash01(i, this.boatSeed++, 31) * 900;
@@ -594,7 +599,7 @@ export class HarborView {
       if (near.length && hash01(i, this.boatSeed, 43) < 0.7) {
         const c = near[Math.floor(hash01(i, this.boatSeed, 47) * near.length)]!;
         x = c.x + (hash01(i, this.boatSeed, 53) - 0.5) * 20;
-        z = c.z - Math.sign(c.z) * (c.radius * 0.7 + 8);
+        z = Math.sign(c.z) * (PROMENADE_Z - 5);
       }
       if (span && (x < span.start + 60 || x > span.end - 60)) continue;
       if (x > hull.xMin - 30 && x < hull.xMax + 60 && Math.abs(z) < hull.halfWidth + 25) continue;
@@ -642,6 +647,14 @@ export class HarborView {
         const inX = e.x > hull.xMin - 12 && e.x < hull.xMax + 45;
         const lim = hull.halfWidth + 12;
         if (inX && Math.abs(e.z) < lim) e.z += Math.sign(e.z || 1) * Math.min(lim - Math.abs(e.z), 4 * dt);
+        for (const o of this.obstacles) {
+          const dx = e.x - o.x;
+          const dz = e.z - o.z;
+          if (Math.abs(dx) < o.r && Math.abs(dz) < o.r * 0.6) e.z += Math.sign(dz || 1) * Math.min(o.r * 0.6 - Math.abs(dz), 4 * dt);
+        }
+        // Los pantalanes cierran el canal: un bote que se abre al virar no los atraviesa.
+        const wall = PROMENADE_Z - 3;
+        if (Math.abs(e.z) > wall) e.z = Math.sign(e.z) * wall;
       }
       return true;
     });

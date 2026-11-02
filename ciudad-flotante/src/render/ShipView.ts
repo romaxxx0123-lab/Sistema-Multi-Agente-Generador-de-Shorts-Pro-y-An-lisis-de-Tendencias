@@ -66,8 +66,9 @@ interface PropEntry {
 interface StructCache {
   key: string;
   solid: THREE.BufferGeometry;
-  /** Módulo dueño de cada vértice de `solid` (-1 = ninguno). */
+  /** Módulo dueño de cada vértice de `solid` (-1 = ninguno) y los módulos que aparecen. */
   tags: Int32Array;
+  tagIds: number[];
   glassOut: THREE.BufferGeometry;
   glassIn: THREE.BufferGeometry;
   lamps: THREE.BufferGeometry;
@@ -674,10 +675,21 @@ export class ShipView {
         }
       }
     }
+    const tags = lb.solid.tags();
+    const ids = new Set<number>();
+    let last = -1;
+    for (let i = 0; i < tags.length; i++) {
+      const t = tags[i]!;
+      if (t !== last) {
+        if (t >= 0) ids.add(t);
+        last = t;
+      }
+    }
     return {
       key,
       solid: lb.solid.build(false),
-      tags: lb.solid.tags(),
+      tags,
+      tagIds: [...ids],
       glassOut: lb.glassOut.build(false),
       glassIn: lb.glassIn.build(false),
       lamps: lb.lamps.build(false),
@@ -771,6 +783,8 @@ export class ShipView {
     // Mallas fusionadas del nivel por material.
     let tris = 0;
     let meshes = 0;
+    const halfL = (layout.length * CELL) / 2;
+    const levelSphere = new THREE.Sphere(new THREE.Vector3(halfL - SHIP_ORIGIN_X, levelY(Math.min(l, layout.levels)) + LEVEL_H / 2, 0), Math.hypot(halfL + 4, (layout.width * CELL) / 2 + 2.5, LEVEL_H));
     const keep = new Set<THREE.BufferGeometry>(struct.flatMap((c) => [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]));
     const mk = (parts: THREE.BufferGeometry[], mat: THREE.Material, shadow: boolean, name: string): THREE.Mesh | null => {
       const valid = parts.filter((g) => (g.getAttribute('position')?.count ?? 0) > 0);
@@ -779,7 +793,8 @@ export class ShipView {
       else if (valid.length) geo = mergeGeometries(valid, false);
       for (const g of parts) if (g !== geo && !keep.has(g)) g.dispose();
       if (!geo) return null;
-      geo.computeBoundingSphere();
+      // Esfera envolvente del nivel entero (recorrer los vértices costaría tanto como fusionarlos).
+      geo.boundingSphere = levelSphere.clone();
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = name;
       mesh.castShadow = shadow;
@@ -816,8 +831,10 @@ export class ShipView {
       for (const [id, n] of propTags) {
         if (n) tags.fill(id, o, o + n);
         o += n;
+        tints.set(id, 1);
       }
-      for (const id of tags) if (id >= 0) tints.set(id, 1);
+      for (const c of struct) for (const id of c.tagIds) tints.set(id, 1);
+      for (const m of state.ship.modules) if (m.level === l && m.status !== 'construction' && moduleTier(m) > 1) tints.set(m.id, 1);
       base = (solid.geometry.getAttribute('color').array as Float32Array).slice();
     }
     const build: LevelBuild = { key, objs, lights: struct.flatMap((c) => c.lights), tris, meshes, struct, solid, base, tags, tints };

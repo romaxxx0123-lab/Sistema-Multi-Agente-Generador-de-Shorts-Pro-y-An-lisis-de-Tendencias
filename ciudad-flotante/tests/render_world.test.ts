@@ -18,13 +18,15 @@ import {
   harborSlots,
   harborSpan,
   HarborView,
+  MOOR_MIN_Z,
+  PROMENADE_Z,
   segmentHitsBox,
   TOWER_BAND,
   TOWER_Z,
   towerVisibility,
   towerX,
 } from '../src/render/world/harbor';
-import { channelBuoyModel, greenTowerModel, harborBoatModel, houseboatClusterModel, TOWER_LIGHT_Y, type HarborModel } from '../src/render/world/harborModels';
+import { channelBuoyModel, greenTowerModel, harborBoatModel, houseboatClusterModel, promenadeModel, TOWER_LIGHT_Y, type HarborModel } from '../src/render/world/harborModels';
 import { Kit } from '../src/render/world/kit';
 import { Clouds } from '../src/render/world/clouds';
 import { waterlineProfile } from '../src/render/world/hullProfile';
@@ -577,6 +579,7 @@ describe('modelos de Puerto Esperanza', () => {
     ['bote de remos', () => harborBoatModel('bote', 3)],
     ['lancha', () => harborBoatModel('lancha', 4)],
     ['velero pequeño', () => harborBoatModel('velero', 5)],
+    ['tramo de pantalán', () => promenadeModel(500, 49)],
     ['boya roja', () => channelBuoyModel('red')],
     ['boya verde', () => channelBuoyModel('green')],
   ];
@@ -682,7 +685,7 @@ describe('geografía del puerto', () => {
     for (let k = 0; k < 400; k++) {
       for (const s of harborSlots(7, k)) {
         n++;
-        expect(Math.abs(s.z)).toBeGreaterThanOrEqual(CHANNEL_HALF + 12);
+        expect(Math.abs(s.z)).toBeGreaterThanOrEqual(MOOR_MIN_Z);
         if (s.z > 0) expect(Math.abs(s.z - TOWER_Z)).toBeGreaterThanOrEqual(TOWER_BAND);
         expect(s.variant).toBeGreaterThanOrEqual(0);
         expect(s.variant).toBeLessThan(CLUSTER_VARIANTS);
@@ -733,7 +736,12 @@ describe('vista del puerto', () => {
     const groups = h.root.children.filter((c) => /^\d+[abc]$/.test(String(c.userData['harbor'])));
     expect(groups.some((g) => g.position.z > 0)).toBe(true);
     expect(groups.some((g) => g.position.z < 0)).toBe(true);
-    for (const g of groups) expect(Math.abs(g.position.z)).toBeGreaterThanOrEqual(CHANNEL_HALF + 12);
+    for (const g of groups) expect(Math.abs(g.position.z)).toBeGreaterThanOrEqual(MOOR_MIN_Z);
+    // pantalanes iluminados a ambos lados del canal
+    const piers = h.root.children.filter((c) => String(c.userData['harbor']).startsWith('pantalan-'));
+    expect(piers.length).toBeGreaterThan(4);
+    expect(MOOR_MIN_Z).toBeGreaterThan(PROMENADE_Z + 15);
+    expect(PROMENADE_Z).toBeGreaterThan(CHANNEL_HALF);
     // de día no hay halos; de noche sí, con reflejo en el agua
     const halos = (): THREE.Points[] => {
       const out: THREE.Points[] = [];
@@ -786,6 +794,8 @@ describe('vista del puerto', () => {
       for (const b of boats()) {
         const inside = b.position.x > HULL.xMin - 2 && b.position.x < HULL.xMax + 2 && Math.abs(b.position.z) < HULL.halfWidth + 2;
         expect(inside).toBe(false);
+        // ni atraviesan los pantalanes: se quedan en el canal
+        expect(Math.abs(b.position.z)).toBeLessThan(PROMENADE_Z - 1.4);
       }
     }
     for (const [i, b] of boats().entries()) if (start[i] && b.position.distanceTo(start[i]!) > 20) moved++;
