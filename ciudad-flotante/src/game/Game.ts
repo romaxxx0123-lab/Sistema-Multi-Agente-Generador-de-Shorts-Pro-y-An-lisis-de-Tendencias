@@ -80,6 +80,8 @@ export class Game implements GameContext {
     this.build = new BuildMode(this);
     this.ui = new UI(container, this);
     this.audio = new Audio(this);
+    // Cada estallido de los fuegos de Puerto Esperanza suena en su posición (marco del océano ≈ local).
+    this.renderer.onFirework = (x, y, z) => this.bus.emit('sfx', { name: 'fuego_artificial', x, y, z });
 
     this.bus.on('playerDied', () => this.setMode('dead'));
     this.bus.on('newDay', () => this.autosave());

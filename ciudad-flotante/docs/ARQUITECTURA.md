@@ -110,7 +110,7 @@ con `registerDebug(nombre, fn)` (`src/game/debug.ts`); `Object.keys(__game.cmd)`
 |---|---|
 | Núcleo | `give(id, n)`, `giveAll()`, `unlockAll()`, `setHour(h)`, `teleport(x,y,z)`, `look(yaw,pitch)`, `advance(min)`, `step(frames, dt)`, `key(code, down)`, `mouse(dx, dy)`, `mode(m)`, `newGame(seed)`, `weather(clima, min)`, `route(región)`, `event(tipo)`, `fire(moduleId)`, `survivor()` |
 | Jugador | `jugador()` (posición, objetivo, aviso, resaltado, herramientas, últimos avisos), `herramienta(id)`, `resto(tipo, dist, dx, supervivientes)`, `mirarA(x,y,z)`, `mirarResto(id)`, `pulsar(code, frames)`, `picarYa()` |
-| Mundo | `vista(px,py,pz,tx,ty,tz,fov)` (cámara libre; sin argumentos vuelve a la del juego), `clima(tipo)` (aspecto instantáneo), `avistamiento(tipo,x,dist,lado,nombre)`, `mundo()`, `delfines(dist)`, `peces(on)`, `decorado()` |
+| Mundo | `vista(px,py,pz,tx,ty,tz,fov)` (cámara libre; sin argumentos vuelve a la del juego), `clima(tipo)` (aspecto instantáneo), `avistamiento(tipo,x,dist,lado,nombre)`, `mundo()`, `delfines(dist)`, `peces(on)`, `decorado()`, `puerto(millas, llegado)` (lleva el barco a Puerto Esperanza; por defecto con la llegada hecha), `luzVerde(millasRestantes)`, `fiesta()`; `mundo()` incluye puerto, fuegos, farolillos y antialias |
 | Construcción | `buildInfo()`, `buildLevel(l)`, `buildSelect(tipo)`, `buildRotate(n)`, `buildDemolish(on)`, `buildCategory(c)`, `buildView(yaw,pitch,dist,tx,tz)`, `buildCellToScreen(nivel,x,z)`, `buildModuleToScreen(id,altura)`, `buildExpand()`, `buildConfirm()` |
 | Interfaz | `uiScreen()`, `uiMenu(sub)` |
 | Audio | `audio()`, `audioMeter()`, `audioPlay(nombre)`, `audioUnlock()`, `audioTest()` (síntesis offline) |

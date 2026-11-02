@@ -278,6 +278,19 @@ Océano low-poly con olas de Gerstner (la misma función en CPU para `waterHeigh
 crestas, estela, desplazamiento según la velocidad; cielo con gradiente por hora y región, sol,
 luna, estrellas, nubes low-poly; niebla; lluvia y relámpagos; balanceo del barco (`shipRoot`)
 según el oleaje; avistamientos (naufragio, isla, mercante, estructura); calidad baja/media/alta.
+Puerto Esperanza (`harbor.ts`, `harborModels.ts`, `glow.ts`, `celebration.ts`):
+- **Aproximación:** con rumbo 'esperanza' y 40 millas o menos para el final de la región, la gran luz verde asoma en el horizonte (≈ 2,5 km, casi por la proa). En la bocana esperan una boya roja a babor y una verde a estribor.
+- **El puerto:**
+  - Pantalanes iluminados a ambos lados de un canal de 90 m.
+  - Grupos de barcos-hogar amarrados, con pasarelas, casitas de colores, huertos colgantes y farolillos.
+  - La torre de la luz verde en su islote, con el muelle principal y el Albatros amarrado.
+  - Botes que van y vienen por el canal, y gaviotas.
+  - De noche, mil luces cálidas con su reflejo.
+- **Colocación:** todo se sitúa con el estado del viaje (26 m de agua por milla) y es determinista.
+- **Celebración:** al llegar (`story.arrived` pasa a true), unos 80 s de fuegos artificiales y una suelta de farolillos. La primera noche (21–23 h) el puerto repite la fiesta. `renderer.onFirework` avisa de cada estallido (sonido 'fuego_artificial').
+- **Mercado:** en el puerto, los mercantes son el mercado flotante del muelle.
+
+Calidad: el antialias depende del contexto WebGL; `renderer.needsReloadFor(q)` avisa de que hay que recargar.
 
 ### Barco (`ShipView`, `NpcView`, `PlayerAvatar`, `DebrisView`) — render-ship
 Casco procedural con proa y popa, cubiertas de tablones, paredes con puertas y ventanas,
@@ -402,4 +415,5 @@ Implementado en la simulación y probado. Las áreas de presentación deben cone
 - La herramienta Mejorar va en la tecla U. Valida con `sim.checkUpgrade`. Un módulo en mejora sigue en uso, y el martillo sobre él ayuda a la obra (ya hecho en Interaction.ts).
 
 **Audio (c2-audio)**
+- `'fuego_artificial'` (con x, y, z): cada estallido de los fuegos de la llegada, de 1 a 3 por segundo durante la celebración y la fiesta de 21 a 23 h. Silbido corto y estallido seco con chisporroteo, con retardo y atenuación por distancia como el trueno.
 - Sonidos nuevos que emite la simulación: `'mejora_terminada'` (alias de `'obra_terminada'`; mezclarlo con el martillo) y `'pagina'` (leer una hoja). Revisar también los que emiten ahumadero, vivero, grúa, radar y la llegada (buscar `sfx` en src/sim).
