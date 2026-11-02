@@ -3,6 +3,10 @@
  * primitivas transformadas con un color por cara (con una ligera variación aleatoria para dar
  * riqueza al sombreado plano) y las funde en una sola geometría no indexada con colores por
  * vértice. Un modelo = una geometría = una llamada de dibujo.
+ *
+ * Canal luminoso opcional (`emit`): lo que se añade mientras hay un color de emisión fijado
+ * guarda ese color en el atributo `aEmit` (ventanas, farolillos, linternas). El material del
+ * puerto (`litMaterial`, glow.ts) lo enciende de noche; los modelos que no lo usan no lo llevan.
  */
 import * as THREE from 'three';
 
@@ -49,6 +53,10 @@ export function placeMatrix(t: Place | undefined, out = new THREE.Matrix4()): TH
 export class Kit {
   private pos: number[] = [];
   private col: number[] = [];
+  /** Color de emisión por vértice (solo si alguna pieza luce). */
+  private emi: number[] = [];
+  private emitCol: THREE.Color | null = null;
+  private emitUsed = false;
   private readonly rnd: () => number;
   /** Transformación de grupo aplicada a todo lo que se añade (pila sencilla). */
   private stack: THREE.Matrix4[] = [new THREE.Matrix4()];
@@ -77,6 +85,15 @@ export class Kit {
     return this;
   }
 
+  /**
+   * Color con el que lucirá de noche todo lo que se añada a continuación (`null` = no luce).
+   * El color de día sigue siendo el de cada pieza (cristal oscuro, papel del farolillo…).
+   */
+  emit(color: THREE.ColorRepresentation | null): this {
+    this.emitCol = color === null ? null : new THREE.Color(color);
+    return this;
+  }
+
   /** Añade una geometría de three.js (se transforma una copia; la original no se toca). */
   add(geo: THREE.BufferGeometry, color: THREE.ColorRepresentation, t?: Place, jitter = this.jitter): this {
     const g = geo.index ? geo.toNonIndexed() : geo;
@@ -92,6 +109,10 @@ export class Kit {
       const k = 1 + (this.rnd() * 2 - 1) * jitter;
       for (let j = 0; j < 3; j++) this.col.push(_c.r * k, _c.g * k, _c.b * k);
     }
+    const e = this.emitCol;
+    if (e) this.emitUsed = true;
+    // El canal de emisión se rellena siempre (con ceros) para que vaya alineado con las posiciones.
+    for (let i = 0; i < src.count; i++) this.emi.push(e ? e.r : 0, e ? e.g : 0, e ? e.b : 0);
     if (g !== geo) g.dispose();
     geo.dispose();
     return this;
@@ -146,16 +167,23 @@ export class Kit {
     return this.pos.length / 3;
   }
 
-  /** Funde todo en una geometría con normales planas y colores por vértice. */
-  build(): THREE.BufferGeometry {
+  /**
+   * Funde todo en una geometría con normales planas y colores por vértice (y `aEmit` si alguna
+   * pieza luce, o siempre con `withEmit`).
+   */
+  build(withEmit = false): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    if (this.emitUsed || withEmit) g.setAttribute('aEmit', new THREE.Float32BufferAttribute(this.emi, 3));
     g.computeVertexNormals();
     g.computeBoundingSphere();
     g.computeBoundingBox();
     this.pos = [];
     this.col = [];
+    this.emi = [];
+    this.emitUsed = false;
+    this.emitCol = null;
     return g;
   }
 }
