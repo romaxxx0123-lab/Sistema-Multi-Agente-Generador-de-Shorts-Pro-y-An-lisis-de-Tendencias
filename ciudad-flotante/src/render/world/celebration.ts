@@ -55,6 +55,14 @@ export function fiestaLevel(st: GameState): number {
   return THREE.MathUtils.smoothstep(h, a, a + 0.25) * (1 - THREE.MathUtils.smoothstep(h, b - 0.25, b));
 }
 
+/**
+ * ¿Empieza ahora la celebración de la llegada? Solo cuando `story.arrived` pasa de false a true
+ * en la misma partida y en Puerto Esperanza (cargar una partida ya llegada no la repite).
+ */
+export function arrivalJustHappened(prevArrived: boolean, st: GameState, newSim: boolean): boolean {
+  return !newSim && !prevArrived && !!st.story?.arrived && st.voyage.regionId === FINAL_REGION;
+}
+
 function sparkGeometry(): THREE.BufferGeometry {
   const g = new THREE.OctahedronGeometry(0.5, 0);
   return g;

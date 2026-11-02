@@ -104,8 +104,8 @@ export function towerX(s: number): number {
 /** Visibilidad de la torre (asoma en el horizonte al empezar la aproximación; se pierde a popa). */
 export function towerVisibility(span: HarborSpan): number {
   const x = towerX(span.s);
-  const appear = THREE.MathUtils.smoothstep(-span.s, APPROACH_MILES, APPROACH_MILES - 3);
-  const behind = 1 - THREE.MathUtils.smoothstep(x, -1400, -1750);
+  const appear = 1 - THREE.MathUtils.smoothstep(-span.s, APPROACH_MILES - 3, APPROACH_MILES);
+  const behind = THREE.MathUtils.smoothstep(x, -1750, -1400);
   return span.s < 0 ? appear : behind;
 }
 

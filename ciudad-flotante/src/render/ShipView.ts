@@ -1,16 +1,23 @@
 /**
  * [AGENTE render-ship] VISTA 3D DEL BARCO.
  *
- * Geometría estática (se reconstruye solo cuando cambia `state.ship.revision`, la eslora o el
- * estado de daños de algún módulo, o tras `reset()`):
+ * Geometría estática POR NIVEL. Cuando cambia el barco (`state.ship.revision`, la eslora, el nivel
+ * de mejora o el estado de daños de algún módulo, o tras `reset()`) se calcula la firma de cada
+ * nivel (celdas, paredes, puertas, escaleras, losas, props y módulos que lo tocan) y solo se
+ * reconstruyen los niveles cuya firma ha cambiado; si son varios, se reparten entre frames con
+ * un presupuesto de tiempo (`rebuildBudgetMs`) y cada nivel se sustituye entero de una vez, así
+ * que no hay parpadeos (QA P4: antes cada cambio rehacía todo el barco, ~70 ms de tirón).
  *  - casco procedural con proa, popa, regala, castillo, palo, pluma, botes, anclas, ojos de buey;
  *  - estructura del layout: losas, paredes con ventanas, puertas, barandillas, escaleras,
  *    lámparas, forro y cuadernas de la bodega;
  *  - todos los props, fusionados con la estructura POR MATERIAL Y NIVEL (mergeGeometries)
- *    para tener muy pocas llamadas de dibujo.
+ *    para tener muy pocas llamadas de dibujo, con los detalles de su nivel de mejora;
+ *  - placas de latón con el nivel (II, III) y el altillo del almacén mejorado (ship/tiers.ts).
  * Elementos dinámicos (cada frame): fuego del fogón, plantas, nivel de agua, máquinas que
  * vibran y humean, LEDs, contenido de almacenes, obras con andamios y fantasma, incendios,
  * cajas sueltas, humo de chimenea y averías, banderas, radar, pool de luces interiores,
+ * mejoras en obras (andamio ligero y cartel con la barra de progreso de `module.upgrade`),
+ * ahumadero, vivero, grúa y radar de los módulos especializados, luz cálida de la sala común,
  * resaltado del objetivo, ocultación por nivel y vista en corte.
  *
  * `getPropObject(key)` devuelve un Object3D por prop (posición/rotación del prop, con
@@ -22,7 +29,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { moduleDef } from '../data/modules';
 import type { HighlightTarget } from '../game/types';
 import { CELL, LEVEL_H, SHIP_ORIGIN_X, VISUAL_DRIFT, WALL_H } from '../sim/constants';
-import { cellMin, getCell, levelOfY, levelY, moduleCells, type PropInstance, type ShipLayout } from '../sim/ship';
+import { moduleTier } from '../sim/moduleStats';
+import { cellMin, getCell, levelOfY, levelY, moduleCells, type CellKind, type PropInstance, type ShipLayout } from '../sim/ship';
 import { daylight } from '../sim/time';
 import type { GameState, ModuleInstance } from '../sim/types';
 import { createDynamic, type DynContext, type PropDynamic } from './ship/dynamic';
@@ -34,8 +42,9 @@ import { LightPool, type LightCandidate } from './ship/lights';
 import { ShipMaterials } from './ship/materials';
 import { Particles } from './ship/particles';
 import { crate as crateModel, localDims, propModel, type PropModel } from './ship/props';
-import { buildExpansionScaffold, buildSite, setProgress, siteProgress, type SiteEntry } from './ship/sites';
+import { buildExpansionScaffold, buildSite, buildUpgradeSite, setProgress, siteProgress, type SiteEntry, type UpgradeSiteEntry } from './ship/sites';
 import { buildStructure, makeLevelBuilders, type LevelBuilders, type LightSpot } from './ship/structure';
+import { storeLoft, tierPlaque } from './ship/tiers';
 
 export interface ShipViewOptions {
   /** Oculta todo lo que esté por encima de este nivel (modo construcción). null = nada oculto. */
@@ -53,7 +62,26 @@ interface PropEntry {
   dyn: PropDynamic | null;
 }
 
+/** Lo construido en un nivel: firma con la que se hizo, mallas, puntos de luz y estadísticas. */
+interface LevelBuild {
+  key: string;
+  objs: THREE.Object3D[];
+  lights: LightSpot[];
+  tris: number;
+  meshes: number;
+}
+
+const KIND_CODE: Record<CellKind, number> = { void: 0, hold: 1, deck: 2, roof: 3, room: 4, stairLow: 5, stairHigh: 6 };
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+/** Nivel de un prop según su altura. */
+function propLevel(p: PropInstance, layout: ShipLayout): number {
+  return Math.max(0, Math.min(layout.levels - 1, Math.round(p.y / LEVEL_H - 0.01)));
+}
+
 const LAMP_COLOR = new THREE.Color('#ffd59a');
+/** Luz de la sala común: más cálida (pantallas de tela) y algo más intensa. */
+const LOUNGE_COLOR = new THREE.Color('#ffbf7a');
 const LANTERN_COLOR = new THREE.Color('#ffb35c');
 const FLOOD_COLOR = new THREE.Color('#fff1d6');
 const _v = new THREE.Vector3();
@@ -72,7 +100,13 @@ export class ShipView {
   private group = new THREE.Group();
   readonly mats = new ShipMaterials();
   private levelGroups: THREE.Group[] = [];
-  private staticObjs: THREE.Object3D[] = [];
+  private levelBuilds: LevelBuild[] = [];
+  /** Niveles pendientes de reconstruir → firma que tendrán. */
+  private planned = new Map<number, string>();
+  /** Reconstruir todo de una vez (partida nueva, carga, casco nuevo). */
+  private forceFull = true;
+  private upgrades = new Map<number, UpgradeSiteEntry>();
+  private upgradeKey = '';
   private hullObjs: THREE.Object3D[] = [];
   private props = new Map<string, PropEntry>();
   private dyns: PropDynamic[] = [];
@@ -105,8 +139,17 @@ export class ShipView {
   private pickMat = new THREE.MeshBasicMaterial({ visible: false });
   /** Sustituye opciones de vista (pruebas y depuración: p. ej. `{ cutaway: false }`). */
   debugOptions: Partial<ShipViewOptions> | null = null;
-  /** Estadísticas para depuración y pruebas. */
-  readonly stats = { rebuilds: 0, hullRebuilds: 0, lastRebuildMs: 0, staticMeshes: 0, triangles: 0 };
+  /**
+   * Milisegundos por frame que se pueden dedicar a reconstruir niveles (siempre al menos uno).
+   * Infinity = todo en el mismo frame.
+   */
+  rebuildBudgetMs = 6;
+  /**
+   * Estadísticas para depuración y pruebas: `rebuilds` = cambios del barco que han obligado a
+   * rehacer algún nivel; `levelRebuilds` = niveles rehechos en total; `lastRebuildMs` y
+   * `lastRebuildLevels` = coste y niveles del último frame que reconstruyó algo.
+   */
+  readonly stats = { rebuilds: 0, levelRebuilds: 0, lastRebuildLevels: 0, hullRebuilds: 0, lastRebuildMs: 0, staticMeshes: 0, triangles: 0 };
 
   constructor(readonly root: THREE.Group) {
     this.group.name = 'barco';
@@ -142,7 +185,11 @@ export class ShipView {
     this.hullKey = '';
     this.structKey = '';
     this.siteKey = '';
+    this.upgradeKey = '';
     this.hlKey = '';
+    for (const b of this.levelBuilds) if (b) b.key = '';
+    this.planned.clear();
+    this.forceFull = true;
     for (const c of this.crates.values()) c.removeFromParent();
     this.crates.clear();
     this.particles.clear();
@@ -166,19 +213,30 @@ export class ShipView {
       this.hullKey = hullKey;
       this.structKey = '';
     }
-    const dmg = state.ship.modules
-      .filter((m) => m.status !== 'construction' && moduleTint(m) !== 1)
-      .map((m) => `${m.id}${m.status === 'broken' ? 'b' : 'd'}`)
-      .join(',');
-    const structKey = `${state.ship.revision}|${layout.revision}|${dmg}`;
+    let extra = '';
+    for (const m of state.ship.modules) {
+      if (m.status === 'construction') continue;
+      const tint = moduleTint(m);
+      const tier = moduleTier(m);
+      if (tint !== 1) extra += `${m.id}${m.status === 'broken' ? 'b' : 'd'},`;
+      if (tier !== 1) extra += `${m.id}t${tier},`;
+    }
+    const structKey = `${state.ship.revision}|${layout.revision}|${extra}`;
     if (structKey !== this.structKey) {
-      this.rebuildStructure(state, layout);
+      this.planLevels(state, layout);
       this.structKey = structKey;
     }
+    if (this.planned.size) this.flushLevels(state, layout);
     const siteKey = `${layout.revision}|${layout.sites.map((s) => s.moduleId).join(',')}`;
     if (siteKey !== this.siteKey) {
       this.rebuildSites(state, layout);
       this.siteKey = siteKey;
+    }
+    let upKey = `${layout.revision}|`;
+    for (const m of state.ship.modules) if (m.upgrade && m.status !== 'construction') upKey += `${m.id}:${m.upgrade.toTier},`;
+    if (upKey !== this.upgradeKey) {
+      this.rebuildUpgrades(state, layout);
+      this.upgradeKey = upKey;
     }
     this.syncExpansion(state, layout);
     this.syncCrates(state);
@@ -206,6 +264,10 @@ export class ShipView {
       s.ghost.scale.y = Math.max(0.03, p);
       setProgress(s.bars, p);
     }
+    for (const u of this.upgrades.values()) {
+      const m = modById.get(u.moduleId);
+      if (m?.upgrade) setProgress(u.bars, m.upgrade.progress);
+    }
     this.fires.update(state, layout, this.t, dt, maxLevel, this.particles, lights);
     this.emitAmbient(state, layout, dt, maxLevel);
     const wind = this.apparentWind(state);
@@ -219,7 +281,8 @@ export class ShipView {
     for (const s of this.lightSpots) {
       const mod = s.moduleId !== null ? modById.get(s.moduleId) : undefined;
       const dim = mod && mod.status === 'broken' ? 0.4 : 1;
-      const intensity = s.kind === 'room' ? 3.2 + 4.5 * night : s.kind === 'hold' ? 4.0 + 3.0 * night : night > 0.35 ? 4.5 * night : 0;
+      const lounge = s.kind === 'room' && mod?.type === 'sala_comun';
+      const intensity = s.kind === 'room' ? (3.2 + 4.5 * night) * (lounge ? 1.12 : 1) : s.kind === 'hold' ? 4.0 + 3.0 * night : night > 0.35 ? 4.5 * night : 0;
       lights.push({
         id: `${s.kind}:${s.x.toFixed(1)}:${s.y.toFixed(1)}:${s.z.toFixed(1)}`,
         x: s.x,
@@ -227,7 +290,7 @@ export class ShipView {
         z: s.z,
         level: s.level,
         intensity: intensity * dim,
-        color: s.kind === 'hold' ? LANTERN_COLOR : LAMP_COLOR,
+        color: s.kind === 'hold' ? LANTERN_COLOR : lounge ? LOUNGE_COLOR : LAMP_COLOR,
         distance: s.kind === 'room' ? 8 : s.kind === 'hold' ? 10 : 9,
         priority: 0,
       });
@@ -254,6 +317,22 @@ export class ShipView {
 
   private ensureLevels(levels: number): void {
     if (this.levels === levels && this.levelGroups.length) return;
+    for (const b of this.levelBuilds) if (b) for (const o of b.objs) disposeObject(o);
+    this.levelBuilds = [];
+    this.planned.clear();
+    this.forceFull = true;
+    for (const e of this.props.values()) {
+      e.dyn?.dispose();
+      e.proxy.removeFromParent();
+    }
+    this.props.clear();
+    this.dyns = [];
+    this.lightSpots = [];
+    this.radar = null;
+    this.chimneyTop = null;
+    for (const u of this.upgrades.values()) disposeObject(u.group);
+    this.upgrades.clear();
+    this.upgradeKey = '';
     for (const g of this.levelGroups) g.removeFromParent();
     this.levelGroups = [];
     for (let l = 0; l <= levels; l++) {
@@ -288,6 +367,7 @@ export class ShipView {
     this.flags = [];
     const h = buildHull({ length: layout.length, width: layout.width });
     this.hull = h;
+    this.forceFull = true;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, level: number, shadow: boolean, name: string): THREE.Mesh | null => {
       if (!geo.getAttribute('position') || geo.getAttribute('position').count === 0) {
         geo.dispose();
@@ -339,29 +419,132 @@ export class ShipView {
   /* Estructura y props                                                  */
   /* ================================================================== */
 
-  private rebuildStructure(state: GameState, layout: ShipLayout): void {
-    const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-    for (const o of this.staticObjs) disposeObject(o);
-    this.staticObjs = [];
-    for (const e of this.props.values()) {
+  /**
+   * Firma de lo que dibuja un nivel: si no cambia, su geometría tampoco. Incluye sus celdas y las
+   * del nivel de abajo (techos), paredes, puertas, escaleras, losas, props y los módulos que lo
+   * tocan (tipo, nivel de mejora y tinte de daños); el nivel 'top' añade el puente (chimenea y radar).
+   */
+  levelSignature(l: number, state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>): string {
+    const parts: string[] = [`${layout.length}x${layout.width}x${layout.levels}`];
+    /** Módulos que dibujan algo en este nivel (cuenta su tipo, su nivel de mejora y su tinte). */
+    const ids = new Set<number>();
+    /** Módulos del nivel de abajo: solo cuenta su tipo (el estilo del techo que se ve desde ellos). */
+    const below = new Set<number>();
+    const cells = (lv: number, into: Set<number>): void => {
+      if (lv < 0 || lv >= layout.levels) return;
+      let s = `c${lv}:`;
+      for (let x = 0; x < layout.length; x++)
+        for (let z = 0; z < layout.width; z++) {
+          const c = layout.cells[lv]![x]![z]!;
+          s += `${KIND_CODE[c.kind]}${c.moduleId ?? ''}${c.indoor ? 'i' : ''},`;
+          if (c.moduleId !== null) into.add(c.moduleId);
+        }
+      parts.push(s);
+    };
+    cells(l, ids);
+    cells(l - 1, below);
+    if (l === 0 && layout.levels > 1) {
+      // los faroles de la bodega se apartan de las escaleras que bajan del nivel 1
+      let s = 'e:';
+      for (let x = 0; x < layout.length; x++) for (let z = 0; z < layout.width; z++) if (layout.cells[1]![x]![z]!.kind === 'stairHigh') s += `${x},${z};`;
+      parts.push(s);
+    }
+    for (const sl of layout.slabs) {
+      if (sl.level !== l) continue;
+      parts.push(`s${sl.kind}${sl.x},${sl.z},${sl.moduleId ?? ''}`);
+      // el suelo de una habitación y los techos 'top' se oscurecen con los daños de su módulo
+      if (sl.moduleId !== null && (sl.kind === 'roomFloor' || sl.kind === 'top')) ids.add(sl.moduleId);
+    }
+    for (const w of layout.walls) {
+      if (w.level !== l) continue;
+      parts.push(`w${w.kind}${w.x0},${w.z0},${w.x1},${w.z1},${w.nx},${w.nz},${w.y0},${w.y1},${w.exterior ? 1 : 0},${w.moduleId ?? ''}`);
+      if (w.moduleId !== null) ids.add(w.moduleId);
+    }
+    for (const d of layout.doors) {
+      if (d.level !== l) continue;
+      parts.push(`d${d.axis}${d.x},${d.z},${d.width},${d.moduleId ?? ''}`);
+      if (d.moduleId !== null) ids.add(d.moduleId);
+    }
+    for (const r of layout.ramps) {
+      if (r.level !== l) continue;
+      parts.push(`r${r.moduleId},${r.x},${r.z},${r.dx},${r.dz}`);
+      ids.add(r.moduleId);
+    }
+    for (const p of layout.props) {
+      if (propLevel(p, layout) !== l) continue;
+      parts.push(`p${p.key}:${p.kind}:${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)},${p.yaw.toFixed(4)},${p.hx},${p.hz},${p.height}`);
+      ids.add(p.moduleId);
+    }
+    for (const id of [...ids].sort((a, b) => a - b)) {
+      const m = modules.get(id);
+      parts.push(m ? `m${id}:${m.type}:${m.status === 'construction' ? 'c' : moduleTier(m)}:${moduleTint(m)}` : `m${id}:-`);
+    }
+    for (const id of [...below].sort((a, b) => a - b)) if (!ids.has(id)) parts.push(`t${id}:${modules.get(id)?.type ?? '-'}`);
+    if (l === layout.levels) {
+      const b = state.ship.modules.find((m) => m.type === 'puente' && m.status !== 'construction');
+      parts.push(b ? `b${b.id}:${b.level},${b.x},${b.z},${b.rot}` : 'b-');
+    }
+    return parts.join('|');
+  }
+
+  /** Marca los niveles cuya firma ha cambiado. */
+  private planLevels(state: GameState, layout: ShipLayout): void {
+    const modules = new Map(state.ship.modules.map((m) => [m.id, m]));
+    this.planned.clear();
+    for (let l = 0; l <= layout.levels; l++) {
+      const sig = this.levelSignature(l, state, layout, modules);
+      if (sig !== this.levelBuilds[l]?.key) this.planned.set(l, sig);
+    }
+    if (this.planned.size) this.stats.rebuilds++;
+  }
+
+  /** Reconstruye niveles pendientes dentro del presupuesto del frame (al menos uno). */
+  private flushLevels(state: GameState, layout: ShipLayout): void {
+    const t0 = now();
+    const modules = new Map(state.ship.modules.map((m) => [m.id, m]));
+    let done = 0;
+    for (const l of [...this.planned.keys()].sort((a, b) => a - b)) {
+      if (done > 0 && !this.forceFull && now() - t0 > this.rebuildBudgetMs) break;
+      this.rebuildLevel(l, this.planned.get(l)!, state, layout, modules);
+      this.planned.delete(l);
+      done++;
+    }
+    if (!this.planned.size) this.forceFull = false;
+    this.dyns = [];
+    for (const e of this.props.values()) if (e.dyn) this.dyns.push(e.dyn);
+    this.lightSpots = this.levelBuilds.flatMap((b) => b?.lights ?? []);
+    this.stats.triangles = this.levelBuilds.reduce((a, b) => a + (b?.tris ?? 0), 0);
+    this.stats.staticMeshes = this.levelBuilds.reduce((a, b) => a + (b?.meshes ?? 0), 0);
+    this.stats.levelRebuilds += done;
+    this.stats.lastRebuildLevels = done;
+    this.stats.lastRebuildMs = now() - t0;
+    this.hlKey = '';
+  }
+
+  /** Rehace por completo un nivel: estructura, props (con su nivel de mejora) y detalles de módulo. */
+  private rebuildLevel(l: number, key: string, state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>): void {
+    const old = this.levelBuilds[l];
+    if (old) for (const o of old.objs) disposeObject(o);
+    for (const [k, e] of this.props) {
+      if (e.level !== l) continue;
       e.dyn?.dispose();
       e.proxy.removeFromParent();
+      this.props.delete(k);
     }
-    this.props.clear();
-    this.dyns = [];
-    this.radar = null;
-    this.chimneyTop = null;
-
-    const modules = new Map(state.ship.modules.map((m) => [m.id, m]));
+    const top = layout.levels;
+    if (l === top) {
+      this.radar = null;
+      this.chimneyTop = null;
+    }
+    const objs: THREE.Object3D[] = [];
     const tintOf = (id: number | null): number => (id === null ? 1 : moduleTint(modules.get(id)));
     const builders: LevelBuilders[] = [];
-    for (let l = 0; l <= layout.levels; l++) builders.push(makeLevelBuilders());
-    const { lights } = buildStructure({ layout, modules, tintOf, levels: builders });
-    this.lightSpots = lights;
+    for (let i = 0; i <= layout.levels; i++) builders.push(makeLevelBuilders());
+    const { lights } = buildStructure({ layout, modules, tintOf, levels: builders, only: l });
+    const lb = builders[l]!;
 
     // Chimenea y radar sobre el puente (techo superior).
-    const top = layout.levels;
-    const bridge = state.ship.modules.find((m) => m.type === 'puente' && m.status !== 'construction');
+    const bridge = l === top ? state.ship.modules.find((m) => m.type === 'puente' && m.status !== 'construction') : undefined;
     if (bridge) {
       const cells = moduleCells(bridge).filter((c) => c.level === bridge.level);
       cells.sort((a, b) => a.x - b.x);
@@ -371,8 +554,8 @@ export class ShipView {
       const a = cellMin(aft.x, aft.z, layout.width);
       const f = cellMin(fwd.x, fwd.z, layout.width);
       if (layout.cells[layout.levels - 1]?.[aft.x]?.[aft.z]?.kind === 'room' && bridge.level === layout.levels - 1) {
-        this.chimneyTop = funnel(builders[top]!.solid, a.x + CELL / 2, yTop, a.z + CELL / 2);
-        const rp = radarMast(builders[top]!.solid, f.x + CELL / 2 + (fwd.x === aft.x ? 0 : 0.5), yTop, f.z + CELL / 2);
+        this.chimneyTop = funnel(lb.solid, a.x + CELL / 2, yTop, a.z + CELL / 2);
+        const rp = radarMast(lb.solid, f.x + CELL / 2 + (fwd.x === aft.x ? 0 : 0.5), yTop, f.z + CELL / 2);
         const rg = new GeoBuilder();
         rg.box(-0.6, 0, -0.06, 0.6, 0.08, 0.06, '#2b2d42');
         rg.box(-0.05, -0.08, -0.05, 0.05, 0.0, 0.05, '#5c6770');
@@ -382,21 +565,30 @@ export class ShipView {
         this.radar.userData.ownGeometry = true;
         this.radar.name = 'radar';
         this.levelGroup(top).add(this.radar);
-        this.staticObjs.push(this.radar);
+        objs.push(this.radar);
       }
     }
 
-    // Props: geometrías transformadas por nivel, fusionadas con la estructura.
-    const propGeos: { solid: THREE.BufferGeometry[]; glass: THREE.BufferGeometry[]; glow: THREE.BufferGeometry[] }[] = builders.map(() => ({ solid: [], glass: [], glow: [] }));
+    // Props del nivel: geometrías transformadas, fusionadas con la estructura.
+    const models = new Map<PropInstance, PropModel>();
+    const modelOf = (p: PropInstance): PropModel => {
+      let mm = models.get(p);
+      if (!mm) {
+        const mod = modules.get(p.moduleId);
+        mm = propModel(p.kind, localDims(p), mod ? moduleTier(mod) : 1, p.moduleType);
+        models.set(p, mm);
+      }
+      return mm;
+    };
+    const pg = { solid: [] as THREE.BufferGeometry[], glass: [] as THREE.BufferGeometry[], glow: [] as THREE.BufferGeometry[] };
     for (const p of layout.props) {
-      const level = Math.max(0, Math.min(layout.levels - 1, Math.round(p.y / LEVEL_H - 0.01)));
-      const model = propModel(p.kind, localDims(p));
+      if (propLevel(p, layout) !== l) continue;
+      const model = modelOf(p);
       const tint = tintOf(p.moduleId);
       _m4.makeRotationY(p.yaw).setPosition(p.x, p.y, p.z);
-      const bucket = propGeos[level]!;
-      bucket.solid.push(tintGeometry(model.solid, tint).applyMatrix4(_m4));
-      if (model.glass) bucket.glass.push(model.glass.clone().applyMatrix4(_m4));
-      if (model.glow) bucket.glow.push(model.glow.clone().applyMatrix4(_m4));
+      pg.solid.push(tintGeometry(model.solid, tint).applyMatrix4(_m4));
+      if (model.glass) pg.glass.push(model.glass.clone().applyMatrix4(_m4));
+      if (model.glow) pg.glow.push(model.glow.clone().applyMatrix4(_m4));
       // Objeto proxy (posición del prop, partes animadas, caja para rayos)
       const proxy = new THREE.Group();
       proxy.name = `prop-${p.key}`;
@@ -410,18 +602,26 @@ export class ShipView {
       pick.position.y = Math.max(0.1, d.h) / 2;
       pick.userData = proxy.userData;
       proxy.add(pick);
-      const cell = getCell(layout, level, Math.floor((p.x + SHIP_ORIGIN_X) / CELL), Math.floor((p.z + (layout.width * CELL) / 2) / CELL));
+      const cell = getCell(layout, l, Math.floor((p.x + SHIP_ORIGIN_X) / CELL), Math.floor((p.z + (layout.width * CELL) / 2) / CELL));
       const ceiling = cell?.indoor ? WALL_H : null;
-      const dyn = createDynamic(p, proxy, model, level, this.mats, ceiling);
-      if (dyn) this.dyns.push(dyn);
-      this.levelGroup(level).add(proxy);
-      this.props.set(p.key, { inst: p, model, proxy, level, dyn });
+      const dyn = createDynamic(p, proxy, model, l, this.mats, ceiling);
+      this.levelGroup(l).add(proxy);
+      this.props.set(p.key, { inst: p, model, proxy, level: l, dyn });
     }
 
-    // Mallas fusionadas por nivel y material.
+    // Detalles del nivel de mejora a escala de módulo (placa de latón, altillo del almacén).
+    for (const m of state.ship.modules) {
+      if (m.level !== l || m.status === 'construction' || moduleTier(m) < 2) continue;
+      lb.solid.tint = tintOf(m.id);
+      tierPlaque(lb.solid, m, layout, layout.props, modelOf);
+      storeLoft(lb.solid, m, layout, layout.props);
+      lb.solid.tint = 1;
+    }
+
+    // Mallas fusionadas del nivel por material.
     let tris = 0;
     let meshes = 0;
-    const mk = (parts: THREE.BufferGeometry[], mat: THREE.Material, level: number, shadow: boolean, name: string): void => {
+    const mk = (parts: THREE.BufferGeometry[], mat: THREE.Material, shadow: boolean, name: string): void => {
       const valid = parts.filter((g) => (g.getAttribute('position')?.count ?? 0) > 0);
       if (!valid.length) {
         for (const g of parts) g.dispose();
@@ -436,24 +636,17 @@ export class ShipView {
       mesh.castShadow = shadow;
       mesh.receiveShadow = shadow;
       mesh.userData.ownGeometry = true;
-      this.levelGroup(level).add(mesh);
-      this.staticObjs.push(mesh);
+      this.levelGroup(l).add(mesh);
+      objs.push(mesh);
       tris += geo.getAttribute('position').count / 3;
       meshes++;
     };
-    builders.forEach((b, l) => {
-      const pg = propGeos[l]!;
-      mk([b.solid.build(), ...pg.solid], this.mats.solid, l, true, `nivel-${l}-solido`);
-      mk([b.glassOut.build()], this.mats.glassOut, l, false, `nivel-${l}-cristal-ext`);
-      mk([b.glassIn.build(), ...pg.glass], this.mats.glassIn, l, false, `nivel-${l}-cristal-int`);
-      mk([b.lamps.build(), ...pg.glow], this.mats.lamp, l, false, `nivel-${l}-lamparas`);
-      mk([b.lanterns.build()], this.mats.lantern, l, false, `nivel-${l}-faroles`);
-    });
-    this.stats.rebuilds++;
-    this.stats.staticMeshes = meshes;
-    this.stats.triangles = tris;
-    this.stats.lastRebuildMs = typeof performance !== 'undefined' ? performance.now() - t0 : 0;
-    this.hlKey = '';
+    mk([lb.solid.build(false), ...pg.solid], this.mats.solid, true, `nivel-${l}-solido`);
+    mk([lb.glassOut.build(false)], this.mats.glassOut, false, `nivel-${l}-cristal-ext`);
+    mk([lb.glassIn.build(false), ...pg.glass], this.mats.glassIn, false, `nivel-${l}-cristal-int`);
+    mk([lb.lamps.build(false), ...pg.glow], this.mats.lamp, false, `nivel-${l}-lamparas`);
+    mk([lb.lanterns.build(false)], this.mats.lantern, false, `nivel-${l}-faroles`);
+    this.levelBuilds[l] = { key, objs, lights, tris, meshes };
   }
 
   /* ================================================================== */
@@ -468,6 +661,19 @@ export class ShipView {
       const e = buildSite(site, modules.get(site.moduleId), layout, this.mats);
       this.levelGroup(e.level).add(e.group);
       this.sites.set(site.moduleId, e);
+    }
+  }
+
+  /** Obras de mejora (`module.upgrade`): andamio ligero y cartel con la barra de progreso. */
+  private rebuildUpgrades(state: GameState, layout: ShipLayout): void {
+    for (const u of this.upgrades.values()) disposeObject(u.group);
+    this.upgrades.clear();
+    for (const m of state.ship.modules) {
+      if (!m.upgrade || m.status === 'construction') continue;
+      const e = buildUpgradeSite(m, layout, layout.props, this.mats);
+      if (!e) continue;
+      this.levelGroup(e.level).add(e.group);
+      this.upgrades.set(m.id, e);
     }
   }
 
@@ -691,6 +897,21 @@ export class ShipView {
     return this.sites.get(moduleId)?.group ?? null;
   }
 
+  /** Grupo de una mejora en obras (andamio ligero o caballete y cartel con su barra). */
+  getUpgradeObject(moduleId: number): THREE.Object3D | null {
+    return this.upgrades.get(moduleId)?.group ?? null;
+  }
+
+  /** Comportamiento animado de un prop (grúa, radar, vivero…), para pruebas y depuración. */
+  getPropDynamic(key: string): PropDynamic | null {
+    return this.props.get(key)?.dyn ?? null;
+  }
+
+  /** Niveles que faltan por reconstruir (se reparten entre frames). */
+  get pendingLevels(): number {
+    return this.planned.size;
+  }
+
   /** Puntos de referencia del casco (punta de la pluma de carga, tope del palo, roda…). */
   get hullAnchors(): HullGeometry['anchors'] | null {
     return this.hull?.anchors ?? null;
@@ -702,8 +923,10 @@ export class ShipView {
   }
 
   dispose(): void {
-    for (const o of [...this.staticObjs, ...this.hullObjs]) disposeObject(o);
+    for (const o of [...this.levelBuilds.flatMap((b) => b?.objs ?? []), ...this.hullObjs]) disposeObject(o);
+    for (const e of this.props.values()) e.dyn?.dispose();
     for (const s of this.sites.values()) disposeObject(s.group);
+    for (const u of this.upgrades.values()) disposeObject(u.group);
     for (const f of this.flags) f.dispose();
     this.particles.dispose();
     this.fires.dispose();

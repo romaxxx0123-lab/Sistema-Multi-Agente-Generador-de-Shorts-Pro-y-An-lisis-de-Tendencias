@@ -356,6 +356,90 @@ export function merchantModel(seed: number): WorldModel {
   return { solid: kit.build(), glow: glow.build(), beamY: null, radius: 22 };
 }
 
+/**
+ * Mercado flotante de Puerto Esperanza: una gabarra ancha con puestos de toldos a rayas, cajas de
+ * fruta y pescado, ristras de farolillos de proa a popa y una caseta de gobierno a popa.
+ */
+export function marketBargeModel(seed: number): WorldModel {
+  const kit = new Kit(seed, 0.06);
+  const glow = new Kit(seed + 1, 0);
+  const deckY = 1.5;
+  loftHull(kit, { length: 30, halfWidth: 6, draft: 1.3, freeboard: deckY, bowFrac: 0.16, bottom: COL.antifoul, top: '#2a6f7a', stripe: COL.yellow, deck: COL.woodLight, sheer: 0.5, stations: 8 });
+  const awnings = [
+    ['#e63946', COL.white],
+    ['#2a9d8f', COL.white],
+    [COL.yellow, '#e76f51'],
+    ['#457b9d', COL.white],
+    ['#f4a261', '#fff1d6'],
+    ['#6d597a', COL.white],
+  ] as const;
+  const goods = ['#e76f51', '#e9c46a', '#90be6d', '#f94144', '#f8961e', '#c0c7cc', '#8ecae6'];
+  let k = 0;
+  for (const sx of [-6.5, 0.5, 7.5]) {
+    for (const sz of [-3, 3]) {
+      const [a, b] = awnings[(seed + k) % awnings.length]!;
+      const side = Math.sign(sz);
+      // Mostrador y postes
+      kit.box(4.6, 1.0, 1.4, COL.wood, { p: [sx, deckY + 0.5, sz + side * 0.3] });
+      kit.box(4.8, 0.08, 1.6, COL.woodDark, { p: [sx, deckY + 1.04, sz + side * 0.3] });
+      for (const px of [-2.2, 2.2]) for (const pz of [-1.2, 1.2]) kit.box(0.12, 2.6, 0.12, COL.woodDark, { p: [sx + px, deckY + 1.3, sz + pz] });
+      // Toldo inclinado a rayas (cae hacia la borda)
+      const n = 6;
+      for (let i = 0; i < n; i++) {
+        const x0 = sx - 2.4 + (4.8 * i) / n;
+        const x1 = sx - 2.4 + (4.8 * (i + 1)) / n;
+        kit.poly([[x0, deckY + 2.9, sz - side * 1.5], [x1, deckY + 2.9, sz - side * 1.5], [x1, deckY + 2.4, sz + side * 1.6], [x0, deckY + 2.4, sz + side * 1.6]], i % 2 ? b : a);
+      }
+      // Faldón festoneado
+      for (let i = 0; i < n; i++) {
+        const x0 = sx - 2.4 + (4.8 * i) / n;
+        const x1 = sx - 2.4 + (4.8 * (i + 1)) / n;
+        kit.poly([[x0, deckY + 2.4, sz + side * 1.6], [x1, deckY + 2.4, sz + side * 1.6], [(x0 + x1) / 2, deckY + 2.05, sz + side * 1.62]], i % 2 ? b : a);
+      }
+      // Género: cajas de fruta, pescado, telas
+      for (let i = 0; i < 5; i++) {
+        const gx = sx - 1.8 + i * 0.9;
+        kit.box(0.7, 0.28, 0.6, COL.woodLight, { p: [gx, deckY + 1.22, sz + side * 0.3] });
+        for (let j = 0; j < 3; j++) kit.rock(0.13, 0, goods[(seed + k * 3 + i + j) % goods.length]!, { p: [gx - 0.2 + j * 0.2, deckY + 1.42, sz + side * 0.3] }, 0.1);
+      }
+      // Farol colgando del toldo
+      glow.box(0.24, 0.32, 0.24, COL.windowLit, { p: [sx, deckY + 2.2, sz - side * 0.6] });
+      k++;
+    }
+  }
+  // Caseta de gobierno a popa
+  kit.box(4, 2.6, 5, COL.white, { p: [-12.4, deckY + 1.3, 0] });
+  kit.box(4.4, 0.25, 5.4, '#c8553d', { p: [-12.4, deckY + 2.72, 0] });
+  for (const side of [-1, 1]) glow.box(2.4, 0.7, 0.06, COL.windowLit, { p: [-12.4, deckY + 1.8, side * 2.53] });
+  glow.box(0.06, 0.7, 3.2, COL.windowLit, { p: [-10.37, deckY + 1.8, 0] });
+  // Mástiles de proa y popa con ristras de farolillos y banderines
+  kit.cyl(0.1, 0.12, 6.5, 6, COL.woodDark, { p: [12.5, deckY + 3.25, 0] });
+  kit.cyl(0.1, 0.12, 5.5, 6, COL.woodDark, { p: [-12.4, deckY + 2.6 + 2.75, 0] });
+  const lanternCols = ['#ff6b4a', '#ffa64d', '#ffd36b', '#ff9ac2'];
+  for (const side of [-1, 1]) {
+    const a: V3 = [12.5, deckY + 6.3, 0];
+    const b: V3 = [-12.4, deckY + 7.9, 0];
+    const n = 12;
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      const x = a[0] + (b[0] - a[0]) * t;
+      const y = a[1] + (b[1] - a[1]) * t - 1.4 * 4 * t * (1 - t);
+      const z = side * 4.6 * Math.sin(Math.PI * t);
+      glow.add(new THREE.OctahedronGeometry(0.2, 0), lanternCols[(i + (side > 0 ? 1 : 0)) % lanternCols.length]!, { p: [x, y, z], s: [1, 1.3, 1] });
+      if (i % 2) kit.poly([[x, y + 0.1, z], [x + 0.6, y + 0.1, z], [x + 0.3, y - 0.5, z]], awnings[i % awnings.length]![0]);
+    }
+  }
+  // Gente comprando y vendiendo
+  const skins = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524'];
+  for (let i = 0; i < 9; i++) {
+    const x = -8 + i * 2.2;
+    const z = (i % 2 ? 1 : -1) * (0.6 + ((seed + i) % 3) * 0.3);
+    kit.box(0.45, 0.75, 0.32, goods[(i * 3 + seed) % goods.length]!, { p: [x, deckY + 0.55, z] });
+    kit.box(0.26, 0.28, 0.26, skins[(i + seed) % skins.length]!, { p: [x, deckY + 1.08, z] });
+  }
+  return { solid: kit.build(), glow: glow.build(), beamY: null, radius: 16 };
+}
+
 /** Plataforma petrolífera abandonada y oxidada. */
 export function platformModel(seed: number): WorldModel {
   const kit = new Kit(seed, 0.1);

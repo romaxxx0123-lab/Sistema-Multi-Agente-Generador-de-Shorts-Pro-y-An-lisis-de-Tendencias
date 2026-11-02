@@ -41,7 +41,7 @@ import { hourOf } from '../sim/time';
 import type { GameState, WeatherKind } from '../sim/types';
 import { computeAtmosphere, createAtmosphere, lerpRegionColors, regionColors, type RegionColors } from './world/atmosphere';
 import { Birds } from './world/birds';
-import { Celebration, fiestaLevel } from './world/celebration';
+import { arrivalJustHappened, Celebration, fiestaLevel } from './world/celebration';
 import { createGlowShared } from './world/glow';
 import { HarborView } from './world/harbor';
 import { Clouds } from './world/clouds';
@@ -77,6 +77,11 @@ const num = (v: number, d: number): number => (Number.isFinite(v) ? v : d);
 /** Antialias (MSAA del contexto) que pide cada calidad. */
 export function antialiasFor(q: Quality): boolean {
   return q !== 'baja';
+}
+
+/** ¿Hay que recargar para que la calidad `q` tenga su antialias, con un contexto creado con `contextAntialias`? */
+export function reloadNeededFor(contextAntialias: boolean, q: Quality): boolean {
+  return antialiasFor(q) !== contextAntialias;
 }
 
 export class Renderer {
@@ -211,7 +216,7 @@ export class Renderer {
    * media/alta (o al revés) el resto se aplica ya y el suavizado de bordes, al recargar.
    */
   needsReloadFor(q: Quality): boolean {
-    return antialiasFor(q) !== this.antialias;
+    return reloadNeededFor(this.antialias, q);
   }
 
   private applyQuality(q: Quality, recompile: boolean): void {
@@ -407,7 +412,7 @@ export class Renderer {
     this.harbor.update(state, dt, ds, this.waterFn, atm, newSim, { xMin: this.hull.xMin, xMax: this.hull.xMax, halfWidth: hwMax });
     const arrived = !!state.story?.arrived;
     if (newSim) this.celebration.clear();
-    else if (arrived && !this.lastArrived && v.regionId === FINAL_REGION) this.celebration.start();
+    else if (arrivalJustHappened(this.lastArrived, state, newSim)) this.celebration.start();
     this.lastArrived = arrived;
     const fiesta = fiestaLevel(state);
     if (this.celebration.active || fiesta > 0) this.celebration.update(dt, ds, atm, () => this.harbor.launchSpots(), { x: wx, z: wz }, fiesta);

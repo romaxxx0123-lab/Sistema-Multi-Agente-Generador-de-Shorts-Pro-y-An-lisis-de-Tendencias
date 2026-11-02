@@ -4,13 +4,15 @@
  * - Avistamientos (`state.voyage.sightings`, los crea la simulación): un modelo por tipo en
  *   (s.x, agua, s.side·s.distance). Aparecen y desaparecen fundiéndose. El naufragio y la balsa
  *   flotan con las olas; el mercante navega a la par (se mantiene por el través mientras dura el
- *   comercio y al final acelera y se aleja); islas y estructuras están fijas. El faro y el
+ *   comercio y al final acelera y se aleja; en Puerto Esperanza es el mercado flotante del muelle);
+ *   islas y estructuras están fijas. El faro y el
  *   mercante encienden sus luces de noche y el faro barre el mar con su haz.
  * - Decorado lejano de la región (solo visual): islas grandes en el archipiélago, icebergs en la
  *   corriente boreal, cascos oxidados en el cementerio, farallones junto al faro y algún velero en
  *   aguas templadas. Viajan hacia popa con el agua y se renuevan por delante.
  */
 import * as THREE from 'three';
+import { FINAL_REGION } from '../../data/story';
 import { WATERLINE_Y } from '../../sim/constants';
 import type { GameState, Sighting } from '../../sim/types';
 import type { Atmosphere } from './atmosphere';
@@ -20,6 +22,7 @@ import {
   icebergModel,
   islandModel,
   lighthouseModel,
+  marketBargeModel,
   merchantModel,
   platformModel,
   raftModel,
@@ -136,6 +139,8 @@ export class SightingsView {
       case 'isla':
         return { model: this.model(`isla:${v}`, () => islandModel(23 + v * 31)), kind: 'isla', floats: 0 };
       case 'mercante':
+        // En Puerto Esperanza el comercio es el mercado flotante del muelle.
+        if (regionId === FINAL_REGION || /muelle|mercado/i.test(s.name)) return { model: this.model('mercado', () => marketBargeModel(7)), kind: 'mercante', floats: 0.5 };
         return { model: this.model(`mercante:${v}`, () => merchantModel(5 + v * 13)), kind: 'mercante', floats: 0.6 };
       case 'balsa':
         return { model: this.model('balsa', () => raftModel(3)), kind: 'balsa', floats: 1 };

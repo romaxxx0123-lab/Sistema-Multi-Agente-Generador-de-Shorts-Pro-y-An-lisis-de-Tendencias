@@ -1,18 +1,22 @@
 /**
  * OBRAS EN CURSO: andamios alrededor del módulo en construcción, material acopiado y un
  * "fantasma" translúcido de lo que se está levantando que sube con el progreso de la obra.
- * También el andamiaje de la ampliación del casco (proa) mientras dura.
+ * También el andamiaje de la ampliación del casco (proa) mientras dura y las MEJORAS EN OBRAS
+ * (`module.upgrade`): andamio ligero alrededor del mueble principal (módulos abiertos) o caballete
+ * con tablones dentro (habitaciones), y un cartel con el nivel que se está construyendo y la barra
+ * de progreso de la mejora. El módulo sigue funcionando mientras tanto.
  */
 import * as THREE from 'three';
 import { moduleDef } from '../../data/modules';
 import { CELL, LEVEL_H, WALL_H } from '../../sim/constants';
-import { cellMin, levelY, localToShip, localYaw, type ConstructionSite, type ShipLayout } from '../../sim/ship';
+import { cellMin, levelY, localToShip, localYaw, moduleCells, type ConstructionSite, type PropInstance, type ShipLayout } from '../../sim/ship';
 import type { GameState, ModuleInstance } from '../../sim/types';
 import { PALETTE } from '../palette';
 import { GeoBuilder, hash01, shade } from './geo';
 import { BOW_LENGTH, DECK_Y, bowStartX, deckHalfWidthAt } from './hull';
 import type { ShipMaterials } from './materials';
 import { crate } from './props';
+import { brassPlaque, mainDoor, mainProp } from './tiers';
 
 export interface SiteEntry {
   moduleId: number;
@@ -267,6 +271,154 @@ export function buildExpansionScaffold(length: number, width: number, mats: Ship
   bar.rotation.y = -Math.PI / 2;
   object.add(mesh, bar);
   return { object, bars: [bar] };
+}
+
+/* ------------------------------------------------------------------ */
+/* Mejoras en obras                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface UpgradeSiteEntry {
+  moduleId: number;
+  toTier: number;
+  level: number;
+  group: THREE.Group;
+  bars: THREE.Mesh[];
+}
+
+/** Cartel de obra de mejora (caballete con franjas, placa del nivel nuevo y barra), mirando a -z. */
+function upgradeSign(g: GeoBuilder, toTier: number): void {
+  const wood = PALETTE.deckWoodDark;
+  for (const sx of [-1, 1]) {
+    g.cylinderBetween(sx * 0.3, 0, -0.12, sx * 0.26, 1.15, 0.0, 0.025, 4, wood);
+    g.cylinderBetween(sx * 0.3, 0, 0.22, sx * 0.26, 1.15, 0.0, 0.025, 4, wood);
+  }
+  g.box(-0.38, 0.62, -0.075, 0.38, 1.18, -0.035, '#f3ead6');
+  for (let k = 0; k < 5; k++) {
+    g.push();
+    g.translate(-0.3 + k * 0.15, 1.1, -0.08);
+    g.rotateZ(0.6);
+    g.box(-0.035, -0.07, -0.004, 0.035, 0.07, 0.0, k % 2 ? '#2b2d42' : '#e9c46a');
+    g.pop();
+  }
+  g.box(-0.38, 1.02, -0.081, 0.38, 1.03, -0.075, '#2b2d42');
+  g.box(-0.33, 0.68, -0.08, 0.33, 0.76, -0.075, '#2b2d42');
+  g.push();
+  g.translate(0, 0.89, -0.075);
+  brassPlaque(g, toTier);
+  g.pop();
+  // martillo dibujado junto a la placa
+  g.box(-0.3, 0.83, -0.082, -0.285, 0.97, -0.078, '#8a5a44');
+  g.box(-0.33, 0.95, -0.082, -0.255, 0.985, -0.078, '#5c6770');
+}
+
+/** Caballete con tablones, bote de pintura y lona: obra de mejora dentro de una habitación. */
+function trestle(g: GeoBuilder, seed: number): void {
+  for (const sx of [-1, 1]) {
+    g.cylinderBetween(sx * 0.45, 0, -0.25, sx * 0.45, 0.62, -0.05, 0.025, 4, PALETTE.deckWoodDark);
+    g.cylinderBetween(sx * 0.45, 0, 0.15, sx * 0.45, 0.62, -0.05, 0.025, 4, PALETTE.deckWoodDark);
+  }
+  for (let k = 0; k < 3; k++) g.box(-0.6, 0.62 + k * 0.045, -0.2 + k * 0.03, 0.6, 0.66 + k * 0.045, 0.02 + k * 0.03, shade(PLANK, 0.85 + hash01(seed, k) * 0.2));
+  g.cylinder(0.75, 0, 0.1, 0.11, 0.1, 0.2, 8, '#e9efe9');
+  g.cylinder(0.75, 0.2, 0.1, 0.1, 0.1, 0.01, 8, '#2a9d8f');
+  g.cylinderBetween(0.72, 0.2, 0.05, 0.6, 0.45, -0.05, 0.012, 4, '#8a5a44');
+  g.cylinderX(-0.2, 0.08, 0.35, 0.08, 0.9, 7, PALETTE.canvas);
+  crate(g, -0.85, 0, -0.1, 0.36, 0.28, 0.36, '#b8895a', 0.3);
+}
+
+/** ¿El punto (x, z) queda libre de muebles (con margen) y de los taburetes de la mesa de juegos? */
+function freeSpot(x: number, z: number, props: readonly PropInstance[], margin: number): boolean {
+  for (const p of props) {
+    const extra = p.kind === 'mesa_juegos' ? 0.75 : 0;
+    if (Math.abs(p.x - x) < p.hx + margin + extra && Math.abs(p.z - z) < p.hz + margin + extra) return false;
+  }
+  return true;
+}
+
+/**
+ * Obra de una mejora en curso. Las habitaciones llevan el caballete dentro (en un hueco libre cerca
+ * de la puerta) y el cartel fuera, junto a la puerta; los módulos abiertos, un andamio ligero
+ * alrededor del mueble principal y el cartel delante.
+ */
+export function buildUpgradeSite(m: ModuleInstance, layout: ShipLayout, props: readonly PropInstance[], mats: ShipMaterials): UpgradeSiteEntry | null {
+  const up = m.upgrade;
+  if (!up) return null;
+  const def = moduleDef(m.type);
+  const W = layout.width;
+  const y0 = levelY(m.level);
+  const g = new GeoBuilder();
+  const group = new THREE.Group();
+  group.name = `mejora-${m.id}`;
+  const bars: THREE.Mesh[] = [];
+  const own = props.filter((p) => p.moduleId === m.id);
+  /** Coloca el cartel (en el marco de la escena) y su barra de progreso. */
+  const sign = (x: number, z: number, yaw: number): void => {
+    g.push();
+    g.translate(x, y0, z);
+    g.rotateY(yaw);
+    upgradeSign(g, up.toTier);
+    g.pop();
+    // visto de frente (desde -z) la derecha del cartel es -x: la barra crece de izquierda a derecha
+    const bar = progressBar(0.325, 0.72, -0.082, 0.65);
+    bar.rotation.y = Math.PI;
+    const holder = new THREE.Group();
+    holder.position.set(x, y0, z);
+    holder.rotation.y = yaw;
+    holder.add(bar);
+    group.add(holder);
+    bars.push(bar);
+  };
+  if (def.enclosed) {
+    const md = mainDoor(m, layout);
+    if (md) {
+      const { door: d, nx, nz } = md;
+      // fuera, al lado de la puerta (no delante del hueco), mirando hacia fuera
+      const ux = d.axis === 'x' ? 1 : 0;
+      const uz = d.axis === 'z' ? 1 : 0;
+      const off = d.width / 2 + 0.75;
+      sign(d.x + ux * off + nx * 0.55, d.z + uz * off + nz * 0.55, Math.atan2(nx, nz) + Math.PI);
+      // dentro: el hueco libre más cercano a la puerta (a más de 1,3 m para no estorbar el paso)
+      const cells = moduleCells(m).filter((c) => c.level === m.level);
+      let best: { x: number; z: number; d: number } | null = null;
+      for (const c of cells) {
+        const mn = cellMin(c.x, c.z, W);
+        for (const [ox, oz] of [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1.2], [0, 1.2], [-1.2, 0], [1.2, 0]] as const) {
+          const x = mn.x + CELL / 2 + ox;
+          const z = mn.z + CELL / 2 + oz;
+          const dd = Math.hypot(x - d.x, z - d.z);
+          if (dd < 1.3 || !freeSpot(x, z, own, 0.75)) continue;
+          if (!best || dd < best.d) best = { x, z, d: dd };
+        }
+      }
+      if (best) {
+        g.push();
+        g.translate(best.x, y0, best.z);
+        g.rotateY(Math.atan2(best.x - d.x, best.z - d.z) + Math.PI / 2);
+        trestle(g, m.id);
+        g.pop();
+      }
+    }
+  } else {
+    const p = mainProp(m, own);
+    if (p) {
+      const top = Math.min(p.y - y0 + p.height + 0.45, 3.4);
+      scaffold(g, p.x - p.hx - 0.1, p.z - p.hz - 0.1, p.x + p.hx + 0.1, p.z + p.hz + 0.1, y0, Math.max(1.6, top), m.id, []);
+      // cartel delante del frente del mueble
+      const fx = -Math.sin(p.yaw);
+      const fz = -Math.cos(p.yaw);
+      const reach = Math.abs(fx) * p.hx + Math.abs(fz) * p.hz + 0.85;
+      const sx = Math.cos(p.yaw);
+      const sz = -Math.sin(p.yaw);
+      sign(p.x + fx * reach + sx * 0.6, p.z + fz * reach + sz * 0.6, p.yaw);
+    }
+  }
+  const mesh = new THREE.Mesh(g.build(), mats.solid);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.ownGeometry = true;
+  mesh.name = 'obra-mejora';
+  group.add(mesh);
+  setProgress(bars, up.progress);
+  return { moduleId: m.id, toTier: up.toTier, level: m.level, group, bars };
 }
 
 /** Progreso visible de una obra (0..1). */

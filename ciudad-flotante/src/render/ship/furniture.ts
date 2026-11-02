@@ -1,9 +1,11 @@
 /**
  * Consultas de mobiliario para colocar personajes: dónde está cada cama (y a qué altura queda
- * el colchón) y dónde están las sillas. Se calculan a partir de los módulos con las mismas
- * funciones que usa `computeLayout`, así que coinciden exactamente con lo que se dibuja.
+ * el colchón), dónde están las sillas y las plazas de los sofás, y los taburetes de la mesa de
+ * juegos. Se calculan a partir de los módulos con las mismas funciones que usa `computeLayout`
+ * (y las mismas plazas que la IA, `SOFA_SEATS`), así que coinciden con lo que se dibuja.
  */
 import { moduleDef, type PropKind } from '../../data/modules';
+import { GAME_REACH, SOFA_SEAT_FORWARD, SOFA_SEATS } from '../../sim/npc';
 import { levelY, localToShip, localYaw } from '../../sim/ship';
 import type { GameState, ShipState } from '../../sim/types';
 
@@ -59,18 +61,54 @@ export interface Seat {
   /** Hacia dónde mira quien se sienta (yaw de three.js). */
   yaw: number;
   moduleId: number;
+  /** Silla, plaza de sofá o taburete de la mesa de juegos. */
+  kind: 'silla' | 'sofa' | 'taburete';
 }
 
-/** Sillas de los módulos activos. */
+/** Sillas y plazas de los sofás de los módulos terminados (donde se sientan a comer o a descansar). */
 export function seatsOf(state: GameState): Seat[] {
   const out: Seat[] = [];
   for (const m of state.ship.modules) {
     if (m.status === 'construction') continue;
     const def = moduleDef(m.type);
     for (const p of def.props) {
-      if (p.kind !== 'silla') continue;
-      const pos = localToShip(m, p.u, p.v, state.ship.width);
-      out.push({ x: pos.x, y: levelY(m.level) + (p.y ?? 0), z: pos.z, yaw: localYaw(m.rot, p.rot), moduleId: m.id });
+      const y = levelY(m.level) + (p.y ?? 0);
+      if (p.kind === 'silla') {
+        const pos = localToShip(m, p.u, p.v, state.ship.width);
+        out.push({ x: pos.x, y, z: pos.z, yaw: localYaw(m.rot, p.rot), moduleId: m.id, kind: 'silla' });
+      } else if (p.kind === 'sofa') {
+        // plazas a lo largo del eje largo, un poco adelantadas (como seatPose en sim/npc.ts)
+        const F = SOFA_SEAT_FORWARD;
+        for (const off of SOFA_SEATS) {
+          const u = p.u + off * Math.cos(p.rot) - F * Math.sin(p.rot);
+          const v = p.v - off * Math.sin(p.rot) - F * Math.cos(p.rot);
+          const pos = localToShip(m, u, v, state.ship.width);
+          out.push({ x: pos.x, y, z: pos.z, yaw: localYaw(m.rot, p.rot), moduleId: m.id, kind: 'sofa' });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Taburetes alrededor de las mesas de juegos (los cuatro puestos de los lados, a `GAME_REACH` del
+ * centro, como dibuja props.ts). Cada uno mira a la mesa.
+ */
+export function gameStools(state: GameState): Seat[] {
+  const out: Seat[] = [];
+  for (const m of state.ship.modules) {
+    if (m.status === 'construction') continue;
+    const def = moduleDef(m.type);
+    for (const p of def.props) {
+      if (p.kind !== 'mesa_juegos') continue;
+      const y = levelY(m.level) + (p.y ?? 0);
+      const c = localToShip(m, p.u, p.v, state.ship.width);
+      for (let i = 0; i < 4; i++) {
+        const a = p.rot + (i * Math.PI) / 2;
+        const pos = localToShip(m, p.u - Math.sin(a) * GAME_REACH, p.v - Math.cos(a) * GAME_REACH, state.ship.width);
+        out.push({ x: pos.x, y, z: pos.z, yaw: Math.atan2(-(c.x - pos.x), -(c.z - pos.z)), moduleId: m.id, kind: 'taburete' });
+      }
     }
   }
   return out;

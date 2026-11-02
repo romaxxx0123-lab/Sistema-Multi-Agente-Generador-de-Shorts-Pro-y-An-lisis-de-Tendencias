@@ -7,6 +7,9 @@
  *  - caminar (balanceo según la velocidad medida; cojea si está herido), cargando si lleva algo;
  *  - dormir tumbado en SU cama (npc.bed → cama/litera con dos alturas/camilla) con manta y "Zzz";
  *  - comer sentado en la silla más cercana (o de pie con un cuenco);
+ *  - en la sala común: sentado en el sofá (leyendo un libro si `task.data.read`) o jugando a
+ *    las cartas en la mesa de juegos (`task.data.anim === 'jugar'`): en el taburete de su puesto
+ *    mirando a la mesa, o de pie con las cartas si su puesto no tiene taburete;
  *  - trabajar según el puesto (remover la olla, arrodillarse en el huerto, martillear con la
  *    llave, pescar con caña, lanzar el gancho), construir, apagar fuego con el cubo, charlar
  *    gesticulando y mirando al interlocutor, a cubierto encogido, herido.
@@ -20,7 +23,7 @@ import { levelOfY } from '../sim/ship';
 import type { GameState, NpcState } from '../sim/types';
 import { SpeechBubble } from './ship/bubble';
 import { CharacterRig, lookFromAppearance, type RigPose, type RigTool } from './ship/character';
-import { bedPose, seatsOf, type Seat } from './ship/furniture';
+import { bedPose, gameStools, seatsOf, type Seat } from './ship/furniture';
 import { hash01 } from './ship/geo';
 import { insideHull } from './ship/hull';
 
@@ -60,9 +63,10 @@ const BOBBER_GEO = new THREE.SphereGeometry(0.07, 6, 4);
 const BOBBER_MAT = new THREE.MeshLambertMaterial({ color: '#e63946' });
 
 /** Decide la pose de un habitante (lógica pura, testeable). */
-export function decideNpcPose(n: NpcState, state: GameState, speed: number, seats: Seat[]): NpcPoseInfo {
+export function decideNpcPose(n: NpcState, state: GameState, speed: number, seats: Seat[], stools: Seat[] = []): NpcPoseInfo {
   const base: NpcPoseInfo = { pose: 'stand', tool: null, carry: !!n.carry, limp: n.injured || n.needs.health < 35, x: n.pos.x, y: n.pos.y, z: n.pos.z, yaw: n.yaw, snap: false, blanket: null };
   const act = n.activity;
+  const data = n.task?.data as { anim?: string; faceYaw?: number; read?: boolean } | undefined;
   if (act === 'sleeping') {
     const bed = n.bed ? bedPose(state.ship, n.bed.moduleId, n.bed.index) : null;
     if (bed && Math.hypot(bed.x - n.pos.x, bed.z - n.pos.z) < 3 && Math.abs(bed.y - n.pos.y) < 2.4) {
@@ -85,11 +89,21 @@ export function decideNpcPose(n: NpcState, state: GameState, speed: number, seat
     return { ...base, pose: 'stand', tool: 'cuenco', carry: false };
   }
   if (moving) return { ...base, pose: 'walk' };
+  if (data?.anim === 'jugar' && (act === 'idle' || act === 'socializing' || act === 'working')) {
+    // partida en la mesa de juegos: en el taburete de su puesto, mirando a la mesa
+    for (const s of stools) {
+      if (Math.hypot(s.x - n.pos.x, s.z - n.pos.z) < 0.5 && Math.abs(s.y - n.pos.y) < 1) {
+        return { ...base, pose: 'cards', tool: 'cartas', x: s.x, y: s.y, z: s.z, yaw: s.yaw, snap: true, carry: false };
+      }
+    }
+    return { ...base, pose: 'cardsStand', tool: 'cartas', yaw: data.faceYaw ?? n.yaw, carry: false };
+  }
   if (act === 'idle') {
-    // si se para junto a una silla, se sienta a descansar
+    // si se para junto a una silla o en una plaza del sofá, se sienta (a leer, si lleva libro)
     for (const s of seats) {
       if (Math.hypot(s.x - n.pos.x, s.z - n.pos.z) < 0.6 && Math.abs(s.y - n.pos.y) < 1) {
-        return { ...base, pose: 'sit', x: s.x, y: s.y, z: s.z, yaw: s.yaw, snap: true, carry: false };
+        const read = data?.read === true;
+        return { ...base, pose: read ? 'read' : 'sit', tool: read ? 'libro' : null, x: s.x, y: s.y, z: s.z, yaw: s.yaw, snap: true, carry: false };
       }
     }
   }
@@ -163,6 +177,7 @@ export class NpcView {
   private entries = new Map<string, NpcEntry>();
   private highlightId: string | null = null;
   private seats: Seat[] = [];
+  private stools: Seat[] = [];
   private seatsRev = -1;
 
   constructor(readonly root: THREE.Group) {}
@@ -189,6 +204,7 @@ export class NpcView {
     const dt = Math.min(0.1, Math.max(0, dtReal));
     if (this.seatsRev !== state.ship.revision) {
       this.seats = seatsOf(state);
+      this.stools = gameStools(state);
       this.seatsRev = state.ship.revision;
     }
     let fov = 72;
@@ -230,7 +246,7 @@ export class NpcView {
       const level = levelOfY(n.pos.y);
       const visible = n.activity !== 'away' && (hideAboveLevel === null || level <= hideAboveLevel);
       e.container.visible = visible;
-      const info = decideNpcPose(n, state, e.speed, this.seats);
+      const info = decideNpcPose(n, state, e.speed, this.seats, this.stools);
       e.container.position.set(info.x, info.y, info.z);
       if (info.snap) e.yaw = info.yaw;
       else e.yaw += wrapAngle(info.yaw - e.yaw) * Math.min(1, dt * 8);

@@ -33,9 +33,15 @@ export type RigPose =
   | 'use'
   | 'wave'
   | 'drink'
-  | 'jump';
+  | 'jump'
+  /** Sentado jugando a las cartas (de vez en cuando echa una sobre la mesa). */
+  | 'cards'
+  /** De pie junto a la mesa de juegos, con las cartas en la mano. */
+  | 'cardsStand'
+  /** Sentado leyendo un libro. */
+  | 'read';
 
-export type RigTool = 'martillo' | 'llave' | 'gancho' | 'cana' | 'cubo' | 'cubo_lleno' | 'cucharon' | 'regadera' | 'cuenco' | null;
+export type RigTool = 'martillo' | 'llave' | 'gancho' | 'cana' | 'cubo' | 'cubo_lleno' | 'cucharon' | 'regadera' | 'cuenco' | 'cartas' | 'libro' | null;
 
 export interface CharacterLook {
   skin: string;
@@ -152,6 +158,28 @@ export function toolGeometry(tool: Exclude<RigTool, null>): THREE.BufferGeometry
     case 'cuenco':
       b.cylinder(0, -0.05, -0.05, 0.05, 0.09, 0.07, 8, '#f3ead6');
       b.cylinder(0, 0.005, -0.05, 0.075, 0.075, 0.01, 8, '#e9a25f');
+      break;
+    case 'cartas':
+      // abanico de naipes de pie (plano XY), con la cara hacia quien los sostiene (+z)
+      for (let k = 0; k < 5; k++) {
+        b.push();
+        b.translate(0, -0.02, -0.03 - k * 0.002);
+        b.rotateZ(0.5 - k * 0.25);
+        b.box(-0.032, 0.0, -0.002, 0.032, 0.095, 0.0, k % 2 ? '#f3ead6' : '#ffffff');
+        b.box(-0.03, 0.0, -0.0028, 0.03, 0.093, -0.002, '#3d5a80');
+        b.box(-0.01, 0.06, 0.0, 0.01, 0.08, 0.001, k % 3 ? '#bc4749' : '#22262a');
+        b.pop();
+      }
+      break;
+    case 'libro':
+      // libro abierto (plano XZ), desplazado hacia la otra mano
+      b.box(-0.27, -0.03, -0.11, -0.03, -0.015, 0.06, '#6d597a');
+      b.box(-0.26, -0.015, -0.1, -0.155, 0.0, 0.05, '#f3ead6');
+      b.box(-0.145, -0.015, -0.1, -0.04, 0.0, 0.05, '#efe6d2');
+      for (let k = 0; k < 4; k++) {
+        b.box(-0.25, 0.0, -0.08 + k * 0.035, -0.17, 0.002, -0.075 + k * 0.035, '#8a8378');
+        b.box(-0.13, 0.0, -0.08 + k * 0.035, -0.05, 0.002, -0.075 + k * 0.035, '#8a8378');
+      }
       break;
   }
   g = b.build();
@@ -489,6 +517,44 @@ export class CharacterRig {
         tg.shLZ = -0.5;
         tg.shRZ = 0.5;
         break;
+      case 'cards':
+      case 'cardsStand':
+      case 'read': {
+        if (st.pose !== 'cardsStand') {
+          sitting = 1;
+          tg.hipLX = 1.5;
+          tg.hipRX = 1.5;
+          tg.knL = -1.5;
+          tg.knR = -1.5;
+          tg.hipLZ = -0.05;
+          tg.hipRZ = 0.05;
+        }
+        if (st.pose === 'read') {
+          // el libro a la altura del pecho y la vista en la página; de vez en cuando pasa una hoja
+          const turn = Math.pow(Math.max(0, Math.sin(t * 0.45 + this.seed)), 12);
+          tg.shLX = 0.8;
+          tg.shRX = 0.8 + turn * 0.25;
+          tg.elL = 1.45;
+          tg.elR = 1.45 - turn * 0.3;
+          tg.shLZ = 0.32;
+          tg.shRZ = -0.32 - turn * 0.15;
+          tg.headX = 0.4;
+          tg.torsoX = 0.02 + breathe;
+        } else {
+          // cartas en la mano derecha; la izquierda las acompaña y de vez en cuando echa una
+          const play = Math.pow(Math.max(0, Math.sin(t * 0.8 + this.seed * 1.7)), 10);
+          tg.shRX = 0.95 + play * 0.45;
+          tg.elR = 1.35 - play * 0.85;
+          tg.shRZ = -0.18;
+          tg.shLX = 0.85;
+          tg.elL = 1.25;
+          tg.shLZ = 0.2;
+          tg.headX = 0.22 + play * 0.15;
+          tg.headY = Math.sin(t * 0.5 + this.seed) * 0.25;
+          tg.torsoX = -0.08 + breathe;
+        }
+        break;
+      }
       case 'sit':
       case 'eat':
         sitting = 1;
@@ -710,6 +776,8 @@ export class CharacterRig {
     const armPitch = c.shRX + c.elR + c.torsoX;
     if (tool === 'cana') this.toolMesh.rotation.set(0.55 - armPitch, 0, 0);
     else if (tool === 'cubo' || tool === 'cubo_lleno' || tool === 'regadera' || tool === 'cuenco') this.toolMesh.rotation.set(-armPitch * 0.95, 0, 0);
+    else if (tool === 'cartas') this.toolMesh.rotation.set(-armPitch + 0.25, 0, 0);
+    else if (tool === 'libro') this.toolMesh.rotation.set(-armPitch + 1.0, 0, 0);
     else this.toolMesh.rotation.set(1.1, 0, 0);
   }
 

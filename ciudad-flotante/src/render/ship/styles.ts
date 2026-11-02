@@ -40,6 +40,7 @@ export const ROOM_STYLES: Record<string, RoomStyle> = {
   taller: { ...base, floor: 'metal', floorA: '#7d8790', floorB: '#6c757d', wallUpper: '#c9d1c8', wallLower: '#5c6770', trim: '#3a4249', lampShade: '#e0a458' },
   enfermeria: { ...base, floor: 'tiles', floorA: '#e4eeeb', floorB: '#c4dcd6', wallUpper: '#f2f8f6', wallLower: '#bfe0da', trim: '#7fb5ab', lampShade: '#e8f4f2' },
   motor: { ...base, floor: 'metal', floorA: '#6c757d', floorB: '#5c6770', wallUpper: '#9aa5ad', wallLower: '#4a535b', trim: '#2f363c', lampShade: '#e0a458' },
+  sala_comun: { ...base, floor: 'parquet', floorA: '#a8693f', floorB: '#8c5532', wallUpper: '#f2d3a6', wallLower: '#7a3e2e', trim: '#5a2e22', ceiling: '#f3e2c4', lampShade: '#c8553d' },
   puente: { ...base, floor: 'parquet', floorA: '#7a4f30', floorB: '#6a4428', wallUpper: '#f3ead6', wallLower: '#6e4a2e', lampShade: PALETTE.wallTrim },
 };
 

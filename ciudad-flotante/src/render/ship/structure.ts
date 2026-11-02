@@ -5,7 +5,8 @@
  * laterales y peldaños de escalera, puertas (marco + hoja abierta), lámparas de techo y faroles.
  *
  * Todo se escribe en constructores por nivel (`LevelBuilders`) que ShipView fusiona en
- * pocas mallas. Devuelve los puntos de luz para el pool de luces dinámicas.
+ * pocas mallas. Devuelve los puntos de luz para el pool de luces dinámicas. Con `only` se
+ * construye un único nivel (ShipView rehace solo los niveles que han cambiado).
  */
 import * as THREE from 'three';
 import { CELL, DOOR_H, LEVEL_H, RAIL_H, WALL_H } from '../../sim/constants';
@@ -49,6 +50,8 @@ export interface StructureInput {
   tintOf: (moduleId: number | null) => number;
   /** Constructores por nivel: índices 0..layout.levels (el último son los techos 'top'). */
   levels: LevelBuilders[];
+  /** Construir solo este nivel (índice de `levels`); los demás constructores no se tocan. */
+  only?: number;
 }
 
 interface Band {
@@ -205,6 +208,7 @@ function ptKey(l: number, x: number, z: number): string {
 export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   const { layout, modules, tintOf } = inp;
   const lights: LightSpot[] = [];
+  const want = (l: number): boolean => inp.only === undefined || inp.only === l;
   const W = layout.width;
   const moduleType = (id: number | null): string | null => (id === null ? null : (modules.get(id)?.type ?? null));
   const cellAt = (l: number, x: number, z: number): LayoutCell | null => getCell(layout, l, x, z);
@@ -239,6 +243,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   }
 
   for (const s of slabs) {
+    if (!want(Math.min(s.level, inp.levels.length - 1))) continue;
     const isTop = s.kind === 'top';
     const lb = inp.levels[Math.min(s.level, inp.levels.length - 1)]!;
     const g = lb.solid;
@@ -379,6 +384,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   const rampByModule = new Map<number, Ramp>(layout.ramps.map((r) => [r.moduleId, r]));
 
   for (const w of layout.walls) {
+    if (!want(w.level)) continue;
     const lb = inp.levels[w.level]!;
     const fr = wallFrame(w);
     const e0 = endMode(w, w.x0, w.z0);
@@ -486,17 +492,20 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
 
   /* ---------------- Puertas ---------------- */
   for (const d of layout.doors) {
+    if (!want(d.level)) continue;
     door(inp, d, cellAt, moduleType, propsByLevel.get(d.level) ?? [], (x, y, z) => lights.push({ x, y, z, level: d.level, kind: 'deck', moduleId: d.moduleId }));
   }
 
   /* ---------------- Escaleras ---------------- */
   for (const r of layout.ramps) {
+    if (!want(r.level)) continue;
     const lb = inp.levels[r.level]!;
     stairs(lb.solid, r);
   }
 
   /* ---------------- Lámparas de techo ---------------- */
   for (let l = 0; l < layout.levels; l++) {
+    if (!want(l)) continue;
     const lb = inp.levels[l]!;
     for (let x = 0; x < layout.length; x++) {
       for (let z = 0; z < W; z++) {
@@ -514,7 +523,7 @@ export function buildStructure(inp: StructureInput): { lights: LightSpot[] } {
   }
 
   /* ---------------- Faroles de la bodega ---------------- */
-  if (layout.levels > 0) {
+  if (layout.levels > 0 && want(0)) {
     const lb = inp.levels[0]!;
     const holdProps = propsByLevel.get(0) ?? [];
     const zMid = 0;
@@ -784,6 +793,26 @@ function wallDecor(g: GeoBuilder, type: string, uc: number, h: number): void {
       g.box(uc - 0.04, 1.62, z + 0.012, uc + 0.04, 1.88, z + 0.018, '#e63946');
       g.box(uc - 0.13, 1.71, z + 0.012, uc + 0.13, 1.79, z + 0.018, '#e63946');
       break;
+    case 'sala_comun': {
+      // diana, guirnalda de banderines y un cuadro: la sala más alegre del barco
+      picture(uc + 0.55, 1.7, 0.55, 0.42, h);
+      g.push();
+      g.translate(uc - 0.55, 1.7, z + 0.02);
+      for (const [r, c] of [[0.24, '#2b2d42'], [0.19, '#f3ead6'], [0.13, '#bc4749'], [0.07, '#f3ead6'], [0.03, '#bc4749']] as const) {
+        g.cylinderZ(0, 0, 0.015 + (0.24 - r) * 0.06, r, 0.03, 10, c);
+      }
+      g.pop();
+      for (let k = 0; k < 7; k++) {
+        const u = uc - 1.05 + k * 0.35;
+        const y = 2.55 - Math.sin((k / 6) * Math.PI) * 0.14;
+        g.cylinderBetween(u, y, z + 0.02, u + 0.35, 2.55 - Math.sin(((k + 1) / 6) * Math.PI) * 0.14, z + 0.02, 0.006, 3, '#6e4a2e');
+        if (k < 6) {
+          const c = ['#e63946', '#e9c46a', '#2a9d8f', '#457b9d', '#f4a261', '#6d597a'][k]!;
+          g.tri(u + 0.06, y - 0.01, z + 0.025, u + 0.29, y - 0.01, z + 0.025, u + 0.175, y - 0.24, z + 0.025, c);
+        }
+      }
+      break;
+    }
     case 'almacen':
       paper(uc, 1.6, 0.42, 0.55, '#f3ead6', '#5c6770');
       g.box(uc - 0.08, 1.85, z + 0.012, uc + 0.08, 1.89, z + 0.03, '#8a9399');
