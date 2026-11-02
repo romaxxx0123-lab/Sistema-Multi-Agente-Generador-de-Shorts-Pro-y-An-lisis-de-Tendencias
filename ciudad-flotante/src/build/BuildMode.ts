@@ -18,22 +18,28 @@
  * del nivel, así que lo que se ve bajo el cursor es exactamente la celda elegida.
  *
  * Todas las acciones pasan por los comandos de `Simulation` (`checkPlace`, `placeModule`,
- * `checkDemolishModule`, `demolish`, `checkExpandHull`, `expandHull`).
+ * `checkDemolishModule`, `demolish`, `checkExpandHull`, `expandHull`, `checkUpgrade`,
+ * `startUpgrade`, `cancelUpgrade`).
+ *
+ * Herramientas: colocar (pieza de la paleta), Mejorar (U: nivel, mejora siguiente con sus efectos,
+ * coste y tiempo; en obras, progreso y cancelar) y Demoler (X). Son excluyentes.
  */
 import * as THREE from 'three';
 import { clamp, smoothstep } from '../core/math';
 import { MODULES, moduleDef, type ModuleCategory, type ModuleDef } from '../data/modules';
 import type { GameContext } from '../game/context';
 import { registerDebug } from '../game/debug';
-import { CELL, HULL_EXPANSION_CELLS, LEVEL_H, RAIL_H, SHIP_ORIGIN_X } from '../sim/constants';
-import { cellMin, footprintSize, halfWidthM, levelOfY, levelY, moduleCells } from '../sim/ship';
+import { CELL, HULL_EXPANSION_CELLS, LEVEL_H, RAIL_H, SHIP_ORIGIN_X, WATERLINE_Y } from '../sim/constants';
+import { cellMin, footprintSize, halfWidthM, levelOfY, levelY, moduleCells, moduleCenter } from '../sim/ship';
 import type { Simulation } from '../sim/Simulation';
+import { durationText } from '../sim/construction';
+import { GRUA_RANGE, gruaRange } from '../sim/debris';
 import { daylight } from '../sim/time';
 import type { ModuleInstance, Rotation } from '../sim/types';
 import { withArticle } from '../sim/utilities';
 import { explainPlacement, levelReason, placeHintSteps, type PlaceSpot } from './advice';
-import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, moduleInfo, paletteModules, shipSummary, stock, type DemolishPreview } from './catalog';
-import { BoxMarker, GHOST_COLORS, GhostView, GridView, Pulse } from './ghost';
+import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, fmtNum, moduleInfo, paletteModules, shipSummary, stock, tierRoman, upgradeList, upgradePreview, type DemolishPreview, type UpgradePreview } from './catalog';
+import { BoxMarker, GHOST_COLORS, GhostView, GridView, Pulse, ReachArc } from './ghost';
 import { BuildHud, esc, type ConfirmModel, type HudActions, type TipModel } from './hud';
 import { DEFAULT_PITCH, DEFAULT_YAW, fitDistance, OrbitRig } from './orbit';
 import { anchorFor, continuousCell, intersectLevel, moduleBox, pickModule, toShipLocalRay } from './picking';
@@ -56,7 +62,7 @@ const HINT_DELAY = 0.12;
  */
 const HINT_BUDGET_MS = 6;
 
-type Confirm = { kind: 'demolish'; moduleId: number } | { kind: 'expand' };
+type Confirm = { kind: 'demolish'; moduleId: number } | { kind: 'expand' } | { kind: 'upgrade'; moduleId: number } | { kind: 'cancelUpgrade'; moduleId: number };
 
 interface PlaceState {
   key: string;
@@ -99,6 +105,8 @@ export class BuildMode {
   private category: ModuleCategory = 'vivienda';
   private selected: string | null = null;
   private demolishing = false;
+  /** Herramienta Mejorar (U). */
+  private upgrading = false;
   private rot: Rotation = 0;
   private confirm: Confirm | null = null;
   private expansionHover = false;
@@ -134,15 +142,27 @@ export class BuildMode {
   private placedFlash = 0;
   private placedMsg = '';
   private demolishCache: { key: string; at: number; value: DemolishPreview } | null = null;
-  /** Eslora con la que se calculó la distancia de la cámara (si crece el casco, se reencuadra). */
-  private fitLength = 0;
+  /**
+   * Distancia de encuadre con la que se colocó la cámara (`fitDistance` según la eslora y el
+   * aspecto de la ventana). Si cambia (ventana redimensionada, casco ampliado), la distancia se
+   * escala en la misma proporción: se conserva el zoom relativo que eligió el jugador.
+   */
+  private fitDist = 0;
+  /** Vista previa de la mejora del módulo señalado (herramienta Mejorar). */
+  private hoverUpgrade: UpgradePreview | null = null;
+  /** Módulo cuya ficha de la lista de mejoras está bajo el puntero. */
+  private upgradeCardHover: number | null = null;
 
   /* --- Presentación --- */
   private ghost: GhostView | null = null;
   private grid: GridView | null = null;
   private demolishBox: BoxMarker | null = null;
+  private upgradeBox: BoxMarker | null = null;
   private expansionBox: BoxMarker | null = null;
   private pulse: Pulse | null = null;
+  /** Alcance de la grúa (actual) y el de su mejora siguiente. */
+  private reach: ReachArc | null = null;
+  private reachNext: ReachArc | null = null;
   private hud: BuildHud | null = null;
   private hudTimer = 0;
   private hudDirty = true;
@@ -194,6 +214,8 @@ export class BuildMode {
     this.level = clamp(levelOfY(sim.state.player.pos.y), 0, sim.state.ship.levels - 1);
     this.selected = null;
     this.demolishing = false;
+    this.upgrading = false;
+    this.upgradeCardHover = null;
     this.confirm = null;
     this.expansionHover = false;
     this.drag = null;
@@ -203,17 +225,16 @@ export class BuildMode {
     // Cámara: transición desde la vista del jugador hasta la órbita exterior.
     this.updateBounds();
     const center = this.shipCenterX();
-    const length = sim.state.ship.length;
-    if (!this.rigReady) {
-      this.rig.snap({ yaw: DEFAULT_YAW, pitch: DEFAULT_PITCH, dist: this.defaultDist(), tx: center, ty: this.levelTargetY(), tz: 0 });
+    const fit = this.defaultDist();
+    if (!this.rigReady || this.fitDist <= 0) {
+      this.rig.snap({ yaw: DEFAULT_YAW, pitch: DEFAULT_PITCH, dist: fit, tx: center, ty: this.levelTargetY(), tz: 0 });
       this.rigReady = true;
-    } else if (length !== this.fitLength) {
-      // El casco ha crecido desde la última vez: se reencuadra manteniendo el ángulo elegido.
-      this.rig.snap({ dist: this.defaultDist(), tx: center, ty: this.levelTargetY(), tz: 0 });
     } else {
-      this.rig.snap({ tx: center, ty: this.levelTargetY(), tz: 0 });
+      // El casco ha crecido o la ventana cambió de forma desde la última vez: se reencuadra
+      // manteniendo el ángulo y el zoom relativo elegidos.
+      this.rig.snap({ dist: this.rig.goal.dist * (fit / this.fitDist), tx: center, ty: this.levelTargetY(), tz: 0 });
     }
-    this.fitLength = length;
+    this.fitDist = fit;
     const pc = ctx.player.camera;
     pc.updateWorldMatrix(true, false);
     pc.getWorldPosition(this.fromPos);
@@ -251,6 +272,9 @@ export class BuildMode {
     this.hud?.hide();
     this.selected = null;
     this.demolishing = false;
+    this.upgrading = false;
+    this.upgradeCardHover = null;
+    this.hoverUpgrade = null;
     this.confirm = null;
     this.expansionHover = false;
     this.drag = null;
@@ -265,7 +289,7 @@ export class BuildMode {
   }
 
   private objects(): THREE.Object3D[] {
-    return [this.grid, this.ghost, this.demolishBox, this.expansionBox, this.pulse].filter((x): x is NonNullable<typeof x> => !!x).map((x) => x.group);
+    return [this.grid, this.ghost, this.demolishBox, this.upgradeBox, this.expansionBox, this.pulse, this.reach, this.reachNext].filter((x): x is NonNullable<typeof x> => !!x).map((x) => x.group);
   }
 
   /** Crea la interfaz y los objetos 3D la primera vez (la UI general ya existe). */
@@ -279,8 +303,11 @@ export class BuildMode {
     this.ghost ??= new GhostView();
     this.grid ??= new GridView();
     this.demolishBox ??= new BoxMarker('construccion-demoler');
+    this.upgradeBox ??= new BoxMarker('construccion-mejora');
     this.expansionBox ??= new BoxMarker('construccion-ampliacion');
     this.pulse ??= new Pulse();
+    this.reach ??= new ReachArc('construccion-alcance-grua', '#ffd166');
+    this.reachNext ??= new ReachArc('construccion-alcance-grua-mejora', '#7ee08a');
   }
 
   /** La simulación se sustituye al cargar o empezar partida: invalida cachés. */
@@ -302,6 +329,7 @@ export class BuildMode {
     this.syncSim();
     this.hud.updateScale();
     this.updateBounds();
+    this.refit();
 
     this.handleKeys(dt);
     this.handleMouse();
@@ -356,6 +384,10 @@ export class BuildMode {
       this.setDemolish(false);
       return true;
     }
+    if (this.upgrading) {
+      this.setUpgrade(false);
+      return true;
+    }
     return false;
   }
 
@@ -366,6 +398,7 @@ export class BuildMode {
     if (inp.pressed('PageDown')) this.setLevel(this.level - 1);
     if (inp.pressed('KeyR')) this.rotate();
     if (inp.pressed('KeyX')) this.setDemolish(!this.demolishing);
+    if (inp.pressed('KeyU')) this.setUpgrade(!this.upgrading);
     if (inp.pressed('KeyF')) this.resetView();
     if (inp.pressed('KeyH')) {
       this.hud?.toggleKeys();
@@ -421,7 +454,7 @@ export class BuildMode {
 
     // Inicio de arrastre: derecho = orbitar, central = desplazar, izquierdo sin herramienta = orbitar.
     if (!this.drag && !blocked && this.overCanvas) {
-      const tool = !!this.selected || this.demolishing;
+      const tool = !!this.selected || this.demolishing || this.upgrading;
       const b: 0 | 1 | 2 | null = inp.pressed('Mouse2') ? 2 : inp.pressed('Mouse1') ? 1 : inp.pressed('Mouse0') && !tool ? 0 : null;
       if (b !== null) this.drag = { button: b, x: mx, y: my, lastX: mx, lastY: my, moved: false };
     }
@@ -454,6 +487,7 @@ export class BuildMode {
     if (!blocked && this.overCanvas && inp.pressed('Mouse0') && !this.drag) {
       if (this.selected) this.tryPlace();
       else if (this.demolishing) this.tryDemolish();
+      else if (this.upgrading) this.tryUpgrade();
     }
   }
 
@@ -473,6 +507,13 @@ export class BuildMode {
     return fitDistance(L, BUILD_FOV, this.camera.aspect || 16 / 9);
   }
 
+  /** Reencuadre si cambió la distancia de encuadre (ventana redimensionada o casco ampliado). */
+  private refit(): void {
+    const fit = this.defaultDist();
+    if (this.fitDist > 0 && Math.abs(fit - this.fitDist) > 0.01) this.rig.set({ dist: this.rig.goal.dist * (fit / this.fitDist) });
+    this.fitDist = fit;
+  }
+
   private updateBounds(): void {
     const ship = this.ctx.sim.state.ship;
     const hw = halfWidthM(ship.width);
@@ -481,7 +522,8 @@ export class BuildMode {
 
   /** Vista por defecto (F). */
   resetView(): void {
-    this.rig.set({ yaw: DEFAULT_YAW, pitch: DEFAULT_PITCH, dist: this.defaultDist(), tx: this.shipCenterX(), ty: this.levelTargetY(), tz: 0 });
+    this.fitDist = this.defaultDist();
+    this.rig.set({ yaw: DEFAULT_YAW, pitch: DEFAULT_PITCH, dist: this.fitDist, tx: this.shipCenterX(), ty: this.levelTargetY(), tz: 0 });
   }
 
   /** Coloca la cámara: órbita + desplazamiento para que la paleta no tape el barco + transición. */
@@ -537,13 +579,14 @@ export class BuildMode {
     this.ghostAt = null;
     this.hoverId = null;
     this.hoverDemolish = null;
+    this.hoverUpgrade = null;
     this.placeTimer += dt;
     this.placeStill += dt;
     if (this.placedFlash > 0) this.placedFlash = Math.max(0, this.placedFlash - dt);
 
     let tip: TipModel | null = null;
     let cursorCell: { x: number; z: number } | null = null;
-    let info: { m: ModuleInstance; demolish: DemolishPreview | null } | null = null;
+    let info: { m: ModuleInstance; demolish: DemolishPreview | null; upgrade: UpgradePreview | null } | null = null;
 
     if (usable) {
       const w = Math.max(1, canvas.clientWidth);
@@ -578,8 +621,10 @@ export class BuildMode {
         if (m) {
           this.hoverId = m.id;
           const demolish = this.demolishing ? this.cachedDemolish(m) : null;
+          const upgrade = this.upgrading ? upgradePreview(sim, m) : null;
           this.hoverDemolish = demolish;
-          info = { m, demolish };
+          this.hoverUpgrade = upgrade;
+          info = { m, demolish, upgrade };
         } else {
           const hit = intersectLevel(this.localRay, this.level);
           if (hit) {
@@ -589,15 +634,17 @@ export class BuildMode {
             if (cx >= 0 && cz >= 0 && cx < ship.length && cz < ship.width) cursorCell = { x: cx, z: cz };
           }
           if (this.demolishing) tip = { tone: 'info', title: 'Demoler', text: 'Señala un módulo o una obra' };
+          else if (this.upgrading) tip = { tone: 'info', title: 'Mejorar', text: 'Señala un módulo del barco', sub: 'O elige uno en la lista de la paleta' };
         }
       }
     }
 
-    // Resaltado del módulo señalado (lo dibuja ShipView).
-    ctx.highlight = this.hoverId !== null ? { kind: 'module', id: this.hoverId } : null;
+    // Resaltado del módulo señalado (lo dibuja ShipView); desde la lista de mejoras, el de su ficha.
+    const lit = this.hoverId ?? (this.upgrading ? this.upgradeCardHover : null);
+    ctx.highlight = lit !== null ? { kind: 'module', id: lit } : null;
     this.grid?.setCursor(this.level, this.selected ? null : cursorCell, sim.state.ship.width);
 
-    if (info) hud.setInfo(moduleInfo(sim, info.m), mx, my, info.demolish);
+    if (info) hud.setInfo(moduleInfo(sim, info.m), mx, my, info.demolish, info.upgrade);
     else hud.setInfo(null, 0, 0);
     hud.setTip(tip, mx, my);
     this.lastTip = tip;
@@ -665,7 +712,13 @@ export class BuildMode {
     if (this.placedFlash > 0) return { tone: 'ok', title: def.name, text: this.placedMsg, sub: 'Sigue colocando o suelta la pieza con clic derecho' };
     if (this.place.ok) {
       const keys = `<span class="kbd">R</span> girar · <span class="kbd">Clic der.</span> soltar`;
-      return { tone: 'ok', title: def.name, text: 'Clic para construir aquí', sub: this.place.warning ? esc(this.place.warning) : keys };
+      let sub = this.place.warning ? esc(this.place.warning) : keys;
+      if (def.id === 'grua' && this.ghostAt) {
+        // Trabaja por el costado de la borda junto a la que está (el arco amarillo sobre el agua).
+        const cz = cellMin(this.ghostAt.x, this.ghostAt.z, this.ctx.sim.state.ship.width).z + CELL / 2;
+        sub = `Rescatará restos por ${cz < 0 ? 'babor' : 'estribor'} hasta ${fmtNum(GRUA_RANGE)} m (arco amarillo) · <span class="kbd">Clic der.</span> soltar`;
+      }
+      return { tone: 'ok', title: def.name, text: 'Clic para construir aquí', sub };
     }
     return {
       tone: this.place.costOnly ? 'warn' : 'bad',
@@ -682,7 +735,7 @@ export class BuildMode {
     const ship = sim.state.ship;
     const grid = this.grid!;
     const ghost = this.ghost!;
-    grid.sync(sim.layout, ship, this.level);
+    grid.sync(sim.layout, ship, this.level, !!this.selected && !!moduleDef(this.selected).edge);
     grid.update(dt, 1 - daylight(sim.state.time));
 
     if (this.selected && this.ghostAt) {
@@ -706,6 +759,19 @@ export class BuildMode {
     } else dbox.hide();
     dbox.update(dt);
 
+    // Caja dorada sobre el módulo que se va a mejorar (cursor, ficha de la lista o confirmación).
+    const ubox = this.upgradeBox!;
+    const uc = this.confirm;
+    const uid = uc?.kind === 'upgrade' || uc?.kind === 'cancelUpgrade' ? uc.moduleId : this.upgrading ? (this.hoverId ?? this.upgradeCardHover) : null;
+    const um = uid !== null ? ship.modules.find((m) => m.id === uid) : undefined;
+    if (um) {
+      const u = this.hoverUpgrade && this.hoverUpgrade.id === um.id ? this.hoverUpgrade : upgradePreview(sim, um);
+      moduleBox(um, ship.width, _box).expandByScalar(0.16);
+      const color = u.state === 'ok' || u.state === 'busy' ? GHOST_COLORS.upgrade : u.state === 'cost' ? GHOST_COLORS.blocked : u.state === 'max' ? GHOST_COLORS.ok : GHOST_COLORS.bad;
+      ubox.show(_box, color, u.state === 'ok' || u.state === 'busy' ? 0.24 : 0.12);
+    } else ubox.hide();
+    ubox.update(dt);
+
     // Vista previa de la ampliación del casco.
     const xbox = this.expansionBox!;
     if ((this.expansionHover || this.confirm?.kind === 'expand') && !ship.expansion) {
@@ -718,7 +784,49 @@ export class BuildMode {
     } else xbox.hide();
     xbox.update(dt);
 
+    this.updateReach(dt);
     this.pulse!.update(dt);
+  }
+
+  /**
+   * Arco del alcance de la grúa sobre el agua: al colocarla (desde el fantasma) y al señalar una
+   * grúa construida; con la herramienta Mejorar, también el alcance de su pluma larga.
+   */
+  private updateReach(dt: number): void {
+    const sim = this.ctx.sim;
+    const ship = sim.state.ship;
+    const reach = this.reach!;
+    const next = this.reachNext!;
+    const y = WATERLINE_Y + 0.25;
+    let shown = false;
+    let nextShown = false;
+    if (this.selected === 'grua' && this.ghostAt) {
+      const c = cellMin(this.ghostAt.x, this.ghostAt.z, ship.width);
+      const cz = c.z + CELL / 2;
+      reach.show(c.x + CELL / 2, cz, GRUA_RANGE, cz < 0 ? -1 : 1, y);
+      shown = true;
+    } else if (!this.selected) {
+      const cf = this.confirm;
+      const id = cf && cf.kind !== 'expand' ? cf.moduleId : (this.hoverId ?? (this.upgrading ? this.upgradeCardHover : null));
+      const m = id !== null ? ship.modules.find((mm) => mm.id === id && mm.type === 'grua') : undefined;
+      const g = m ? sim.gruaStatus(m.id) : null;
+      if (m && g) {
+        reach.show(g.origin.x, g.origin.z, g.range, g.side, y);
+        shown = true;
+        const u = this.upgrading || cf?.kind === 'upgrade' ? upgradePreview(sim, m) : null;
+        if (u && u.toTier !== null && u.state !== 'max' && u.state !== 'none') {
+          const r2 = gruaRange({ type: m.type, tier: u.toTier });
+          if (r2 > g.range + 1e-6) {
+            next.show(g.origin.x, g.origin.z, r2, g.side, y);
+            nextShown = true;
+          }
+        }
+      }
+    }
+    if (!shown) reach.hide();
+    if (!nextShown) next.hide();
+    reach.update(dt);
+    next.update(dt);
   }
 
   /* ================================================================== */
@@ -737,9 +845,10 @@ export class BuildMode {
   }
 
   selectCategory(cat: ModuleCategory): void {
-    if (this.category === cat && !this.demolishing) return;
+    if (this.category === cat && !this.demolishing && !this.upgrading) return;
     this.category = cat;
     if (this.demolishing) this.setDemolish(false);
+    if (this.upgrading) this.setUpgrade(false);
     this.hudDirty = true;
   }
 
@@ -759,6 +868,7 @@ export class BuildMode {
     }
     this.selected = type;
     this.demolishing = false;
+    if (type) this.upgrading = false;
     this.place.key = '';
     this.placedFlash = 0;
     if (type) {
@@ -785,7 +895,24 @@ export class BuildMode {
   setDemolish(on: boolean): void {
     if (on === this.demolishing) return;
     this.demolishing = on;
-    if (on) this.selected = null;
+    if (on) {
+      this.selected = null;
+      this.upgrading = false;
+    }
+    this.hudDirty = true;
+    this.ctx.bus.emit('sfx', { name: 'ui_click' });
+  }
+
+  /** Herramienta Mejorar (U): la paleta pasa a la lista de mejoras del barco. */
+  setUpgrade(on: boolean): void {
+    if (on === this.upgrading) return;
+    this.upgrading = on;
+    this.upgradeCardHover = null;
+    if (on) {
+      this.selected = null;
+      this.demolishing = false;
+      this.expansionHover = false;
+    }
     this.hudDirty = true;
     this.ctx.bus.emit('sfx', { name: 'ui_click' });
   }
@@ -833,7 +960,10 @@ export class BuildMode {
   private demolishConfirm(p: DemolishPreview): ConfirmModel {
     const lines = p.inConstruction
       ? ['La obra se cancela y se recuperan todos los materiales.']
-      : ['Se recupera la mitad de los materiales. Los habitantes que dormían o trabajaban aquí buscarán otro sitio.'];
+      : [
+          `Se recupera la mitad de los materiales${p.tier > 1 ? ' (también de sus mejoras)' : ''}. Los habitantes que dormían o trabajaban aquí buscarán otro sitio.`,
+          ...(p.upgradeInProgress ? [`La mejora en obras (${p.upgradeInProgress}) se cancela y se recupera entera.`] : []),
+        ];
     return {
       kind: 'demolish',
       title: p.inConstruction ? `¿Cancelar la obra: ${p.name}?` : `¿Desmontar ${withArticle(p.name)}?`,
@@ -848,6 +978,79 @@ export class BuildMode {
           ? `Lo que contenga (${p.contents} ${p.contents === 1 ? 'objeto' : 'objetos'}) quedará en una caja en el suelo, junto con los materiales.`
           : 'Lo que contenga quedará en una caja en el suelo, junto con los materiales.',
       confirmLabel: p.inConstruction ? 'Cancelar obra' : 'Desmontar',
+      danger: true,
+    };
+  }
+
+  /** Clic con la herramienta Mejorar sobre un módulo del barco. */
+  private tryUpgrade(): void {
+    if (this.hoverId === null) return;
+    this.requestUpgrade(this.hoverId, false);
+  }
+
+  /**
+   * Encarga (o, si está en obras de mejora, ofrece cancelar) la mejora de un módulo. Desde la lista
+   * de la paleta (`focus`) además lleva la vista a su nivel y lo centra.
+   */
+  requestUpgrade(moduleId: number, focus = true): void {
+    const sim = this.ctx.sim;
+    const m = sim.state.ship.modules.find((mm) => mm.id === moduleId);
+    if (!m) return;
+    if (focus) {
+      this.setLevel(m.level);
+      const c = moduleCenter(m, sim.state.ship.width);
+      this.rig.set({ tx: c.x, tz: c.z });
+    }
+    const u = upgradePreview(sim, m);
+    if (u.state === 'busy') {
+      this.openConfirm({ kind: 'cancelUpgrade', moduleId: m.id }, this.cancelUpgradeConfirm(u));
+      return;
+    }
+    if (u.state !== 'ok') {
+      sim.notify(`${u.name}: ${u.reason ?? 'no se puede mejorar'}${u.hint ? `. ${u.hint}` : ''}`, 'warn');
+      this.ctx.bus.emit('sfx', { name: 'ui_error' });
+      return;
+    }
+    this.openConfirm({ kind: 'upgrade', moduleId: m.id }, this.upgradeConfirm(u));
+  }
+
+  private openConfirm(c: Confirm, model: ConfirmModel): void {
+    this.confirm = c;
+    this.hud!.showConfirm(model);
+    this.hudDirty = true;
+    this.ctx.bus.emit('sfx', { name: 'ui_click' });
+  }
+
+  private upgradeConfirm(u: UpgradePreview): ConfirmModel {
+    return {
+      kind: 'upgrade',
+      title: `¿Mejorar ${withArticle(u.name)}?`,
+      glyph: 'star',
+      lines: [
+        `Nivel ${tierRoman(u.toTier ?? u.tier + 1)}: ${u.nextName ?? ''}. ${u.desc ?? ''}`.trim(),
+        `La obra dura unas ${u.timeText ?? '—'} y se sigue usando mientras tanto. Los habitantes libres ayudan, y tú también con el martillo.`,
+      ],
+      chips: u.effects,
+      items: u.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need, have: c.have })),
+      itemsLabel: 'Coste (se paga ahora)',
+      note: 'Si cancelas la mejora antes de que termine, recuperas todo lo pagado.',
+      confirmLabel: 'Mejorar',
+      danger: false,
+    };
+  }
+
+  private cancelUpgradeConfirm(u: UpgradePreview): ConfirmModel {
+    const p = Math.floor((u.progress ?? 0) * 100);
+    return {
+      kind: 'cancelUpgrade',
+      title: `¿Cancelar la mejora: ${u.nextName ?? ''}?`,
+      glyph: 'trash',
+      lines: [`La obra va por el ${p} %${u.etaMin !== null ? ` y le faltan unas ${durationText(u.etaMin)}` : ''}. Si la cancelas, ${withArticle(u.name)} se queda en el nivel ${tierRoman(u.tier)}.`],
+      progress: u.progress ?? 0,
+      items: u.cost.map((c) => ({ id: c.id, name: c.name, qty: c.need })),
+      itemsLabel: 'Recuperas',
+      note: 'Lo que no quepa en tu mochila quedará en una caja a tus pies.',
+      confirmLabel: 'Cancelar mejora',
       danger: true,
     };
   }
@@ -889,6 +1092,17 @@ export class BuildMode {
     if (c.kind === 'demolish') {
       const res = sim.demolish(c.moduleId);
       sim.notify(res.msg ?? (res.ok ? 'Desmontado' : 'No se puede desmontar'), res.ok ? 'good' : 'warn');
+    } else if (c.kind === 'upgrade') {
+      const res = sim.startUpgrade(c.moduleId);
+      sim.notify(res.msg ?? (res.ok ? 'Mejora iniciada' : 'No se puede mejorar'), res.ok ? 'good' : 'warn');
+      const m = sim.state.ship.modules.find((mm) => mm.id === c.moduleId);
+      if (res.ok && m) {
+        moduleBox(m, sim.state.ship.width, _box);
+        this.pulse!.fire(_box.min.x, _box.min.z, _box.max.x, _box.max.z, levelY(m.level));
+      } else if (!res.ok) this.ctx.bus.emit('sfx', { name: 'ui_error' });
+    } else if (c.kind === 'cancelUpgrade') {
+      const res = sim.cancelUpgrade(c.moduleId);
+      sim.notify(res.msg ?? (res.ok ? 'Mejora cancelada' : 'No hay ninguna mejora en obras'), res.ok ? 'good' : 'warn');
     } else {
       const res = sim.expandHull();
       sim.notify(res.msg ?? (res.ok ? 'Ampliación iniciada' : 'No se puede ampliar el casco'), res.ok ? 'good' : 'warn');
@@ -923,6 +1137,11 @@ export class BuildMode {
       hoverExpansion: (on) => {
         this.expansionHover = on;
       },
+      toggleUpgrade: () => this.setUpgrade(!this.upgrading),
+      pickUpgrade: (id) => this.requestUpgrade(id, true),
+      hoverUpgrade: (id) => {
+        this.upgradeCardHover = id;
+      },
     };
   }
 
@@ -941,15 +1160,17 @@ export class BuildMode {
         category: this.category,
         selected: this.selected,
         demolish: this.demolishing,
+        upgrade: this.upgrading,
         cards,
-        expansion: this.category === 'estructura' ? expansionInfo(sim, have) : null,
+        expansion: this.category === 'estructura' && !this.upgrading ? expansionInfo(sim, have) : null,
+        upgrades: this.upgrading ? upgradeList(sim, have) : null,
       },
       !!this.selected,
     );
     const sel = this.selected ? moduleDef(this.selected) : null;
     hud.renderLevels(sim.state.ship.levels, this.level, (l) => (sel ? sel.levels.includes(l) : null));
     hud.renderSummary(shipSummary(sim));
-    hud.renderKeys(this.selected ? 'place' : this.demolishing ? 'demolish' : 'inspect');
+    hud.renderKeys(this.selected ? 'place' : this.demolishing ? 'demolish' : this.upgrading ? 'upgrade' : 'inspect');
   }
 
   /* ================================================================== */
@@ -966,6 +1187,10 @@ export class BuildMode {
       pieza: this.selected,
       giro: this.rot,
       demoler: this.demolishing,
+      mejorar: this.upgrading,
+      mejora: this.hoverUpgrade
+        ? { id: this.hoverUpgrade.id, estado: this.hoverUpgrade.state, nivel: this.hoverUpgrade.tier, a: this.hoverUpgrade.nextName, motivo: this.hoverUpgrade.reason, efectos: this.hoverUpgrade.effects.map((e) => e.text) }
+        : null,
       confirmacion: this.confirm?.kind ?? null,
       fantasma: this.ghostAt ? { level: this.ghostAt.level, x: this.ghostAt.x, z: this.ghostAt.z, ok: this.place.ok, motivo: this.place.reason, pista: this.place.hint, aviso: this.place.warning } : null,
       rotulo: this.lastTip ? { tono: this.lastTip.tone, titulo: this.lastTip.title, texto: this.lastTip.text, sub: this.lastTip.sub ?? null } : null,
@@ -995,6 +1220,8 @@ export class BuildMode {
       for (let i = 0; i < n; i++) this.rotate();
     }) as never);
     registerDebug('buildDemolish', ((on = true) => this.setDemolish(on)) as never);
+    registerDebug('buildUpgrade', ((on = true) => this.setUpgrade(on)) as never);
+    registerDebug('buildUpgradeModule', ((id: number) => this.requestUpgrade(id, true)) as never);
     registerDebug('buildCategory', ((c: ModuleCategory) => this.selectCategory(c)) as never);
     registerDebug('buildView', ((yaw?: number, pitch?: number, dist?: number, tx?: number, tz?: number) => {
       const p: Record<string, number> = {};

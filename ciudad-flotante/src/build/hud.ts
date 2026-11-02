@@ -10,7 +10,7 @@
 import './build.css';
 import type { ModuleCategory } from '../data/modules';
 import { glyph, itemIcon, MODULE_GLYPH } from '../ui/icons';
-import { CATEGORIES, fmtNum, levelName, type CardInfo, type CostLine, type DemolishPreview, type ExpansionInfo, type ModuleInfo, type ShipSummary, type StatChip } from './catalog';
+import { CATEGORIES, fmtNum, levelName, tierRoman, type CardInfo, type CostLine, type DemolishPreview, type ExpansionInfo, type ModuleInfo, type ShipSummary, type StatChip, type UpgradePreview } from './catalog';
 import { durationText } from '../sim/construction';
 
 /** Acciones que la interfaz pide al modo construcción. */
@@ -26,14 +26,24 @@ export interface HudActions {
   confirm(): void;
   cancel(): void;
   hoverExpansion(on: boolean): void;
+  /** Herramienta Mejorar (U). */
+  toggleUpgrade(): void;
+  /** Elegir un módulo de la lista de mejoras (encarga o cancela su mejora). */
+  pickUpgrade(moduleId: number): void;
+  /** El puntero pasa por la ficha de mejora de un módulo (null = la deja). */
+  hoverUpgrade(moduleId: number | null): void;
 }
 
 export interface PaletteModel {
   category: ModuleCategory;
   selected: string | null;
   demolish: boolean;
+  /** Herramienta Mejorar activa: la paleta muestra los módulos del barco que admiten mejoras. */
+  upgrade: boolean;
   cards: CardInfo[];
   expansion: ExpansionInfo | null;
+  /** Lista de mejoras (solo con la herramienta Mejorar). */
+  upgrades: UpgradePreview[] | null;
 }
 
 export interface TipModel {
@@ -44,11 +54,15 @@ export interface TipModel {
 }
 
 export interface ConfirmModel {
-  kind: 'demolish' | 'expand';
+  kind: 'demolish' | 'expand' | 'upgrade' | 'cancelUpgrade';
   title: string;
   glyph: string;
   /** Párrafos de texto. */
   lines: string[];
+  /** Efectos (mejoras): "+12 huecos", "×1,5 velocidad"... */
+  chips?: StatChip[];
+  /** Barra de progreso (obra de mejora que se cancelaría), 0..1. */
+  progress?: number;
   /** Lista de objetos (reembolso o coste). */
   items: { id: string; name: string; qty: number; have?: number }[];
   itemsLabel: string;
@@ -71,7 +85,7 @@ export function esc(s: string): string {
 const gl = (name: string, cls = 'bm-gl'): string => `<i class="${cls}">${glyph(name)}</i>`;
 
 /** Glifos que usa la interfaz del modo construcción (los tests comprueban que existen). */
-export const HUD_GLYPHS = ['alert', 'battery', 'bed', 'box', 'check', 'drop', 'exit', 'eye', 'hammer', 'info', 'keyboard', 'lock', 'map', 'medical', 'power', 'ship', 'swap', 'trash'] as const;
+export const HUD_GLYPHS = ['alert', 'arrow', 'battery', 'bed', 'box', 'check', 'clock', 'drop', 'exit', 'eye', 'hammer', 'info', 'keyboard', 'lock', 'map', 'medical', 'power', 'ship', 'star', 'swap', 'trash'] as const;
 const kbd = (k: string): string => `<span class="kbd">${esc(k)}</span>`;
 
 function el(tag: string, cls: string, parent?: HTMLElement): HTMLElement {
@@ -94,6 +108,20 @@ function costHtml(c: CostLine): string {
 
 function statHtml(s: StatChip): string {
   return `<span class="bm-stat ${s.tone}" title="${esc(s.title)}">${gl(s.glyph)}${esc(s.text)}</span>`;
+}
+
+/**
+ * Niveles de mejora como placas (I · II · III): las alcanzadas encendidas y, si hay una mejora en
+ * obras, la siguiente en color de obra.
+ */
+function tierPips(tier: number, max: number, working = false): string {
+  if (max <= 1) return '';
+  let html = '';
+  for (let t = 1; t <= max; t++) {
+    const cls = t <= tier ? ' on' : working && t === tier + 1 ? ' work' : '';
+    html += `<span class="bm-pip${cls}">${tierRoman(t)}</span>`;
+  }
+  return `<span class="bm-pips" title="${esc(`Nivel ${tier} de ${max}`)}">${html}</span>`;
 }
 
 /** "+5", "−1,5" o "0" (sin signo si es cero). */
@@ -175,6 +203,16 @@ export class BuildHud {
       const to = (e.relatedTarget as HTMLElement | null)?.closest?.('[data-hover="expand"]');
       if (from && from !== to) this.actions.hoverExpansion(false);
     });
+    // Fichas de la lista de mejoras: resaltan su módulo en el barco.
+    this.cards.addEventListener('mouseover', (e) => {
+      const card = (e.target as HTMLElement).closest<HTMLElement>('[data-upid]');
+      if (card) this.actions.hoverUpgrade(Number(card.dataset.upid));
+    });
+    this.cards.addEventListener('mouseout', (e) => {
+      const from = (e.target as HTMLElement).closest('[data-upid]');
+      const to = (e.relatedTarget as HTMLElement | null)?.closest?.('[data-upid]');
+      if (from && !to) this.actions.hoverUpgrade(null);
+    });
     for (const p of [this.levels, this.keys, this.palette, this.modal]) {
       p.addEventListener('mouseenter', () => (this.pointerOverUi = true));
       p.addEventListener('mouseleave', () => (this.pointerOverUi = false));
@@ -249,6 +287,12 @@ export class BuildHud {
       case 'expand':
         this.actions.requestExpand();
         break;
+      case 'upgrade':
+        this.actions.toggleUpgrade();
+        break;
+      case 'upmod':
+        this.actions.pickUpgrade(Number(v));
+        break;
       case 'level':
         this.actions.setLevel(Number(v));
         break;
@@ -292,7 +336,7 @@ export class BuildHud {
   renderPalette(m: PaletteModel, rotateEnabled: boolean): void {
     // Pestañas
     const tabs = CATEGORIES.map((c) => {
-      const on = c.id === m.category && !m.demolish;
+      const on = c.id === m.category && !m.demolish && !m.upgrade;
       return `<button type="button" class="bm-tab${on ? ' on' : ''}" data-act="cat" data-v="${c.id}" title="${esc(`${c.label} (Tab para pasar de categoría)`)}">${gl(c.glyph)}<span>${esc(c.label)}</span></button>`;
     }).join('');
     setHtml(this.tabs, tabs);
@@ -300,6 +344,7 @@ export class BuildHud {
     // Herramientas
     const tools =
       `<button type="button" class="bm-toolbtn${rotateEnabled ? '' : ' off'}" data-act="rotate" title="Girar la pieza (R)">${gl('swap')}<span>Girar</span>${kbd('R')}</button>` +
+      `<button type="button" class="bm-toolbtn upgrade${m.upgrade ? ' on' : ''}" data-act="upgrade" title="Mejorar las instalaciones del barco (U)">${gl('star')}<span>Mejorar</span>${kbd('U')}</button>` +
       `<button type="button" class="bm-toolbtn demolish${m.demolish ? ' on' : ''}" data-act="demolish" title="Desmontar módulos y cancelar obras (X)">${gl('trash')}<span>Demoler</span>${kbd('X')}</button>` +
       `<button type="button" class="bm-toolbtn" data-act="recenter" title="Centrar la vista (F)">${gl('eye')}<span>Vista</span>${kbd('F')}</button>` +
       `<button type="button" class="bm-toolbtn exit" data-act="exit" title="Volver al barco (B o Esc)">${gl('exit')}<span>Salir</span>${kbd('B')}</button>`;
@@ -307,14 +352,85 @@ export class BuildHud {
 
     // Fichas
     let html = '';
-    m.cards.forEach((c, i) => {
-      html += this.cardHtml(c, i, m.selected === c.def.id && !m.demolish);
-    });
-    if (m.expansion) html += this.expansionHtml(m.expansion);
-    if (!html) html = `<div class="bm-empty">No hay piezas en esta categoría.</div>`;
+    if (m.upgrade && m.upgrades) {
+      html = this.upgradeHelpHtml(m.upgrades.length > 0);
+      for (const u of m.upgrades) html += this.upgradeCardHtml(u);
+    } else {
+      m.cards.forEach((c, i) => {
+        html += this.cardHtml(c, i, m.selected === c.def.id && !m.demolish);
+      });
+      if (m.expansion) html += this.expansionHtml(m.expansion);
+      if (!html) html = `<div class="bm-empty">No hay piezas en esta categoría.</div>`;
+    }
     setHtml(this.cards, html);
+    if (m.upgrade && m.upgrades) this.patchUpgradeProgress(m.upgrades);
     this.palette.classList.toggle('demolishing', m.demolish);
+    this.palette.classList.toggle('upgrading', m.upgrade);
     this.measurePalette();
+  }
+
+  /** Primera ficha de la lista de mejoras: qué hace la herramienta. */
+  private upgradeHelpHtml(any: boolean): string {
+    const text = any
+      ? 'Señala un módulo en el barco o elige uno de esta lista. La mejora se paga al empezar y, mientras dura la obra, el módulo se sigue usando.'
+      : 'Ningún módulo del barco admite mejoras todavía: construye almacenes, depósitos, generadores, camarotes, cocinas…';
+    return (
+      `<div class="bm-card bm-uphelp">` +
+      `<div class="bm-card-head"><span class="bm-card-ico">${gl('star', 'bm-gl big')}</span><span class="bm-card-name">Mejorar instalaciones</span></div>` +
+      `<div class="bm-card-desc">${esc(text)}</div>` +
+      `<div class="bm-card-foot">${kbd('Clic')} mejorar · en obras: cancelar</div>` +
+      `</div>`
+    );
+  }
+
+  /** Ficha de un módulo del barco en la lista de mejoras. */
+  private upgradeCardHtml(u: UpgradePreview): string {
+    const glyphName = MODULE_GLYPH[u.type] ?? 'box';
+    const busy = u.state === 'busy';
+    const cls = ['bm-card', 'bm-upcard', `up-${u.state}`].join(' ');
+    const head =
+      `<div class="bm-card-head"><span class="bm-card-ico">${gl(glyphName, 'bm-gl big')}</span>` +
+      `<span class="bm-card-name">${esc(u.name)}</span>${tierPips(u.tier, u.maxTier, busy)}</div>`;
+    let body = '';
+    let foot = '';
+    const where = esc(levelName(u.level));
+    if (u.state === 'max') {
+      body = `<div class="bm-card-desc">Nivel máximo: ya tiene todas sus mejoras.</div>`;
+      foot = `<div class="bm-card-foot">${gl('check')}${where}</div>`;
+    } else if (busy) {
+      body =
+        `<div class="bm-card-prog"><span>Mejorando a <b>${esc(u.nextName ?? '')}</b></span>` +
+        `<span class="bm-up-prog" data-up-text="${u.id}"></span><div class="bm-bar work"><i data-up-bar="${u.id}" style="width:0%"></i></div></div>`;
+      foot = `<div class="bm-card-lock warn">${gl('trash')}<span>Clic: cancelar la mejora (recuperas todo)</span></div>`;
+    } else {
+      body =
+        `<div class="bm-up-next" title="${esc(u.desc ?? '')}">${gl('arrow')}<span>${esc(`${tierRoman(u.toTier ?? u.tier + 1)}: ${u.nextName ?? ''}`)}</span></div>` +
+        `<div class="bm-card-stats">${u.effects.map(statHtml).join('')}</div>` +
+        `<div class="bm-card-cost">${u.cost.map(costHtml).join('')}</div>`;
+      foot =
+        u.state === 'blocked'
+          ? `<div class="bm-card-lock" title="${esc([u.reason, u.hint].filter(Boolean).join('. '))}">${gl('lock')}<span>${esc(u.reason ?? 'No se puede mejorar')}</span></div>`
+          : `<div class="bm-card-foot">${gl('clock')}${esc(u.timeText ?? '')} · ${where}</div>`;
+    }
+    const title = u.state === 'blocked' || u.state === 'max' ? (u.reason ?? '') : busy ? 'Clic para cancelar la mejora' : (u.desc ?? '');
+    return `<div class="${cls}" role="button" data-act="upmod" data-v="${u.id}" data-upid="${u.id}" title="${esc(title)}">${head}${body}${foot}</div>`;
+  }
+
+  /** Progreso de las mejoras en obras (sin repintar las fichas: no se pierde el clic). */
+  private patchUpgradeProgress(list: UpgradePreview[]): void {
+    for (const u of list) {
+      if (u.state !== 'busy') continue;
+      const pct = Math.floor((u.progress ?? 0) * 100);
+      const bar = this.cards.querySelector<HTMLElement>(`[data-up-bar="${u.id}"]`);
+      const txt = this.cards.querySelector<HTMLElement>(`[data-up-text="${u.id}"]`);
+      if (bar) bar.style.width = `${pct}%`;
+      if (txt) {
+        const eta = u.etaMin !== null ? ` · faltan ${durationText(u.etaMin)}` : '';
+        const help = u.builders ? ` · ${u.builders} ${u.builders === 1 ? 'ayuda' : 'ayudan'}` : '';
+        const t = `${pct} %${eta}${help}`;
+        if (txt.textContent !== t) txt.textContent = t;
+      }
+    }
   }
 
   private cardHtml(c: CardInfo, index: number, selected: boolean): string {
@@ -325,9 +441,11 @@ export class BuildHud {
     const stats = c.stats.map(statHtml).join('');
     const lock = c.locked ? `<div class="bm-card-lock" title="${esc(c.lockReason ?? 'Bloqueado')}">${gl('lock')}<span>${esc(c.lockShort ?? 'Bloqueado')}</span></div>` : '';
     const keyHint = index < 9 ? `<span class="bm-card-key">${index + 1}</span>` : '';
+    // Mejorable: hasta qué nivel (las placas de latón de los muebles dicen II y III).
+    const upBadge = c.maxTier > 1 ? `<span class="bm-card-up" title="${esc(c.upgradesText ?? '')}">${gl('star')}${tierRoman(c.maxTier)}</span>` : '';
     return (
       `<div class="${cls}" role="button" data-act="mod" data-v="${d.id}" title="${esc(d.desc)}">` +
-      `<div class="bm-card-head"><span class="bm-card-ico">${gl(glyphName, 'bm-gl big')}</span><span class="bm-card-name">${esc(d.name)}</span>${keyHint}</div>` +
+      `<div class="bm-card-head"><span class="bm-card-ico">${gl(glyphName, 'bm-gl big')}</span><span class="bm-card-name">${esc(d.name)}</span>${upBadge}${keyHint}</div>` +
       `<div class="bm-card-desc">${esc(d.desc)}</div>` +
       `<div class="bm-card-cost">${cost}</div>` +
       `<div class="bm-card-stats">${stats}</div>` +
@@ -403,7 +521,7 @@ export class BuildHud {
 
   /* ---------------- Atajos ---------------- */
 
-  renderKeys(mode: 'inspect' | 'place' | 'demolish'): void {
+  renderKeys(mode: 'inspect' | 'place' | 'demolish' | 'upgrade'): void {
     if (this.keysCollapsed) {
       setHtml(this.keys, `<button type="button" class="bm-keys-toggle" data-act="keys">${gl('keyboard')}Atajos ${kbd('H')}</button>`);
       return;
@@ -413,8 +531,10 @@ export class BuildHud {
       rows.push(['Clic', 'Construir aquí'], ['R', 'Girar la pieza'], ['Clic der. · Esc', 'Soltar la pieza']);
     } else if (mode === 'demolish') {
       rows.push(['Clic', 'Desmontar'], ['Clic der. · Esc', 'Dejar de demoler']);
+    } else if (mode === 'upgrade') {
+      rows.push(['Clic', 'Mejorar (o cancelar la mejora en obras)'], ['Clic der. · Esc', 'Dejar de mejorar']);
     } else {
-      rows.push(['1-9', 'Elegir pieza'], ['Tab', 'Siguiente categoría'], ['X', 'Demoler']);
+      rows.push(['1-9', 'Elegir pieza'], ['Tab', 'Siguiente categoría'], ['U', 'Mejorar'], ['X', 'Demoler']);
     }
     rows.push(['Arrastre der. · Q E', 'Girar la vista'], ['Rueda', 'Acercar / alejar'], ['WASD · Arrastre central', 'Desplazar'], ['Re Pág · Av Pág', 'Cambiar de nivel'], ['B · Esc', 'Volver al barco']);
     const body = rows.map(([k, t]) => `<div class="bm-key"><span class="k">${k.split(' · ').map(kbd).join('')}</span><span class="t">${esc(t)}</span></div>`).join('');
@@ -441,15 +561,21 @@ export class BuildHud {
   }
 
   /** Ficha de información de un módulo (y vista previa de demolición si procede). */
-  setInfo(m: ModuleInfo | null, x: number, y: number, demolish?: DemolishPreview | null): void {
+  setInfo(m: ModuleInfo | null, x: number, y: number, demolish?: DemolishPreview | null, upgrade?: UpgradePreview | null): void {
     if (!m) {
       this.info.classList.remove('show');
       return;
     }
     const glyphName = MODULE_GLYPH[m.type] ?? 'box';
     let html = `<div class="bm-info-head">${gl(glyphName)}<b>${esc(m.name)}</b><span class="bm-info-lvl">${esc(levelName(m.level))}</span></div>`;
+    if (m.maxTier > 1) html += `<div class="bm-info-tier">${tierPips(m.tier, m.maxTier, !!m.upgrade)}<span>Nivel ${m.tier} de ${m.maxTier}</span></div>`;
     html += `<div class="bm-info-state ${m.tone}">${esc(m.state)}</div>`;
     if (m.progress !== null) html += `<div class="bm-bar work"><i style="width:${Math.round(m.progress * 100)}%"></i></div>`;
+    // Mejora en obras (la ficha de la herramienta Mejorar la cuenta con más detalle).
+    if (m.upgrade && !upgrade) {
+      const p = Math.floor(m.upgrade.progress * 100);
+      html += `<div class="bm-info-line warn">Mejorando a ${esc(m.upgrade.name)} · ${p} % · faltan ${esc(durationText(m.upgrade.etaMin))}</div><div class="bm-bar work"><i style="width:${p}%"></i></div>`;
+    }
     if (m.condition !== null) {
       const c = Math.round(m.condition);
       html += `<div class="bm-info-cond"><span>Condición</span><div class="bm-bar ${c < 50 ? 'bad' : c < 80 ? 'warnb' : 'goodb'}"><i style="width:${c}%"></i></div><b>${c} %</b></div>`;
@@ -465,9 +591,39 @@ export class BuildHud {
         html += `<div class="bm-info-foot warn">${gl('lock')}<span>${esc(demolish.reason ?? 'No se puede desmontar')}${hint}</span></div>`;
       }
     }
+    if (upgrade) html += this.upgradeInfoHtml(upgrade);
     setHtml(this.info, html);
     this.info.classList.add('show');
+    this.info.classList.toggle('wide', !!upgrade);
     this.position(this.info, x, y, true);
+  }
+
+  /** Parte de la ficha con la mejora siguiente (herramienta Mejorar). */
+  private upgradeInfoHtml(u: UpgradePreview): string {
+    const hint = (h: string | null) => (h ? `<br><span class="bm-info-hint">${esc(h)}</span>` : '');
+    if (u.state === 'none') return `<div class="bm-info-foot dim">${gl('info')}<span>${esc(u.reason ?? 'No admite mejoras')}</span></div>`;
+    if (u.state === 'max') return `<div class="bm-info-foot good">${gl('check')}<span><b>${esc(u.reason ?? 'Nivel máximo')}</b><br><span class="bm-info-hint">Ya tiene todas sus mejoras</span></span></div>`;
+    if (u.state === 'busy') {
+      const p = Math.floor((u.progress ?? 0) * 100);
+      const eta = u.etaMin !== null ? ` · faltan ${durationText(u.etaMin)}` : '';
+      const help = u.builders ? ` · ${u.builders} ${u.builders === 1 ? 'habitante ayuda' : 'habitantes ayudan'}` : '';
+      return (
+        `<div class="bm-up-next">${gl('hammer')}<span>Mejorando a <b>${esc(u.nextName ?? '')}</b></span></div>` +
+        `<div class="bm-bar work"><i style="width:${p}%"></i></div>` +
+        `<div class="bm-info-line">${p} %${esc(eta)}${esc(help)}. Se sigue usando mientras tanto; el martillo acelera la obra</div>` +
+        `<div class="bm-info-foot bad">${gl('trash')}<span><b>Clic: cancelar la mejora</b><br>Recuperas: ${u.cost.map((c) => `${c.need}× ${esc(c.name)}`).join(', ')}</span></div>`
+      );
+    }
+    let html =
+      `<div class="bm-up-next">${gl('arrow')}<span>Nivel ${u.toTier ?? ''}: <b>${esc(u.nextName ?? '')}</b></span></div>` +
+      (u.desc ? `<div class="bm-info-line">${esc(u.desc)}</div>` : '') +
+      (u.effects.length ? `<div class="bm-card-stats">${u.effects.map(statHtml).join('')}</div>` : '') +
+      `<div class="bm-card-cost">${u.cost.map(costHtml).join('')}</div>` +
+      (u.timeText ? `<div class="bm-info-line">${gl('clock')} Obra: ${esc(u.timeText)} · se sigue usando mientras dura</div>` : '');
+    if (u.state === 'ok') html += `<div class="bm-info-foot good">${gl('star')}<span><b>Clic: mejorar</b></span></div>`;
+    else if (u.state === 'cost') html += `<div class="bm-info-foot warn">${gl('alert')}<span>${esc(u.reason ?? '')}${hint(u.hint)}</span></div>`;
+    else html += `<div class="bm-info-foot bad">${gl('lock')}<span>${esc(u.reason ?? 'No se puede mejorar')}${hint(u.hint)}</span></div>`;
+    return html;
   }
 
   /**
@@ -510,6 +666,8 @@ export class BuildHud {
       `<div class="bm-confirm panel" role="dialog" aria-modal="true" aria-label="${esc(c.title)}">` +
       `<div class="bm-confirm-title">${gl(c.glyph)}<span>${esc(c.title)}</span></div>` +
       c.lines.map((l) => `<p>${esc(l)}</p>`).join('') +
+      (c.progress !== undefined ? `<div class="bm-bar work bm-confirm-bar"><i style="width:${Math.round(Math.max(0, Math.min(1, c.progress)) * 100)}%"></i></div>` : '') +
+      (c.chips?.length ? `<div class="bm-card-stats bm-confirm-chips">${c.chips.map(statHtml).join('')}</div>` : '') +
       items +
       (c.note ? `<div class="bm-confirm-note">${gl('box')}<span>${esc(c.note)}</span></div>` : '') +
       (c.warnings ?? []).map((w) => `<div class="bm-confirm-warn" role="alert">${gl('alert')}<span>${esc(w)}</span></div>`).join('') +

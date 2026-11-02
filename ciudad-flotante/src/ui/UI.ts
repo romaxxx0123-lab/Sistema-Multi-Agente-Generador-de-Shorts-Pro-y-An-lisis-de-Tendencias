@@ -3,8 +3,9 @@
  * diario, estado del barco, estaciones, almacenes, cajas, habitantes, timón, comercio), menús
  * (principal, pausa, muerte, ajustes, controles, guardar/cargar) y tutorial no intrusivo.
  *
- * Capas (de abajo arriba): HUD → paneles (con fondo que cierra al hacer clic) → menús →
- * descripción emergente y fantasma de arrastre. Todas cuelgan de una capa escalada (zoom CSS)
+ * Capas (de abajo arriba): HUD → paneles (con fondo que cierra al hacer clic) → lector de hojas
+ * del cuaderno → menús (y la pantalla de llegada a Puerto Esperanza) → descripción emergente y
+ * fantasma de arrastre. Todas cuelgan de una capa escalada (zoom CSS)
  * para que la interfaz se lea igual de bien a 1280×720 que a 1920×1080.
  *
  * La UI solo LEE `ctx.sim.state` y cambia el estado con comandos de `Simulation` (y las funciones
@@ -23,12 +24,14 @@ import { refKey, type PanelState, type UiEnv } from './env';
 import { Hud } from './hud';
 import { Menus } from './menus';
 import { renderPanel } from './panels/index';
+import { newPages, PageReader } from './story';
 import { Tooltip } from './tooltip';
 import { cx, h, patch } from './vdom';
 import { gl, kbd } from './widgets';
 import './hud.css';
 import './panels.css';
 import './menus.css';
+import './story.css';
 
 /** Intervalo de repintado de los paneles (s). */
 const PANEL_REFRESH = 0.15;
@@ -52,6 +55,14 @@ export class UI {
   private lastSize = '';
   /** Tiempo del plano orbital del menú principal. */
   private menuTime = 0;
+  /** Lector no bloqueante de las hojas del cuaderno. */
+  private readonly reader: PageReader;
+  /** Hojas del cuaderno ya leídas la última vez que se miró (para abrir el lector con las nuevas). */
+  private seenPages: number[] = [];
+  /** ¿Se había llegado a Puerto Esperanza la última vez que se miró? */
+  private seenArrived = false;
+  /** La llegada acaba de ocurrir: la pantalla se abre en el próximo frame (con los recién llegados). */
+  private arrivalPending = false;
 
   constructor(
     container: HTMLElement,
@@ -74,6 +85,9 @@ export class UI {
     this.panelLayer = document.createElement('div');
     this.panelLayer.className = 'ui-panels';
     this.layer.appendChild(this.panelLayer);
+
+    this.reader = new PageReader(this.layer);
+    this.reader.onOpenNotebook = (n) => this.openNotebook(n);
 
     this.overLayer = document.createElement('div');
     this.overLayer.className = 'ui-layer ui-over';
@@ -99,6 +113,7 @@ export class UI {
       open: (p) => this.openPanel(p),
       close: () => this.closePanel(),
       refresh: () => this.renderPanelNow(),
+      showArrival: () => this.showArrival(),
     };
 
     this.menus = new Menus(this.layer, ctx, this.env);
@@ -112,7 +127,10 @@ export class UI {
     bus.on('itemGained', (e) => this.hud.itemGained(e.id, e.qty));
     bus.on('unlocked', (e) => this.hud.unlocked(e.key, e.name));
     bus.on('newDay', (e) => this.hud.newDay(e.day));
-    bus.on('worldEventStarted', (e) => this.hud.eventStarted(e.eventId));
+    bus.on('worldEventStarted', (e) => {
+      this.hud.eventStarted(e.eventId);
+      if (e.type === 'llegada') this.arrivalPending = true;
+    });
     bus.on('tutorialStep', () => this.hud.tutorialDone());
 
     bus.on('simReplaced', (e) => {
@@ -122,6 +140,14 @@ export class UI {
     // Depuración y pruebas automáticas: pantalla de menú actual y subpantallas.
     registerDebug('uiScreen', (() => this.menus.screen) as never);
     registerDebug('uiMenu', ((sub: 'settings' | 'controls' | 'load' | 'save' | 'quit' | 'new') => this.menus.showSub(sub)) as never);
+    // Hilo narrativo: lector de una hoja y pantalla de llegada (pruebas y capturas).
+    registerDebug('uiLeer', ((n: number) => {
+      this.reader.show(n);
+      return this.reader.current;
+    }) as never);
+    registerDebug('uiLector', (() => ({ pagina: this.reader.current, quedan: Math.round(this.reader.remaining * 10) / 10 })) as never);
+    registerDebug('uiLlegada', (() => this.showArrival()) as never);
+    this.syncStory();
 
     window.addEventListener('keydown', (e) => this.onKey(e));
     // Tras un clic, el botón suelta el foco: así Espacio o Intro no lo repiten al volver al juego.
@@ -160,6 +186,12 @@ export class UI {
       this.ps = {};
       if (p.kind === 'inventory') this.ps.tab = p.tab ?? 'objetos';
     } else if (p.kind === 'inventory' && p.tab) this.ps.tab = p.tab;
+    // Con una hoja en el lector, el Diario (J) se abre en el Cuaderno por esa hoja.
+    if (p.kind === 'inventory' && p.tab === 'diario' && this.reader.visible) {
+      this.ps.diary = 'cuaderno';
+      this.ps.page = this.reader.current;
+      this.reader.hide();
+    }
     if (!this.panel) this.sfx('ui_abrir');
     this.panel = p;
     this.skipE = true;
@@ -214,6 +246,68 @@ export class UI {
     this.hud.reset();
     this.tip.hide();
     this.drag.cancel();
+    this.reader.hide();
+    this.syncStory();
+  }
+
+  /**
+   * Toma como vistas las hojas leídas y la llegada de la partida actual: al cargar una partida no
+   * se abre el lector ni la pantalla de llegada por lo que ya pasó.
+   */
+  private syncStory(): void {
+    const story = this.ctx.sim.state.story;
+    this.seenPages = [...(story?.pages ?? [])];
+    this.seenArrived = !!story?.arrived;
+    this.arrivalPending = false;
+  }
+
+  /** Abre el Diario en el Cuaderno del Albatros por la hoja `n`. */
+  openNotebook(n: number | null): void {
+    if (this.ctx.mode !== 'play' || this.menuOpen) return;
+    this.reader.hide();
+    this.openPanel({ kind: 'inventory', tab: 'diario' });
+    this.ps.diary = 'cuaderno';
+    this.ps.page = n;
+    this.renderPanelNow();
+  }
+
+  /**
+   * Pantalla de llegada a Puerto Esperanza (si ya se llegó). Pausa la partida, sale del modo
+   * construcción y cierra el panel abierto; «Seguir navegando» (o Esc) la cierra.
+   */
+  showArrival(): boolean {
+    const ctx = this.ctx;
+    const sum = ctx.sim.arrivalSummary();
+    if (!sum || !ctx.sim.state.player.alive || ctx.mode === 'menu' || ctx.mode === 'dead') return false;
+    if (ctx.mode === 'build') ctx.setMode('play');
+    this.closePanel();
+    this.reader.hide();
+    ctx.paused = true;
+    this.menus.showArrival((eventId) => {
+      // El mercado del muelle: un evento de mercante normal.
+      if (ctx.sim.state.events.active.some((e) => e.id === eventId)) this.openPanel({ kind: 'trade', eventId });
+      else this.toast('El mercado del muelle ya ha cerrado', 'info');
+    });
+    return true;
+  }
+
+  /** Lector de hojas y llegada: comprueba cada frame lo que ha cambiado en `state.story`. */
+  private watchStory(): void {
+    const ctx = this.ctx;
+    const story = ctx.sim.state.story;
+    const pages = story?.pages ?? [];
+    if (pages.length !== this.seenPages.length || pages.some((n, i) => n !== this.seenPages[i])) {
+      const fresh = newPages(this.seenPages, pages);
+      this.seenPages = [...pages];
+      if (fresh.length && ctx.mode === 'play') this.reader.show(fresh[fresh.length - 1]!);
+    }
+    const arrived = !!story?.arrived;
+    if (arrived && !this.seenArrived) this.arrivalPending = true;
+    this.seenArrived = arrived;
+    if (this.arrivalPending && !this.menuOpen && (ctx.mode === 'play' || ctx.mode === 'build') && ctx.sim.state.player.alive && !ctx.sim.state.player.sleeping) {
+      this.arrivalPending = false;
+      this.showArrival();
+    }
   }
 
   update(dtReal: number): void {
@@ -232,7 +326,9 @@ export class UI {
       this.panelTimer += dtReal;
       if (this.panelTimer >= PANEL_REFRESH) this.renderPanelNow();
     }
+    this.watchStory();
     this.hud.update(dtReal, { panelOpen: this.panelOpen, menuOpen: this.menuOpen });
+    this.reader.update(dtReal, { hidden: this.menuOpen || ctx.mode !== 'play' || !ctx.sim.state.player.alive, panelOpen: this.panelOpen });
     this.menus.update(dtReal);
     this.tip.update(dtReal);
     if (ctx.mode === 'menu') this.menuCamera(dtReal);

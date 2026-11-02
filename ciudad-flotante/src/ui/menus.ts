@@ -4,8 +4,10 @@
  *    créditos);
  *  - pausa (Continuar, Guardar en ranura, Cargar, Ajustes, Controles, Salir al menú);
  *  - muerte (causa, días sobrevividos, estadísticas, cargar la última partida o empezar otra);
+ *  - llegada a Puerto Esperanza (final del cuaderno del Albatros: story.ts `arrivalView`);
  *  - y sus pantallas: guardar, cargar (con borrar), ajustes (→ ctx.saveSettings) y controles.
- * Esc vuelve atrás desde las subpantallas.
+ * Esc vuelve atrás desde las subpantallas. Teclado: Tab y Mayús+Tab (o las flechas arriba y abajo)
+ * recorren los botones; Intro o Espacio pulsan el que tiene el foco.
  */
 import type { GameContext } from '../game/context';
 import { DEFAULT_SETTINGS, type Quality, type Settings } from '../game/types';
@@ -17,9 +19,10 @@ import type { UiEnv } from './env';
 import { realDate } from './fmt';
 import { latestPlayableSave, sortedSaves } from './model';
 import { cx, h, patch, type VInput, type VNode } from './vdom';
+import { arrivalView } from './story';
 import { btn, gl, kbd } from './widgets';
 
-type Root = 'main' | 'pause' | 'death';
+type Root = 'main' | 'pause' | 'death' | 'arrival';
 type Sub = 'settings' | 'controls' | 'load' | 'save' | 'quit' | 'new';
 
 const MANUAL_SLOTS = ['manual', 'manual2', 'manual3'];
@@ -31,6 +34,8 @@ export class Menus {
   private confirm: string | null = null;
   private timer = 0;
   private saves: SaveSlotInfo[] | null = null;
+  /** Pantalla de llegada: qué hacer con «Ir al mercado del muelle». */
+  private onMarket: ((eventId: number) => void) | null = null;
 
   constructor(
     layer: HTMLElement,
@@ -63,6 +68,12 @@ export class Menus {
     this.go('death');
   }
 
+  /** Pantalla de llegada a Puerto Esperanza. `onMarket` abre el comercio con el mercado del muelle. */
+  showArrival(onMarket: (eventId: number) => void): void {
+    this.onMarket = onMarket;
+    this.go('arrival');
+  }
+
   /** Abre una subpantalla (depuración y pruebas). */
   showSub(sub: Sub): void {
     if (!this.root) return;
@@ -87,9 +98,28 @@ export class Menus {
     this.refresh(true);
   }
 
-  /** Teclado: Esc vuelve atrás desde una subpantalla. Devuelve true si consumió la tecla. */
+  /**
+   * Teclado: Esc vuelve atrás desde una subpantalla; Tab/Mayús+Tab y las flechas mueven el foco por
+   * los botones del menú (el juego se queda Tab y Espacio para sí, así que aquí se hace a mano) y
+   * Espacio pulsa el botón con el foco. Devuelve true si consumió la tecla.
+   */
   onKey(e: KeyboardEvent): boolean {
-    if (!this.root || e.code !== 'Escape') return false;
+    if (!this.root) return false;
+    if (e.code === 'Tab' || e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+      e.preventDefault();
+      this.moveFocus(e.code === 'ArrowUp' || (e.code === 'Tab' && e.shiftKey) ? -1 : 1);
+      return true;
+    }
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+      const a = typeof document !== 'undefined' ? document.activeElement : null;
+      if (a instanceof HTMLElement && this.el.contains(a) && (a.tagName === 'BUTTON' || a.getAttribute('role') === 'switch')) {
+        e.preventDefault();
+        if (!e.repeat) a.click();
+        return true;
+      }
+      return false;
+    }
+    if (e.code !== 'Escape') return false;
     if (this.confirm) {
       this.confirm = null;
       this.refresh();
@@ -101,6 +131,21 @@ export class Menus {
       return true;
     }
     return false;
+  }
+
+  /** Elementos del menú que pueden recibir el foco, en orden de lectura. */
+  focusables(): HTMLElement[] {
+    const list = Array.from(this.el.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])'));
+    return list.filter((el) => !(el as HTMLButtonElement).disabled && el.offsetParent !== null);
+  }
+
+  /** Lleva el foco al siguiente (dir 1) o al anterior (dir −1) elemento del menú. */
+  moveFocus(dir: 1 | -1): void {
+    const list = this.focusables();
+    if (!list.length) return;
+    const cur = list.indexOf(document.activeElement as HTMLElement);
+    const next = cur < 0 ? (dir > 0 ? 0 : list.length - 1) : (cur + dir + list.length) % list.length;
+    list[next]!.focus();
   }
 
   update(dt: number): void {
@@ -140,6 +185,8 @@ export class Menus {
         return this.mainScreen();
       case 'pause':
         return this.pauseScreen();
+      case 'arrival':
+        return this.arrivalScreen();
       default:
         return this.deathScreen();
     }
@@ -270,6 +317,31 @@ export class Menus {
   private resume(): void {
     this.ctx.paused = false;
     this.hide();
+  }
+
+  /* ---------------- Llegada a Puerto Esperanza ---------------- */
+
+  private arrivalScreen(): VNode {
+    const sim = this.ctx.sim;
+    const sum = sim.arrivalSummary();
+    return h(
+      'div',
+      { key: 'arrival', class: 'menu-screen menu-arrival interactive' },
+      h('div', { class: 'arrival-shade' }),
+      h(
+        'div',
+        { class: 'arrival-wrap' },
+        sum
+          ? arrivalView(sim, sum, {
+              onContinue: () => this.resume(),
+              onMarket: (id) => {
+                this.resume();
+                this.onMarket?.(id);
+              },
+            })
+          : h('div', { class: 'menu-card' }, h('p', null, 'Aún no habéis llegado a Puerto Esperanza.'), btn('Volver', () => this.resume(), { primary: true })),
+      ),
+    );
   }
 
   private quitCard(): VNode {
@@ -453,8 +525,38 @@ export class Menus {
     this.refresh();
   }
 
+  /**
+   * Restablece los ajustes. La perspectiva también se aplica al jugador (como al elegirla), para
+   * que el control «Cámara» y la cámara real no queden distintos.
+   */
+  resetSettings(): void {
+    Object.assign(this.ctx.settings, DEFAULT_SETTINGS);
+    if (this.ctx.player) this.ctx.player.perspective = this.ctx.settings.perspective;
+    this.ctx.saveSettings();
+    this.refresh();
+  }
+
+  /**
+   * ¿Hay que recargar para que la calidad elegida quede completa? (el suavizado de bordes solo se
+   * fija al crear el contexto WebGL: `Renderer.needsReloadFor`).
+   */
+  qualityNeedsReload(): boolean {
+    try {
+      return !!this.ctx.renderer?.needsReloadFor?.(this.ctx.settings.quality);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Guarda (si hay partida en marcha) y recarga la página para aplicar el suavizado de bordes. */
+  private reloadForQuality(): void {
+    if (this.root === 'pause' && this.ctx.sim.state.player.alive) this.ctx.saveGame('auto');
+    location.reload();
+  }
+
   private settingsCard(): VNode {
     const s = this.ctx.settings;
+    const reload = this.qualityNeedsReload();
     const range = (k: 'sensitivity' | 'fov' | 'volume', min: number, max: number, step: number, fmt: (v: number) => string, scale = 1): VNode =>
       h(
         'div',
@@ -509,6 +611,15 @@ export class Menus {
       h('div', { class: 'set-group' }, 'Imagen'),
       row('Campo de visión', range('fov', 55, 100, 1, (v) => `${Math.round(v)}°`)),
       row('Calidad gráfica', seg<Quality>('quality', [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta']]), 'Baja si el juego va a tirones'),
+      reload
+        ? h(
+            'div',
+            { class: 'set-reload' },
+            gl('info'),
+            h('span', null, s.quality === 'baja' ? 'Ya va en calidad baja, pero el suavizado de bordes (y su coste) sigue hasta recargar la página.' : 'El suavizado de bordes de esta calidad se aplica al recargar la página.'),
+            btn(this.root === 'pause' ? 'Guardar y recargar' : 'Recargar ahora', () => this.reloadForQuality(), { small: true, glyph: 'save', title: this.root === 'pause' ? 'Guarda en el guardado automático y recarga: luego, «Continuar»' : 'Recarga la página' }),
+          )
+        : null,
       row('Mostrar FPS', toggle('showFps')),
       h('div', { class: 'set-group' }, 'Juego'),
       row('Volumen', range('volume', 0, 100, 1, (v) => `${Math.round(v * 100)} %`, 100)),
@@ -523,11 +634,7 @@ export class Menus {
         'div',
         { class: 'menu-row' },
         this.back(),
-        btn('Valores por defecto', () => {
-          Object.assign(this.ctx.settings, DEFAULT_SETTINGS);
-          this.ctx.saveSettings();
-          this.refresh();
-        }, { small: true }),
+        btn('Valores por defecto', () => this.resetSettings(), { small: true }),
       ),
     );
   }

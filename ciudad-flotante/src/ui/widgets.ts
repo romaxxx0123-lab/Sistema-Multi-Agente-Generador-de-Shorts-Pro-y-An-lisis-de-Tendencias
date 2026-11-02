@@ -227,7 +227,7 @@ export function stackList(rec: Record<string, number>, have?: (id: string) => nu
 }
 
 /** Teclas de una letra que usa el juego (para no confundir "A cielo abierto" con una tecla). */
-const KEY_LETTERS = new Set(['E', 'B', 'R', 'F', 'V', 'J', 'C', 'I', 'W', 'S', 'D']);
+const KEY_LETTERS = new Set(['E', 'B', 'R', 'F', 'V', 'J', 'C', 'I', 'U', 'W', 'S', 'D']);
 
 /**
  * Texto con teclas y acciones del ratón resaltadas: "(Tab)", "Pulsa B", "WASD", "(1)", "F1",

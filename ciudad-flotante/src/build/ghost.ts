@@ -6,7 +6,9 @@
  *    suelo, paredes a la altura real si es una habitación cerrada (con huecos de puerta y
  *    flechas de entrada), muebles como volúmenes y peldaños con flecha de subida en escaleras.
  *  - `GridView`: rejilla de celdas del nivel seleccionado dentro del casco (celdas libres, sin
- *    suelo en la cubierta superior) y la celda bajo el cursor.
+ *    suelo en la cubierta superior) y la celda bajo el cursor. Con una pieza que va junto a la
+ *    borda (grúa) resalta en verde las celdas libres del borde y apaga las demás.
+ *  - `ReachArc`: arco discontinuo sobre el agua con el alcance de la grúa por su costado.
  *  - `BoxMarker`: caja translúcida (demolición, ampliación del casco).
  *  - `Pulse`: destello al colocar una obra.
  */
@@ -23,6 +25,8 @@ export const GHOST_COLORS = {
   marker: new THREE.Color('#ffd166'),
   demolish: new THREE.Color('#ff5a4a'),
   blocked: new THREE.Color('#f2a541'),
+  /** Herramienta Mejorar: dorado de las placas de latón. */
+  upgrade: new THREE.Color('#ffd166'),
 };
 
 const WHITE = new THREE.Color('#ffffff');
@@ -354,13 +358,16 @@ export class GridView {
     this.group.add(this.fills, this.lines, this.cursor, this.cursorFill);
   }
 
-  /** Reconstruye la rejilla si cambió el barco o el nivel. */
-  sync(layout: ShipLayout, ship: ShipState, level: number): void {
+  /**
+   * Reconstruye la rejilla si cambió el barco o el nivel. `edgeOnly`: la pieza elegida solo va
+   * junto a la borda (primera o última fila de la manga): esas celdas libres se marcan en verde.
+   */
+  sync(layout: ShipLayout, ship: ShipState, level: number, edgeOnly = false): void {
     const constructionKey = ship.modules
       .filter((m) => m.status === 'construction')
       .map((m) => m.id)
       .join(',');
-    const key = `${layout.revision}|${layout.length}|${layout.width}|${level}|${constructionKey}`;
+    const key = `${layout.revision}|${layout.length}|${layout.width}|${level}|${constructionKey}|${edgeOnly ? 'borda' : ''}`;
     if (key === this.key) return;
     this.key = key;
     const y = levelY(level) + 0.085;
@@ -392,7 +399,8 @@ export class GridView {
         // Solo se rellenan las celdas libres con suelo (donde se puede construir); las celdas sin
         // suelo de la cubierta superior quedan vacías y se ve a través de ellas.
         if (cell.kind === 'void') continue;
-        const rgba = [0.42, 0.86, 1, 0.16];
+        const edge = z === 0 || z === Wc - 1;
+        const rgba = !edgeOnly ? [0.42, 0.86, 1, 0.16] : edge ? [0.49, 0.88, 0.54, 0.36] : [0.42, 0.86, 1, 0.05];
         const mn = cellMin(x, z, Wc);
         const x0 = mn.x + inset;
         const z0 = mn.z + inset;
@@ -440,6 +448,74 @@ export class GridView {
     this.fillMat.dispose();
     this.cursorMat.dispose();
     this.cursorFillMat.dispose();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Alcance de la grúa                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Puntos del arco de alcance: circunferencia de radio `r` centrada en (cx, cz), solo la parte del
+ * costado `side` (z·side ≥ 0), que es donde la grúa engancha restos.
+ */
+export function reachArcPoints(cx: number, cz: number, r: number, side: 1 | -1, segments = 72): { x: number; z: number }[] {
+  if (!(r > 0)) return [];
+  const k = Math.max(-1, Math.min(1, (-side * cz) / r));
+  const a = Math.asin(k);
+  // side 1: sen θ ≥ k → θ ∈ [a, π − a]; side −1: sen θ ≤ −k → θ ∈ [π + a, 2π − a].
+  const t0 = side > 0 ? a : Math.PI + a;
+  const t1 = side > 0 ? Math.PI - a : 2 * Math.PI - a;
+  const out: { x: number; z: number }[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const th = t0 + ((t1 - t0) * i) / segments;
+    out.push({ x: cx + r * Math.cos(th), z: cz + r * Math.sin(th) });
+  }
+  return out;
+}
+
+export class ReachArc {
+  readonly group = new THREE.Group();
+  private readonly mat: THREE.LineDashedMaterial;
+  private readonly line: THREE.Line;
+  private key = '';
+  private t = 0;
+
+  constructor(name: string, color: string) {
+    this.group.name = name;
+    this.mat = new THREE.LineDashedMaterial({ color, dashSize: 1.6, gapSize: 1.0, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
+    this.line = new THREE.Line(new THREE.BufferGeometry(), this.mat);
+    this.line.renderOrder = 19;
+    this.group.add(this.line);
+    this.group.visible = false;
+  }
+
+  /** Muestra el arco (y en metros locales: justo sobre la línea de flotación). */
+  show(cx: number, cz: number, r: number, side: 1 | -1, y: number): void {
+    const key = `${cx.toFixed(2)}|${cz.toFixed(2)}|${r.toFixed(2)}|${side}|${y.toFixed(2)}`;
+    if (key !== this.key) {
+      this.key = key;
+      const pts = reachArcPoints(cx, cz, r, side).map((p) => new THREE.Vector3(p.x, y, p.z));
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      this.line.geometry.dispose();
+      this.line.geometry = geo;
+      this.line.computeLineDistances();
+    }
+    this.group.visible = true;
+  }
+
+  hide(): void {
+    this.group.visible = false;
+  }
+
+  update(dt: number): void {
+    this.t += dt;
+    this.mat.opacity = 0.7 + 0.25 * Math.sin(this.t * 3);
+  }
+
+  dispose(): void {
+    this.line.geometry.dispose();
+    this.mat.dispose();
   }
 }
 

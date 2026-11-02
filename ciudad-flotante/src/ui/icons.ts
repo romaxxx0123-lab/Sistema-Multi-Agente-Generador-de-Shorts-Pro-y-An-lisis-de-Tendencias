@@ -115,7 +115,48 @@ const EMBLEMS: Record<string, string> = {
   hull: '<path d="M12 24 h14 l-2.5 5.5 h-9 z"/><path d="M18.5 17 v7 M18.5 17.5 l5 4.5 h-5" stroke="#ffffff" stroke-width="1.4" fill="none"/>',
   leaf: '<path d="M13.5 30.5 C13 22 18 18 25 18.5 C25 26 21 30.5 13.5 30.5 Z"/><path d="M14.5 29.5 L22 21.5" stroke="#80b918" stroke-width="1.2"/>',
   prop: '<circle cx="19" cy="25" r="1.8"/><path d="M19 25 C17 21 17.5 18 19.5 18 C21.5 18 21 21.5 19 25 Z M19 25 C23 23.5 25.5 24.5 25 26.5 C24.5 28.5 21.5 27 19 25 Z M19 25 C17.8 28.8 15.5 30.7 14 29.4 C12.6 28 15.3 26 19 25 Z"/>',
+  fish: '<path d="M12.2 25 C14.6 20.8 19.8 20.4 23.4 25 C19.8 29.6 14.6 29.2 12.2 25 Z"/><path d="M22.8 25 L26.6 21.6 L25.9 25 L26.6 28.4 Z"/><circle cx="15.4" cy="24.2" r="1" fill="#2f6aa8"/>',
+  crane:
+    '<path d="M15.5 31.5 V18 L25.5 20.4" stroke="#ffffff" stroke-width="1.9" fill="none" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<path d="M15.5 22.5 L19.5 18.9" stroke="#ffffff" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+    '<path d="M24.6 20.2 V25.2 M24.6 25.2 a1.7 1.7 0 1 1 -2.3 1.6" stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round"/>' +
+    '<rect x="12.6" y="30.6" width="6" height="2.2" rx="0.6"/>',
+  radar:
+    '<path d="M16.4 21.6 A4 4 0 0 0 16.4 27.4 M21.6 21.6 A4 4 0 0 1 21.6 27.4 M14.1 19.2 A7.3 7.3 0 0 0 14.1 29.8 M23.9 19.2 A7.3 7.3 0 0 1 23.9 29.8" stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round"/>' +
+    '<circle cx="19" cy="24.5" r="1.7"/><path d="M19 25.5 L17.2 32 M19 25.5 L20.8 32 M17.7 30 h2.6" stroke="#ffffff" stroke-width="1.3" fill="none" stroke-linecap="round"/>',
 };
+
+/**
+ * Hoja manuscrita del cuaderno del Albatros: papel envejecido con el borde rasgado, agujeros de la
+ * encuadernación, renglones de tinta y el número de página en un sello de lacre. Cada hoja se
+ * inclina un poco distinto para que la mochila no parezca un fajo de fotocopias.
+ */
+function notebookPage(c: string, n: number): string {
+  const rot = [-7, 5, -4, 6, -5, 3, -2][(n - 1) % 7]!;
+  const ink = '#3d4f73';
+  const edge = shade(c, 0.78);
+  // Renglones de distinta longitud según la página (la letra de la capitana no es una plantilla).
+  const lens = [[17, 14, 18, 11], [16, 18, 12, 15], [18, 12, 17, 9], [13, 18, 15, 16], [18, 16, 10, 13], [15, 17, 18, 8], [17, 13, 16, 12]][(n - 1) % 7]!;
+  const squiggle = (x: number, y: number, len: number): string => {
+    let d = `M${x} ${y}`;
+    for (let k = 0; k < len; k += 3) d += ` q0.75 -1.6 1.5 0 t1.5 0`;
+    return d;
+  };
+  const lines = lens.map((len, k) => squiggle(16, 12 + k * 5.2, len)).join(' ');
+  return (
+    GROUND +
+    `<g transform="rotate(${rot} 24 24)">` +
+    `<path d="M10 5.5 L36.5 5.5 L38.4 9 L36.6 13.2 L38.5 18 L36.4 23.5 L38.3 29 L36.7 34.5 L38.2 41 L10 41 Z" fill="${c}" ${S}/>` +
+    `<path d="M10 5.5 L10 41" stroke="${edge}" stroke-width="2.4"/>` +
+    `<circle cx="13.2" cy="11" r="1.2" fill="${shade(c, 0.5)}"/><circle cx="13.2" cy="23" r="1.2" fill="${shade(c, 0.5)}"/><circle cx="13.2" cy="35" r="1.2" fill="${shade(c, 0.5)}"/>` +
+    `<path d="${lines}" fill="none" stroke="${ink}" stroke-width="1.15" stroke-linecap="round" opacity="0.85"/>` +
+    `<ellipse cx="18.5" cy="35.5" rx="3.6" ry="2.2" fill="${shade(c, 0.86)}" opacity="0.8"/>` +
+    `<circle cx="29.5" cy="34" r="5.6" fill="#9b2f24" ${S1}/>` +
+    `<circle cx="29.5" cy="34" r="4" fill="none" stroke="#c4574a" stroke-width="0.9"/>` +
+    `<text x="29.5" y="37.3" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="9.5" fill="#fff4dc">${n}</text>` +
+    `</g>`
+  );
+}
 
 const P: Record<string, Painter> = {
   madera: (c) => {
@@ -401,6 +442,39 @@ const P: Record<string, Painter> = {
   plano_casco: (c) => blueprint(c, EMBLEMS.hull!),
   plano_invernadero: (c) => blueprint(c, EMBLEMS.leaf!),
   plano_motor: (c) => blueprint(c, EMBLEMS.prop!),
+  plano_acuicultura: (c) => blueprint(c, EMBLEMS.fish!),
+  plano_grua: (c) => blueprint(c, EMBLEMS.crane!),
+  plano_radar: (c) => blueprint(c, EMBLEMS.radar!),
+  pescado_ahumado: (c) => {
+    const d = shade(c, 0.6);
+    const l = shade(c, 1.38);
+    // Dos pescados colgados de la cola en una vara, con las franjas del humo.
+    const fish = (cx: number, y0: number, len: number): string => {
+      const y1 = y0 + len;
+      return (
+        `<path d="M${cx} 9.5 L${cx} ${y0 - 3}" stroke="#6b4a2b" stroke-width="1.6" stroke-linecap="round"/>` +
+        `<path d="M${cx} ${y0 + 1} L${cx - 5} ${y0 - 4} L${cx + 5} ${y0 - 4} Z" fill="${d}" ${S1}/>` +
+        `<path d="M${cx} ${y0} C${cx + 7.6} ${y0 + 7} ${cx + 7.6} ${y1 - 9} ${cx} ${y1} C${cx - 7.6} ${y1 - 9} ${cx - 7.6} ${y0 + 7} ${cx} ${y0} Z" fill="${c}" ${S}/>` +
+        `<path d="M${cx - 5} ${y0 + 9} L${cx + 5} ${y0 + 6.5} M${cx - 5.6} ${y0 + 15} L${cx + 5.6} ${y0 + 12.5} M${cx - 4.6} ${y0 + 21} L${cx + 4.6} ${y0 + 18.5}" stroke="${d}" stroke-width="1.7" stroke-linecap="round"/>` +
+        `<path d="M${cx - 3.2} ${y0 + 5} C${cx - 4.2} ${y0 + 10} ${cx - 4.2} ${y0 + 15} ${cx - 3.2} ${y0 + 19}" fill="none" stroke="${l}" stroke-width="1.4" stroke-linecap="round"/>` +
+        `<circle cx="${cx - 1.8}" cy="${y1 - 5}" r="1.1" fill="${OUT}"/>`
+      );
+    };
+    return (
+      GROUND +
+      `<rect x="5" y="6.5" width="38" height="3.6" rx="1.8" fill="#8b5e3c" ${S1}/>` +
+      fish(15.5, 15, 25) +
+      fish(31, 17, 22) +
+      `<path d="M40.5 25 C38.5 22.5 42.5 20.5 40.5 17.5 M43.5 30 C41.8 28 44.8 26.3 43.2 24" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>`
+    );
+  },
+  pagina_1: (c) => notebookPage(c, 1),
+  pagina_2: (c) => notebookPage(c, 2),
+  pagina_3: (c) => notebookPage(c, 3),
+  pagina_4: (c) => notebookPage(c, 4),
+  pagina_5: (c) => notebookPage(c, 5),
+  pagina_6: (c) => notebookPage(c, 6),
+  pagina_7: (c) => notebookPage(c, 7),
 };
 
 /** Ilustración genérica para objetos sin dibujo propio (no debería ocurrir: ver tests). */
@@ -528,6 +602,20 @@ const GLYPHS: Record<string, string> = {
   merchant: `<path ${G} d="M3 15h18l-2.5 5h-13zM7 15V7h10v8M7 7l5-4 5 4M10 11h4"/>`,
   tower: `<path ${G} d="M9 21 10 8h4l1 13zM8 8h8M10.5 8V5h3v3M7 4.5 5 3.5M17 4.5l2-1M7 7 4.5 7.5M17 7l2.5.5M6 21h12"/>`,
   sick: `<circle ${G} cx="12" cy="12" r="9"/><path ${G} d="M8 9.5l2 1M16 9.5l-2 1M8.5 16c1-1 2-1.4 3.5-1.4s2.5.4 3.5 1.4"/>`,
+
+  /* Ronda de contenido 2: módulos especializados, mejoras, cuaderno y relaciones */
+  sofa: `<path ${G} d="M4.5 11V8a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path ${G} d="M2.5 12.5a2 2 0 0 1 4 0V14h11v-1.5a2 2 0 0 1 4 0V18h-19z"/><path ${G} d="M4.5 18v2M19.5 18v2"/>`,
+  smoke: `<path ${G} d="M4 21V12l6.5-5 6.5 5v9z"/><path ${G} d="M8.5 21v-4.5h4V21M14 9.7V5.5h2.5v6.2"/><path ${G} d="M17.5 3.2c1.2 1-.6 1.9.5 3M20.5 5.5c1.2 1-.6 1.9.5 3"/>`,
+  crane: `<path ${G} d="M6 21V4l14 3.5M6 9l4.5-4.4M3 21h6.5"/><path ${G} d="M17.5 7v6"/><path ${G} d="M17.5 13a2 2 0 1 1-2 2"/>`,
+  radar: `<path ${G} d="M3.5 9.5a8 8 0 0 0 11 11z"/><path ${G} d="M9.2 14.8 13.6 10.4"/><circle ${G} cx="14.5" cy="9.5" r="1.3"/><path ${G} d="M16.5 3.5a7 7 0 0 1 4 4M16.5 6.8a3.5 3.5 0 0 1 .8.8"/>`,
+  radio: `<rect ${G} x="3" y="9" width="18" height="12" rx="2"/><path ${G} d="M7.5 9 17 3"/><circle ${G} cx="15.5" cy="15" r="3"/><path ${G} d="M6.5 13h4M6.5 17h4"/>`,
+  upgrade: `<path ${G} d="M12 21V9M6.5 14.5 12 9l5.5 5.5"/><path ${G} d="M5 4h14"/>`,
+  chevrons: `<path ${G} d="M6 12.5l6-6 6 6M6 19l6-6 6 6"/>`,
+  page: `<path ${G} d="M6 3h9l4 4v14H6z"/><path ${G} d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/>`,
+  quill: `<path ${G} d="M20.5 3.5C12 4.5 7 10 5.5 17.5L4 21"/><path ${G} d="M20.5 3.5c-1 6.5-5.5 11-12.5 13M10 11.5l3.5.5"/>`,
+  heart: `<path ${G} d="M12 20s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.4c0 5.4-7.5 10-7.5 10z"/>`,
+  flag: `<path ${G} d="M5 21V3.5M5 4h12l-2.5 4.5L17 13H5"/>`,
+  lighthouse: `<path ${G} d="M9 21l1.2-11h3.6L15 21M8 10h8M10 10V7h4v3M12 7V5"/><path ${G} d="M5 7.5 2.5 6.5M19 7.5l2.5-1M5 10.5H2.5M19 10.5h2.5M6 21h12"/>`,
 };
 
 const glyphCache = new Map<string, string>();
@@ -568,6 +656,11 @@ export const MODULE_GLYPH: Record<string, string> = {
   motor: 'propeller',
   escalera: 'stairs',
   puente: 'helm',
+  sala_comun: 'sofa',
+  ahumadero: 'smoke',
+  vivero: 'fish',
+  grua: 'crane',
+  radar: 'radar',
 };
 
 /** Glifo de cada tipo de evento del mundo. */
@@ -584,6 +677,16 @@ export const EVENT_GLYPH: Record<string, string> = {
   fuga: 'leak',
   enfermedad: 'sick',
   discusion: 'chat',
+  estructura: 'tower',
+  llegada: 'anchor',
+};
+
+/** Glifo de cada tipo de avistamiento (timón, radar). */
+export const SIGHTING_GLYPH: Record<string, string> = {
+  naufragio: 'wreck',
+  isla: 'island',
+  balsa: 'lifebuoy',
+  mercante: 'merchant',
   estructura: 'tower',
 };
 

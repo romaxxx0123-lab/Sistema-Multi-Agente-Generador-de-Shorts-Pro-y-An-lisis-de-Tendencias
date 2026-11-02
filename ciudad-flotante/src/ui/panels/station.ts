@@ -6,23 +6,34 @@
  *  - huerto: 4 parcelas (cultivo, crecimiento, agua, luz), plantar con selector de semilla,
  *    cosechar y retirar plaga o plantas secas;
  *  - depósito, colector, potabilizadora, generador, baterías, panel solar, motor;
- *  - y en todos: condición, avería/daño/fuga/fuego, obra en curso y Reparar con requisitos.
+ *  - ahumadero (estación con recetas y bandeja), vivero de peces (producción, energía, bandeja),
+ *    grúa de rescate (fase, objetivo, alcance, bandeja) y radar y radio (avistamientos y radio);
+ *  - y en todos: nombre según el nivel de mejora, «Nivel N/M» con la mejora siguiente o la obra de
+ *    mejora en curso, condición, avería/daño/fuga/fuego, obra en curso y Reparar con requisitos.
+ *
+ * Las capacidades y producciones se leen con `moduleStat`/`moduleMult` (moduleStats.ts) para que
+ * los números del panel sean los del nivel actual del módulo.
  */
 import { breakdownReason } from '../../sim/events';
 import { CROPS } from '../../data/crops';
+import { ITEMS } from '../../data/items';
 import { moduleDef, type ModuleDef } from '../../data/modules';
 import { WATER_PER_DRINK } from '../../sim/constants';
 import { demolishLosses, REPAIR_THRESHOLD } from '../../sim/construction';
+import { DEBRIS_NAMES } from '../../sim/debris';
 import { findModule, payInventories } from '../../sim/helpers';
 import { countIn, countItem } from '../../sim/inventory';
+import { maxTier, moduleDisplayName, moduleMult, moduleStat, moduleTier, nextUpgrade } from '../../sim/moduleStats';
 import type { InvRef } from '../../sim/Simulation';
-import { MAX_QUEUE, plotLight, stationKindOf } from '../../sim/stations';
+import { MAX_QUEUE, plotLight, stationKindOf, viveroStatus } from '../../sim/stations';
 import { daylight } from '../../sim/time';
 import type { ModuleInstance } from '../../sim/types';
 import { conditionFactor, fuelMinutes, hasGrowLamps, hasPowerSwitch, moduleHasSky } from '../../sim/utilities';
+import { barometer } from '../../sim/weather';
 import type { UiEnv } from '../env';
-import { duration, itemName, num, pct, qtyName } from '../fmt';
-import { MODULE_GLYPH } from '../icons';
+import { agoText, duration, itemName, num, pct, qtyName } from '../fmt';
+import { MODULE_GLYPH, SIGHTING_GLYPH } from '../icons';
+import { moduleSubtitle, radioMessages, upgradeEffectsText } from '../model';
 import { cx, h, type VInput, type VNode } from '../vdom';
 import { bar, btn, chip, empty, gl, icon, kbd, meter, richKeys, section, slot } from '../widgets';
 import { recipeDetail, recipeRow } from './crafting';
@@ -36,8 +47,9 @@ export function renderStation(env: UiEnv, moduleId: number): PanelView | null {
   const def = moduleDef(m.type);
   const head = statusChips(m);
   const glyphName = MODULE_GLYPH[m.type] ?? 'box';
+  const title = moduleDisplayName(m);
   if (m.status === 'construction') {
-    return { title: def.name, subtitle: 'En obras', glyph: glyphName, head, body: constructionBody(env, m, def), cls: 'pn-narrow' };
+    return { title, subtitle: 'En obras', glyph: glyphName, head, body: constructionBody(env, m, def), cls: 'pn-narrow' };
   }
   const kind = stationKindOf(m);
   let body: VInput;
@@ -84,12 +96,24 @@ export function renderStation(env: UiEnv, moduleId: number): PanelView | null {
         body = motorBody(env, m);
         cls = 'pn-mid';
         break;
+      case 'vivero':
+        body = viveroBody(env, m);
+        cls = 'pn-mid';
+        break;
+      case 'grua':
+        body = gruaBody(env, m);
+        cls = 'pn-mid';
+        break;
+      case 'radar':
+        body = radarBody(env, m);
+        cls = 'pn-mid';
+        break;
       default:
         body = genericBody(env, m, def);
         cls = 'pn-mid';
     }
   }
-  return { title: def.name, subtitle: def.desc, glyph: glyphName, head, tabs, body, foot: conditionFoot(env, m, def), cls };
+  return { title, subtitle: moduleSubtitle(m), glyph: glyphName, head, tabs, body, foot: conditionFoot(env, m, def), cls };
 }
 
 /* ================================================================== */
@@ -99,6 +123,7 @@ export function renderStation(env: UiEnv, moduleId: number): PanelView | null {
 function statusChips(m: ModuleInstance): VNode {
   const chips: VNode[] = [];
   if (m.status === 'construction') chips.push(chip(`En obras · ${Math.floor(m.buildProgress * 100)} %`, 'info', 'hammer'));
+  else if (m.upgrade) chips.push(chip(`Mejorando · ${Math.floor(Math.max(0, Math.min(1, m.upgrade.progress)) * 100)} %`, 'info', 'upgrade'));
   if (m.fire > 0) chips.push(chip(`¡Ardiendo! ${Math.round(m.fire)} %`, 'danger', 'fire'));
   if (m.status === 'broken') chips.push(chip('Averiado', 'danger', 'wrench'));
   if (m.leak) chips.push(chip('Fuga', 'warn', 'leak'));
@@ -113,7 +138,7 @@ function conditionColor(c: number): string {
 function conditionFoot(env: UiEnv, m: ModuleInstance, def: ModuleDef): VNode {
   const sim = env.ctx.sim;
   const info = sim.repairInfo(m.id);
-  const parts: VInput[] = [];
+  const parts: VInput[] = [upgradeLine(env, m)];
   parts.push(
     h(
       'div',
@@ -157,6 +182,50 @@ function conditionFoot(env: UiEnv, m: ModuleInstance, def: ModuleDef): VNode {
   return h('div', { class: 'cond-foot' }, parts);
 }
 
+/**
+ * Nivel del módulo y su mejora: «Nivel 1/3 · Mejorable en el modo construcción (B, herramienta
+ * Mejorar): Almacén con altillo (32 huecos)», la obra de mejora en curso con su progreso o «Nivel
+ * máximo». Nada en los módulos que no se pueden mejorar.
+ */
+export function upgradeLine(env: UiEnv, m: ModuleInstance): VNode | null {
+  const sim = env.ctx.sim;
+  const max = maxTier(m.type);
+  const cs = m.upgrade ? sim.constructionStatus(m.id) : null;
+  if (max <= 1 && !cs) return null;
+  const tier = moduleTier(m);
+  const lvl = h('span', { class: 'tier-badge', title: `Nivel de mejora ${tier} de ${max}` }, gl('chevrons'), `Nivel ${tier}/${max}`);
+  if (cs && cs.toTier) {
+    const hammer = countItem(sim.state.player.inventory, 'martillo') > 0;
+    return h(
+      'div',
+      { class: 'tier-row upgrading' },
+      lvl,
+      h(
+        'div',
+        { class: 'tier-main' },
+        meter([gl('upgrade'), `Mejorando a «${cs.name}»`], `${Math.floor(cs.progress * 100)} % · ≈ ${duration(cs.etaMin)}`, cs.progress, 'var(--accent)'),
+        h(
+          'div',
+          { class: 'faint small' },
+          'Sigue funcionando con su nivel actual mientras dura la obra',
+          cs.builders > 0 ? ` · ${cs.builders} ${cs.builders === 1 ? 'habitante ayuda' : 'habitantes ayudan'}` : '',
+          '. ',
+          hammer ? ['Mantén ', kbd('E'), ' con el martillo mirándolo para acabar antes.'] : 'Con un martillo puedes ayudar.',
+        ),
+      ),
+    );
+  }
+  const next = nextUpgrade(m);
+  if (!next) return h('div', { class: 'tier-row max' }, lvl, h('span', { class: 'good small' }, gl('check'), 'Nivel máximo'));
+  const fx = upgradeEffectsText(m.type, next.effects, next.tier);
+  return h(
+    'div',
+    { class: 'tier-row', title: next.desc },
+    lvl,
+    h('span', { class: 'tier-next' }, 'Mejorable en el modo construcción (', kbd('B'), ', herramienta Mejorar): ', h('b', null, next.name), fx ? h('span', { class: 'faint' }, ` (${fx})`) : null),
+  );
+}
+
 function powerSwitch(env: UiEnv, m: ModuleInstance, label?: string): VNode | null {
   const sim = env.ctx.sim;
   if (!hasPowerSwitch(sim, m)) return null;
@@ -194,9 +263,10 @@ function kvRow(k: string, v: VInput): VNode {
 /* Estaciones de fabricación                                           */
 /* ================================================================== */
 
-function craftStation(env: UiEnv, m: ModuleInstance, def: ModuleDef): { body: VNode; tabs: VInput } {
+function craftStation(env: UiEnv, m: ModuleInstance, _def: ModuleDef): { body: VNode; tabs: VInput } {
   const sim = env.ctx.sim;
   const isKitchen = m.type === 'cocina';
+  const isSmoker = m.type === 'ahumadero';
   const tab = env.ps.tab ?? 'fabricar';
   const tabs = isKitchen
     ? h(
@@ -268,16 +338,20 @@ function craftStation(env: UiEnv, m: ModuleInstance, def: ModuleDef): { body: VN
   let detail: VNode = empty('Elige una receta.');
   if (sel) {
     const r = sel.recipe;
-    const verb = isKitchen ? 'Cocinar' : 'Fabricar';
+    const verb = isKitchen ? 'Cocinar' : isSmoker ? 'Ahumar' : 'Fabricar';
     detail = recipeDetail(
       env,
       r,
       sel.reason,
       [
-        btn(`${verb} ×1`, () => env.act(sim.queueCraft(m.id, r.id, 1), 'info'), { primary: true, disabled: !sel.canCraft, glyph: isKitchen ? 'pot' : 'hammer' }),
+        btn(`${verb} ×1`, () => env.act(sim.queueCraft(m.id, r.id, 1), 'info'), { primary: true, disabled: !sel.canCraft, glyph: isKitchen ? 'pot' : isSmoker ? 'smoke' : 'hammer' }),
         btn('×5', () => env.act(sim.queueCraft(m.id, r.id, 5), 'info'), { disabled: !sel.canCraft || queueFull, title: 'Encola hasta 5 (los que alcancen)' }),
       ],
-      queueFull ? h('span', { class: 'warn' }, `La cola está llena (máx. ${MAX_QUEUE}).`) : 'Se paga al encargarlo con tu inventario y los almacenes. Cancelar devuelve los ingredientes.',
+      queueFull
+        ? h('span', { class: 'warn' }, `La cola está llena (máx. ${MAX_QUEUE}).`)
+        : isSmoker
+          ? 'La leña va en la receta: el ahumadero no tiene fogón que cargar. Se paga al encargarlo con tu inventario y los almacenes; cancelar lo devuelve.'
+          : 'Se paga al encargarlo con tu inventario y los almacenes. Cancelar devuelve los ingredientes.',
     );
   }
 
@@ -308,7 +382,9 @@ function craftStation(env: UiEnv, m: ModuleInstance, def: ModuleDef): { body: VN
   );
 
   const side: VInput[] = [queue];
-  if (m.type === 'taller') side.push(section(h('span', null, gl('power'), 'Electricidad'), powerSwitch(env, m), h('div', { class: 'faint small' }, `Consume ${num(def.powerUse ?? 0, 1)} kW mientras trabaja. Suministro de la red: ${pct(sim.state.utilities.power.satisfaction)}.`)));
+  if (m.type === 'taller') side.push(section(h('span', null, gl('power'), 'Electricidad'), powerSwitch(env, m), h('div', { class: 'faint small' }, `Consume ${num(moduleStat(m, 'powerUse'), 1)} kW mientras trabaja. Suministro de la red: ${pct(sim.state.utilities.power.satisfaction)}.`)));
+  const speed = moduleMult(m, 'workSpeed');
+  if (speed > 1.001) side.push(h('div', { class: 'faint small' }, gl('upgrade'), ` Mejorado: trabaja a ×${num(speed, 1)} de velocidad.`));
   if (isKitchen) {
     side.push(fuelBox(env, m, 'Fogón'));
     side.push(
@@ -352,7 +428,7 @@ export function stationTutorial(env: UiEnv, m: ModuleInstance): { recipe: string
 }
 
 /** Fila compacta de la bandeja/despensa: clic coge la pila. */
-function trayRow(env: UiEnv, m: ModuleInstance, max: number): VNode {
+function trayRow(env: UiEnv, m: ModuleInstance, max: number, cols = max): VNode {
   const ref: InvRef = { kind: 'module', id: m.id, slot: 'inventory' };
   const inv = m.inventory;
   if (!inv) return empty('Sin bandeja');
@@ -363,7 +439,7 @@ function trayRow(env: UiEnv, m: ModuleInstance, max: number): VNode {
     { class: 'tray' },
     h(
       'div',
-      { class: 'slot-grid', style: `--cols:${max}` },
+      { class: 'slot-grid', style: `--cols:${cols}` },
       slots.map((s, i) => slot(env, { ref, index: i, stack: s, ...moveSlotOpts(env, ref, i, { kind: 'player' }, 'coger') })),
     ),
     more ? h('div', { class: 'faint small' }, `y ${more} pila${more === 1 ? '' : 's'} más`) : null,
@@ -419,7 +495,9 @@ function fuelBox(env: UiEnv, m: ModuleInstance, title: string): VNode {
   const mins = fuelMinutes(m);
   const pinv = sim.state.player.inventory;
   const fuels = ['madera', 'combustible'].filter((id) => countItem(pinv, id) > 0);
-  const each = (id: string): string => (id === 'madera' ? '40 min' : '6 h');
+  // Con la mejora (fuelEfficiency) cada unidad da más minutos de fuego.
+  const eff = moduleMult(m, 'fuelEfficiency');
+  const each = (id: string): string => duration((ITEMS[id]?.fuel ?? 0) * eff);
   return section(
     h('span', { class: 'sec-row' }, h('span', null, gl('fire'), title), m.fuelBurn > 0.01 && m.powered ? chip('Encendido', 'good', 'fire') : null),
     h(
@@ -442,7 +520,7 @@ function fuelBox(env: UiEnv, m: ModuleInstance, title: string): VNode {
             ),
           )
         : null,
-      h('div', { class: 'fuel-info' }, h('b', { class: mins > 0 ? '' : 'warn' }, mins > 0 ? `Para ${duration(mins)}` : 'Sin combustible'), h('div', { class: 'faint small' }, 'Madera: 40 min · Bidón: 6 h')),
+      h('div', { class: 'fuel-info' }, h('b', { class: mins > 0 ? '' : 'warn' }, mins > 0 ? `Para ${duration(mins)}` : 'Sin combustible'), h('div', { class: 'faint small' }, `Madera: ${each('madera')} · Bidón: ${each('combustible')}${eff > 1.001 ? ` (mejorado ×${num(eff, 1)})` : ''}`)),
     ),
     h(
       'div',
@@ -596,7 +674,6 @@ function tankBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
   const u = sim.state.utilities;
   const p = sim.state.player;
-  const def = moduleDef(m.type);
   const bottles = countItem(p.inventory, 'agua_potable');
   const empty0 = u.waterL < WATER_PER_DRINK;
   return h(
@@ -606,7 +683,7 @@ function tankBody(env: UiEnv, m: ModuleInstance): VNode {
     h(
       'div',
       { class: 'util-main' },
-      h('p', { class: 'muted' }, `Todos los depósitos y colectores comparten la red de agua potable del barco. Este depósito aporta ${def.waterCapacity ?? 0} L de capacidad.`),
+      h('p', { class: 'muted' }, `Todos los depósitos y colectores comparten la red de agua potable del barco. Este depósito aporta ${Math.round(moduleStat(m, 'waterCapacity'))} L de capacidad.`),
       waterKv(env),
       m.leak ? h('div', { class: 'note warn' }, gl('leak'), 'Este depósito tiene una fuga: pierde 6 L cada hora hasta que la repares.') : null,
       h(
@@ -624,10 +701,9 @@ function tankBody(env: UiEnv, m: ModuleInstance): VNode {
 
 function collectorBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
-  const def = moduleDef(m.type);
   const rain = sim.state.weather.rain;
   const sky = moduleHasSky(sim, m);
-  const rate = sky && m.status === 'active' && m.fire <= 0 ? (def.waterGen ?? 0) * rain : 0;
+  const rate = sky && m.status === 'active' && m.fire <= 0 ? moduleStat(m, 'waterGen') * rain : 0;
   return h(
     'div',
     { class: 'utility' },
@@ -636,7 +712,7 @@ function collectorBody(env: UiEnv, m: ModuleInstance): VNode {
       'div',
       { class: 'util-main' },
       h('div', { class: 'big-stat' }, gl('rain'), h('b', null, `${num(rate, 1)} L/h`), h('span', { class: 'muted' }, rate > 0 ? 'recogiendo lluvia' : rain > 0 ? 'no le llega la lluvia' : 'esperando lluvia')),
-      h('div', { class: 'kv' }, kvRow('Lluvia', pct(rain)), kvRow('A cielo abierto', sky ? 'Sí' : 'No (algo lo cubre)'), kvRow('Capacidad extra', `${def.waterCapacity ?? 0} L`)),
+      h('div', { class: 'kv' }, kvRow('Lluvia', pct(rain)), kvRow('A cielo abierto', sky ? 'Sí' : 'No (algo lo cubre)'), kvRow('Capacidad extra', `${Math.round(moduleStat(m, 'waterCapacity'))} L`), kvRow('Con lluvia fuerte', `${num(moduleStat(m, 'waterGen'), 1)} L/h`)),
       waterKv(env),
       demolishLossNote(env, m),
     ),
@@ -645,11 +721,10 @@ function collectorBody(env: UiEnv, m: ModuleInstance): VNode {
 
 function purifierBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
-  const def = moduleDef(m.type);
   const u = sim.state.utilities;
   const full = u.waterL >= u.water.capacityL - 0.05;
   const working = m.on && m.powered && m.status === 'active' && m.fire <= 0 && !full;
-  const rate = working ? (def.waterGen ?? 0) * conditionFactor(m) * u.power.satisfaction : 0;
+  const rate = working ? moduleStat(m, 'waterGen') * conditionFactor(m) * u.power.satisfaction : 0;
   return h(
     'div',
     { class: 'utility' },
@@ -659,7 +734,7 @@ function purifierBody(env: UiEnv, m: ModuleInstance): VNode {
       { class: 'util-main' },
       powerSwitch(env, m),
       h('div', { class: 'big-stat' }, gl('filter'), h('b', null, `${num(rate, 1)} L/h`), h('span', { class: 'muted' }, working ? 'potabilizando agua de mar' : full ? 'depósitos llenos: en espera' : !m.on ? 'apagada' : 'parada')),
-      h('div', { class: 'kv' }, kvRow('Consumo', `${num(def.powerUse ?? 0, 1)} kW al trabajar`), kvRow('Suministro eléctrico', pct(u.power.satisfaction))),
+      h('div', { class: 'kv' }, kvRow('Máximo', `${num(moduleStat(m, 'waterGen'), 1)} L/h`), kvRow('Consumo', `${num(moduleStat(m, 'powerUse'), 1)} kW al trabajar`), kvRow('Suministro eléctrico', pct(u.power.satisfaction))),
       waterKv(env),
     ),
   );
@@ -685,19 +760,17 @@ function gridKv(env: UiEnv): VNode {
 }
 
 function generatorBody(env: UiEnv, m: ModuleInstance): VNode {
-  const def = moduleDef(m.type);
   const kw = genKw(env, m);
   return h(
     'div',
     { class: 'utility two' },
-    h('div', { class: 'util-main' }, powerSwitch(env, m), h('div', { class: 'big-stat' }, gl('power'), h('b', null, `${num(kw, 1)} kW`), h('span', { class: 'muted' }, m.powered ? 'en marcha' : m.on ? 'en reposo: arranca cuando falta energía o hay baterías por cargar' : 'apagado')), h('div', { class: 'faint small' }, `Máximo ${num((def.powerGen ?? 0) * conditionFactor(m), 1)} kW${m.condition < 50 ? ' (dañado: −30 %)' : ''}.`), gridKv(env)),
+    h('div', { class: 'util-main' }, powerSwitch(env, m), h('div', { class: 'big-stat' }, gl('power'), h('b', null, `${num(kw, 1)} kW`), h('span', { class: 'muted' }, m.powered ? 'en marcha' : m.on ? 'en reposo: arranca cuando falta energía o hay baterías por cargar' : 'apagado')), h('div', { class: 'faint small' }, `Máximo ${num(moduleStat(m, 'powerGen') * conditionFactor(m), 1)} kW${m.condition < 50 ? ' (dañado: −30 %)' : ''}.`), gridKv(env)),
     h('div', { class: 'util-side' }, fuelBox(env, m, 'Combustible')),
   );
 }
 
 function batteryBody(env: UiEnv, m: ModuleInstance): VNode {
   const u = env.ctx.sim.state.utilities;
-  const def = moduleDef(m.type);
   const frac = u.power.capacityKWh > 0 ? u.batteryKWh / u.power.capacityKWh : 0;
   const flow = u.power.generation - u.power.demand;
   return h(
@@ -708,7 +781,7 @@ function batteryBody(env: UiEnv, m: ModuleInstance): VNode {
       'div',
       { class: 'util-main' },
       h('div', { class: 'big-stat' }, gl('battery'), h('b', null, flow > 0.05 && frac < 0.999 ? 'Cargando' : flow < -0.05 && u.batteryKWh > 0.01 ? 'Descargando' : 'En reposo'), h('span', { class: 'muted' }, `${num(Math.abs(flow), 1)} kW de ${flow >= 0 ? 'excedente' : 'déficit'}`)),
-      h('div', { class: 'faint small' }, `Este banco guarda ${def.batteryKWh ?? 0} kWh y entrega hasta 10 kW. ${m.status === 'broken' ? 'Averiado: desconectado de la red.' : ''}`),
+      h('div', { class: 'faint small' }, `Este banco guarda ${Math.round(moduleStat(m, 'batteryKWh'))} kWh y entrega hasta 10 kW. ${m.status === 'broken' ? 'Averiado: desconectado de la red.' : ''}`),
       gridKv(env),
       demolishLossNote(env, m),
     ),
@@ -717,7 +790,6 @@ function batteryBody(env: UiEnv, m: ModuleInstance): VNode {
 
 function solarBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
-  const def = moduleDef(m.type);
   const kw = genKw(env, m);
   return h(
     'div',
@@ -726,7 +798,7 @@ function solarBody(env: UiEnv, m: ModuleInstance): VNode {
       'div',
       { class: 'util-main' },
       powerSwitch(env, m),
-      h('div', { class: 'big-stat' }, gl('solar'), h('b', null, `${num(kw, 2)} kW`), h('span', { class: 'muted' }, `de ${num(def.powerGen ?? 0, 1)} kW máximos`)),
+      h('div', { class: 'big-stat' }, gl('solar'), h('b', null, `${num(kw, 2)} kW`), h('span', { class: 'muted' }, `de ${num(moduleStat(m, 'powerGen'), 1)} kW máximos`)),
       h('div', { class: 'kv' }, kvRow('Luz del día', pct(daylight(sim.state.time))), kvRow('Nubes', pct(sim.state.weather.cloudiness)), kvRow('A cielo abierto', moduleHasSky(sim, m) ? 'Sí' : 'No')),
     ),
     h('div', { class: 'util-side' }, section('Red eléctrica', gridKv(env))),
@@ -735,7 +807,6 @@ function solarBody(env: UiEnv, m: ModuleInstance): VNode {
 
 function motorBody(env: UiEnv, m: ModuleInstance): VNode {
   const sim = env.ctx.sim;
-  const def = moduleDef(m.type);
   const active = m.on && m.powered && m.status === 'active' && m.fire <= 0;
   return h(
     'div',
@@ -744,8 +815,8 @@ function motorBody(env: UiEnv, m: ModuleInstance): VNode {
       'div',
       { class: 'util-main' },
       powerSwitch(env, m),
-      h('div', { class: 'big-stat' }, gl('propeller'), h('b', null, active ? `+${def.speedBonus ?? 3} nudos` : 'Parado'), h('span', { class: 'muted' }, `Velocidad actual: ${num(sim.state.voyage.speed, 1)} nudos`)),
-      h('div', { class: 'faint small' }, `Consume ${num(def.powerUse ?? 0, 1)} kW mientras navegamos (no al estar fondeados).`),
+      h('div', { class: 'big-stat' }, gl('propeller'), h('b', null, active ? `+${num(moduleStat(m, 'speedBonus'), 1)} nudos` : 'Parado'), h('span', { class: 'muted' }, `Velocidad actual: ${num(sim.state.voyage.speed, 1)} nudos`)),
+      h('div', { class: 'faint small' }, `Consume ${num(moduleStat(m, 'powerUse'), 1)} kW mientras navegamos (no al estar fondeados). A pleno rendimiento da +${num(moduleStat(m, 'speedBonus'), 1)} nudos.`),
     ),
     h('div', { class: 'util-side' }, section('Red eléctrica', gridKv(env))),
   );
@@ -755,8 +826,10 @@ function motorBody(env: UiEnv, m: ModuleInstance): VNode {
 /* Otros módulos                                                       */
 /* ================================================================== */
 
-function genericBody(env: UiEnv, m: ModuleInstance, def: ModuleDef): VNode {
+function genericBody(env: UiEnv, m: ModuleInstance, _def: ModuleDef): VNode {
   const sim = env.ctx.sim;
+  const comfort = moduleStat(m, 'comfort');
+  const heal = moduleMult(m, 'healMult');
   const beds = m.beds.map((b, i) => {
     const who = b === 'player' ? 'Tú' : b ? (sim.state.npcs.find((n) => n.id === b)?.name ?? '—') : 'Libre';
     return h('li', { key: i }, gl('bed'), h('span', { class: 'ml-name' }, `Cama ${i + 1}`), h('span', { class: cx('ml-val', !b && 'faint') }, who));
@@ -765,7 +838,153 @@ function genericBody(env: UiEnv, m: ModuleInstance, def: ModuleDef): VNode {
     'div',
     { class: 'generic' },
     beds.length ? section('Camas', h('ul', { class: 'mini-list' }, beds)) : null,
-    def.comfort ? h('div', { class: 'faint small' }, `Confort: ${'★'.repeat(Math.min(5, def.comfort))}`) : null,
+    comfort ? h('div', { class: 'faint small', title: `Confort ${comfort}: mejora el ánimo y el descanso de quien duerme o pasa aquí su tiempo libre` }, `Confort: ${'★'.repeat(Math.min(6, Math.round(comfort)))} (${num(comfort, 0)})`) : null,
+    heal > 1.001 ? h('div', { class: 'faint small' }, gl('medical'), ` Equipada: se cura ×${num(heal, 1)} más rápido en sus camillas.`) : null,
     powerSwitch(env, m),
+  );
+}
+
+/* ================================================================== */
+/* Producción automática: vivero de peces y grúa de rescate            */
+/* ================================================================== */
+
+/** Bandeja de salida con «Tomar todo» (vivero, grúa). */
+function outputTray(env: UiEnv, m: ModuleInstance, note: string, max = 6, cols = 6): VNode {
+  const ref: InvRef = { kind: 'module', id: m.id, slot: 'inventory' };
+  const used = m.inventory ? m.inventory.slots.filter((s) => !!s).length : 0;
+  return section(
+    h('span', { class: 'sec-row' }, h('span', null, gl('box'), 'Bandeja'), btn('Tomar todo', () => takeAllFrom(env, ref), { small: true, disabled: used === 0 })),
+    trayRow(env, m, max, cols),
+    h('div', { class: 'faint small' }, note),
+  );
+}
+
+function viveroBody(env: UiEnv, m: ModuleInstance): VNode {
+  const sim = env.ctx.sim;
+  const vs = viveroStatus(sim, m.id);
+  const u = sim.state.utilities;
+  const tone = !vs ? 'dim' : vs.working ? 'good' : /llena/i.test(vs.status) ? 'info' : 'warn';
+  return h(
+    'div',
+    { class: 'utility two' },
+    h(
+      'div',
+      { class: 'util-main' },
+      powerSwitch(env, m),
+      h('div', { class: 'big-stat' }, gl('fish'), h('b', null, vs?.status ?? '—'), h('span', { class: 'muted' }, vs ? `un pescado cada ${duration(vs.minutesPerItem)} a pleno rendimiento` : '')),
+      vs ? meter('Siguiente pescado', vs.working && vs.etaMin !== null ? `${pct(vs.progress)} · ≈ ${duration(vs.etaMin)}` : pct(vs.progress), vs.progress, tone === 'good' ? 'var(--sea)' : 'var(--ink-faint)') : null,
+      h(
+        'div',
+        { class: 'kv' },
+        kvRow('En la bandeja', vs ? `${vs.stock} / ${vs.capacity} pescados` : '—'),
+        kvRow('Consumo', `${num(moduleStat(m, 'powerUse'), 1)} kW mientras cría`),
+        kvRow('Suministro eléctrico', pct(u.power.satisfaction)),
+      ),
+      vs && vs.stock >= vs.capacity && vs.capacity > 0 ? h('div', { class: 'note warn' }, gl('alert'), 'La bandeja está llena: recoge el pescado para que siga criando.') : null,
+    ),
+    h('div', { class: 'util-side' }, outputTray(env, m, 'Los habitantes también recogen de aquí para la cocina y el ahumadero.')),
+  );
+}
+
+/** Texto de la fase de la grúa para la barra de progreso. */
+const GRUA_PHASE: Record<string, string> = {
+  izando: 'Izando la carga',
+  recargando: 'Recogiendo cable',
+  enganchando: 'Lanzando el gancho',
+  esperando: 'Lista para lanzar',
+  llena: 'Sin sitio para la carga',
+  tormenta: 'Recogida por la tormenta',
+  parada: 'Parada',
+};
+
+function gruaBody(env: UiEnv, m: ModuleInstance): VNode {
+  const sim = env.ctx.sim;
+  const gs = sim.gruaStatus(m.id);
+  if (!gs) return empty('Esta grúa no responde.');
+  const side = gs.side < 0 ? 'babor' : 'estribor';
+  const target = gs.target;
+  const dist = target ? Math.hypot(target.pos.x - gs.origin.x, target.pos.z - gs.origin.z) : null;
+  const working = gs.phase !== 'parada' && gs.phase !== 'tormenta' && gs.phase !== 'llena';
+  const showBar = gs.phase === 'izando' || gs.phase === 'recargando' || gs.phase === 'enganchando';
+  return h(
+    'div',
+    { class: 'utility two' },
+    h(
+      'div',
+      { class: 'util-main' },
+      powerSwitch(env, m),
+      h('div', { class: 'big-stat' }, gl('crane'), h('b', null, gs.status), h('span', { class: 'muted' }, `trabaja por ${side} · alcance ${Math.round(gs.range)} m`)),
+      showBar ? meter(GRUA_PHASE[gs.phase] ?? gs.phase, gs.etaMin !== null && gs.etaMin > 0.5 ? `≈ ${duration(gs.etaMin)}` : pct(gs.progress), gs.progress, 'var(--accent)') : null,
+      h(
+        'div',
+        { class: 'kv' },
+        kvRow('Objetivo', target ? `${DEBRIS_NAMES[target.kind]} a ${Math.round(dist ?? 0)} m` : working ? 'Ninguno a su alcance' : '—'),
+        kvRow(`Restos a su alcance (${side})`, String(gs.inRange)),
+        kvRow('Ritmo', gs.rate > 0 ? `×${num(gs.rate, 2)}` : 'Parada'),
+        kvRow('Consumo', `${num(moduleStat(m, 'powerUse'), 1)} kW encendida`),
+      ),
+      gs.phase === 'tormenta' ? h('div', { class: 'note warn' }, gl('storm'), 'Con tormenta la pluma se queda recogida: volverá a trabajar cuando amaine.') : null,
+      gs.phase === 'llena' ? h('div', { class: 'note warn' }, gl('alert'), 'La bandeja y los almacenes están llenos: solo rescatará náufragos hasta que hagáis sitio.') : null,
+      h('div', { class: 'faint small' }, 'Engancha sola el resto más cercano de su costado, y antes que nada las balsas con náufragos.'),
+    ),
+    h('div', { class: 'util-side' }, outputTray(env, m, 'Lo que rescata espera aquí; si no cabe, va al almacén.', 12, 6)),
+  );
+}
+
+/* ================================================================== */
+/* Radar y radio                                                       */
+/* ================================================================== */
+
+function radarBody(env: UiEnv, m: ModuleInstance): VNode {
+  const sim = env.ctx.sim;
+  const st = sim.state;
+  const active = m.status === 'active' && m.fire <= 0 && m.on && m.powered;
+  const status = m.status === 'broken' ? 'Averiado' : m.fire > 0 ? '¡Ardiendo!' : !m.on ? 'Apagado' : !m.powered ? 'Sin energía' : 'Vigilando el horizonte';
+  const baro = barometer(sim);
+  const sightings = [...st.voyage.sightings].filter((s) => s.expiresAt > st.time).sort((a, b) => a.distance - b.distance);
+  const radio = radioMessages(st.log, 5);
+  return h(
+    'div',
+    { class: 'utility two radar-panel' },
+    h(
+      'div',
+      { class: 'util-main' },
+      powerSwitch(env, m),
+      h('div', { class: 'big-stat' }, gl('radar'), h('b', { class: active ? '' : 'warn' }, status), h('span', { class: 'muted' }, active ? 'avistamientos 1 h antes · tormentas 3 h antes' : 'encendido y con energía avisa antes')),
+      h('div', { class: 'kv' }, kvRow('Barómetro', baro.text), kvRow('Consumo', `${num(moduleStat(m, 'powerUse'), 1)} kW encendido`)),
+      section(
+        h('span', null, gl('eye'), 'Avistamientos'),
+        sightings.length
+          ? h(
+              'ul',
+              { class: 'mini-list' },
+              sightings.map((s) =>
+                h(
+                  'li',
+                  { key: s.id },
+                  gl(SIGHTING_GLYPH[s.kind] ?? 'eye'),
+                  h('span', { class: 'ml-name' }, s.name),
+                  h('span', { class: 'ml-val muted' }, `${s.side < 0 ? 'babor' : 'estribor'} · ${Math.round(s.distance)} m · ${duration(s.expiresAt - st.time)} a la vista`),
+                ),
+              ),
+            )
+          : empty(active ? 'Nada en la pantalla del radar.' : 'Con el radar parado solo ves lo que alcanza la vista.', 'eye'),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'util-side' },
+      section(
+        h('span', null, gl('radio'), 'Radio'),
+        radio.length
+          ? h(
+              'ol',
+              { class: 'radio-list' },
+              radio.map((r, i) => h('li', { key: `${r.at}-${i}` }, h('span', { class: 'log-at' }, agoText(r.at, st.time)), h('span', { class: 'radio-text' }, r.text))),
+            )
+          : empty(active ? 'Solo ruido de estática por ahora. De vez en cuando se oye a otros barcos.' : 'La radio está muda: enciende el radar para escuchar a otros barcos.', 'radio'),
+        h('div', { class: 'faint small' }, 'Los mensajes también quedan en el diario (J).'),
+      ),
+    ),
   );
 }

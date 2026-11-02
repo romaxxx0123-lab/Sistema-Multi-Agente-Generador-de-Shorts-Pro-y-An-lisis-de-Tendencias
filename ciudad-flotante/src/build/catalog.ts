@@ -8,15 +8,20 @@
  */
 import { ITEMS } from '../data/items';
 import { HULL_EXPANSION, MODULE_LIST, moduleDef, type ModuleCategory, type ModuleDef } from '../data/modules';
+import { recipesFor } from '../data/recipes';
 import { CELL, HULL_EXPANSION_CELLS, SHIP_MAX_LENGTH } from '../sim/constants';
-import { durationText } from '../sim/construction';
+import { activeUpgrade, durationText, repairNeeds } from '../sim/construction';
+import { GRUA_CYCLE_MIN, GRUA_RANGE, gruaRange } from '../sim/debris';
+import { RADAR_EXTRA_MIN } from '../sim/events';
 import { payInventories } from '../sim/helpers';
 import { totals } from '../sim/inventory';
+import { maxTier, moduleDisplayName, moduleMult, moduleStat, moduleTier, nextUpgrade } from '../sim/moduleStats';
 import type { Simulation } from '../sim/Simulation';
 import { moduleCells, unreachableModules } from '../sim/ship';
-import { blueprintName } from '../sim/stations';
+import { blueprintName, viveroStatus } from '../sim/stations';
 import type { ItemId, ModuleInstance } from '../sim/types';
-import { finite, isConsumer, withArticle } from '../sim/utilities';
+import { finite, isConsumer, isFeminineName, isRadarActive, VIVERO_MINUTES, withArticle } from '../sim/utilities';
+import { RADAR_STORM_LEAD } from '../sim/weather';
 
 /* ------------------------------------------------------------------ */
 /* Textos y formato                                                    */
@@ -119,8 +124,49 @@ export function moduleStats(def: ModuleDef): StatChip[] {
   if (def.plots) out.push({ glyph: 'sprout', text: `${def.plots} bancales`, tone: 'info', title: 'Parcelas de cultivo (consumen agua)' });
   if (def.comfort) out.push({ glyph: 'smile', text: `Confort +${def.comfort}`, tone: 'good', title: 'Mejora el ánimo de los habitantes' });
   if (def.speedBonus) out.push({ glyph: 'speed', text: `+${fmtNum(def.speedBonus)} nudos`, tone: 'good', title: 'Más velocidad mientras tenga energía' });
-  if (def.needsSky) out.push({ glyph: 'sun', text: 'Cielo abierto', tone: 'warn', title: 'Debe estar a la intemperie' });
+  out.push(...specialStats(def));
+  // La grúa (solo cubierta) y el radar (solo superior) siempre quedan a cielo abierto: su regla
+  // la dicen el pie de la ficha y la borda; el aviso se reserva para lo que podría ir en la bodega
+  // o elegir nivel.
+  if (def.edge) out.push({ glyph: 'ship', text: 'Junto a la borda', tone: 'warn', title: 'Debe ocupar una celda del borde de la cubierta, junto a la barandilla, a cielo abierto' });
+  else if (def.needsSky && def.levels.length > 1) out.push({ glyph: 'sun', text: 'Cielo abierto', tone: 'warn', title: 'Debe estar a la intemperie' });
   return out;
+}
+
+/** Qué hace cada módulo especializado (ahumadero, vivero, grúa, radar, sala común). */
+function specialStats(def: ModuleDef): StatChip[] {
+  switch (def.id) {
+    case 'sala_comun':
+      return [{ glyph: 'people', text: 'Ocio y relaciones', tone: 'good', title: 'La tripulación pasa aquí sus ratos libres: juegan a las cartas, leen, mejoran su ánimo y se llevan mejor' }];
+    case 'ahumadero': {
+      const r = recipesFor('ahumadero')[0];
+      if (!r) return [];
+      const [outId, outQty] = Object.entries(r.outputs)[0] ?? ['', 0];
+      const inputs = Object.entries(r.inputs).map(([id, q]) => `${q}× ${itemName(id)}`).join(' + ');
+      return [{ glyph: 'fish', text: `${outQty} en ${durationText(r.time)}`, tone: 'good', title: `${r.name}: ${inputs} → ${outQty}× ${itemName(outId)} (no hace falta cocinarlo)` }];
+    }
+    case 'vivero':
+      return [{ glyph: 'fish', text: `1 cada ${durationText(VIVERO_MINUTES)}`, tone: 'good', title: `Con energía cría un pescado crudo cada ${durationText(VIVERO_MINUTES)} y lo deja en su bandeja` }];
+    case 'grua':
+      return [{ glyph: 'lifebuoy', text: `Rescata a ${fmtNum(GRUA_RANGE)} m`, tone: 'good', title: `Con energía engancha sola el resto más cercano de su costado a ${fmtNum(GRUA_RANGE)} m o menos, cada ${durationText(GRUA_CYCLE_MIN)} (también balsas de náufragos)` }];
+    case 'radar':
+      return [{ glyph: 'compass', text: `Tormentas ${durationText(RADAR_STORM_LEAD)} antes`, tone: 'good', title: `Con energía: aviso de tormenta ${durationText(RADAR_STORM_LEAD)} antes, avistamientos ${durationText(RADAR_EXTRA_MIN)} antes y durante más tiempo, y mensajes de radio de otros barcos` }];
+    default:
+      return [];
+  }
+}
+
+/** "Mejorable hasta el nivel 3: Nivel 2: Almacén con altillo · Nivel 3: Almacén reforzado" (o null). */
+export function upgradesSummary(def: ModuleDef): string | null {
+  const ups = def.upgrades ?? [];
+  if (!ups.length) return null;
+  const top = Math.max(...ups.map((u) => u.tier));
+  return `Mejorable hasta el nivel ${top} con la herramienta Mejorar (U). ${ups.map((u) => `Nivel ${u.tier}: ${u.name}`).join(' · ')}`;
+}
+
+/** Número de nivel en romanos (las placas de latón de los muebles mejorados dicen II y III). */
+export function tierRoman(t: number): string {
+  return ['', 'I', 'II', 'III', 'IV', 'V'][t] ?? String(t);
 }
 
 /** "Todos los niveles", "Solo bodega", "Cubierta y superior"... */
@@ -147,6 +193,9 @@ export interface CardInfo {
   levelsText: string;
   /** "8×4 m". */
   sizeText: string;
+  /** Nivel máximo de mejora (1 = no se mejora) y su explicación para el título. */
+  maxTier: number;
+  upgradesText: string | null;
 }
 
 export function cardInfo(sim: Simulation, def: ModuleDef, have: Record<ItemId, number>): CardInfo {
@@ -162,6 +211,8 @@ export function cardInfo(sim: Simulation, def: ModuleDef, have: Record<ItemId, n
     stats: moduleStats(def),
     levelsText: levelsText(def.levels),
     sizeText: `${def.size[0] * CELL}×${def.size[1] * CELL} m`,
+    maxTier: maxTier(def.id),
+    upgradesText: upgradesSummary(def),
   };
 }
 
@@ -206,6 +257,217 @@ export function expansionInfo(sim: Simulation, have: Record<ItemId, number>): Ex
     progress: status ? status.progress : null,
     etaMin: status ? status.etaMin : null,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Mejoras de instalaciones (herramienta Mejorar, U)                   */
+/* ------------------------------------------------------------------ */
+
+type TierRef = { type: string; tier: number };
+
+/** "40 %" de un factor <1 ("−40 % agua") o el ahorro de un multiplicador de duración (1,5 → 33 %). */
+function pct(v: number): string {
+  return `${fmtNum(Math.abs(v) * 100, 0)} %`;
+}
+
+/**
+ * Efectos legibles de pasar un módulo del nivel `from` al `to`, comparando sus estadísticas
+ * efectivas (`moduleStat` / `moduleMult`): "+12 huecos", "+100 L", "×1,5 velocidad",
+ * "−40 % agua"… Solo aparece lo que cambia.
+ */
+export function upgradeEffects(type: string, from: number, to: number): StatChip[] {
+  const def = moduleDef(type);
+  const a: TierRef = { type, tier: from };
+  const b: TierRef = { type, tier: to };
+  const out: StatChip[] = [];
+  const diff = (key: Parameters<typeof moduleStat>[1]): [number, number, number] | null => {
+    const va = moduleStat(a, key);
+    const vb = moduleStat(b, key);
+    return Math.abs(vb - va) > 1e-9 ? [va, vb, vb - va] : null;
+  };
+  const plus = (d: number): string => `${d >= 0 ? '+' : '−'}${fmtNum(Math.abs(d))}`;
+
+  let d = diff('storageSlots');
+  if (d) out.push({ glyph: 'box', text: `${plus(d[2])} ${Math.abs(d[2]) === 1 ? 'hueco' : 'huecos'}`, tone: 'info', title: `Almacenaje: ${d[0]} → ${d[1]} huecos` });
+  d = diff('fuelSlots');
+  if (d) out.push({ glyph: 'fire', text: `${plus(d[2])} ${Math.abs(d[2]) === 1 ? 'ranura' : 'ranuras'} de combustible`, tone: 'info', title: `Combustible: ${d[0]} → ${d[1]} ranuras` });
+  d = diff('waterCapacity');
+  if (d) out.push({ glyph: 'tank', text: `${plus(d[2])} L`, tone: 'info', title: `Capacidad de agua potable: ${fmtNum(d[0])} → ${fmtNum(d[1])} L` });
+  d = diff('waterGen');
+  if (d) {
+    const rain = type === 'colector';
+    out.push({ glyph: 'drop', text: `${plus(d[2])} L/h${rain ? ' con lluvia' : ''}`, tone: 'good', title: `${rain ? 'Agua recogida con lluvia' : 'Agua potabilizada'}: ${fmtNum(d[0])} → ${fmtNum(d[1])} L/h` });
+  }
+  d = diff('powerGen');
+  if (d) {
+    const solar = !def.fuelSlots;
+    out.push({ glyph: 'power', text: `${plus(d[2])} kW${solar ? ' de día' : ''}`, tone: 'good', title: `Potencia${solar ? ' a pleno sol' : ''}: ${fmtNum(d[0])} → ${fmtNum(d[1])} kW` });
+  }
+  d = diff('powerUse');
+  if (d) out.push({ glyph: 'plug', text: `${plus(d[2])} kW de consumo`, tone: d[2] < 0 ? 'good' : 'bad', title: `Consumo eléctrico: ${fmtNum(d[0])} → ${fmtNum(d[1])} kW` });
+  d = diff('batteryKWh');
+  if (d) out.push({ glyph: 'battery', text: `${plus(d[2])} kWh`, tone: 'good', title: `Capacidad de las baterías: ${fmtNum(d[0])} → ${fmtNum(d[1])} kWh` });
+  d = diff('comfort');
+  if (d) {
+    const why = def.beds && !def.healingBeds ? 'mejor ánimo y mejor descanso en sus camas' : 'mejor ánimo de quien pasa aquí su tiempo';
+    out.push({ glyph: 'smile', text: `Confort ${plus(d[2])}`, tone: 'good', title: `Confort: ${fmtNum(d[0])} → ${fmtNum(d[1])} (${why})` });
+  }
+  d = diff('speedBonus');
+  if (d) out.push({ glyph: 'speed', text: `${plus(d[2])} nudos`, tone: 'good', title: `Velocidad extra del motor: ${fmtNum(d[0])} → ${fmtNum(d[1])} nudos` });
+
+  // Multiplicadores: "×1,5 velocidad" si parte de 1; "Velocidad ×1,2 → ×1,5" si ya estaba mejorado.
+  const mult = (key: Parameters<typeof moduleMult>[1]): [number, number] | null => {
+    const va = moduleMult(a, key);
+    const vb = moduleMult(b, key);
+    return Math.abs(vb - va) > 1e-9 ? [va, vb] : null;
+  };
+  const times = (m: [number, number], label: string): string =>
+    Math.abs(m[0] - 1) < 1e-9 ? `×${fmtNum(m[1], 2)} ${label}` : `${label.charAt(0).toUpperCase()}${label.slice(1)} ×${fmtNum(m[0], 2)} → ×${fmtNum(m[1], 2)}`;
+  /** Factor < 1 que ahorra: "−40 % agua" / "Agua −40 % → −50 %". */
+  const saves = (fa: number, fb: number, label: string): string =>
+    Math.abs(fa - 1) < 1e-9 ? `−${pct(1 - fb)} ${label}` : `${label.charAt(0).toUpperCase()}${label.slice(1)} −${pct(1 - fa)} → −${pct(1 - fb)}`;
+
+  const ws = mult('workSpeed');
+  if (ws) {
+    const what: Record<string, string> = {
+      cocina: 'Cocina más deprisa',
+      banco_trabajo: 'Fabrica más deprisa',
+      taller: 'Fabrica más deprisa',
+      ahumadero: 'Ahúma más deprisa',
+      vivero: `Un pescado cada ${durationText(VIVERO_MINUTES / ws[1])} (ahora cada ${durationText(VIVERO_MINUTES / ws[0])})`,
+      grua: `Lanza el gancho cada ${durationText(GRUA_CYCLE_MIN / ws[1])} (ahora cada ${durationText(GRUA_CYCLE_MIN / ws[0])})`,
+    };
+    out.push({ glyph: 'speed', text: times(ws, 'velocidad'), tone: 'good', title: what[type] ?? 'Trabaja más deprisa' });
+  }
+  const fe = mult('fuelEfficiency');
+  if (fe) out.push({ glyph: 'fire', text: saves(1 / fe[0], 1 / fe[1], 'combustible'), tone: 'good', title: `Cada carga de combustible dura ×${fmtNum(fe[1], 2)}` });
+  const gm = mult('growthMult');
+  if (gm) out.push({ glyph: 'sprout', text: times(gm, 'crecimiento'), tone: 'good', title: 'Las plantas crecen más deprisa' });
+  const wu = mult('waterUseMult');
+  if (wu) out.push({ glyph: 'drop', text: saves(wu[0], wu[1], 'agua'), tone: 'good', title: 'Los cultivos beben menos agua de los depósitos' });
+  const hm = mult('healMult');
+  if (hm) out.push({ glyph: 'medical', text: times(hm, 'curación'), tone: 'good', title: 'Quien descansa en sus camillas se cura antes' });
+  const wm = mult('wearMult');
+  if (wm) out.push({ glyph: 'wrench', text: saves(wm[0], wm[1], 'desgaste'), tone: 'good', title: 'Pierde condición más despacio: se avería menos' });
+  if (type === 'grua') {
+    const ra = gruaRange(a);
+    const rb = gruaRange(b);
+    if (Math.abs(rb - ra) > 1e-9) out.push({ glyph: 'lifebuoy', text: `Alcance ${fmtNum(ra)} → ${fmtNum(rb)} m`, tone: 'good', title: 'Hasta dónde llega la pluma para enganchar restos de su costado' });
+  }
+  return out;
+}
+
+/**
+ * Estado de la mejora de un módulo:
+ *  - `ok`: se puede encargar ya; `cost`: solo faltan materiales; `blocked`: otra cosa lo impide
+ *    (en obras, averiado, ardiendo, sin plano);
+ *  - `busy`: hay una mejora en obras (clic para cancelarla); `max`: ya está al máximo;
+ *  - `none`: ese tipo de módulo no admite mejoras.
+ */
+export type UpgradeState = 'ok' | 'cost' | 'blocked' | 'busy' | 'max' | 'none';
+
+export interface UpgradePreview {
+  id: number;
+  type: string;
+  /** Nivel del barco donde está (bodega, cubierta…). */
+  level: number;
+  /** Nombre actual (según su nivel de mejora). */
+  name: string;
+  tier: number;
+  maxTier: number;
+  state: UpgradeState;
+  /** Motivo de no poder mejorar (null si se puede o si está en obras de mejora). */
+  reason: string | null;
+  /** Qué hacer para poder mejorarlo, si se sabe. */
+  hint: string | null;
+  /** Mejora siguiente (o la que está en obras). */
+  toTier: number | null;
+  nextName: string | null;
+  desc: string | null;
+  effects: StatChip[];
+  /** Coste (en obras: lo pagado, que se recupera entero al cancelar). */
+  cost: CostLine[];
+  timeText: string | null;
+  /** Obra de mejora en curso. */
+  progress: number | null;
+  etaMin: number | null;
+  builders: number;
+}
+
+/** "Repáralo con la llave inglesa y una pieza mecánica". */
+function repairHint(m: ModuleInstance): string {
+  const { tool, part } = repairNeeds(m.type);
+  const fem = isFeminineName(moduleDisplayName(m));
+  const partName = itemName(part);
+  const partLower = partName.charAt(0).toLowerCase() + partName.slice(1);
+  return `Repára${fem ? 'la' : 'lo'} con ${withArticle(itemName(tool))} y ${isFeminineName(partName) ? 'una' : 'un'} ${partLower}`;
+}
+
+export function upgradePreview(sim: Simulation, m: ModuleInstance, have: Record<ItemId, number> = stock(sim)): UpgradePreview {
+  const def = moduleDef(m.type);
+  const tier = moduleTier(m);
+  const top = maxTier(m.type);
+  const base: UpgradePreview = {
+    id: m.id,
+    type: m.type,
+    level: m.level,
+    name: moduleDisplayName(m),
+    tier,
+    maxTier: top,
+    state: 'none',
+    reason: null,
+    hint: null,
+    toTier: null,
+    nextName: null,
+    desc: null,
+    effects: [],
+    cost: [],
+    timeText: null,
+    progress: null,
+    etaMin: null,
+    builders: 0,
+  };
+  if (!def.upgrades?.length) return { ...base, state: 'none', reason: `${withArticle(def.name, true)} no admite mejoras` };
+  const busy = m.status !== 'construction' ? activeUpgrade(m) : null;
+  if (!busy && !nextUpgrade(m)) return { ...base, state: 'max', reason: `Nivel máximo (${tier} de ${top})` };
+  const chk = sim.checkUpgrade(m.id);
+  const to = chk.toTier ?? tier + 1;
+  const info = {
+    toTier: to,
+    nextName: chk.name,
+    desc: chk.desc,
+    effects: upgradeEffects(m.type, tier, to),
+    cost: costLines(chk.cost, have),
+    timeText: chk.buildTime > 0 ? durationText(chk.buildTime) : null,
+  };
+  if (busy) {
+    const cs = sim.constructionStatus(m.id);
+    return { ...base, ...info, state: 'busy', progress: cs?.progress ?? finite(m.upgrade?.progress), etaMin: cs?.etaMin ?? null, builders: cs?.builders ?? 0 };
+  }
+  if (chk.ok) return { ...base, ...info, state: 'ok' };
+  const reason = chk.reason ?? 'No se puede mejorar';
+  if (reason.startsWith('Faltan')) return { ...base, ...info, state: 'cost', reason, hint: 'Consigue los materiales: cuentan la mochila, los almacenes y las bandejas' };
+  let hint: string | null = null;
+  if (m.status === 'construction') hint = 'Espera a que termine la obra (o ayuda con el martillo)';
+  else if (m.fire > 0) hint = 'Apaga antes el fuego con el cubo';
+  else if (m.status === 'broken') hint = repairHint(m);
+  return { ...base, ...info, state: 'blocked', reason, hint };
+}
+
+const UPGRADE_ORDER: Record<UpgradeState, number> = { ok: 0, cost: 1, busy: 2, blocked: 3, max: 4, none: 5 };
+
+/**
+ * Módulos del barco que admiten mejoras, para la lista de la herramienta Mejorar: primero los que
+ * se pueden mejorar ya, luego los que solo esperan materiales, las obras de mejora, los bloqueados
+ * y, al final, los que ya están al máximo. Las obras de construcción no salen (aún no se mejoran).
+ */
+export function upgradeList(sim: Simulation, have: Record<ItemId, number> = stock(sim)): UpgradePreview[] {
+  const out: UpgradePreview[] = [];
+  for (const m of sim.state.ship.modules) {
+    if (m.status === 'construction' || !moduleDef(m.type).upgrades?.length) continue;
+    out.push(upgradePreview(sim, m, have));
+  }
+  return out.sort((a, b) => UPGRADE_ORDER[a.state] - UPGRADE_ORDER[b.state] || b.level - a.level || a.name.localeCompare(b.name, 'es') || a.id - b.id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -285,6 +547,11 @@ export interface ModuleInfo {
   /** Condición 0..100 (solo módulos terminados). */
   condition: number | null;
   lines: string[];
+  /** Nivel de mejora actual y máximo (1 y 1 si no se mejora). */
+  tier: number;
+  maxTier: number;
+  /** Obra de mejora en curso (el módulo sigue en uso mientras dura). */
+  upgrade: { name: string; toTier: number; progress: number; etaMin: number; builders: number } | null;
 }
 
 function bedOwnerName(sim: Simulation, owner: string | null): string {
@@ -347,8 +614,37 @@ export function moduleInfo(sim: Simulation, m: ModuleInstance): ModuleInfo {
       lines.push(`Bancales: ${growing}/${m.plots.length} plantados`);
     }
     if (m.queue.length) lines.push(`Cola de trabajo: ${m.queue.length}`);
+    lines.push(...specialLines(sim, m));
   }
-  return { id: m.id, name: def.name, type: m.type, level: m.level, state, tone, progress, condition, lines };
+  let upgrade: ModuleInfo['upgrade'] = null;
+  const up = m.status !== 'construction' ? activeUpgrade(m) : null;
+  if (up) {
+    const cs = sim.constructionStatus(m.id);
+    upgrade = { name: up.name, toTier: up.tier, progress: cs?.progress ?? finite(m.upgrade?.progress), etaMin: cs?.etaMin ?? 0, builders: cs?.builders ?? 0 };
+  }
+  return { id: m.id, name: moduleDisplayName(m), type: m.type, level: m.level, state, tone, progress, condition, lines, tier: moduleTier(m), maxTier: maxTier(m.type), upgrade };
+}
+
+/** Estado de los módulos automáticos (vivero, grúa, radar) para la ficha. */
+function specialLines(sim: Simulation, m: ModuleInstance): string[] {
+  const out: string[] = [];
+  if (m.type === 'vivero') {
+    const v = viveroStatus(sim, m.id);
+    if (v) {
+      out.push(`${v.status} · ${v.stock}/${v.capacity} ${v.capacity === 1 ? 'pescado' : 'pescados'} en la bandeja`);
+      if (v.working && v.etaMin !== null) out.push(`Próximo pescado en ${durationText(v.etaMin)}`);
+    }
+  } else if (m.type === 'grua') {
+    const g = sim.gruaStatus(m.id);
+    if (g) {
+      out.push(g.status);
+      const side = g.side > 0 ? 'estribor' : 'babor';
+      out.push(`Alcance ${fmtNum(g.range)} m por ${side} · ${g.inRange} ${g.inRange === 1 ? 'resto' : 'restos'} a su alcance`);
+    }
+  } else if (m.type === 'radar' && m.status === 'active' && m.on && m.powered && isRadarActive(sim)) {
+    out.push(`En marcha: avisa de las tormentas ${durationText(RADAR_STORM_LEAD)} antes`);
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -371,6 +667,10 @@ export interface DemolishPreview {
   batteryLossKWh: number;
   /** Avisos de pérdida para la ficha y la confirmación ("Se perderán 40 L de agua: …"). */
   losses: string[];
+  /** Mejora en obras que se cancelaría (se recupera entera), o null. */
+  upgradeInProgress: string | null;
+  /** Nivel de mejora terminado (las mejoras hechas se recuperan a medias). */
+  tier: number;
 }
 
 /**
@@ -378,11 +678,11 @@ export interface DemolishPreview {
  * la capacidad que queda sin el módulo (las obras aún no cuentan en la capacidad).
  */
 export function estimateLosses(sim: Simulation, m: ModuleInstance): Pick<DemolishPreview, 'waterLossL' | 'batteryLossKWh' | 'losses'> {
-  const def = moduleDef(m.type);
   const u = sim.state.utilities;
   const built = m.status !== 'construction';
-  const waterCap = Math.max(0, finite(u.water?.capacityL) - (built ? (def.waterCapacity ?? 0) : 0));
-  const battCap = Math.max(0, finite(u.power?.capacityKWh) - (built ? (def.batteryKWh ?? 0) : 0));
+  // Capacidad efectiva (con su nivel de mejora), no la de la definición base.
+  const waterCap = Math.max(0, finite(u.water?.capacityL) - (built ? moduleStat(m, 'waterCapacity') : 0));
+  const battCap = Math.max(0, finite(u.power?.capacityKWh) - (built ? moduleStat(m, 'batteryKWh') : 0));
   const waterLossL = Math.max(0, finite(u.waterL) - waterCap);
   const batteryLossKWh = Math.max(0, finite(u.batteryKWh) - battCap);
   const losses: string[] = [];
@@ -400,7 +700,7 @@ export function demolishPreview(sim: Simulation, m: ModuleInstance): DemolishPre
   const reason = chk.ok ? null : demolishReason(sim, m, chk.reason);
   return {
     id: m.id,
-    name: moduleDef(m.type).name,
+    name: moduleDisplayName(m),
     ok: chk.ok,
     reason,
     hint: chk.ok ? null : demolishHint(reason, aboveModules(sim, m).every((mm) => moduleDef(mm.type).demolishable)),
@@ -410,6 +710,8 @@ export function demolishPreview(sim: Simulation, m: ModuleInstance): DemolishPre
       .map(([id, qty]) => ({ id, name: itemName(id), qty })),
     contents,
     ...demolishLossesOf(sim, m, chk),
+    upgradeInProgress: m.status !== 'construction' ? (activeUpgrade(m)?.name ?? null) : null,
+    tier: moduleTier(m),
   };
 }
 

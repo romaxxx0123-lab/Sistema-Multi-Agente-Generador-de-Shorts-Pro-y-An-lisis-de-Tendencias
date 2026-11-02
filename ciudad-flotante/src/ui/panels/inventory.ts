@@ -3,7 +3,8 @@
  *  - Objetos: 24 ranuras (las 8 primeras = barra rápida), arrastrar y soltar, usar (clic derecho o
  *    doble clic), ficha del objeto, prenda equipada con "Quitar", estado del jugador.
  *  - Fabricar: recetas a mano (se fabrican aquí) y de referencia por estación (tengo/necesito).
- *  - Diario: situaciones en curso con objetivos, diario de a bordo, travesía, estadísticas, consejos.
+ *  - Diario: situaciones en curso con objetivos, diario de a bordo, travesía, estadísticas, consejos;
+ *    y el Cuaderno del Albatros (hojas leídas y las que faltan, ver story.ts).
  *  - Barco: energía, agua, tripulación y camas, despensa y módulos con problemas.
  */
 import { ITEMS } from '../../data/items';
@@ -22,6 +23,8 @@ import { agoText, dayClock, duration, itemName, num, signed } from '../fmt';
 import { EVENT_GLYPH, MODULE_GLYPH } from '../icons';
 import { bedSummary, CATEGORY_NAMES, eventTone, foodSummary, itemEffects, moduleIssues, recipeRows, sortedEvents, sortInventory, toolUse, useVerb } from '../model';
 import { cx, h, type VInput, type VNode } from '../vdom';
+import { storyStatus } from '../../sim/actions';
+import { notebookView } from '../story';
 import { bar, btn, empty, gl, grid, icon, kbd, meter, section, type SlotOpts } from '../widgets';
 import type { PanelView } from './index';
 import { STATION_GLYPH, STATION_LABEL, recipeDetail, recipeRow } from './crafting';
@@ -65,7 +68,7 @@ export function renderInventory(env: UiEnv): PanelView {
       body = craftTab(env);
       break;
     case 'diario':
-      body = logTab(env);
+      body = diaryTab(env);
       break;
     case 'barco':
       body = shipTab(env);
@@ -235,7 +238,7 @@ function detailSection(env: UiEnv, sel: number | null, stack: { id: string; qty:
       btn(held ? 'En la mano' : verb, () => useSlot(env, sel), {
         primary: !held,
         disabled: held,
-        glyph: def.category === 'plano' ? 'book' : def.category === 'ropa' ? 'shirt' : 'hand',
+        glyph: def.category === 'plano' || def.category === 'documento' ? 'book' : def.category === 'ropa' ? 'shirt' : 'hand',
         title: isTool && sel >= HOTBAR_SLOTS ? 'La pasa a la barra rápida y la lleva en la mano' : undefined,
       }),
     );
@@ -341,7 +344,15 @@ function statusSection(env: UiEnv): VNode {
 /* Fabricar                                                            */
 /* ================================================================== */
 
-const STATIONS: StationKind[] = ['mano', 'banco', 'taller', 'cocina'];
+const STATIONS: StationKind[] = ['mano', 'banco', 'taller', 'cocina', 'ahumadero'];
+
+/** Dónde se fabrica lo de cada estación (pestaña Fabricar, recetas de consulta). */
+const STATION_WHERE: Record<string, { where: string; missing: string; type: string }> = {
+  banco: { where: 'Ve al banco de trabajo y pulsa E para fabricarlo.', missing: 'banco de trabajo', type: 'banco_trabajo' },
+  taller: { where: 'Se fabrica en el taller mecánico (necesita electricidad).', missing: 'taller mecánico', type: 'taller' },
+  cocina: { where: 'Se cocina en la cocina (necesita leña o combustible en el fogón).', missing: 'cocina', type: 'cocina' },
+  ahumadero: { where: 'Se ahúma en el ahumadero, en cubierta (la leña va en la receta).', missing: 'ahumadero', type: 'ahumadero' },
+};
 
 function craftTab(env: UiEnv): VNode {
   const sim = env.ctx.sim;
@@ -391,9 +402,9 @@ function craftTab(env: UiEnv): VNode {
       const reason = av?.reason ?? null;
       detail = recipeDetail(env, r, reason, btn('Fabricar', () => env.act(sim.craftByHand(r.id), 'good'), { primary: true, disabled: !av?.canCraft, glyph: 'hand' }), 'Se fabrica al momento con lo que llevas encima y lo que hay en los almacenes.');
     } else {
-      const where = station === 'banco' ? 'Ve al banco de trabajo y pulsa E para fabricarlo.' : station === 'taller' ? 'Se fabrica en el taller mecánico (necesita electricidad).' : 'Se cocina en la cocina (necesita leña o combustible en el fogón).';
-      const has = sim.state.ship.modules.some((m) => m.status !== 'construction' && ((station === 'banco' && m.type === 'banco_trabajo') || m.type === station));
-      detail = recipeDetail(env, r, selRow.locked ? selRow.reason : null, null, h('span', null, gl(has ? 'info' : 'alert'), has ? where : `Aún no tienes ${station === 'banco' ? 'banco de trabajo' : station === 'taller' ? 'taller mecánico' : 'cocina'} a bordo: constrúyelo con B.`));
+      const w = STATION_WHERE[station] ?? STATION_WHERE['banco']!;
+      const has = sim.state.ship.modules.some((m) => m.status !== 'construction' && m.type === w.type);
+      detail = recipeDetail(env, r, selRow.locked ? selRow.reason : null, null, h('span', null, gl(has ? 'info' : 'alert'), has ? w.where : `Aún no tienes ${w.missing} a bordo: constrúyelo con B.`));
     }
   }
   return h(
@@ -421,6 +432,45 @@ function craftTab(env: UiEnv): VNode {
 /* ================================================================== */
 /* Diario                                                              */
 /* ================================================================== */
+
+/** Pestaña Diario: el diario de a bordo o el Cuaderno del Albatros. */
+function diaryTab(env: UiEnv): VNode {
+  const view = env.ps.diary ?? 'log';
+  let story: { read: number; total: number; aboard: boolean } = { read: 0, total: 0, aboard: false };
+  try {
+    const st = storyStatus(env.ctx.sim);
+    story = { read: st.read.length, total: st.total, aboard: st.missing.some((p) => p.aboard !== null) };
+  } catch {
+    /* partida sin hilo narrativo */
+  }
+  const tab = (id: 'log' | 'cuaderno', glyphName: string, label: string, extra?: VInput): VNode =>
+    h(
+      'button',
+      {
+        key: id,
+        type: 'button',
+        class: cx('seg-btn', view === id && 'active'),
+        onclick: () => {
+          env.ps.diary = id;
+          env.refresh();
+        },
+      },
+      gl(glyphName),
+      label,
+      extra ?? null,
+    );
+  const seg = h(
+    'div',
+    { class: 'diary-bar' },
+    h(
+      'div',
+      { class: 'seg' },
+      tab('log', 'book', 'Diario de a bordo'),
+      tab('cuaderno', 'quill', 'Cuaderno del Albatros', h('span', { class: cx('seg-n', story.aboard && 'pulse'), title: story.aboard ? 'Hay una hoja a bordo sin leer' : 'Hojas leídas' }, `${story.read}/${story.total}`)),
+    ),
+  );
+  return h('div', { class: 'diary' }, seg, view === 'cuaderno' ? notebookView(env) : logTab(env));
+}
 
 function logTab(env: UiEnv): VNode {
   const sim = env.ctx.sim;

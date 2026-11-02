@@ -1,18 +1,18 @@
 /**
  * Panel de HABITANTE: retrato (aspecto real del personaje), nombre, rasgo, puesto con selector,
- * ánimo (y por qué), necesidades, qué hace ahora, frases de `sim.talkTo` y opciones: mediar,
- * curar, vendar, charlar y darle un objeto del inventario.
+ * ánimo (y por qué), relaciones con el resto de la tripulación, necesidades, qué hace ahora,
+ * frases de `sim.talkTo` y opciones: mediar, curar, vendar, charlar y darle un objeto del inventario.
  */
 import { ITEMS } from '../../data/items';
 import { ROLES, TRAITS } from '../../data/names';
 import { hash01 } from '../../render/ship/geo';
 import { lookFromAppearance } from '../../render/ship/character';
-import { isFemaleNpc, npcAdj, npcMoodFactors, npcRoleName, npcTraitName } from '../../sim/npc';
+import { FRIEND_AT, isFemaleNpc, npcAdj, npcMoodFactors, npcRoleName, npcTraitName, RIVAL_AT } from '../../sim/npc';
 import type { NpcRole, NpcState } from '../../sim/types';
 import type { UiEnv } from '../env';
 import { signed } from '../fmt';
 import { shade } from '../icons';
-import { cx, h } from '../vdom';
+import { cx, h, type VNode } from '../vdom';
 import { bar, btn, chip, empty, gl, grid, section } from '../widgets';
 import type { PanelView } from './index';
 
@@ -208,12 +208,58 @@ export function renderNpc(env: UiEnv, npcId: string): PanelView | null {
       )
     : null;
 
+  const ties = relationsSection(env, npc);
+
   return {
     title: npc.name,
     subtitle: `${npcRoleName(npc, npc.role)} · a bordo desde el día ${npc.joinedDay}`,
     glyph: 'person',
-    body: h('div', { class: 'npc-layout' }, card, h('div', { class: 'npc-main scroll' }, status, lines, away ? empty(`Está fuera del barco. Podrás hablar con ${isFemaleNpc(npc) ? 'ella' : 'él'} cuando vuelva.`, 'ship') : actions, giving, roles, why)),
+    body: h('div', { class: 'npc-layout' }, card, h('div', { class: 'npc-main scroll' }, status, lines, away ? empty(`Está fuera del barco. Podrás hablar con ${isFemaleNpc(npc) ? 'ella' : 'él'} cuando vuelva.`, 'ship') : actions, giving, why, ties, roles)),
     cls: 'pn-wide',
   };
 }
 
+
+/** Tono y glifo de una afinidad (−100..100). */
+export function relationTone(value: number): { tone: 'good' | 'warn' | 'danger'; glyph: string } {
+  if (value >= FRIEND_AT) return { tone: 'good', glyph: 'heart' };
+  if (value > 0) return { tone: 'good', glyph: 'smile' };
+  if (value <= RIVAL_AT) return { tone: 'danger', glyph: 'frown' };
+  return { tone: 'warn', glyph: 'meh' };
+}
+
+/**
+ * Relaciones con el resto de la tripulación (`sim.npcRelations`, de la mejor a la peor), con una
+ * barra de afinidad centrada en cero. Clic en un nombre abre su ficha.
+ */
+function relationsSection(env: UiEnv, npc: NpcState): VNode {
+  const sim = env.ctx.sim;
+  let rels: { id: string; name: string; value: number; label: string }[] = [];
+  try {
+    rels = sim.npcRelations(npc.id);
+  } catch {
+    rels = [];
+  }
+  const alone = sim.state.npcs.length <= 1;
+  return section(
+    h('span', null, gl('people'), 'Relaciones'),
+    rels.length
+      ? h(
+          'ul',
+          { class: 'mini-list relations' },
+          rels.map((r) => {
+            const t = relationTone(r.value);
+            const v = Math.max(-100, Math.min(100, r.value));
+            return h(
+              'li',
+              { key: r.id, class: `rel-${t.tone}` },
+              gl(t.glyph, `gl ${t.tone}`),
+              h('button', { type: 'button', class: 'rel-name', title: `Ver la ficha de ${r.name}`, onclick: () => env.open({ kind: 'npc', npcId: r.id }) }, r.name),
+              h('span', { class: 'rel-bar', title: `Afinidad ${v > 0 ? '+' : ''}${v}` }, h('i', { class: v >= 0 ? 'pos' : 'neg', style: { width: `${Math.abs(v) / 2}%` } })),
+              h('span', { class: `ml-val ${t.tone}` }, r.label),
+            );
+          }),
+        )
+      : empty(alone ? 'Es la única persona de la tripulación además de ti.' : 'Aún no ha hecho amistades ni tiene roces a bordo. Comer juntos y la sala común unen; las discusiones separan.', 'people'),
+  );
+}

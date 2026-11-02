@@ -35,7 +35,7 @@ import {
 } from '../sim/ship';
 import type { Simulation } from '../sim/Simulation';
 import type { Rotation } from '../sim/types';
-import { toArticle, withArticle } from '../sim/utilities';
+import { isFeminineName, toArticle, withArticle } from '../sim/utilities';
 import { anchorFor } from './picking';
 
 /* ------------------------------------------------------------------ */
@@ -117,6 +117,7 @@ export function fallbackHint(reason: string | null): string | null {
   if (reason.startsWith('La salida')) return 'Arriba debe salir a cubierta libre o al techo de una habitación';
   if (reason.startsWith('No se puede atravesar')) return 'Colócala en la cubierta, fuera de las habitaciones';
   if (reason.startsWith('Partiría la cubierta')) return 'Déjale paso alrededor o arrímala a la borda';
+  if (reason.startsWith('Debe ir junto a la borda')) return 'Arrímala a la borda: las celdas del borde se marcan en verde';
   if (/^(Taparía|Dejaría|Bloquearía|No se podría)/.test(reason)) return 'Muévela a otra celda para dejar libre el paso';
   return null;
 }
@@ -268,6 +269,10 @@ export function explainPlacement(sim: Simulation, spot: PlaceSpot, reason: strin
   if (reason.startsWith('Sin acceso')) {
     const area = isolatedArea(sim, spot);
     if (area) return { reason: isolatedReason(area), hint: isolatedHint(area), area };
+  }
+  if (reason.startsWith('Debe ir junto a la borda')) {
+    const fem = isFeminineName(def.name);
+    return { reason: `${withArticle(def.name, true)} debe ir junto a la borda`, hint: `Colóca${fem ? 'la' : 'lo'} en una celda del borde de la cubierta (en verde en la rejilla)`, area: null };
   }
   if (reason === GENERIC_ISOLATION) {
     const named = isolationReason(sim, spot);

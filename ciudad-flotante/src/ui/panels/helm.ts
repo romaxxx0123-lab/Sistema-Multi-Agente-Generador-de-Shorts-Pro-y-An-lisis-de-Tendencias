@@ -4,8 +4,9 @@
  * y avistamientos con sus decisiones (`sim.eventChoice`). Acceso al comercio con el mercante.
  */
 import { REGIONS } from '../../data/regions';
+import { FINAL_REGION } from '../../data/story';
 import { eventStatusText } from '../../sim/events';
-import { currentRegion, gatedRoutes, hoursToRegionEnd, isAnchored, milesToRegionEnd, routeOptions } from '../../sim/voyage';
+import { CAPTAIN_COURSE_LABEL, captainCourseOpen, currentRegion, gatedRoutes, hoursToRegionEnd, isAnchored, milesToRegionEnd, routeOptions } from '../../sim/voyage';
 import { barometer, weatherName } from '../../sim/weather';
 import type { ActiveEvent } from '../../sim/types';
 import type { UiEnv } from '../env';
@@ -18,6 +19,15 @@ import type { PanelView } from './index';
 
 const DANGER_COLOR = ['#8ac66b', '#8ac66b', '#c9d36a', '#f2c14e', '#f4a261', '#e5604d'];
 
+/**
+ * ¿Se dibuja Puerto Esperanza en la carta? Solo cuando el cuaderno ha revelado su rumbo, se ofrece
+ * ya como rumbo o se ha llegado: antes es un secreto (no aparece ni como «¿?»).
+ */
+export function finalRegionOnChart(sim: UiEnv['ctx']['sim']): boolean {
+  const story = sim.state.story;
+  return !!story && (story.revealed || story.arrived || sim.state.voyage.route.includes(FINAL_REGION));
+}
+
 /** Carta náutica en SVG. */
 function chart(env: UiEnv): VNode {
   const sim = env.ctx.sim;
@@ -25,6 +35,8 @@ function chart(env: UiEnv): VNode {
   const cur = v.regionId;
   const visited = new Set(v.route);
   const choices = new Set(routeOptions(sim).map((r) => r.id));
+  const showFinal = finalRegionOnChart(sim);
+  const captain = captainCourseOpen(sim);
   const edges: VNode[] = [];
   const drawn = new Set<string>();
   for (const r of Object.values(REGIONS)) {
@@ -33,6 +45,8 @@ function chart(env: UiEnv): VNode {
     for (const n of r.next) {
       const b = CHART_POS[n];
       if (!b) continue;
+      // Las salidas de Puerto Esperanza solo se conocen después de haber llegado.
+      if ((r.id === FINAL_REGION || n === FINAL_REGION) && !visited.has(FINAL_REGION)) continue;
       const key = [r.id, n].sort().join('-');
       if (drawn.has(key)) continue;
       drawn.add(key);
@@ -41,6 +55,14 @@ function chart(env: UiEnv): VNode {
       const next = (r.id === cur && choices.has(n)) || (n === cur && choices.has(r.id));
       edges.push(h('path', { key, d, class: cx('ch-edge', next && 'next') }));
     }
+  }
+  // El rumbo de la capitana: de la región actual a Puerto Esperanza, en dorado.
+  const fin = CHART_POS[FINAL_REGION];
+  const from = CHART_POS[cur];
+  if (captain && fin && from) {
+    const mx = (from.x + fin.x) / 2;
+    const my = Math.min(from.y, fin.y) - 18;
+    edges.push(h('path', { key: 'captain', d: `M${from.x} ${from.y} Q ${mx} ${my}, ${fin.x} ${fin.y}`, class: cx('ch-edge', 'captain', choices.has(FINAL_REGION) && 'next') }));
   }
   // Ruta recorrida.
   const pts = v.route.map((id) => CHART_POS[id]).filter((p): p is { x: number; y: number } => !!p);
@@ -52,15 +74,26 @@ function chart(env: UiEnv): VNode {
   const nodes = Object.values(REGIONS).map((r) => {
     const p = CHART_POS[r.id];
     if (!p) return null;
+    const final = r.id === FINAL_REGION;
+    if (final && !showFinal) return null;
     const isCur = r.id === cur;
-    const known = visited.has(r.id) || choices.has(r.id);
+    // Puerto Esperanza se conoce por el cuaderno aunque aún no se haya navegado hasta allí.
+    const known = visited.has(r.id) || choices.has(r.id) || final;
+    const y = isCur ? 26 : 21;
+    // El nombre largo del borde de la carta va en dos líneas para no salirse del dibujo.
+    const words = r.name.split(' ');
+    const label: VInput =
+      known && final && words.length > 1
+        ? h('text', { y, 'text-anchor': 'middle' }, h('tspan', { x: 0 }, words[0]!), h('tspan', { x: 0, dy: 12 }, words.slice(1).join(' ')))
+        : h('text', { y, 'text-anchor': 'middle' }, known ? r.name : '¿?');
     return h(
       'g',
-      { key: r.id, class: cx('ch-node', isCur && 'cur', visited.has(r.id) && 'visited', choices.has(r.id) && 'option', r.id === v.chosenNext && 'chosen'), transform: `translate(${p.x} ${p.y})` },
+      { key: r.id, class: cx('ch-node', isCur && 'cur', visited.has(r.id) && 'visited', choices.has(r.id) && 'option', r.id === v.chosenNext && 'chosen', final && 'final'), transform: `translate(${p.x} ${p.y})` },
       known ? h('title', null, `${r.name} (peligro: ${dangerText(r.danger).toLowerCase()}, ${r.baseTemp} °C). ${r.desc}`) : h('title', null, 'Región sin explorar'),
-      h('circle', { r: isCur ? 10 : 7, fill: known ? DANGER_COLOR[r.danger] : '#53606b' }),
+      final ? h('circle', { r: isCur ? 16 : 12, class: 'ch-glow' }) : null,
+      h('circle', { r: isCur ? 10 : 7, fill: final ? '#5fd38d' : known ? DANGER_COLOR[r.danger] : '#53606b' }),
       isCur ? h('circle', { r: 15, class: 'ch-pulse' }) : null,
-      h('text', { y: isCur ? 26 : 21, 'text-anchor': 'middle' }, known ? r.name : '¿?'),
+      label,
     );
   });
   return h(
@@ -142,7 +175,13 @@ export function renderHelm(env: UiEnv): PanelView {
         h('div', { class: 'hs' }, gl('ship'), h('b', null, num(v.distance, 0)), h('span', null, 'mi en total')),
       ),
       anchored ? h('div', { class: 'note' }, gl('anchor'), `Fondeados${v.anchorReason ? `: ${v.anchorReason}` : ''}. Levamos anclas en ${duration((v.anchoredUntil ?? st.time) - st.time)}.`) : null,
-      h('div', { class: cx('note', baro.trend === 'baja' && baro.next === 'tormenta' && 'warn') }, gl(WEATHER_GLYPH[st.weather.kind] ?? 'cloud'), `${weatherName(st.weather.kind)} · ${Math.round(st.weather.temperature)} °C · Barómetro: ${baro.text}`),
+      h(
+        'div',
+        { class: cx('note', 'baro-note', baro.trend === 'baja' && baro.next === 'tormenta' && 'warn') },
+        gl(WEATHER_GLYPH[st.weather.kind] ?? 'cloud'),
+        h('span', null, `${weatherName(st.weather.kind)} · ${Math.round(st.weather.temperature)} °C · Barómetro: ${baro.text}`),
+        baro.radar ? chip('Radar', 'good', 'radar', 'El radar vigila el horizonte: avistamientos con más antelación y aviso de tormenta 3 h antes') : null,
+      ),
     ),
   );
 
@@ -154,7 +193,8 @@ export function renderHelm(env: UiEnv): PanelView {
       opts.map((r) =>
         h(
           'div',
-          { key: r.id, class: cx('route', r.chosen && 'chosen') },
+          { key: r.id, class: cx('route', r.chosen && 'chosen', r.captain && 'captain') },
+          r.captain ? h('div', { class: 'captain-badge' }, gl('quill'), CAPTAIN_COURSE_LABEL) : null,
           h('div', { class: 'route-head' }, h('b', null, r.name), h('span', { class: 'danger-pips', title: `Peligro: ${dangerText(r.danger)}` }, [1, 2, 3, 4, 5].map((i) => h('i', { key: i, class: i <= r.danger ? 'on' : '', style: i <= r.danger ? `background:${DANGER_COLOR[r.danger]}` : '' })))),
           h('p', { class: 'small muted' }, r.desc),
           h('div', { class: 'route-meta' }, chip(`${r.baseTemp} °C`, r.baseTemp < 12 ? 'info' : 'dim', 'thermo'), chip(dangerText(r.danger), r.danger >= 4 ? 'danger' : r.danger >= 3 ? 'warn' : 'dim')),

@@ -22,7 +22,8 @@ export interface OrbitParams {
 /** Límites de la cámara. */
 export const ORBIT_LIMITS = {
   minDist: 9,
-  maxDist: 95,
+  /** Lo bastante lejos para encuadrar el casco más largo en una ventana vertical. */
+  maxDist: 130,
   /** ≈ 9°: casi a ras de agua. */
   minPitch: 0.16,
   /** ≈ 84°: vista cenital. */

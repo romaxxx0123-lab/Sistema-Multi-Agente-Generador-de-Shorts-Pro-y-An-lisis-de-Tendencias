@@ -640,6 +640,200 @@
   border-color: rgba(242, 193, 78, 0.6);
 }
 
+/* ---------- Herramienta Mejorar (U) ---------- */
+
+.bm-root {
+  --bm-brass: #ffd166;
+  --bm-brass-deep: #c9973a;
+}
+
+.bm-toolbtn.upgrade.on {
+  background: var(--bm-brass-deep);
+  border-color: var(--bm-brass);
+  color: #2a1d05;
+}
+
+.bm-palette.upgrading {
+  border-color: rgba(255, 209, 102, 0.6);
+}
+
+/* Insignia "mejorable hasta el nivel II/III" de las fichas de la paleta. */
+.bm-card-up {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 900;
+  color: var(--bm-brass);
+  border: 1px solid rgba(255, 209, 102, 0.4);
+  border-radius: 4px;
+  padding: 0 4px 0 3px;
+  line-height: 1.5;
+}
+
+.bm-card-up + .bm-card-key {
+  margin-left: 4px;
+}
+
+/* Placas de nivel (I · II · III). */
+.bm-pips {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
+
+.bm-pip {
+  min-width: 15px;
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 1.45;
+  padding: 0 2px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  color: var(--ink-faint);
+}
+
+.bm-pip.on {
+  background: var(--bm-brass-deep);
+  border-color: var(--bm-brass);
+  color: #2a1d05;
+}
+
+.bm-pip.work {
+  border-color: var(--warn);
+  color: var(--warn);
+  animation: bm-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes bm-blink {
+  50% {
+    background: rgba(242, 193, 78, 0.25);
+  }
+}
+
+.bm-up-next {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+  font-size: 12.5px;
+  line-height: 1.25;
+  color: var(--bm-brass);
+}
+
+.bm-up-next .bm-gl {
+  color: var(--bm-brass);
+}
+
+.bm-card .bm-up-next span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bm-card.bm-upcard {
+  flex-basis: 236px;
+}
+
+.bm-upcard .bm-card-name {
+  font-size: 13.5px;
+}
+
+.bm-upcard.up-ok .bm-card-ico {
+  background: rgba(255, 209, 102, 0.22);
+  color: var(--bm-brass);
+}
+
+.bm-upcard.up-ok {
+  border-color: rgba(255, 209, 102, 0.45);
+}
+
+.bm-upcard.up-busy {
+  border-color: rgba(242, 193, 78, 0.6);
+}
+
+.bm-upcard.up-max,
+.bm-upcard.up-blocked {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.bm-upcard.up-max .bm-card-ico {
+  background: rgba(138, 198, 107, 0.16);
+  color: var(--good);
+}
+
+.bm-upcard .bm-card-lock span {
+  white-space: normal;
+}
+
+.bm-up-prog {
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-card.bm-uphelp {
+  flex-basis: 214px;
+  cursor: default;
+  border-style: dashed;
+  background: rgba(255, 209, 102, 0.05);
+}
+
+.bm-card.bm-uphelp:hover {
+  transform: none;
+  background: rgba(255, 209, 102, 0.05);
+  border-color: var(--slot-border);
+}
+
+.bm-uphelp .bm-card-ico {
+  background: rgba(255, 209, 102, 0.2);
+  color: var(--bm-brass);
+}
+
+.bm-uphelp .bm-card-desc {
+  -webkit-line-clamp: 5;
+}
+
+.bm-uphelp .bm-card-foot .kbd {
+  font-size: 10px;
+}
+
+.bm-info.wide {
+  width: 292px;
+}
+
+.bm-info-tier {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink-dim);
+}
+
+.bm-info-tier .bm-pips {
+  margin-left: 0;
+}
+
+.bm-info-foot.dim {
+  color: var(--ink-faint);
+}
+
+.bm-info .bm-card-cost {
+  margin-top: 1px;
+}
+
+.bm-confirm-chips {
+  font-size: 12.5px;
+  margin: 1px 0 2px;
+}
+
+.bm-confirm-bar {
+  margin: 2px 0;
+}
+
 /* ---------- Rótulo junto al cursor ---------- */
 
 .bm-tip {

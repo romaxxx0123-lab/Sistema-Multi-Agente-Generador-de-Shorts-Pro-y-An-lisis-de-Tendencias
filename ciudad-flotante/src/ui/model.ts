@@ -4,16 +4,19 @@
  * Nunca modifica el estado.
  */
 import { ITEMS, type ItemDef } from '../data/items';
-import { moduleDef } from '../data/modules';
+import { moduleDef, type ModuleEffects } from '../data/modules';
 import { NPC_RATES } from '../sim/npc';
 import { RECIPE_LIST, type RecipeDef, type StationKind } from '../data/recipes';
 import { NEED_RATES } from '../sim/constants';
+import { gruaRange } from '../sim/debris';
 import { payInventories, storageModules } from '../sim/helpers';
 import { countIn, countItem, missingFor, stackLimit } from '../sim/inventory';
 import type { SaveSlotInfo } from '../sim/save';
 import type { Simulation } from '../sim/Simulation';
+import { moduleDisplayName } from '../sim/moduleStats';
 import { blueprintName } from '../sim/stations';
-import type { ActiveEvent, Inventory, ItemId, ItemStack, ModuleInstance } from '../sim/types';
+import type { ActiveEvent, Inventory, ItemId, ItemStack, LogEntry, ModuleInstance } from '../sim/types';
+import { num } from './fmt';
 
 /* ------------------------------------------------------------------ */
 /* Objetos                                                             */
@@ -30,6 +33,7 @@ export const CATEGORY_NAMES: Record<string, string> = {
   plano: 'Plano',
   ropa: 'Ropa de abrigo',
   combustible: 'Combustible',
+  documento: 'Hoja del cuaderno',
 };
 
 const TOOL_USE: Record<string, string> = {
@@ -76,6 +80,7 @@ export function itemEffects(def: ItemDef, unlocks: readonly string[] = []): Effe
     const known = unlocks.includes(def.unlocks);
     out.push({ label: known ? 'Plano ya aprendido' : 'Úsalo para aprender el plano', value: known ? '✓' : '', tone: known ? 'info' : 'good' });
   }
+  if (def.category === 'documento') out.push({ label: 'Léela: se guarda en el Cuaderno del Diario (J)', value: '', tone: 'good' });
   return out;
 }
 
@@ -91,6 +96,7 @@ export function toolUse(def: ItemDef): string | null {
  */
 export function useVerb(def: ItemDef, _slot: number): string | null {
   if (def.category === 'plano') return 'Estudiar';
+  if (def.category === 'documento') return 'Leer';
   if (def.category === 'ropa') return 'Ponérselo';
   if (def.consume) return def.consume.verb;
   if (def.category === 'herramienta') return 'Empuñar';
@@ -207,11 +213,13 @@ export interface ModuleIssue {
 export function moduleIssues(sim: Simulation): ModuleIssue[] {
   const out: ModuleIssue[] = [];
   for (const m of sim.state.ship.modules) {
-    const name = moduleDef(m.type).name;
+    const name = moduleDisplayName(m);
     if (m.status === 'construction') {
       out.push({ module: m, name, kind: 'construction', text: `En obras · ${Math.floor(m.buildProgress * 100)} %`, severity: 'info' });
       continue;
     }
+    // Mejora en obras (el módulo sigue funcionando con su nivel actual).
+    if (m.upgrade) out.push({ module: m, name, kind: 'construction', text: `Mejorando a nivel ${m.upgrade.toTier} · ${Math.floor(Math.max(0, Math.min(1, m.upgrade.progress)) * 100)} %`, severity: 'info' });
     if (m.fire > 0) out.push({ module: m, name, kind: 'fire', text: `¡Ardiendo! (${Math.round(m.fire)} %)`, severity: 'danger' });
     if (m.status === 'broken') out.push({ module: m, name, kind: 'broken', text: m.brokenReason ? `Averiado: ${m.brokenReason}` : 'Averiado', severity: 'danger' });
     if (m.leak) out.push({ module: m, name, kind: 'leak', text: 'Fuga de agua', severity: 'warn' });
@@ -219,6 +227,59 @@ export function moduleIssues(sim: Simulation): ModuleIssue[] {
   }
   const rank = { danger: 0, warn: 1, info: 2 };
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Mejoras de módulos                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Efectos de un nivel de mejora en pocas palabras: «32 huecos», «8 kW, combustible ×1,3»,
+ * «velocidad ×1,6, desgaste ×0,7». Con `toTier`, la grúa añade su alcance nuevo.
+ */
+export function upgradeEffectsText(type: string, fx: ModuleEffects, toTier?: number): string {
+  const parts: string[] = [];
+  const x = (v: number): string => `×${num(v, 1)}`;
+  if (fx.storageSlots !== undefined) parts.push(`${fx.storageSlots} huecos`);
+  if (fx.fuelSlots !== undefined) parts.push(`${fx.fuelSlots} ranuras de combustible`);
+  if (fx.waterCapacity !== undefined) parts.push(`${num(fx.waterCapacity, 0)} L`);
+  if (fx.waterGen !== undefined) parts.push(`${num(fx.waterGen, 1)} L/h`);
+  if (fx.powerGen !== undefined) parts.push(`${num(fx.powerGen, 1)} kW`);
+  if (fx.batteryKWh !== undefined) parts.push(`${num(fx.batteryKWh, 0)} kWh`);
+  if (fx.speedBonus !== undefined) parts.push(`+${num(fx.speedBonus, 1)} nudos`);
+  if (fx.comfort !== undefined) parts.push(`confort ${num(fx.comfort, 0)}`);
+  if (fx.workSpeed !== undefined) parts.push(`velocidad ${x(fx.workSpeed)}`);
+  if (fx.fuelEfficiency !== undefined) parts.push(`combustible ${x(fx.fuelEfficiency)}`);
+  if (fx.growthMult !== undefined) parts.push(`crecimiento ${x(fx.growthMult)}`);
+  if (fx.waterUseMult !== undefined) parts.push(`agua ${x(fx.waterUseMult)}`);
+  if (fx.healMult !== undefined) parts.push(`curación ${x(fx.healMult)}`);
+  if (fx.wearMult !== undefined) parts.push(`desgaste ${x(fx.wearMult)}`);
+  if (fx.powerUse !== undefined) parts.push(`consumo ${num(fx.powerUse, 1)} kW`);
+  if (type === 'grua' && toTier !== undefined) parts.push(`alcance ${Math.round(gruaRange({ type, tier: toTier }))} m`);
+  return parts.join(', ');
+}
+
+/** Subtítulo del panel de un módulo: lo que tiene su mejora (si la tiene) y para qué sirve. */
+export function moduleSubtitle(m: Pick<ModuleInstance, 'type' | 'tier'>): string {
+  const def = moduleDef(m.type);
+  const t = Math.floor(Number(m.tier ?? 1));
+  const up = (def.upgrades ?? []).filter((u) => u.tier <= t).pop();
+  return up ? `${up.desc} ${def.desc}` : def.desc;
+}
+
+/* ------------------------------------------------------------------ */
+/* Radio                                                               */
+/* ------------------------------------------------------------------ */
+
+/** Últimos `n` mensajes de radio del diario (los que empiezan por «Radio:»), del más reciente al más antiguo. */
+export function radioMessages(log: readonly LogEntry[], n = 5): { at: number; text: string }[] {
+  const out: { at: number; text: string }[] = [];
+  for (let i = log.length - 1; i >= 0 && out.length < n; i--) {
+    const e = log[i]!;
+    const m = /^Radio:\s*(.+)$/s.exec(e.text);
+    if (m) out.push({ at: e.at, text: m[1]!.charAt(0).toUpperCase() + m[1]!.slice(1) });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -239,13 +300,14 @@ const EVENT_PRIORITY: Record<string, number> = {
   mercante: 10,
   discusion: 11,
   banco_peces: 12,
+  llegada: 13,
 };
 
 /** Tono visual de un evento. */
 export function eventTone(type: string): 'danger' | 'warn' | 'info' | 'good' {
   if (type === 'incendio' || type === 'tormenta') return 'danger';
   if (type === 'fuga' || type === 'averia' || type === 'enfermedad' || type === 'plaga' || type === 'discusion' || type === 'naufragos') return 'warn';
-  if (type === 'banco_peces' || type === 'mercante') return 'good';
+  if (type === 'banco_peces' || type === 'mercante' || type === 'llegada') return 'good';
   return 'info';
 }
 
@@ -272,15 +334,20 @@ export function latestPlayableSave(list: readonly SaveSlotInfo[]): SaveSlotInfo 
 /* Carta náutica                                                       */
 /* ------------------------------------------------------------------ */
 
-/** Posición de cada región en la carta del timón (viewBox 360 × 210). */
+/**
+ * Posición de cada región en la carta del timón (viewBox 360 × 210). Puerto Esperanza, la región
+ * final del cuaderno del Albatros, queda «más allá del faro», en el borde de la carta: solo se
+ * dibuja cuando se conoce su rumbo o ya se ha llegado.
+ */
 export const CHART_POS: Record<string, { x: number; y: number }> = {
-  templadas: { x: 62, y: 104 },
-  sargazos: { x: 140, y: 46 },
-  archipielago: { x: 140, y: 154 },
-  cementerio: { x: 222, y: 70 },
-  boreal: { x: 222, y: 168 },
-  tormentas: { x: 300, y: 46 },
-  faro: { x: 300, y: 140 },
+  templadas: { x: 50, y: 104 },
+  sargazos: { x: 122, y: 46 },
+  archipielago: { x: 122, y: 154 },
+  cementerio: { x: 196, y: 70 },
+  boreal: { x: 196, y: 168 },
+  tormentas: { x: 268, y: 46 },
+  faro: { x: 268, y: 140 },
+  esperanza: { x: 318, y: 96 },
 };
 
 /** Texto de peligro 1..5. */
@@ -303,6 +370,7 @@ const SORT_RANK: Record<string, number> = {
   combustible: 7,
   pieza: 8,
   material: 9,
+  documento: 5.5,
 };
 
 function compareStacks(a: ItemStack, b: ItemStack): number {

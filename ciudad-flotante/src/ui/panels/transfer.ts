@@ -190,25 +190,37 @@ export function storeAll(env: UiEnv, to: InvRef, hotbarToo = false): void {
   const sim = env.ctx.sim;
   const inv = sim.state.player.inventory;
   let moved = 0;
+  /** Hojas del cuaderno sin leer: se quedan contigo (léelas y pasan al Cuaderno del Diario). */
+  let pages = 0;
   let fail: ActionResult | null = null;
   const start = hotbarToo ? 0 : HOTBAR_SLOTS;
   for (let i = start; i < inv.slots.length; i++) {
     const s = inv.slots[i];
     if (!s) continue;
-    if (i < HOTBAR_SLOTS && ITEMS[s.id]?.category === 'herramienta') continue;
+    const cat = ITEMS[s.id]?.category;
+    if (i < HOTBAR_SLOTS && cat === 'herramienta') continue;
+    if (cat === 'documento') {
+      pages++;
+      continue;
+    }
     const r = sim.moveItem({ kind: 'player' }, i, to);
     if (r.ok) moved++;
     else fail = r;
   }
+  const pageNote = pages === 0 ? '' : pages === 1 ? ' (la hoja del cuaderno se queda contigo: léela con clic derecho)' : ' (las hojas del cuaderno se quedan contigo: léelas con clic derecho)';
   if (moved > 0) {
     const what = hotbarToo ? 'Guardas todo menos las herramientas' : 'Guardas todo lo de la mochila';
-    env.toast(fail ? 'Guardas lo que cabe: el contenedor está lleno' : what, fail ? 'warn' : 'good');
+    env.toast(fail ? 'Guardas lo que cabe: el contenedor está lleno' : what + pageNote, fail ? 'warn' : 'good');
     env.refresh();
     return;
   }
   if (fail) return void env.act(fail, 'info');
-  const hotbarItems = inv.slots.slice(0, HOTBAR_SLOTS).some((s) => s && ITEMS[s.id]?.category !== 'herramienta');
-  const msg = hotbarToo ? 'Solo llevas herramientas: se quedan contigo' : hotbarItems ? 'La mochila está vacía. Para guardar también la barra rápida (menos las herramientas), usa Mayús+clic o «Guardar también la barra»' : 'No llevas nada en la mochila';
+  const hotbarItems = inv.slots.slice(0, HOTBAR_SLOTS).some((s) => s && ITEMS[s.id]?.category !== 'herramienta' && ITEMS[s.id]?.category !== 'documento');
+  const onlyPages = pages > 0 ? `Solo llevas ${pages === 1 ? 'una hoja' : 'hojas'} del cuaderno: ${pages === 1 ? 'léela' : 'léelas'} con clic derecho y ${pages === 1 ? 'se guardará' : 'se guardarán'} en el Diario` : null;
+  let msg: string;
+  if (hotbarToo) msg = onlyPages ?? 'Solo llevas herramientas: se quedan contigo';
+  else if (hotbarItems) msg = `${pages > 0 ? 'En la mochila solo llevas hojas del cuaderno, que se quedan contigo.' : 'La mochila está vacía.'} Para guardar también la barra rápida (menos las herramientas), usa Mayús+clic o «Guardar también la barra»`;
+  else msg = onlyPages ?? 'No llevas nada en la mochila';
   env.act({ ok: false, msg }, 'info');
 }
 

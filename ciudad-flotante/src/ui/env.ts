@@ -24,6 +24,10 @@ export interface PanelState {
   giving?: boolean;
   /** Confirmación pendiente (clave de la acción). */
   confirm?: string | null;
+  /** Diario: vista activa ('log' = diario de a bordo, 'cuaderno' = cuaderno del Albatros). */
+  diary?: 'log' | 'cuaderno';
+  /** Cuaderno: hoja abierta. */
+  page?: number | null;
 }
 
 /** Entorno que reciben los renderizadores de paneles. */
@@ -45,6 +49,8 @@ export interface UiEnv {
   close(): void;
   /** Repinta el panel ya (tras un cambio de estado local). */
   refresh(): void;
+  /** Vuelve a mostrar la pantalla de llegada a Puerto Esperanza (si ya se llegó). */
+  showArrival(): void;
 }
 
 /** Clave textual de un inventario (atributo `data-inv`). */
