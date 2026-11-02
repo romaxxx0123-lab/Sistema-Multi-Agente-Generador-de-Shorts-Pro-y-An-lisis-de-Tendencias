@@ -23,7 +23,7 @@ import { wrapAngle } from '../../core/math';
 import { CROPS } from '../../data/crops';
 import { WATERLINE_Y } from '../../sim/constants';
 import { GRUA_CYCLE_MIN, GRUA_HOOK_MIN, GRUA_LIFT_MIN } from '../../sim/debris';
-import type { PropInstance } from '../../sim/ship';
+import { getCell, levelY, pointToCell, type PropInstance, type ShipLayout } from '../../sim/ship';
 import type { DebrisKind, GameState, ModuleInstance, PlotState } from '../../sim/types';
 import { PALETTE } from '../palette';
 import { GeoBuilder, hash01, mix, shade, type ColorLike } from './geo';
@@ -44,6 +44,8 @@ export interface DynContext {
   mats: ShipMaterials;
   /** Nivel visible máximo (para no emitir partículas invisibles). */
   maxLevel: number;
+  /** Distribución actual (la grúa evita girar la pluma contra habitaciones y muebles altos). */
+  layout?: ShipLayout;
 }
 
 export abstract class PropDynamic {
@@ -750,6 +752,9 @@ class CraneDyn extends PropDynamic {
   private fold = -1.5;
   private lastTargetYaw: number | null = null;
   private outYaw: number;
+  /** Ángulos (cuantizados) por los que la pluma choca con algo, por revisión del layout. */
+  private blocked = new Map<number, boolean>();
+  private blockedRev = -1;
   /** Fase que se está mostrando (para pruebas y depuración). */
   phase: CranePhase = 'parada';
   constructor(prop: PropInstance, proxy: THREE.Group, model: PropModel, level: number, mats: ShipMaterials) {
@@ -810,6 +815,52 @@ class CraneDyn extends PropDynamic {
     const lz = -dx * s + dz * c;
     return Math.atan2(-lx, -lz);
   }
+  /** ¿La pluma, girada a `yaw`, atraviesa una habitación, una escalera o un mueble alto? */
+  private hits(yaw: number, layout: ShipLayout): boolean {
+    const q = Math.round(yaw / 0.05);
+    if (layout.revision !== this.blockedRev) {
+      this.blocked.clear();
+      this.blockedRev = layout.revision;
+    }
+    const cached = this.blocked.get(q);
+    if (cached !== undefined) return cached;
+    const a = this.prop.yaw + q * 0.05;
+    const dx = -Math.sin(a);
+    const dz = -Math.cos(a);
+    const reach = -(this.model.anchors.boomTip?.z ?? -2.2) - (this.model.anchors.jibTip?.z ?? -1.25) + 0.3;
+    const floor = levelY(this.level);
+    let hit = false;
+    for (let r = 0.7; r <= reach && !hit; r += 0.35) {
+      const x = this.prop.x + dx * r;
+      const z = this.prop.z + dz * r;
+      const cell = pointToCell(x, z, layout.width);
+      for (const l of [this.level, this.level + 1]) {
+        const k = getCell(layout, l, cell.x, cell.z)?.kind;
+        if (k === 'room' || k === 'stairLow' || k === 'stairHigh') hit = true;
+      }
+      for (const p of layout.props) {
+        if (p.key === this.prop.key || p.y - floor + p.height < 1.9 || Math.abs(p.y - floor) > 1) continue;
+        if (Math.abs(p.x - x) < p.hx + 0.25 && Math.abs(p.z - z) < p.hz + 0.25) hit = true;
+      }
+    }
+    this.blocked.set(q, hit);
+    return hit;
+  }
+
+  /** El ángulo más cercano a `want` por el que la pluma pasa libre, buscando desde fuera de la borda. */
+  private freeYaw(want: number, layout: ShipLayout | undefined): number {
+    if (!layout || !this.hits(want, layout)) return want;
+    const span = wrapAngle(want - this.outYaw);
+    const n = Math.ceil(Math.abs(span) / 0.05);
+    let best = this.outYaw;
+    for (let i = 0; i <= n; i++) {
+      const y = this.outYaw + (span * i) / Math.max(1, n);
+      if (this.hits(y, layout)) break;
+      best = y;
+    }
+    return best;
+  }
+
   update(c: DynContext): void {
     const m = c.module;
     const v = craneView(m, c.state);
@@ -834,6 +885,8 @@ class CraneDyn extends PropDynamic {
       wantYaw = this.outYaw + Math.sin(c.t * 0.35 + this.prop.moduleId) * 0.55;
       this.lastTargetYaw = null;
     } else this.lastTargetYaw = null;
+    // la pluma no atraviesa habitaciones ni muebles altos: se queda en el ángulo libre más cercano
+    wantYaw = this.freeYaw(wantYaw, c.layout);
     const turn = Math.min(1, c.dt * 1.4);
     this.yaw += wrapAngle(wantYaw - this.yaw) * turn;
     this.pitch += (wantPitch - this.pitch) * Math.min(1, c.dt * 1.2);

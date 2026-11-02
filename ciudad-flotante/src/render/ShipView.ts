@@ -312,7 +312,7 @@ export class ShipView {
     // --- Dinámicos ---
     const lights: LightCandidate[] = [];
     const modById = new Map(state.ship.modules.map((m) => [m.id, m]));
-    const ctx: DynContext = { state, module: undefined, t: this.t, dt, night, particles: this.particles, lights, mats: this.mats, maxLevel };
+    const ctx: DynContext = { state, module: undefined, t: this.t, dt, night, particles: this.particles, lights, mats: this.mats, maxLevel, layout };
     for (const d of this.dyns) {
       ctx.module = modById.get(d.prop.moduleId);
       d.update(ctx);
