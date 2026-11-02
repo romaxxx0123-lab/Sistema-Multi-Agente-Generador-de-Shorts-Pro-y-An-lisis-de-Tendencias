@@ -284,6 +284,10 @@ Casco procedural con proa y popa, cubiertas de tablones, paredes con puertas y v
 barandillas, escaleras, techos, todos los props, plantas según crecimiento, fuego, humo de
 averías, obras con andamios, cajas sueltas, luces interiores nocturnas (pool de luces),
 resaltado del objetivo y vista en corte. Personajes low-poly animados con bocadillos.
+- Reconstrucción incremental: firma por nivel y por columna de celdas (`chunkOfX`). Solo se rehace lo que cambia; si son varios niveles, se reparten entre frames (`rebuildBudgetMs`). Estructura y muebles van en mallas separadas. Los daños solo oscurecen colores (etiqueta de módulo por vértice), sin reconstruir.
+- Niveles de mejora visibles en cada mueble (`propModel(kind, dims, tier, moduleType)`), con placa de latón II/III y altillo del almacén (`ship/tiers.ts`). Las mejoras en obras (`module.upgrade`) muestran andamio o caballete y un cartel con el nivel destino y su barra de progreso.
+- Módulos especializados: sofá, mesa de juegos con taburetes y quinqué, estantería de libros (con estufa en el nivel 2), ahumadero (humo y brasas mientras ahúma), vivero (agua, peces y burbujas con energía), grúa articulada (`craneView`: gira hacia `prodTarget` sin cruzar habitaciones, lanza el gancho e iza la red) y radar (antena que gira en marcha; la del mástil del puente, también).
+- Habitantes en la sala común: juegan a las cartas en su taburete (`anim 'jugar'`) y leen en el sofá (`read`).
 
 ### Control e interacción — game-player
 Primera persona por defecto (V cambia a tercera), carrera, salto, cabeceo suave; E interactúa
