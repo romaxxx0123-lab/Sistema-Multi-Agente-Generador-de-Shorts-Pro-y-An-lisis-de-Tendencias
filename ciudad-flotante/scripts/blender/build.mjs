@@ -38,9 +38,12 @@ const r = spawnSync(py, [join(HERE, 'build.py'), '--', ...process.argv.slice(2)]
 // Optimiza los .glb que Blender acaba de escribir.
 await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
-for (const f of readdirSync(OUT).filter((f) => f.endsWith('.glb'))) {
+// Solo los de esta ejecución: otros procesos pueden estar generando los suyos a la vez.
+const requested = process.argv.slice(2);
+const names = requested.length ? requested : readdirSync(join(HERE, 'models')).filter((f) => f.endsWith('.py') && !f.startsWith('_')).map((f) => f.slice(0, -3));
+for (const f of names.map((n) => `${n}.glb`)) {
   const path = join(OUT, f);
-  if (statSync(path).mtimeMs < started) continue;
+  if (!existsSync(path) || statSync(path).mtimeMs < started) continue;
   const before = statSync(path).size;
   const doc = await io.read(path);
   const root = doc.getRoot();

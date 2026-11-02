@@ -72,6 +72,11 @@ def main():
             failed.append(name)
             print(f'✗ {name}:', file=sys.stderr)
             traceback.print_exc()
+    # Vuelve a leer el manifiesto justo antes de escribirlo: otro proceso puede haber añadido lo suyo.
+    if os.path.exists(manifest_path):
+        with open(manifest_path, encoding='utf-8') as f:
+            fresh = json.load(f)
+        manifest = {**fresh, **{k: v for k, v in manifest.items() if k in names}}
     for gone in [k for k in manifest if not os.path.exists(os.path.join(MODELS, k + '.py'))]:
         del manifest[gone]
     with open(manifest_path, 'w', encoding='utf-8') as f:

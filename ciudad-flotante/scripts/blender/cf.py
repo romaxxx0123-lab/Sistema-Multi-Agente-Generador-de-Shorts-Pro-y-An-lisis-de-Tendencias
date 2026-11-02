@@ -108,11 +108,13 @@ def paint_faces(ob, top=None, side=None, bottom=None, threshold=0.6):
 
 
 def jitter_colors(ob, amount=0.06, seed=1):
-    """Variación determinista de brillo por cara (madera vieja, chapa desigual)."""
-    r = rng(seed)
+    """Variación determinista de brillo por cara (madera vieja, chapa desigual); depende de la
+    posición de cada cara, no de su orden."""
     me = ob.data
     attr = _color_layer(me)
     for poly in me.polygons:
+        c = poly.center
+        r = rng(hash((seed, round(c.x, 4), round(c.y, 4), round(c.z, 4))) & 0x7FFFFFFF)
         k = 1.0 + (r.random() * 2 - 1) * amount
         for li in poly.loop_indices:
             c = attr.data[li].color
@@ -122,7 +124,22 @@ def jitter_colors(ob, amount=0.06, seed=1):
 
 # ---------------------------------------------------------------- primitivas
 
+def _canonical(bm):
+    """Orden canónico de vértices y caras (por posición): algunas operaciones de bmesh dejan un
+    orden que cambia de una ejecución a otra, y el .glb no sería reproducible."""
+    def key(co):
+        return (round(co.z, 5), round(co.y, 5), round(co.x, 5))
+
+    vrank = {v: i for i, v in enumerate(sorted(bm.verts, key=lambda v: key(v.co)))}
+    bm.verts.sort(key=lambda v: vrank[v])
+    frank = {f: i for i, f in enumerate(sorted(bm.faces, key=lambda f: key(f.calc_center_median()) + (len(f.verts),)))}
+    bm.faces.sort(key=lambda f: frank[f])
+    bm.verts.index_update()
+    bm.faces.index_update()
+
+
 def _link(name, bm):
+    _canonical(bm)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
