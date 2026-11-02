@@ -313,8 +313,13 @@ estaciones, almacenes, cajas, habitantes, timón (rumbo y avistamientos), comerc
 de pausa y de muerte, ajustes, tutorial no intrusivo, iconos SVG propios.
 
 ### Construcción — build-mode
-Vista exterior orbital, selector de nivel con corte, paleta con costes y bloqueos, fantasma con
-validación y motivo, rotación (R), demolición con confirmación, ampliación del casco.
+- **Vista:** exterior orbital, que se reencuadra al redimensionar la ventana o ampliar el casco conservando el zoom elegido. Selector de nivel con corte.
+- **Paleta:** costes, estadísticas, bloqueos y nivel máximo de mejora.
+- **Fantasma:** validación con su motivo y una pista. En la grúa, las celdas del borde salen en verde y se dibuja el arco de su alcance sobre el agua.
+- **Rotación (R).**
+- **Herramienta Mejorar (U):** lista de módulos mejorables y ficha con efectos, coste y tiempo. Pide confirmación y muestra el progreso. Cancelar devuelve todo lo pagado.
+- **Demolición con confirmación:** reembolso, contenido y pérdidas de agua o carga.
+- **Ampliación del casco** con su coste escalado.
 
 ### Audio — audio
 Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI; procedural.
