@@ -22,6 +22,14 @@ import { buildArm, buildItemModel, type ItemModel } from './models';
 /** Orden de grupo del modelo en mano (por encima de cualquier otro objeto de la escena). */
 export const VIEWMODEL_ORDER = 1_000_000;
 
+/**
+ * FOV vertical para el que están hechas las poses del modelo en mano. Con un FOV más cerrado (55° es
+ * el mínimo del menú) el puño quedaría fuera de cuadro: se acerca al centro y se encoge en la misma
+ * proporción, y se ve igual que con 72°. Con uno más abierto se deja como está (se ve más brazo, y
+ * agrandarlo lo acercaría al plano cercano).
+ */
+export const VM_FOV = 72;
+
 export interface VmPose {
   x: number;
   y: number;
@@ -455,9 +463,11 @@ export class ViewModel {
       this.current.model.group.rotation.set(0, 0, 0, 'XYZ');
       return;
     }
-    this.holder.position.set(px, py, pz);
+    const fov = (this.camera as THREE.PerspectiveCamera).fov;
+    const k = fov && fov < VM_FOV ? Math.tan(THREE.MathUtils.degToRad(fov / 2)) / Math.tan(THREE.MathUtils.degToRad(VM_FOV / 2)) : 1;
+    this.holder.position.set(px * k, py * k, pz);
     this.holder.rotation.set(rx, ry, rz, 'XYZ');
-    this.holder.scale.setScalar(this.current.model.scale);
+    this.holder.scale.setScalar(this.current.model.scale * k);
     this.current.model.group.rotation.set(b.rx * (1 - arm), b.ry * (1 - arm), b.rz * (1 - arm), 'XYZ');
   }
 

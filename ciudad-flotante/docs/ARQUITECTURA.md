@@ -156,6 +156,9 @@ guardan en el repositorio, así que el juego no necesita Blender para compilar.
   - Se modelan en el marco del puño de src/game/tools/models.ts (mango = eje Z en el origen, +Y hacia delante) y se exportan subidos `VM_LIFT` = 1 m para respetar la base apoyada.
   - `appendHandModel()` los fusiona en la misma malla de cada pieza, con los mismos pivotes, anclajes, poses y escala (viewmodel.ts no cambia). Si faltan, se dibuja el procedimental; `setBlenderHandModels(false)` lo fuerza para comparar.
   - El garfio lanzado y el pez capturado (effects.ts) usan los mismos modelos a través de buildGrapnel/buildFish.
+  - Tinte: `appendHandModel(b, nombre, color)` MULTIPLICA el color de cada vértice por el del objeto (`tintedGeometry`, cacheado). Lo que debe tomar el color (cinta de los planos, saquito de semillas) se modela en blanco, y se conservan las sombras y `jitter_colors`.
+  - Planos: el rollo (`vm_plano_rollo`) es papel azul de plano, igual para todos, como el icono; solo la cinta (`vm_plano_cinta`) lleva el color de cada plano.
+  - Brazo: el puño de la manga va en la muñeca (con FOV 72 el antebrazo sale de pantalla a 1–4 cm) y la manga mide 1,1 m para que su extremo no se vea con ningún FOV del menú. Con FOV menor de 72°, viewmodel.ts acerca y encoge el modelo en mano (`VM_FOV`) para que el puño siga en cuadro.
 - Personajes con esqueleto (`models/personas.py` → modelo `persona`, `ANIMATIONS = True`):
   - Una malla con piel. Materiales: skin, shirt, pants, shoes, hair, hat, coat, eyes, detalle y botones; el color por vértice multiplica el del material.
   - Piezas en huesos hijos de la cabeza: peinados, moño y gorros.
