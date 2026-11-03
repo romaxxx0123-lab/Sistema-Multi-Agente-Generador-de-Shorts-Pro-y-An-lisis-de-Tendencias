@@ -348,8 +348,9 @@ def bounds(ob):
 
 # ---------------------------------------------------------------- exportación
 
-def export_glb(path, animations=False):
-    """Exporta la escena a GLB (Y-arriba, normales, color por vértice; materiales solo si los hay)."""
+def export_glb(path, animations=False, **options):
+    """Exporta la escena a GLB (Y-arriba, normales, color por vértice; materiales solo si los hay).
+    `options`: opciones extra del exportador glTF de Blender (EXPORT_OPTIONS del archivo del modelo)."""
     has_materials = any(o.type == 'MESH' and len(o.data.materials) > 0 for o in bpy.context.scene.objects)
     bpy.ops.export_scene.gltf(
         filepath=path,
@@ -366,4 +367,5 @@ def export_glb(path, animations=False):
         export_skins=True,
         export_morph=False,
         export_image_format='NONE',
+        **options,
     )

@@ -117,7 +117,9 @@ export function modelGeometry(name: string): THREE.BufferGeometry | null {
     const count = index ? index.count : p.count;
     for (let i = 0; i < count; i++) {
       const vi = index ? index.getX(i) : i;
-      v.fromBufferAttribute(p, vi).applyMatrix4(mesh.matrixWorld);
+      // Posición de reposo: en una malla con esqueleto (personas.glb) pasa por los huesos, porque la
+      // cuantización de una malla con piel va en sus matrices de enlace y no en el nodo.
+      mesh.getVertexPosition(vi, v).applyMatrix4(mesh.matrixWorld);
       pos.push(v.x, v.y, v.z);
       if (c) clr.push(c.getX(vi), c.getY(vi), c.getZ(vi));
       else clr.push(1, 1, 1);

@@ -150,3 +150,10 @@ guardan en el repositorio, así que el juego no necesita Blender para compilar.
   - Se modelan en el marco del puño de src/game/tools/models.ts (mango = eje Z en el origen, +Y hacia delante) y se exportan subidos `VM_LIFT` = 1 m para respetar la base apoyada.
   - `appendHandModel()` los fusiona en la misma malla de cada pieza, con los mismos pivotes, anclajes, poses y escala (viewmodel.ts no cambia). Si faltan, se dibuja el procedimental; `setBlenderHandModels(false)` lo fuerza para comparar.
   - El garfio lanzado y el pez capturado (effects.ts) usan los mismos modelos a través de buildGrapnel/buildFish.
+- Personajes con esqueleto (`models/personas.py` → modelo `persona`, `ANIMATIONS = True`):
+  - Una malla con piel. Materiales: skin, shirt, pants, shoes, hair, hat, coat, eyes, detalle y botones; el color por vértice multiplica el del material.
+  - Piezas en huesos hijos de la cabeza: peinados, moño y gorros.
+  - Un clip por pose (`CLIPS`). Los de pie apoyan el pie más bajo en el suelo.
+  - `src/render/ship/characterModel.ts` funde las primitivas en una plantilla compartida: una llamada de dibujo por personaje, con color e índice propios según el `CharacterLook`.
+  - Lo anima un AnimationMixer: fundidos de 0,25 s y andar y correr sincronizados con la velocidad. La herramienta va en `mano_d`, la caja en `pecho` y la manta en `raiz`.
+  - Si el modelo falta, `CharacterRig` usa el rig procedimental (`setCharacterModels(false)` lo fuerza).

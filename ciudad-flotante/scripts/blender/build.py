@@ -65,7 +65,7 @@ def main():
                     raise ValueError(f'«{ob.name}» tiene {tris} triángulos (máx. {limit})')
                 lo, hi = game_bounds(ob) if ob.type == 'MESH' else ([0, 0, 0], [0, 0, 0])
                 entry['models'][ob.name] = {'tris': tris, 'min': lo, 'max': hi}
-            cf.export_glb(os.path.join(OUT, name + '.glb'), animations=entry['animations'])
+            cf.export_glb(os.path.join(OUT, name + '.glb'), animations=entry['animations'], **getattr(mod, 'EXPORT_OPTIONS', {}))
             manifest[name] = entry
             print(f'✓ {name}.glb: ' + ', '.join(f'{k} ({v["tris"]} tri)' for k, v in entry['models'].items()))
         except Exception:
