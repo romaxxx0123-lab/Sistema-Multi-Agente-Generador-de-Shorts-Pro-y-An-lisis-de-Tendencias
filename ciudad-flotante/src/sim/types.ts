@@ -263,6 +263,17 @@ export interface WeatherState {
   temperature: number;
   /** >0 durante un relámpago (minutos de juego). */
   lightning: number;
+  /**
+   * Temperatura base suavizada (°C) en la transición entre regiones (opcional: si falta, la de la
+   * región actual). Se guarda para que guardar y cargar a mitad de la transición no dé un salto.
+   */
+  baseTemp?: number;
+  /** El barómetro ya avisó de la tormenta que viene (opcional: si falta, no). */
+  stormWarned?: boolean;
+  /** Antelación (min) con la que avisará el barómetro de la próxima tormenta (opcional). */
+  stormLead?: number;
+  /** Rumbo hacia el que gira el viento (rad, opcional: si falta, el actual). */
+  windTarget?: number;
 }
 
 export interface Sighting {
@@ -384,6 +395,44 @@ export interface StoryState {
   revealed: boolean;
   /** Se llegó a Puerto Esperanza (se mostró el final). */
   arrived: boolean;
+  /**
+   * Hojas (números) que el director ha puesto en el mundo y aún no han llegado a bordo: en un cofre
+   * a la deriva o de un naufragio, o en las ofertas de un mercante (opcional: si falta, ninguna).
+   */
+  placed?: number[];
+  /**
+   * Enfriamiento de hojas (`events.cooldowns.pagina`) que había antes de colocar las de `placed`:
+   * si se pierden sin llegar a bordo, se restaura (ni gastan el enfriamiento ni reinician la sequía).
+   * Si falta, no había ninguno.
+   */
+  pageCooldownBefore?: number;
+  /**
+   * Decisión del rumbo de la capitana en la región actual (se borra al cambiar de región): minutos
+   * que el jugador ha pasado despierto con el rumbo en oferta (`awake`), minuto en que el barco
+   * llegó al final de la región y se quedó esperando la decisión (`holdAt`) y si ya se le avisó.
+   */
+  course?: { awake: number; holdAt?: number; told?: boolean };
+  /** Resumen de la llegada a Puerto Esperanza tal como fue (para volver a verla desde el Cuaderno). */
+  arrival?: ArrivalSnapshot;
+}
+
+/** Instantánea de la llegada a Puerto Esperanza (todo tal como estaba al llegar). */
+export interface ArrivalSnapshot {
+  /** Minuto de juego de la llegada. */
+  at: number;
+  /** Millas recorridas en total al llegar. */
+  miles: number;
+  /** Tripulación a bordo al llegar (con los vecinos del puerto que se unieron). */
+  crew: string[];
+  /** Vecinos del puerto que se unieron al llegar. */
+  newcomers: string[];
+  /** Módulos terminados. */
+  modules: number;
+  pagesRead: number;
+  /** Estadísticas del jugador al llegar. */
+  debris: number;
+  fish: number;
+  crafted: number;
 }
 
 export interface GameState {
