@@ -82,36 +82,109 @@ function forVisibleVertices(vm: ViewModel, fn: (v: THREE.Vector3) => void): void
 }
 
 const FOV = 72;
-const TAN = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
 const ASPECT = 16 / 9;
 const NEAR = 0.05;
 
 /**
  * Encuadre: distancia a la cámara de lo que se ve en pantalla (un vértice fuera del encuadre
  * puede pasar el plano cercano sin que se note; dentro, se vería cortado), lo más alto y lo más a
- * la izquierda (NDC).
+ * la izquierda (NDC) de lo que está en pantalla.
  */
-function framing(vm: ViewModel): { depth: number; top: number; left: number } {
+function framing(vm: ViewModel, fov = FOV): { depth: number; top: number; left: number } {
+  const tan = Math.tan(THREE.MathUtils.degToRad(fov / 2));
   let depth = Infinity;
   let top = -Infinity;
   let left = Infinity;
   forVisibleVertices(vm, (p) => {
     const d = Math.max(-p.z, NEAR);
-    const nx = p.x / d / (TAN * ASPECT);
-    const ny = p.y / d / TAN;
+    const nx = p.x / d / (tan * ASPECT);
+    const ny = p.y / d / tan;
     if (Math.abs(nx) <= 1 && Math.abs(ny) <= 1) depth = Math.min(depth, -p.z);
+    // Lo más alto y lo más a la izquierda de lo que cae dentro de la pantalla (un vértice muy por
+    // debajo del borde, como el final de la manga, no tapa la mira aunque su x sea pequeña).
     if (p.z < -NEAR) {
-      top = Math.max(top, ny);
-      left = Math.min(left, nx);
+      if (Math.abs(nx) <= 1) top = Math.max(top, ny);
+      if (Math.abs(ny) <= 1) left = Math.min(left, nx);
     }
   });
   return { depth, top, left };
 }
 
+/** FOV extremos del menú de opciones y el de por defecto. */
+const FOVS = [55, 72, 100];
+/** Dirección del antebrazo (de la muñeca al codo) en el marco del puño, la del procedimental. */
+const ARM_DIR = new THREE.Vector3(0.095, -0.385, 0.31).normalize();
+
+/**
+ * Vértices del extremo cortado de la manga (los más alejados del puño a lo largo del antebrazo)
+ * que caen dentro de la pantalla con este FOV. Tiene que ser 0: la boca de la manga flotando en
+ * mitad de la pantalla delata que el brazo es un tubo cortado.
+ */
+function sleeveEndOnScreen(vm: ViewModel, fov: number): number {
+  const tan = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+  vm.camera.updateMatrixWorld(true);
+  let n = 0;
+  vm.root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || m.name !== 'puño' || !m.visible) return;
+    const p = m.geometry.getAttribute('position');
+    const v = new THREE.Vector3();
+    let far = -Infinity;
+    for (let i = 0; i < p.count; i++) far = Math.max(far, v.fromBufferAttribute(p, i).dot(ARM_DIR));
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      if (v.dot(ARM_DIR) < far - 0.004) continue;
+      v.applyMatrix4(m.matrixWorld);
+      if (v.z > -NEAR) continue;
+      const nx = v.x / -v.z / (tan * ASPECT);
+      const ny = v.y / -v.z / tan;
+      if (Math.abs(nx) <= 1 && Math.abs(ny) <= 1) n++;
+    }
+  });
+  return n;
+}
+
+/**
+ * Aristas del modelo en mano que el plano cercano corta DENTRO de la pantalla (se vería la pieza
+ * abierta). Mira las aristas y no solo los vértices: la manga es un tubo largo cuyos vértices
+ * quedan lejos, delante y detrás de la cámara, pero cuyas caras cruzan el plano cercano.
+ */
+function nearPlaneCuts(vm: ViewModel, fov: number): number {
+  const tan = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+  const zc = -NEAR;
+  vm.camera.updateMatrixWorld(true);
+  let n = 0;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const pts: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const visit = (o: THREE.Object3D): void => {
+    if (!o.visible) return;
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.name !== 'limpia-profundidad') {
+      const p = m.geometry.getAttribute('position');
+      for (let i = 0; i + 2 < p.count; i += 3) {
+        for (let k = 0; k < 3; k++) pts[k]!.fromBufferAttribute(p, i + k).applyMatrix4(m.matrixWorld);
+        for (let k = 0; k < 3; k++) {
+          a.copy(pts[k]!);
+          b.copy(pts[(k + 1) % 3]!);
+          if ((a.z - zc) * (b.z - zc) >= 0) continue;
+          const t = (zc - a.z) / (b.z - a.z);
+          const x = a.x + (b.x - a.x) * t;
+          const y = a.y + (b.y - a.y) * t;
+          if (Math.abs(x / NEAR / (tan * ASPECT)) <= 1 && Math.abs(y / NEAR / tan) <= 1) n++;
+        }
+      }
+    }
+    for (const c of o.children) visit(c);
+  };
+  visit(vm.root);
+  return n;
+}
+
 const MOTION = { bobPhase: 0, bobAmount: 0, yaw: 0, pitch: 0, landKick: 0, light: 1 };
 
-function equipped(id: string): ViewModel {
-  const cam = new THREE.PerspectiveCamera(FOV, ASPECT, NEAR, 100);
+function equipped(id: string, fov = FOV): ViewModel {
+  const cam = new THREE.PerspectiveCamera(fov, ASPECT, NEAR, 100);
   const vm = new ViewModel(cam);
   vm.show(id);
   for (let i = 0; i < 40; i++) vm.update(1 / 60, MOTION, false);
@@ -305,30 +378,81 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
     }
   });
 
-  it('ninguna animación de uso mete el brazo o el objeto dentro de la cámara (en pantalla)', () => {
-    const closest = (id: string, action: VmActionName): number => {
-      const vm = equipped(id);
-      vm.play(action);
-      let c = Infinity;
-      for (let t = 0; t < 1.3; t += 1 / 30) {
-        vm.update(1 / 30, MOTION, false);
-        c = Math.min(c, framing(vm).depth);
+  /**
+   * Recorre reposo y todas las acciones de cada objeto con un FOV y devuelve, por objeto y acción,
+   * la menor distancia a la cámara de lo que se ve en pantalla y los vértices del extremo de la
+   * manga que llegan a verse.
+   */
+  const sweep = (id: string, fov: number): { action: string; depth: number; sleeveEnd: number; cuts: number }[] => {
+    const out: { action: string; depth: number; sleeveEnd: number; cuts: number }[] = [];
+    for (const action of [null, ...actionsFor(id)]) {
+      const vm = equipped(id, fov);
+      let depth = framing(vm, fov).depth;
+      let sleeveEnd = sleeveEndOnScreen(vm, fov);
+      let cuts = nearPlaneCuts(vm, fov);
+      if (action) {
+        vm.play(action);
+        for (let t = 0; t < 1.3; t += 1 / 30) {
+          vm.update(1 / 30, MOTION, false);
+          depth = Math.min(depth, framing(vm, fov).depth);
+          sleeveEnd = Math.max(sleeveEnd, sleeveEndOnScreen(vm, fov));
+          cuts = Math.max(cuts, nearPlaneCuts(vm, fov));
+        }
       }
       vm.dispose();
-      return c;
-    };
-    for (const id of IDS) {
-      for (const action of actionsFor(id)) {
+      out.push({ action: action ?? 'reposo', depth, sleeveEnd, cuts });
+    }
+    return out;
+  };
+
+  /** Barrido de los dos (procedimental y Blender) con los tres FOV; se calcula una vez. */
+  type Sweep = { fov: number; id: string; proc: ReturnType<typeof sweep>; blend: ReturnType<typeof sweep> };
+  let sweeps: Sweep[] | null = null;
+  const allSweeps = (): Sweep[] => {
+    if (sweeps) return sweeps;
+    sweeps = [];
+    for (const fov of FOVS) {
+      for (const id of IDS) {
         setBlenderHandModels(false);
-        const proc = closest(id, action);
+        const proc = sweep(id, fov);
         setBlenderHandModels(true);
-        const blend = closest(id, action);
-        // Nunca cortado por el plano cercano, y nunca más cerca que el procedimental.
-        expect(blend, `${id} · ${action}`).toBeGreaterThan(NEAR + 0.005);
-        expect(blend, `${id} · ${action} (procedimental ${proc.toFixed(3)})`).toBeGreaterThan(Math.min(proc, 0.12) - 0.01);
+        sweeps.push({ fov, id, proc, blend: sweep(id, fov) });
       }
     }
-  });
+    return sweeps;
+  };
+
+  it('con FOV 55, 72 y 100, ninguna animación corta el modelo con el plano cercano ni lo acerca de más', () => {
+    const rows: string[] = [];
+    for (const { fov, id, proc, blend } of allSweeps()) {
+      {
+        blend.forEach((b, i) => {
+          const pr = proc[i]!;
+          if (b.depth < pr.depth - 0.01) rows.push(`FOV ${fov} ${id} · ${b.action}: ${pr.depth.toFixed(3)} → ${b.depth.toFixed(3)} m`);
+          // Nunca cortado por el plano cercano: ni un vértice cerca ni una cara que lo cruce en pantalla.
+          expect(b.depth, `FOV ${fov} ${id} · ${b.action}`).toBeGreaterThan(NEAR + 0.02);
+          expect(b.cuts, `FOV ${fov} ${id} · ${b.action}: caras cortadas en pantalla`).toBe(0);
+          // Nunca más cerca que el procedimental, salvo que siga a más de 18 cm de la cámara
+          // (más de tres veces el plano cercano: algo más grande en pantalla, sin recorte).
+          expect(b.depth, `FOV ${fov} ${id} · ${b.action} (procedimental ${pr.depth.toFixed(3)})`).toBeGreaterThan(Math.min(pr.depth - 0.01, 0.18));
+        });
+      }
+    }
+    if (process.env.MEDIR) console.log(rows.join('\n'));
+  }, 120_000);
+
+  it('el extremo cortado de la manga no se ve nunca (FOV 55–100, reposo y todas las acciones)', () => {
+    const seen: string[] = [];
+    const procSeen: string[] = [];
+    for (const { fov, id, proc, blend } of allSweeps()) {
+      for (const r of proc) if (r.sleeveEnd > 0) procSeen.push(`FOV ${fov} ${id} · ${r.action}`);
+      for (const r of blend) if (r.sleeveEnd > 0) seen.push(`FOV ${fov} ${id} · ${r.action} (${r.sleeveEnd})`);
+    }
+    if (process.env.MEDIR) console.log(`procedimental: ${procSeen.length} casos (${procSeen.slice(0, 8).join('; ')}…)`);
+    // El procedimental sí lo enseña (cubo al volcar, FOV 100); el brazo de Blender, nunca.
+    expect(procSeen.length).toBeGreaterThan(0);
+    expect(seen).toEqual([]);
+  }, 120_000);
 
   it('el garfio lanzado y el pez capturado (efectos) también usan Blender, con el mismo tamaño', () => {
     const cases: [string, (b: GeoBuilder) => void][] = [

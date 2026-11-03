@@ -111,12 +111,13 @@ describe('arte-muebles: modelos de Blender de los props', () => {
       expect(tris(m.bl.moving), k).toBeGreaterThan(tris(m.pr.moving));
       m.bl.moving!.computeBoundingBox();
       m.pr.moving!.computeBoundingBox();
-      // misma caja que el procedimental (±10 cm): no flota ni se hunde en la bancada
+      // casi la misma caja que el procedimental: no flota ni se hunde en la bancada ni se sale de
+      // su sitio (solo asoma algo más el codo del escape del motor, hacia arriba y hacia el mamparo)
       const a = m.bl.moving!.boundingBox!;
       const b = m.pr.moving!.boundingBox!;
       for (const ax of ['x', 'y', 'z'] as const) {
         expect(Math.abs(a.min[ax] - b.min[ax]), `${k} min.${ax}`).toBeLessThan(0.16);
-        expect(Math.abs(a.max[ax] - b.max[ax]), `${k} max.${ax}`).toBeLessThan(0.16);
+        expect(Math.abs(a.max[ax] - b.max[ax]), `${k} max.${ax}`).toBeLessThan(0.3);
       }
       expect(a.min.y, k).toBeGreaterThan(0.1);
     }

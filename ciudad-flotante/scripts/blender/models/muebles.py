@@ -13,7 +13,6 @@ se crea en Blender en (x, −z, y). Origen en el centro de la planta, a ras de s
 import math
 
 import bmesh
-import bpy
 from mathutils import Vector
 
 import cf
@@ -131,10 +130,6 @@ def turned_leg(x, z, h, r, color=WOOD_DARK, seg=8, light=False):
             (r * 0.95, h * 0.84), (r * 0.7, h * 0.88), (r * 0.8, h), (0.0, h),
         ]
     return glathe(x, 0, z, p, seg=seg, color=color)
-
-
-def rails(points_y, x0, x1, z, r, color):
-    return [gcylx(x0, x1, y, z, r, 6, color) for y in points_y]
 
 
 def wood_jitter(objs, amount=0.06, seed=1):
@@ -358,12 +353,7 @@ def sofa():
     """Sofá de la sala común (1,1 × 0,45 × 0,9; asientos a 0,44 en x = ±0,55; respaldo en +z)."""
     hx, hz = 1.1, 0.45
     fabric = '#9b4a3c'
-    dark = (0.78, 0.78, 0.78)
     parts = []
-    fab_dark = cf.rgba(fabric, 0.62)
-
-    def fd(ob):
-        return cf.paint(ob, fabric, f=0.62)
     for sx in (-1, 1):
         for sz in (-1, 1):
             parts.append(gcyl(sx * (hx - 0.12), 0, sz * (hz - 0.1), 0.03, 0.1, 6, WOOD_DARK, r2=0.04))
@@ -378,10 +368,11 @@ def sofa():
         soft(c, 0.05, 1)
         parts.append(c)
     # respaldo con rulo superior y dos cojines inclinados
-    back = gbox(-hx + 0.04, 0.26, hz - 0.2, hx - 0.04, 0.82, hz, fabric, 0.03, 2)
+    back = gbox(-hx + 0.04, 0.26, hz - 0.2, hx - 0.04, 0.8, hz, fabric, 0.03, 2)
     cf.paint(back, fabric, f=0.62)
     parts.append(back)
-    roll = gcylx(-hx + 0.06, hx - 0.06, 0.82, hz - 0.1, 0.1, 10, fabric)
+    # rulo del respaldo: arriba a 0,9 m, donde se apoya la manta de ganchillo del nivel 2
+    roll = gcylx(-hx + 0.06, hx - 0.06, 0.8, hz - 0.1, 0.1, 10, fabric)
     cf.paint(roll, fabric, f=0.7)
     parts.append(roll)
     for sx in (-1, 1):

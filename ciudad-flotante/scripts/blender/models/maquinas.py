@@ -480,8 +480,8 @@ def motor_movil():
     parts.append(gbox(-hx + 0.45, 0.26, -0.5, hx - 0.55, 0.42, 0.5, '#3f5a4d', 0.02))
     for k in range(5):
         x = -hx + 0.62 + k * 0.6
-        for sz in (-1, 1):
-            parts.append(gbox(x - 0.025, 0.42, sz * 0.555 - 0.012, x + 0.025, 1.05, sz * 0.555 + 0.012, '#45604f'))
+        # nervios solo en la cara de la bomba (−z), la que se ve desde el pasillo
+        parts.append(gbox(x - 0.025, 0.42, -0.567, x + 0.025, 1.05, -0.543, '#45604f'))
     # culatas, tapas de balancines y tornillos
     w = (2 * hx - 1.2) / 4
     for k in range(4):
@@ -505,7 +505,9 @@ def motor_movil():
         x = -hx + 0.7 + k * 0.6
         parts.append(gtube([(x, 1.15, 0.38), (x, 1.12, 0.5), (x, 1.02, 0.6), (x, 0.97, 0.66)], 0.055, seg=6, color=rust))
         parts.append(gbox(x - 0.09, 1.08, 0.5, x + 0.09, 1.2, 0.56, '#8a4a1a'))
-    parts.append(gtube([(hx - 0.6, 0.95, 0.68), (hx - 0.45, 0.98, 0.7), (hx - 0.42, 1.2, 0.7), (hx - 0.42, 1.55, 0.7)], 0.08, seg=8, color=rust))
+    # salida del escape: codo hacia el mamparo (+z), con su brida
+    parts.append(gtube([(hx - 0.6, 0.95, 0.68), (hx - 0.45, 0.98, 0.7), (hx - 0.42, 1.2, 0.7), (hx - 0.42, 1.42, 0.72), (hx - 0.42, 1.52, 0.8), (hx - 0.42, 1.55, 0.95)], 0.08, seg=6, color=rust))
+    parts.append(gcylz(hx - 0.42, 1.55, 0.93, 0.97, 0.12, 10, '#8a4a1a'))
     # delante (−x): tapa de distribución, polea, correa y eje
     parts.append(gbox(-hx + 0.3, 0.35, -0.42, -hx + 0.42, 1.05, 0.42, '#43604f', 0.02))
     parts.append(lathe_along((-hx + 0.1, 0.75, 0), (-hx + 0.3, 0.75, 0), [(0.0, 0.0), (0.2, 0.0), (0.22, 0.2), (0.17, 0.5), (0.22, 0.8), (0.2, 1.0), (0.0, 1.0)], seg=12, color='#2b2f33'))
