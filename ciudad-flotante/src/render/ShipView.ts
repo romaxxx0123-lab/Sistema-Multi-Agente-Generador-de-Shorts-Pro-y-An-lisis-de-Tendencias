@@ -4,9 +4,13 @@
  * Geometría estática POR NIVEL. Cuando cambia el barco (`state.ship.revision`, la eslora, el nivel
  * de mejora o el estado de daños de algún módulo, o tras `reset()`) se calcula la firma de cada
  * nivel (celdas, paredes, puertas, escaleras, losas, props y módulos que lo tocan) y solo se
- * reconstruyen los niveles cuya firma ha cambiado; si son varios, se reparten entre frames con
- * un presupuesto de tiempo (`rebuildBudgetMs`) y cada nivel se sustituye entero de una vez, así
- * que no hay parpadeos (QA P4: antes cada cambio rehacía todo el barco, ~70 ms de tirón).
+ * reconstruyen los niveles cuya firma ha cambiado (QA P4: antes cada cambio rehacía todo el barco,
+ * ~70 ms de tirón). Dentro de un nivel solo se rehace lo que cambia: columnas de estructura y grupos
+ * de columnas de muebles y de estructura (`GROUP_COLS`). Las columnas de estructura nuevas se
+ * construyen antes, repartidas entre frames con un presupuesto (`rebuildBudgetMs`), sin tocar la
+ * escena; cuando están todas, los niveles cambiados se sustituyen a la vez en un mismo frame (con
+ * las obras y andamios que desaparecen), así que no hay parpadeos ni huecos (QA ronda 2: terminar
+ * una mejora u obra en un barco grande costaba 40–90 ms).
  *  - casco procedural con proa, popa, regala, castillo, palo, pluma, botes, anclas, ojos de buey;
  *  - estructura del layout: losas, paredes con ventanas, puertas, barandillas, escaleras,
  *    lámparas, forro y cuadernas de la bodega;
@@ -201,6 +205,8 @@ export class ShipView {
   /** Niveles pendientes de reconstruir → firma que tendrán (y las de su estructura por columnas). */
   private planned = new Map<number, string>();
   private plannedStruct = new Map<number, string[]>();
+  /** Columnas de estructura ya construidas para los niveles pendientes (aún sin mostrar). */
+  private staged = new Map<number, Map<number, StructCache>>();
   /** Reconstruir todo de una vez (partida nueva, carga, casco nuevo). */
   private forceFull = true;
   private upgrades = new Map<number, UpgradeSiteEntry>();
@@ -242,22 +248,26 @@ export class ShipView {
   private hlGeoCache = new WeakMap<PropModel, THREE.BufferGeometry>();
   private modelIds = new WeakMap<PropModel, number>();
   private modelSeq = 0;
+  private bakedVertices = 0;
   private pickGeo = new THREE.BoxGeometry(1, 1, 1);
   private pickMat = new THREE.MeshBasicMaterial({ visible: false });
   /** Sustituye opciones de vista (pruebas y depuración: p. ej. `{ cutaway: false }`). */
   debugOptions: Partial<ShipViewOptions> | null = null;
   /**
-   * Milisegundos por frame que se pueden dedicar a reconstruir niveles (siempre al menos uno).
+   * Milisegundos por frame para construir por adelantado las columnas de estructura de un cambio
+   * (siempre al menos una por frame); los niveles cambiados se muestran todos juntos cuando están.
    * Infinity = todo en el mismo frame.
    */
   rebuildBudgetMs = 6;
   /**
    * Estadísticas para depuración y pruebas: `rebuilds` = cambios del barco que han obligado a
    * rehacer algún nivel; `levelRebuilds` = niveles rehechos en total; `lastRebuildMs` y
-   * `lastRebuildLevels` = coste y niveles del último frame que reconstruyó algo; `structRebuilds`,
-   * `furnitureBakes` y `siteBuilds` = columnas de estructura, grupos de muebles y obras construidos.
+   * `lastRebuildLevels` = coste y niveles del último frame que sustituyó niveles; `structRebuilds`,
+   * `solidBakes`, `furnitureBakes` y `siteBuilds` = columnas de estructura, grupos de estructura y
+   * de muebles fusionados, y obras construidas; `stagedFrames` = frames dedicados a adelantar
+   * columnas; `lastBakedVertices` = vértices fusionados en el último cambio.
    */
-  readonly stats = { rebuilds: 0, levelRebuilds: 0, lastRebuildLevels: 0, structRebuilds: 0, furnitureBakes: 0, siteBuilds: 0, lastStructMs: 0, tintPasses: 0, hullRebuilds: 0, lastRebuildMs: 0, staticMeshes: 0, triangles: 0 };
+  readonly stats = { rebuilds: 0, levelRebuilds: 0, lastRebuildLevels: 0, structRebuilds: 0, solidBakes: 0, furnitureBakes: 0, siteBuilds: 0, stagedFrames: 0, lastBakedVertices: 0, lastStructMs: 0, tintPasses: 0, hullRebuilds: 0, lastRebuildMs: 0, staticMeshes: 0, triangles: 0 };
 
   constructor(readonly root: THREE.Group) {
     this.group.name = 'barco';
@@ -299,6 +309,7 @@ export class ShipView {
     for (const b of this.levelBuilds) if (b) b.key = '';
     this.planned.clear();
     this.plannedStruct.clear();
+    this.clearStaged();
     this.forceFull = true;
     for (const c of this.crates.values()) c.removeFromParent();
     this.crates.clear();
@@ -345,14 +356,16 @@ export class ShipView {
       this.applyTints(new Map(state.ship.modules.map((m) => [m.id, m])));
       this.tintKey = dmg;
     }
+    // Obras y andamios de mejora: mientras haya niveles por sustituir se quedan como están, para que
+    // la obra terminada desaparezca en el mismo frame en que aparece lo construido.
     const siteKey = `${layout.revision}|${layout.sites.map((s) => s.moduleId).join(',')}`;
-    if (siteKey !== this.siteKey) {
+    if (siteKey !== this.siteKey && !this.planned.size) {
       this.rebuildSites(state, layout);
       this.siteKey = siteKey;
     }
     let upKey = `${layout.revision}|`;
     for (const m of state.ship.modules) if (m.upgrade && m.status !== 'construction') upKey += `${m.id}:${m.upgrade.toTier},`;
-    if (upKey !== this.upgradeKey) {
+    if (upKey !== this.upgradeKey && !this.planned.size) {
       this.rebuildUpgrades(state, layout);
       this.upgradeKey = upKey;
     }
@@ -444,7 +457,10 @@ export class ShipView {
     this.levelBuilds = [];
     this.planned.clear();
     this.plannedStruct.clear();
+    this.clearStaged();
     this.forceFull = true;
+    for (const s of this.sites.values()) disposeObject(s.group);
+    this.sites.clear();
     for (const e of this.props.values()) {
       e.dyn?.dispose();
       e.proxy.removeFromParent();
@@ -617,31 +633,73 @@ export class ShipView {
         this.plannedStruct.set(l, ss);
       }
     }
+    for (const [l, st] of this.staged) {
+      if (this.planned.has(l)) continue;
+      for (const c of st.values()) disposeChunk(c);
+      this.staged.delete(l);
+    }
     if (this.planned.size) this.stats.rebuilds++;
   }
 
-  /** Reconstruye niveles pendientes dentro del presupuesto del frame (al menos uno). */
+  /**
+   * Adelanta las columnas de estructura de los niveles pendientes dentro del presupuesto del frame
+   * (al menos una) y, cuando están todas, sustituye todos esos niveles a la vez.
+   */
   private flushLevels(state: GameState, layout: ShipLayout): void {
     const t0 = now();
     const modules = new Map(state.ship.modules.map((m) => [m.id, m]));
-    let done = 0;
-    for (const l of [...this.planned.keys()].sort((a, b) => a - b)) {
-      if (done > 0 && !this.forceFull && now() - t0 > this.rebuildBudgetMs) break;
-      this.rebuildLevel(l, this.planned.get(l)!, state, layout, modules);
-      this.planned.delete(l);
-      this.plannedStruct.delete(l);
-      done++;
+    const levels = [...this.planned.keys()].sort((a, b) => a - b);
+    const deadline = this.forceFull ? Infinity : t0 + this.rebuildBudgetMs;
+    const frame = { built: 0 };
+    for (const l of levels) {
+      if (this.stageStructure(l, this.plannedStruct.get(l) ?? this.structSignatures(l, state, layout, modules), state, layout, modules, deadline, frame)) continue;
+      this.stats.stagedFrames++;
+      return;
     }
-    if (!this.planned.size) this.forceFull = false;
+    const bakes = this.stats.solidBakes + this.stats.furnitureBakes;
+    this.bakedVertices = 0;
+    for (const l of levels) this.rebuildLevel(l, this.planned.get(l)!, state, layout, modules);
+    this.planned.clear();
+    this.plannedStruct.clear();
+    this.forceFull = false;
     this.dyns = [];
     for (const e of this.props.values()) if (e.dyn) this.dyns.push(e.dyn);
     this.lightSpots = this.levelBuilds.flatMap((b) => b?.lights ?? []);
     this.stats.triangles = this.levelBuilds.reduce((a, b) => a + (b ? b.structTris + b.propTris : 0), 0);
     this.stats.staticMeshes = this.levelBuilds.reduce((a, b) => a + (b ? b.structMeshes + b.propMeshes : 0), 0);
-    this.stats.levelRebuilds += done;
-    this.stats.lastRebuildLevels = done;
+    this.stats.levelRebuilds += levels.length;
+    this.stats.lastRebuildLevels = levels.length;
     this.stats.lastRebuildMs = now() - t0;
+    this.stats.lastBakedVertices = this.stats.solidBakes + this.stats.furnitureBakes > bakes ? this.bakedVertices : 0;
     this.hlKey = '';
+  }
+
+  /**
+   * Construye (sin tocar la escena) las columnas de estructura que le faltan al nivel `l` mientras
+   * quede presupuesto en el frame; devuelve si ya están todas. El nivel de los techos, una sola
+   * columna que además pone la chimenea y el radar en la escena, se construye al sustituirlo.
+   */
+  private stageStructure(l: number, keys: string[], state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>, deadline: number, frame: { built: number }): boolean {
+    if (l === layout.levels) return true;
+    const prev = this.levelBuilds[l]?.struct ?? [];
+    let st = this.staged.get(l);
+    if (!st) this.staged.set(l, (st = new Map()));
+    for (let c = 0; c < keys.length; c++) {
+      const key = keys[c]!;
+      if (prev[c]?.key === key || st.get(c)?.key === key) continue;
+      if (frame.built > 0 && now() > deadline) return false;
+      const old = st.get(c);
+      if (old) disposeChunk(old);
+      st.set(c, this.buildStructChunk(l, c, key, state, layout, modules));
+      frame.built++;
+    }
+    return true;
+  }
+
+  /** Libera las columnas adelantadas que no se han llegado a mostrar. */
+  private clearStaged(): void {
+    for (const st of this.staged.values()) for (const c of st.values()) disposeChunk(c);
+    this.staged.clear();
   }
 
   /**
@@ -686,6 +744,7 @@ export class ShipView {
     const top = layout.levels;
     const out: StructCache[] = [];
     const reused = new Set<StructCache>();
+    const staged = this.staged.get(l);
     keys.forEach((key, c) => {
       const cached = prev[c];
       if (cached && cached.key === key) {
@@ -693,9 +752,17 @@ export class ShipView {
         out.push(cached);
         return;
       }
+      const ready = staged?.get(c);
+      if (ready && ready.key === key) {
+        staged!.delete(c);
+        out.push(ready);
+        return;
+      }
       out.push(this.buildStructChunk(l, top === l ? undefined : c, key, state, layout, modules));
     });
-    for (const p of prev) if (!reused.has(p)) for (const g of [p.solid, p.glassOut, p.glassIn, p.lamps, p.lanterns]) g.dispose();
+    if (staged) for (const c of staged.values()) disposeChunk(c);
+    this.staged.delete(l);
+    for (const p of prev) if (!reused.has(p)) disposeChunk(p);
     return { chunks: out, changed: reused.size !== out.length || prev.length !== out.length };
   }
 
@@ -909,6 +976,8 @@ export class ShipView {
       const tint = tintable(mesh, baked.tags, ids);
       if (tint) fresh.push(tint);
       solid.set(g, { key: '', chunks, mesh, tint, tris: baked.vertices / 3 });
+      this.stats.solidBakes++;
+      this.bakedVertices += baked.vertices;
     }
     for (const [g, prev] of beforeSolid) if (solid.get(g) !== prev && prev.mesh) disposeObject(prev.mesh);
     let structObjs: THREE.Object3D[];
@@ -947,6 +1016,7 @@ export class ShipView {
       if (tint) fresh.push(tint);
       furn.set(plan.index, { key: gk, chunks: [], mesh, tint, tris: baked.vertices / 3 });
       this.stats.furnitureBakes++;
+      this.bakedVertices += baked.vertices;
     }
     for (const [g, prev] of before) if (furn.get(g) !== prev && prev.mesh) disposeObject(prev.mesh);
     // cristal interior y lámparas (estructura y props): pocas piezas, se rehacen siempre
@@ -983,14 +1053,31 @@ export class ShipView {
   /* Obras, ampliación y cajas                                           */
   /* ================================================================== */
 
+  /**
+   * Obras de los módulos en construcción: solo se crean las nuevas y se retiran las terminadas o
+   * canceladas; las demás se conservan mientras no cambie lo que dibujan (empezar una obra en un
+   * barco con varias en marcha las rehacía todas, ~8 ms).
+   */
   private rebuildSites(state: GameState, layout: ShipLayout): void {
-    for (const s of this.sites.values()) disposeObject(s.group);
-    this.sites.clear();
     const modules = new Map(state.ship.modules.map((m) => [m.id, m]));
+    const keep = new Set<number>();
     for (const site of layout.sites) {
-      const e = buildSite(site, modules.get(site.moduleId), layout, this.mats);
+      const m = modules.get(site.moduleId);
+      const key = `${site.type}|${layout.width}|${m ? `${m.level},${m.x},${m.z},${m.rot}` : '-'}|${site.cells.map((c) => `${c.level},${c.x},${c.z}`).join(';')}`;
+      keep.add(site.moduleId);
+      const old = this.sites.get(site.moduleId);
+      if (old && old.group.userData.siteKey === key) continue;
+      if (old) disposeObject(old.group);
+      const e = buildSite(site, m, layout, this.mats);
+      e.group.userData.siteKey = key;
       this.levelGroup(e.level).add(e.group);
       this.sites.set(site.moduleId, e);
+      this.stats.siteBuilds++;
+    }
+    for (const [id, e] of this.sites) {
+      if (keep.has(id)) continue;
+      disposeObject(e.group);
+      this.sites.delete(id);
     }
   }
 
@@ -1260,12 +1347,13 @@ export class ShipView {
     for (const f of [...b.solid.values(), ...b.furn.values()]) if (f.mesh) disposeObject(f.mesh);
     b.solid.clear();
     b.furn.clear();
-    for (const c of b.struct) for (const g of [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]) g.dispose();
+    for (const c of b.struct) disposeChunk(c);
     b.struct = [];
   }
 
   dispose(): void {
     for (const b of this.levelBuilds) if (b) this.disposeLevel(b);
+    this.clearStaged();
     for (const o of this.hullObjs) disposeObject(o);
     for (const e of this.props.values()) e.dyn?.dispose();
     for (const s of this.sites.values()) disposeObject(s.group);
@@ -1303,6 +1391,11 @@ function cornerBrackets(size: THREE.Vector3): THREE.BufferGeometry {
         g.box(x - t, y - t, Math.min(z, z - sz * lz), x + t, y + t, Math.max(z, z - sz * lz), '#ffffff');
       }
   return g.build();
+}
+
+/** Libera la geometría de una columna de estructura. */
+function disposeChunk(c: StructCache): void {
+  for (const g of [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]) g.dispose();
 }
 
 /** Retira un objeto y libera sus geometrías propias (y materiales propios). */

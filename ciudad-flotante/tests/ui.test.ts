@@ -39,7 +39,7 @@ import { MAX_TOASTS, pushToast, toastShape, type ToastEntry } from '../src/ui/hu
 import { wieldFromSlot } from '../src/ui/panels/inventory';
 import { addFuel, demolishLossNote, FUEL_BATCH, stationTutorial } from '../src/ui/panels/station';
 import { clickMode, containerGrid, modeQty, playerSlotFor, quickMove, storeAll, takeAllFrom } from '../src/ui/panels/transfer';
-import { HOTBAR_SLOTS } from '../src/sim/constants';
+import { CELL, HOTBAR_SLOTS, LEVEL_H, SHIP_ORIGIN_X } from '../src/sim/constants';
 import type { InvRef } from '../src/sim/Simulation';
 import { STORY_PAGES } from '../src/data/story';
 import { DEFAULT_SETTINGS } from '../src/game/types';
@@ -50,7 +50,7 @@ import type { ModuleInstance } from '../src/sim/types';
 import { CAPTAIN_COURSE_LABEL } from '../src/sim/voyage';
 import { SIGHTING_GLYPH } from '../src/ui/icons';
 import { Menus } from '../src/ui/menus';
-import { ARRIVAL_INDOOR_MAX, ARRIVAL_SCREEN_DELAY, arrivalCountdown, panelViewKey, seesCelebration, type ArrivalWait } from '../src/ui/UI';
+import { ARRIVAL_INDOOR_MAX, ARRIVAL_SCREEN_DELAY, arrivalCountdown, arrivalShot, panelViewKey, seesCelebration, type ArrivalWait } from '../src/ui/UI';
 import { CATEGORY_NAMES, moduleSubtitle, radioMessages, upgradeEffectsText } from '../src/ui/model';
 import { finalRegionOnChart, helmNotices, renderHelm } from '../src/ui/panels/helm';
 import { renderInventory } from '../src/ui/panels/inventory';
@@ -1364,6 +1364,27 @@ describe('fix-ui: mejora parada, confort, almacén grande, cuaderno, llegada y t
     for (let t = 0; t < ARRIVAL_INDOOR_MAX + 1; t++) w = arrivalCountdown(w, 1, { running: true, outdoors: false });
     expect(w.delay).toBe(0);
     expect(arrivalCountdown({ delay: 3, indoor: 0, nudged: true }, Number.NaN, { running: true, outdoors: true }).delay).toBe(3);
+  });
+
+  it('pantalla de llegada: plano de cortesía fuera del barco, por popa y mirando a proa, al cielo del puerto', () => {
+    for (const cells of [10, 18, 30]) {
+      const stern = -SHIP_ORIGIN_X;
+      const bow = cells * CELL - SHIP_ORIGIN_X;
+      for (const t of [0, 20, 80, 600, Number.NaN]) {
+        const s = arrivalShot(cells, t);
+        for (const v of [s.pos.x, s.pos.y, s.pos.z, s.target.x, s.target.y, s.target.z, s.turn]) expect(Number.isFinite(v)).toBe(true);
+        // Fuera del casco, por popa (ni pared ni techo delante) y a la altura de un mástil.
+        expect(s.pos.x).toBeLessThan(stern - 10);
+        expect(s.pos.y).toBeGreaterThan(2 * LEVEL_H);
+        // Mira por encima del barco hacia proa y hacia arriba (donde estallan los fuegos).
+        expect(s.target.x).toBeGreaterThan(bow);
+        expect(s.target.y).toBeGreaterThan(s.pos.y);
+      }
+    }
+    // Se mueve despacio y poco: como mucho 10 m, por mucho que se lea la pantalla.
+    const a0 = arrivalShot(18, 0).pos;
+    const a1 = arrivalShot(18, 1e6).pos;
+    expect(Math.hypot(a1.x - a0.x, a1.z - a0.z)).toBeLessThanOrEqual(10);
   });
 
   it('la fiesta se ve desde cubierta y desde el timón (ventanales del puente), no desde el camarote', () => {

@@ -38,11 +38,39 @@ import './story.css';
 export const ARRIVAL_SCREEN_DELAY = 7;
 /**
  * Si el jugador sigue a cubierto tanto tiempo (s, despierto y sin pausa), la pantalla de llegada se
- * abre igualmente: la fiesta de la llegada (unos 80 s) ya casi ha pasado y el resumen no debe perderse.
+ * abre igualmente, con el plano de cortesía (`arrivalShot`) sobre la fiesta: así aún quedan unos
+ * 50 s de los 80 de fuegos para verlos detrás de la pantalla.
  */
-export const ARRIVAL_INDOOR_MAX = 60;
+export const ARRIVAL_INDOOR_MAX = 25;
 /** Aviso para salir a cubierta cuando la llegada pilla al jugador a cubierto (p. ej. al despertar). */
 export const ARRIVAL_NUDGE = '¡Puerto Esperanza! Sal a cubierta a ver la fiesta de la llegada';
+
+/** Plano de cámara alrededor del barco (coordenadas del barco): posición, punto al que mira y giro final (rad). */
+export interface OrbitShot {
+  pos: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  turn: number;
+}
+
+/**
+ * Plano de cortesía de la pantalla de llegada: la cámara sale del barco y, desde popa y un poco a
+ * babor, mira por encima de la cubierta hacia proa, al fondeadero y a su cielo, donde estallan los
+ * fuegos y suben los farolillos (el puerto queda delante y a los costados). El barco queda en la
+ * mitad derecha, junto a la pantalla. Avanza muy despacio (como mucho 10 m). Así la pantalla nunca se
+ * abre sobre una pared, esté donde esté el jugador. `t`: segundos del plano.
+ */
+export function arrivalShot(shipLengthCells: number, t: number): OrbitShot {
+  const len = Math.max(1, shipLengthCells) * CELL;
+  const stern = -SHIP_ORIGIN_X;
+  const bow = len - SHIP_ORIGIN_X;
+  const time = Number.isFinite(t) ? Math.max(0, t) : 0;
+  const dolly = 10 * (1 - Math.exp(-time / 40));
+  return {
+    pos: { x: stern - 28 + dolly, y: 11 + Math.sin(time * 0.18) * 0.6, z: -15 },
+    target: { x: bow + 140, y: 30, z: 12 },
+    turn: 0.2,
+  };
+}
 
 /**
  * ¿Ve el jugador el cielo del puerto desde donde está? Al aire libre, sí; en una habitación o en la
@@ -110,6 +138,8 @@ export class UI {
   private lastSize = '';
   /** Tiempo del plano orbital del menú principal. */
   private menuTime = 0;
+  /** Tiempo del plano de cortesía de la pantalla de llegada (`arrivalShot`). */
+  private arrivalShotTime = 0;
   /** Lector no bloqueante de las hojas del cuaderno. */
   private readonly reader: PageReader;
   /** Hojas del cuaderno ya leídas la última vez que se miró (para abrir el lector con las nuevas). */
@@ -413,6 +443,8 @@ export class UI {
     this.menus.update(dtReal);
     this.tip.update(dtReal);
     if (ctx.mode === 'menu') this.menuCamera(dtReal);
+    else if (ctx.mode === 'play' && this.menus.screen === 'arrival') this.arrivalCamera(dtReal);
+    else this.arrivalShotTime = 0;
   }
 
   /**
@@ -421,20 +453,34 @@ export class UI {
    * Al empezar o cargar partida, el controlador del jugador vuelve a tomar la cámara.
    */
   private menuCamera(dt: number): void {
-    const cam = this.ctx.player?.camera;
-    if (!cam) return;
     this.menuTime += Math.min(0.1, Math.max(0, dt));
     const ship = this.ctx.sim.state.ship;
     const cx = (ship.length * CELL) / 2 - SHIP_ORIGIN_X;
     const r = Math.max(44, ship.length * CELL * 1.1);
     const a = 0.75 + this.menuTime * 0.03;
-    const local = cam.position.clone().set(cx + Math.cos(a) * r, 10.5 + Math.sin(this.menuTime * 0.21) * 1.1, Math.sin(a) * r);
-    const target = cam.position.clone().set(cx, 3.2, 0);
+    this.placeCamera({ pos: { x: cx + Math.cos(a) * r, y: 10.5 + Math.sin(this.menuTime * 0.21) * 1.1, z: Math.sin(a) * r }, target: { x: cx, y: 3.2, z: 0 }, turn: 0.26 });
+  }
+
+  /**
+   * Con la pantalla de llegada abierta (partida en pausa), la cámara del jugador hace el plano de
+   * cortesía (`arrivalShot`): la fiesta se ve detrás de la pantalla aunque se abra con el jugador
+   * a cubierto o mirando a una pared. Al cerrarla, el controlador del jugador vuelve a colocar la
+   * cámara en su sitio (lo hace cada frame que no está en pausa).
+   */
+  private arrivalCamera(dt: number): void {
+    this.arrivalShotTime += Math.min(0.1, Math.max(0, dt));
+    this.placeCamera(arrivalShot(this.ctx.sim.state.ship.length, this.arrivalShotTime));
+  }
+
+  private placeCamera(shot: OrbitShot): void {
+    const cam = this.ctx.player?.camera;
+    if (!cam) return;
+    const target = cam.position.clone().set(shot.target.x, shot.target.y, shot.target.z);
     // La cámara puede colgar del barco (tras una partida) o de nada (al arrancar el juego).
-    cam.position.copy(local);
+    cam.position.set(shot.pos.x, shot.pos.y, shot.pos.z);
     if (cam.parent) cam.parent.localToWorld(target);
     cam.lookAt(target);
-    cam.rotateY(0.26);
+    cam.rotateY(shot.turn);
   }
 
   /* ================================================================== */

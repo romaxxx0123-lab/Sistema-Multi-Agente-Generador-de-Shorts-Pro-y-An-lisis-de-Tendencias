@@ -770,22 +770,136 @@ describe('reconstrucción por niveles (QA P4)', () => {
     }
   });
 
-  it('con poco presupuesto por frame reparte los niveles entre frames sin dejar ninguno a medias', () => {
+  it('con poco presupuesto adelanta la estructura en varios frames y luego sustituye todos los niveles a la vez', () => {
     const { view, root, state } = newView();
     view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
     view.rebuildBudgetMs = 0;
-    // una habitación en cubierta cambia su nivel y el techo de abajo del nivel superior
+    const lr = view.stats.levelRebuilds;
+    const before = [1, 2].map((l) => ids(levelSolid(root, l)));
+    // una habitación en cubierta cambia su nivel y el techo del nivel superior
     const { layout } = addModule(state, 'camarote', 1, 6, 0);
     view.sync(state, layout, OPTS, 1 / 60, camera);
-    expect(view.stats.lastRebuildLevels).toBe(1);
-    const pending = view.pendingLevels;
-    expect(pending).toBeGreaterThan(0);
-    for (let i = 0; i < 5 && view.pendingLevels; i++) view.sync(state, layout, OPTS, 1 / 60, camera);
+    // primer frame: solo se construyen columnas por adelantado; en la escena no cambia nada aún
+    expect(view.pendingLevels).toBeGreaterThanOrEqual(2);
+    expect(view.stats.levelRebuilds).toBe(lr);
+    expect([1, 2].map((l) => ids(levelSolid(root, l)))).toEqual(before);
+    let frames = 1;
+    for (; frames < 20 && view.pendingLevels; frames++) view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(frames).toBeGreaterThan(2);
     expect(view.pendingLevels).toBe(0);
+    expect(view.stats.stagedFrames).toBeGreaterThan(0);
+    // todos los niveles cambiados aparecen en el mismo frame (sin un frame sin techo)
+    expect(view.stats.lastRebuildLevels).toBe(view.stats.levelRebuilds - lr);
+    expect(view.stats.lastRebuildLevels).toBeGreaterThanOrEqual(2);
     const fresh = newView();
     fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
     for (let l = 0; l <= layout.levels; l++) expect(vertexCount(levelSolid(root, l))).toBe(vertexCount(levelSolid(fresh.root, l)));
+  });
+
+  it('la obra terminada sigue a la vista hasta el mismo frame en que aparece lo construido', () => {
+    const { view, root, state } = newView();
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    view.rebuildBudgetMs = 0;
+    const m = instantiateModule(state.nextId++, 'camarote', 1, 6, 0, 0, 'construction');
+    state.ship.modules.push(m);
+    state.ship.revision++;
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.getSiteObject(m.id)).not.toBeNull();
+    const solid = ids(levelSolid(root, 1));
+    m.status = 'active';
+    state.ship.revision++;
+    const layout = computeLayout(state.ship);
+    let swapped = false;
+    for (let i = 0; i < 20 && !swapped; i++) {
+      view.sync(state, layout, OPTS, 1 / 60, camera);
+      swapped = !view.pendingLevels;
+      const changed = ids(levelSolid(root, 1)).some((u, k) => u !== solid[k]);
+      // o la obra (antes) o la habitación (después): nunca ninguna de las dos
+      expect(changed, `frame ${i}`).toBe(swapped);
+      expect(view.getSiteObject(m.id) === null, `frame ${i}`).toBe(swapped);
+    }
+    expect(swapped).toBe(true);
+  });
+
+  it('empezar una obra no rehace las demás obras en marcha', () => {
+    const { view, state } = newView();
+    const a = instantiateModule(state.nextId++, 'generador', 1, 6, 0, 0, 'construction');
+    state.ship.modules.push(a);
+    state.ship.revision++;
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    const siteA = view.getSiteObject(a.id);
+    const builds = view.stats.siteBuilds;
+    const b = instantiateModule(state.nextId++, 'deposito', 0, 1, 0, 0, 'construction');
+    state.ship.modules.push(b);
+    state.ship.revision++;
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.stats.siteBuilds - builds).toBe(1);
+    expect(view.getSiteObject(a.id)).toBe(siteA);
+    expect(view.getSiteObject(b.id)).not.toBeNull();
+    // cancelar una retira solo esa
+    state.ship.modules = state.ship.modules.filter((x) => x !== b);
+    state.ship.revision++;
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(view.getSiteObject(b.id)).toBeNull();
+    expect(view.getSiteObject(a.id)).toBe(siteA);
+    expect(siteA!.parent).not.toBeNull();
+  });
+
+  it('en un barco ampliado y lleno, una mejora o una obra solo vuelven a fusionar una pequeña parte de su nivel (ronda 2: tirón de 40–90 ms)', () => {
+    const { view, root, state } = newView();
+    state.ship.length = 18;
+    state.ship.revision++;
+    const unlocks = MODULE_LIST.map((d) => d.unlock).filter((u): u is string => !!u);
+    const place = (type: string, status: 'active' | 'construction' = 'active'): ModuleInstance | null => {
+      for (let level = 0; level < state.ship.levels; level++)
+        for (let x = 0; x < state.ship.length; x++)
+          for (let z = 0; z < state.ship.width; z++)
+            for (const rot of [0, 1, 2, 3] as const) {
+              if (!checkPlacement(state.ship, unlocks, type, level, x, z, rot).ok) continue;
+              const m = instantiateModule(state.nextId++, type, level, x, z, rot, status);
+              state.ship.modules.push(m);
+              state.ship.revision++;
+              return m;
+            }
+      return null;
+    };
+    for (const t of ['sala_comun', 'ahumadero', 'vivero', 'almacen', 'deposito', 'generador', 'huerto', 'taller', 'enfermeria', 'dormitorio', 'comedor', 'camarote', 'camarote']) place(t);
+    let layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    const levelVerts = (l: number): number => vertexCount(levelSolid(root, l)) + vertexCount(levelGroups(root, l, 'muebles'));
+    expect(levelSolid(root, 1).length).toBe(Math.ceil(18 / 4));
+    // mejora terminada: un solo grupo de muebles, nada de estructura
+    const sala = state.ship.modules.find((m) => m.type === 'sala_comun')!;
+    const solid0 = view.stats.solidBakes;
+    const furn0 = view.stats.furnitureBakes;
+    sala.tier = 2;
+    state.ship.revision++;
+    layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.lastRebuildLevels).toBe(1);
+    expect(view.stats.solidBakes).toBe(solid0);
+    expect(view.stats.furnitureBakes - furn0).toBe(1);
+    expect(view.stats.lastBakedVertices).toBeLessThan(levelVerts(sala.level) * 0.3);
+    // obra terminada: los grupos de estructura de sus columnas (y las vecinas), no el nivel entero
+    const obra = place('camarote', 'construction')!;
+    expect(obra).not.toBeNull();
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    const total = [0, 1, 2, 3].reduce((a, l) => a + levelVerts(l), 0);
+    const solidObra = view.stats.solidBakes;
+    obra.status = 'active';
+    state.ship.revision++;
+    layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.lastRebuildLevels).toBeGreaterThanOrEqual(1);
+    expect(view.stats.lastBakedVertices).toBeGreaterThan(0);
+    // como mucho dos grupos de estructura por nivel cambiado (las columnas de la obra y sus vecinas)
+    expect(view.stats.solidBakes - solidObra).toBeLessThanOrEqual(2 * view.stats.lastRebuildLevels);
+    expect(view.stats.lastBakedVertices).toBeLessThan(total * 0.5);
+    // y el resultado es el mismo que construir el barco de cero
+    const fresh = newView();
+    fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
+    expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
   });
 
   it('las esferas envolventes de las mallas fusionadas contienen todos sus vértices (recorte correcto)', () => {
