@@ -36,9 +36,12 @@
  * (`NAME_GENDER`, `npcTraitName`, `npcRoleName`).
  *
  * Relaciones (docs/SISTEMAS.md §16): afinidad simétrica −100..100 por pareja (`npc.relations`).
- * Charlar la sube (o, de mal humor, la baja), compartir mesa y sala común también; discutir la baja
- * (events.ts). Amigos (≥ 40): ánimo al estar juntos y luto si uno muere; rivales (≤ −40): ánimo
- * negativo cerca y más discusiones. Sin trato se enfría (1 punto por día). `npcRelations` para la UI.
+ * Cada pareja tiene su química (`npcChemistry`: sus caracteres y algo personal). Charlar la sube
+ * (más si congenian) o, de mal humor, si chocan o si ya hay roces, la baja; compartir mesa y sala
+ * común acerca hasta «se llevan bien» (la amistad se hace charlando) o, si no congenian, deja roces;
+ * discutir la baja (events.ts). Cuanto más alta (o baja), menos se mueve. Amigos (≥ 40): ánimo al
+ * estar juntos y luto si uno muere; rivales (≤ −40): ánimo negativo cerca y más discusiones. Sin trato
+ * se enfría (1 punto por día; los roces, 0,5). `npcRelations` para la UI.
  *
  * Sala común: en su rato libre prefieren ir allí (sofá, leer o jugar a la mesa de juegos con quien
  * se apunte); el ánimo lo nota según su confort (`moduleStat`, igual que camarotes, dormitorios y
@@ -181,8 +184,20 @@ export const CHAT_FRICTION = -4;
 /** Compartir mesa en una comida y un rato juntos en la sala común. */
 export const MEAL_RELATION = 2;
 export const LOUNGE_RELATION = 3;
-/** Sin trato, la afinidad vuelve poco a poco a cero (puntos por día). */
+/** Sin trato, la afinidad vuelve poco a poco a cero (puntos por día)… */
 export const RELATION_DECAY_PER_DAY = 1;
+/** …y los roces se olvidan más despacio que las simpatías. */
+export const RELATION_DECAY_NEG_PER_DAY = 0.5;
+/**
+ * Compartir mesa o sala común acerca hasta «se llevan bien», no más (cada vez suma menos, y nada
+ * al llegar a este valor): la amistad se hace charlando y depende de la química de la pareja.
+ */
+export const MEAL_RELATION_CAP = 30;
+export const LOUNGE_RELATION_CAP = 40;
+/** Una misma pareja suma en la sala común como mucho una vez cada tanto (min de juego). */
+export const LOUNGE_PAIR_COOLDOWN = 8 * 60;
+/** Roce de la convivencia: compartir mesa o sala con quien no congenia (o de mal humor). */
+export const DAILY_FRICTION = -3;
 /** Juntos: mismo nivel y a menos de esta distancia (m), los dos despiertos. */
 export const TOGETHER_RANGE = 8;
 /** Ánimo por tener cerca a un amigo (o a varios) y por tener cerca a un rival. */
@@ -334,7 +349,10 @@ const LINES = {
   /** Con un amigo ({nombre}). */
   friendChat: ['¡Contigo da gusto charlar, {nombre}!', '{nombre}, eres de lo mejor de este barco.', '¿Te acuerdas, {nombre}, de aquella tormenta?', '¡Ja, ja! {nombre}, no cambies nunca.'],
   /** Una charla que acaba mal. */
-  friction: ['Bah, contigo no se puede hablar.', 'Mejor lo dejamos aquí.', 'Siempre tienes que llevar razón, ¿eh?'],
+  friction: ['Bah, contigo no se puede hablar.', 'Mejor lo dejamos aquí.', 'Siempre tienes que llevar razón, ¿eh?', 'Ya estamos otra vez…', 'No me interrumpas, que no he terminado.'],
+  /** Roces de la convivencia: en la mesa y en la sala común. */
+  mealFriction: ['¿Tienes que hacer tanto ruido al comer?', 'Esa ración la había apartado yo.', 'Siempre te sirves el primero, ¿eh?', 'Podrías dejar algo para los demás.'],
+  loungeFriction: ['¡Eso ha sido trampa!', 'Siempre te quedas con el mejor sitio.', '¿Puedes dejar de tararear?', 'Ya no juego más contigo.'],
   /** Pensando en su amigo o su rival ({amigo} / {rival}). */
   aboutFriend: ['Luego le cuento esto a {amigo}.', 'A ver si {amigo} se viene un rato a charlar.', 'Menos mal que está {amigo} a bordo.'],
   aboutRival: ['Mientras {rival} no me hable, todo irá bien.', '¿Has visto lo que ha hecho {rival}? Típico.', 'Con {rival} cerca no hay quien esté tranquilo.'],
@@ -372,6 +390,8 @@ interface NpcMemo {
   /** Último rato en la sala común y su confort. */
   loungeAt: number;
   loungeComfort: number;
+  /** Último rato juntos en la sala común con cada compañero (para no sumar afinidad sin parar). */
+  loungeWith: Record<string, number>;
   /** Luto por un amigo muerto (nombre, género y hasta cuándo se nota en el ánimo). */
   grief: { name: string; female: boolean; until: number } | null;
   chatAt: number;
@@ -466,6 +486,7 @@ function memoOf(sim: Simulation, npc: NpcState): NpcMemo {
       comedorComfort: 3,
       loungeAt: -Infinity,
       loungeComfort: 0,
+      loungeWith: {},
       grief: null,
       chatAt: -Infinity,
       greetAt: -Infinity,
@@ -639,31 +660,119 @@ function tieLines(sim: Simulation, npc: NpcState): string[] {
   return out;
 }
 
-/** Sin trato, la afinidad vuelve despacio a cero; se olvida a quien ya no está a bordo. */
+/**
+ * Sin trato, la afinidad vuelve despacio a cero (los roces, más despacio que las simpatías); se
+ * olvida a quien ya no está a bordo.
+ */
 function decayRelations(sim: Simulation, npc: NpcState, dt: number): void {
   const rel = npc.relations;
   if (!rel) return;
-  const step = (RELATION_DECAY_PER_DAY * dt) / (24 * 60);
+  const up = (RELATION_DECAY_PER_DAY * dt) / (24 * 60);
+  const down = (RELATION_DECAY_NEG_PER_DAY * dt) / (24 * 60);
   for (const id of Object.keys(rel)) {
     const v = rel[id];
     if (typeof v !== 'number' || !Number.isFinite(v) || !sim.state.npcs.some((n) => n.id === id)) {
       delete rel[id];
       continue;
     }
+    const step = v > 0 ? up : down;
     rel[id] = Math.abs(v) <= step ? 0 : v - Math.sign(v) * step;
   }
 }
 
 /**
- * Resultado de una charla entre dos habitantes: casi siempre suma afinidad (algo más con un
- * hablador); de mal humor, con un gruñón o con roces previos puede acabar mal.
+ * Química entre caracteres (−1..1, clave con los dos rasgos en orden alfabético): hay rasgos que
+ * chocan (un gruñón con un hablador, una madrugadora con un dormilón) y otros que congenian. Las
+ * parejas que no aparecen son neutras (con el mismo rasgo, algo de afinidad: `SAME_TRAIT_CHEMISTRY`).
+ */
+const TRAIT_CHEMISTRY: Readonly<Record<string, number>> = {
+  'grunon|hablador': -0.6,
+  'dormilon|madrugador': -0.6,
+  'grunon|optimista': -0.45,
+  'dormilon|trabajador': -0.4,
+  'grunon|grunon': -0.3,
+  'gloton|gloton': -0.2,
+  'miedoso|valiente': -0.2,
+  'hablador|hablador': 0.4,
+  'hablador|optimista': 0.3,
+  'miedoso|optimista': 0.3,
+  'madrugador|trabajador': 0.3,
+  'trabajador|trabajador': 0.3,
+  'optimista|optimista': 0.3,
+  'gloton|hablador': 0.2,
+};
+const SAME_TRAIT_CHEMISTRY = 0.15;
+/** Lo personal que no depende del carácter: ±la mitad de esto por pareja. */
+const PERSONAL_CHEMISTRY = 0.9;
+
+/** Número determinista en [0, 1) a partir de un texto (no gasta azar). */
+function hashUnit(key: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  h = Math.imul(h ^ (h >>> 15), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Química de una pareja (−1..1): la de sus caracteres más algo personal, fijo para cada pareja
+ * (determinista: no gasta azar ni se guarda). Pesa en cómo acaban sus charlas, en con quién buscan
+ * charlar y en los roces de la convivencia.
+ */
+export function npcChemistry(a: Pick<NpcState, 'id' | 'trait'>, b: Pick<NpcState, 'id' | 'trait'>): number {
+  if (a.id === b.id) return 0;
+  const [x, y] = [a.trait, b.trait].sort();
+  const traits = TRAIT_CHEMISTRY[`${x}|${y}`] ?? (x === y ? SAME_TRAIT_CHEMISTRY : 0);
+  const [i, j] = [a.id, b.id].sort();
+  return clamp(traits + (hashUnit(`${i}|${j}`) - 0.5) * PERSONAL_CHEMISTRY, -1, 1);
+}
+
+/**
+ * Cambio de afinidad de la convivencia (charlas, mesa, sala): cuanto más alta, menos sube (nada al
+ * llegar a `cap`), y cuanto más baja, menos baja, para que no todo acabe en 100 o en −100.
+ */
+function nudgeRelation(sim: Simulation, a: NpcState, b: NpcState, delta: number, cap = 100): void {
+  const rel = relationBetween(a, b);
+  const k = delta > 0 ? clamp(1 - rel / cap, 0, 1) : clamp(1 + rel / 100, 0.3, 1);
+  if (k > 0) adjustRelation(sim, a, b, delta * k);
+}
+
+/**
+ * Resultado de una charla entre dos habitantes: suele sumar afinidad (más si congenian o con un
+ * hablador); de mal humor, con un gruñón, si chocan de carácter o si ya hay roces puede acabar mal
+ * (y peor cuanto peor congenian). Con roces, una buena charla arregla poco.
  */
 function chatOutcome(sim: Simulation, a: NpcState, b: NpcState): number {
-  let friction = a.needs.mood < 35 || b.needs.mood < 35 ? 0.35 : 0.05;
-  if (a.trait === 'grunon' || b.trait === 'grunon') friction += 0.15;
-  if (relationBetween(a, b) <= BAD_AT) friction += 0.2;
-  if (sim.rng.chance(friction)) return CHAT_FRICTION;
-  return CHAT_RELATION + (a.trait === 'hablador' || b.trait === 'hablador' ? CHAT_TALKER_BONUS : 0);
+  const chem = npcChemistry(a, b);
+  const rel = relationBetween(a, b);
+  const low = Math.min(a.needs.mood, b.needs.mood);
+  let friction = 0.06 + (low < 35 ? 0.3 : low < 50 ? 0.08 : 0);
+  if (a.trait === 'grunon' || b.trait === 'grunon') friction += 0.12;
+  friction += Math.max(0, -chem) * 0.4 - Math.max(0, chem) * 0.05;
+  if (rel <= BAD_AT) friction += 0.2;
+  if (sim.rng.chance(clamp(friction, 0.02, 0.85))) return CHAT_FRICTION * (1 + Math.max(0, -chem));
+  const good = (CHAT_RELATION + (a.trait === 'hablador' || b.trait === 'hablador' ? CHAT_TALKER_BONUS : 0)) * (1 + 0.6 * chem);
+  return rel <= BAD_AT ? Math.min(good, 3) : good;
+}
+
+/**
+ * Lo que da compartir un rato (mesa o sala): acerca un poco (hasta `cap`), salvo que no congenien o
+ * estén de mal humor, que puede acabar en roce (`DAILY_FRICTION`, y lo dice); con quien ya hay roces
+ * no acerca nada. Devuelve el cambio (0 si nada).
+ */
+function shareRelation(sim: Simulation, a: NpcState, b: NpcState, delta: number, cap: number, lines: readonly string[]): number {
+  const rel = relationBetween(a, b);
+  const chem = npcChemistry(a, b);
+  const low = Math.min(a.needs.mood, b.needs.mood);
+  const friction = Math.max(0, -chem - 0.1) * 0.3 + (low < 35 ? 0.1 : 0) + (rel <= BAD_AT ? 0.15 : 0);
+  if (friction > 0 && sim.rng.chance(friction)) {
+    nudgeRelation(sim, a, b, DAILY_FRICTION);
+    if (!a.say || a.say.until <= sim.state.time) sayFrom(sim, a, lines);
+    return DAILY_FRICTION;
+  }
+  if (rel <= BAD_AT) return 0;
+  nudgeRelation(sim, a, b, delta, cap);
+  return delta;
 }
 
 function td(npc: NpcState): TaskData {
@@ -1995,15 +2104,24 @@ function startLounge(sim: Simulation, npc: NpcState): void {
   sayFrom(sim, npc, LINES.solitaire);
 }
 
-/** Termina el rato en la sala: el ánimo lo recuerda y se llevan mejor con quien estaba allí. */
+/**
+ * Termina el rato en la sala: el ánimo lo recuerda y se llevan algo mejor con quien estaba allí (una
+ * vez cada `LOUNGE_PAIR_COOLDOWN` por pareja y hasta `LOUNGE_RELATION_CAP`; si no congenian, puede
+ * acabar en roce, y con quien ya hay roces no acerca).
+ */
 function endLounge(sim: Simulation, npc: NpcState): void {
   const t = npc.task;
   if (!t || t.kind !== 'ocio' || td(npc).job !== 'sala' || td(npc).phase !== 'act') return;
+  const now = sim.state.time;
   const mem = memoOf(sim, npc);
-  mem.loungeAt = sim.state.time;
+  mem.loungeAt = now;
   for (const o of sim.state.npcs) {
     if (o === npc || !isPresent(o) || o.task?.kind !== 'ocio' || o.task.targetModuleId !== t.targetModuleId) continue;
-    if (td(o).job === 'sala' && td(o).phase === 'act') adjustRelation(sim, npc, o, LOUNGE_RELATION);
+    if (td(o).job !== 'sala' || td(o).phase !== 'act') continue;
+    if (now - (mem.loungeWith[o.id] ?? -Infinity) < LOUNGE_PAIR_COOLDOWN) continue;
+    mem.loungeWith[o.id] = now;
+    memoOf(sim, o).loungeWith[npc.id] = now;
+    shareRelation(sim, npc, o, LOUNGE_RELATION, LOUNGE_RELATION_CAP, LINES.loungeFriction);
   }
 }
 
@@ -2066,13 +2184,14 @@ function finishEating(sim: Simulation, npc: NpcState): void {
     const room = seat ? findModule(sim, seat.moduleId) : undefined;
     mem.comedorComfort = room ? moduleStat(room, 'comfort') : mem.comedorComfort;
   }
-  // Compartir mesa acerca: quien sigue comiendo a su lado se lleva un poco mejor con él.
+  // Compartir mesa acerca: quien sigue comiendo a su lado se lleva un poco mejor con él (hasta
+  // `MEAL_RELATION_CAP`), salvo que no congenien, que puede acabar en roce.
   if (d.stage === 'mesa') {
     for (const o of sim.state.npcs) {
       if (o === npc || !isPresent(o) || o.task?.kind !== 'comer') continue;
       const od = td(o);
       if (od.stage !== 'mesa' || od.phase !== 'act' || Math.abs(o.pos.y - npc.pos.y) > 1 || dist2(o.pos, npc.pos) > 3) continue;
-      adjustRelation(sim, npc, o, MEAL_RELATION);
+      shareRelation(sim, npc, o, MEAL_RELATION, MEAL_RELATION_CAP, LINES.mealFriction);
     }
   }
   const line = LINES.eat[c.id];
@@ -2980,7 +3099,8 @@ function leisurePlan(sim: Simulation, npc: NpcState): Plan {
 
 /**
  * Alguien con quien charlar: presente, despierto y sin nada urgente, a menos de 25 m. Se busca antes
- * a los amigos (cuentan como si estuvieran más cerca) y nunca a un rival.
+ * a los amigos y a quien congenia (cuentan como si estuvieran más cerca), nunca a un rival, y a
+ * alguien con quien hay roces solo si los dos están de buen humor (para intentar arreglarlo).
  */
 function chatPartner(sim: Simulation, npc: NpcState): NpcState | null {
   let best: NpcState | null = null;
@@ -2993,9 +3113,10 @@ function chatPartner(sim: Simulation, npc: NpcState): NpcState | null {
     if (Math.abs(n.pos.y - npc.pos.y) > 1.5) continue;
     const rel = relationBetween(npc, n);
     if (rel <= RIVAL_AT) continue;
+    if (rel <= BAD_AT && Math.min(npc.needs.mood, n.needs.mood) < 60) continue;
     const d = dist2(n.pos, npc.pos);
     if (d >= 25) continue;
-    const score = d - rel / 8;
+    const score = d - rel / 8 - npcChemistry(npc, n) * 4;
     if (score < bestScore) {
       bestScore = score;
       best = n;
@@ -3524,7 +3645,7 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
         const talked = now - (until - ((d['duration'] as number | undefined) ?? 0));
         if (d['lead'] && other && talked >= 5) {
           const delta = chatOutcome(sim, npc, other);
-          adjustRelation(sim, npc, other, delta);
+          nudgeRelation(sim, npc, other, delta);
           if (delta < 0) sayFrom(sim, npc, LINES.friction);
         }
         mem.chatAt = now;

@@ -17,7 +17,7 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
   barril: [
     { id: 'conserva', min: 1, max: 1, chance: 0.2 },
     { id: 'agua_potable', min: 1, max: 2, chance: 0.5 },
-    { id: 'combustible', min: 1, max: 1, chance: 0.15 },
+    { id: 'combustible', min: 1, max: 1, chance: 0.1 },
     { id: 'plastico', min: 1, max: 1, chance: 0.4 },
   ],
   caja: [
@@ -30,19 +30,19 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
     { id: 'semilla_lino', min: 1, max: 2, chance: 0.12 },
   ],
   restos: [
-    { id: 'chatarra', min: 2, max: 4, chance: 1 },
+    { id: 'chatarra', min: 2, max: 3, chance: 1 },
     { id: 'plastico', min: 1, max: 1, chance: 0.45 },
     { id: 'tornillos', min: 1, max: 4, chance: 0.4 },
     { id: 'componentes', min: 1, max: 1, chance: 0.05 },
   ],
   red: [
-    { id: 'fibra', min: 2, max: 3, chance: 0.9 },
+    { id: 'fibra', min: 1, max: 3, chance: 0.85 },
     { id: 'cuerda', min: 1, max: 2, chance: 0.5 },
     { id: 'pescado_crudo', min: 1, max: 2, chance: 0.45 },
     { id: 'plastico', min: 1, max: 1, chance: 0.3 },
   ],
   bidon: [
-    { id: 'combustible', min: 1, max: 1, chance: 0.65 },
+    { id: 'combustible', min: 1, max: 1, chance: 0.5 },
     { id: 'plastico', min: 1, max: 1, chance: 0.5 },
   ],
   cofre: [

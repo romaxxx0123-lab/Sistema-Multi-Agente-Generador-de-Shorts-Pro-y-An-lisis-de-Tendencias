@@ -384,7 +384,7 @@ const defs: ModuleDef[] = [
     unlock: null,
     doors: [],
     props: [{ kind: 'colector', u: 2.0, v: 2.0, rot: 0, collider: [0.9, 0.9, 2.2], interact: 'colector' }],
-    waterGen: 8,
+    waterGen: 6,
     waterCapacity: 20,
     demolishable: true,
     buildable: true,
@@ -457,7 +457,7 @@ const defs: ModuleDef[] = [
     unlock: 'energia',
     doors: [],
     props: [{ kind: 'bateria', u: 2.0, v: 2.0, rot: 0, collider: [1.0, 0.6, 1.5], interact: 'bateria' }],
-    batteryKWh: 25,
+    batteryKWh: 20,
     machine: true,
     demolishable: true,
     buildable: true,
@@ -476,7 +476,7 @@ const defs: ModuleDef[] = [
     unlock: 'solar',
     doors: [],
     props: [{ kind: 'panel_solar', u: 2.0, v: 2.0, rot: 0, collider: [1.6, 1.2, 1.2], interact: 'panel' }],
-    powerGen: 1.6,
+    powerGen: 1.2,
     machine: true,
     demolishable: true,
     buildable: true,
@@ -685,7 +685,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 3, name: 'Gran depósito', desc: 'Tanque presurizado con aislamiento: casi el triple que el básico.', cost: { placa_metal: 12, tornillos: 12, plastico: 10, componentes: 1 }, buildTime: 105, unlock: 'agua', effects: { waterCapacity: 340 } },
   ],
   colector: [
-    { tier: 2, name: 'Colector de doble lona', desc: 'Más superficie de captación y un pequeño tanque: recoge la mitad más de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 12, waterCapacity: 35 } },
+    { tier: 2, name: 'Colector de doble lona', desc: 'Doble lona y un pequeño tanque: recoge dos tercios más de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 10, waterCapacity: 35 } },
   ],
   potabilizadora: [
     { tier: 2, name: 'Potabilizadora con prefiltro', desc: 'Filtra casi el doble de agua por hora y se desgasta menos.', cost: { componentes: 3, placa_metal: 4, tornillos: 6, pieza_mecanica: 1 }, buildTime: 90, effects: { waterGen: 7, wearMult: 0.7 } },
@@ -695,10 +695,10 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 3, name: 'Generador turbo', desc: 'Turbocompresor recuperado de un pesquero: potente y eficiente.', cost: { pieza_mecanica: 4, componentes: 5, placa_metal: 10 }, buildTime: 180, effects: { powerGen: 11, fuelEfficiency: 1.6 } },
   ],
   bateria: [
-    { tier: 2, name: 'Baterías de alta capacidad', desc: 'Celdas nuevas: casi el doble de carga.', cost: { componentes: 4, placa_metal: 4 }, buildTime: 75, effects: { batteryKWh: 45 } },
+    { tier: 2, name: 'Baterías de alta capacidad', desc: 'Celdas nuevas: el doble de carga.', cost: { componentes: 4, placa_metal: 4 }, buildTime: 75, effects: { batteryKWh: 40 } },
   ],
   panel_solar: [
-    { tier: 2, name: 'Panel orientable', desc: 'Sigue al sol y rinde la mitad más.', cost: { celula_solar: 2, placa_metal: 2, tornillos: 6 }, buildTime: 70, effects: { powerGen: 2.4 } },
+    { tier: 2, name: 'Panel orientable', desc: 'Sigue al sol y rinde la mitad más.', cost: { celula_solar: 2, placa_metal: 2, tornillos: 6 }, buildTime: 70, effects: { powerGen: 1.8 } },
   ],
   banco_trabajo: [
     { tier: 2, name: 'Banco con tornillo de banco', desc: 'Herramientas mejores: se trabaja más rápido.', cost: { madera: 8, tornillos: 8, placa_metal: 3 }, buildTime: 45, effects: { workSpeed: 1.5, storageSlots: 10 } },
