@@ -11,6 +11,11 @@
  *
  * Convención (como models.ts): el agua es y = 0, +x es la eslora. Cada modelo devuelve una sola
  * geometría con `color` y `aEmit` (para `litMaterial`) y la lista de luces para los halos.
+ *
+ * Los tres modelos grandes (grupo, pantalán y torre: 10–170 ms cada uno) tienen también su versión
+ * por pasos (`…Steps`, un generador que cede el control entre partes): HarborView los construye
+ * repartidos entre frames con un presupuesto de tiempo. El resultado es idéntico (misma secuencia
+ * aleatoria).
  */
 import * as THREE from 'three';
 import type { GlowSpot } from './glow';
@@ -72,6 +77,16 @@ const LANTERN_GLOW = ['#ff6b4a', '#ffa64d', '#ffd36b', '#ff9ac2', '#ff8a2a', '#f
 const FLOWERS = ['#e63946', '#ffb703', '#ff8fab', '#ffffff', '#c77dff'];
 
 const pick = <T>(arr: readonly T[], r: number): T => arr[Math.floor(r * arr.length) % arr.length]!;
+
+/** Construcción por pasos de un modelo: cada `next()` hace una parte; el valor final es el modelo. */
+export type ModelSteps = Generator<void, HarborModel, void>;
+
+/** Ejecuta todos los pasos de una construcción de una vez. */
+export function runSteps(it: ModelSteps): HarborModel {
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
 
 /** Añade una luz (halo) en la posición local actual del kit (se guarda en coordenadas del modelo). */
 function light(kit: Kit, lights: GlowSpot[], p: V3, color: string, size: number, flicker: number): void {
@@ -245,7 +260,8 @@ interface BoatInfo {
   posts: V3[];
 }
 
-function houseboat(kit: Kit, lights: GlowSpot[], o: BoatSpec, rnd: () => number): BoatInfo {
+/** Barco-hogar por pasos (casco; casitas y cubierta; detalles). */
+function* houseboat(kit: Kit, lights: GlowSpot[], o: BoatSpec, rnd: () => number): Generator<void, BoatInfo, void> {
   const freeboard = 1.15;
   const hullCol = pick(HULL_COLORS, rnd());
   kit.push({ p: [o.x, 0, o.z] });
@@ -262,6 +278,7 @@ function houseboat(kit: Kit, lights: GlowSpot[], o: BoatSpec, rnd: () => number)
     sheer: 0.45,
     stations: 6,
   });
+  yield;
   const deckY = freeboard;
   const wall = pick(HOUSE_COLORS, rnd());
   const roof = pick(ROOF_COLORS, rnd());
@@ -327,6 +344,7 @@ function houseboat(kit: Kit, lights: GlowSpot[], o: BoatSpec, rnd: () => number)
       break;
     }
   }
+  yield;
   // Huerto colgante en la borda (a uno u otro costado)
   if (rnd() < 0.8) {
     const side: 1 | -1 = rnd() < 0.5 ? 1 : -1;
@@ -353,6 +371,11 @@ function houseboat(kit: Kit, lights: GlowSpot[], o: BoatSpec, rnd: () => number)
 
 /** Grupo de 3–5 barcos-hogar abarloados, con pasarelas, farolillos y un pantalán. */
 export function houseboatClusterModel(seed: number): HarborModel {
+  return runSteps(houseboatClusterSteps(seed));
+}
+
+/** `houseboatClusterModel` por pasos (un barco o una pasarela por paso). */
+export function* houseboatClusterSteps(seed: number): ModelSteps {
   const kit = new Kit(seed, 0.06);
   const rnd = (): number => kit.random();
   const lights: GlowSpot[] = [];
@@ -369,7 +392,11 @@ export function houseboatClusterModel(seed: number): HarborModel {
   // Centrado en z
   const zMid = z / 2;
   for (const s of specs) s.z -= zMid;
-  const infos = specs.map((s) => houseboat(kit, lights, s, rnd));
+  const infos: BoatInfo[] = [];
+  for (const s of specs) {
+    infos.push(yield* houseboat(kit, lights, s, rnd));
+    yield;
+  }
   // Pasarelas entre bordas (con barandilla de cabo) y farolillos de mástil a mástil
   for (let i = 0; i + 1 < specs.length; i++) {
     const a = specs[i]!;
@@ -392,6 +419,7 @@ export function houseboatClusterModel(seed: number): HarborModel {
       const qb = infos[i + 1]!.posts.at(-1)!;
       laundry(kit, [qa[0], qa[1] - 0.3, qa[2]], [qb[0], qb[1] - 0.3, qb[2]], rnd);
     }
+    yield;
   }
   // Pantalán flotante en un extremo con farolas, bolardos y un bote amarrado
   const end = rnd() < 0.5 ? 0 : specs.length - 1;
@@ -415,6 +443,7 @@ export function houseboatClusterModel(seed: number): HarborModel {
   const last = specs[specs.length - 1]!;
   mooringBuoy(kit, first.x + first.len * 0.5 + 6, first.z - 3, [first.x + first.len * 0.48, 1.2, first.z]);
   mooringBuoy(kit, last.x - last.len * 0.5 - 6, last.z + 3, [last.x - last.len * 0.48, 1.2, last.z]);
+  yield;
   const geo = kit.build(true);
   geo.computeBoundingSphere();
   return { geo, lights, radius: Math.max(14, geo.boundingSphere!.radius), starY: null };
@@ -433,6 +462,11 @@ export const PROMENADE_LEN = 240;
  * macetas. Algunos huecos dejan pasar a los botes. Centrado en x = 0.
  */
 export function promenadeModel(seed: number, z: number): HarborModel {
+  return runSteps(promenadeSteps(seed, z));
+}
+
+/** `promenadeModel` por pasos (un tramo de 40 m por paso). */
+export function* promenadeSteps(seed: number, z: number): ModelSteps {
   const kit = new Kit(seed, 0.05);
   const rnd = (): number => kit.random();
   const lights: GlowSpot[] = [];
@@ -476,6 +510,7 @@ export function promenadeModel(seed: number, z: number): HarborModel {
         kit.rock(0.42, 0, HARBOR_COL.leaf, { p: [bx, 1.25, zc + side * 0.9] }, 0.25);
         kit.rock(0.1, 0, pick(FLOWERS, rnd()), { p: [bx + 0.2, 1.5, zc + side * 0.8] }, 0);
       }
+      yield;
     }
   }
   const geo = kit.build(true);
@@ -494,16 +529,23 @@ export const TOWER_LIGHT_Y = PLAZA_Y + TOWER_H + 3.1;
 
 /** Islote del puerto con la torre de la gran luz verde, la plaza, el muelle y el Albatros. */
 export function greenTowerModel(seed: number): HarborModel {
+  return runSteps(greenTowerSteps(seed));
+}
+
+/** `greenTowerModel` por pasos (unas pocas piezas por paso). */
+export function* greenTowerSteps(seed: number): ModelSteps {
   const kit = new Kit(seed, 0.06);
   const rnd = (): number => kit.random();
   const lights: GlowSpot[] = [];
   const plazaY = PLAZA_Y;
   // --- Islote: rocas, escollera y plaza ---
   kit.rock(26, 1, '#7d7f7c', { p: [0, -6, 0], s: [1.25, 0.42, 1.1] }, 0.18);
+  yield;
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2 + rnd() * 0.2;
     const r = 22 + rnd() * 4;
     kit.rock(2.5 + rnd() * 2.2, 0, i % 2 ? '#7d7f7c' : '#5d605e', { p: [Math.cos(a) * r, 0.4, Math.sin(a) * r * 0.9], r: [rnd(), rnd() * 3, rnd()] }, 0.25);
+    if (i % 4 === 3) yield;
   }
   kit.cyl(20, 21.5, plazaY + 0.6, 16, HARBOR_COL.stoneDark, { p: [0, plazaY / 2 - 0.3, 0] });
   kit.cyl(19.6, 19.6, 0.2, 16, HARBOR_COL.paving, { p: [0, plazaY, 0] });
@@ -512,6 +554,7 @@ export function greenTowerModel(seed: number): HarborModel {
     const a = (i / 24) * Math.PI * 2;
     kit.box(4.9, 0.6, 0.35, HARBOR_COL.stone, { p: [Math.cos(a) * 19.3, plazaY + 0.3, Math.sin(a) * 19.3], r: [0, -a + Math.PI / 2, 0] });
   }
+  yield;
   // --- La torre: fuste octogonal de franjas blancas y verde azulado ---
   const H = TOWER_H;
   const bands = 7;
@@ -534,6 +577,7 @@ export function greenTowerModel(seed: number): HarborModel {
   }
   // Puerta
   kit.box(0.2, 2.6, 1.6, HARBOR_COL.wood, { p: [4.55, plazaY + 1.3, 0] });
+  yield;
   const top = plazaY + H;
   // Galería con barandilla
   kit.cyl(4.3, 3.4, 0.6, 12, HARBOR_COL.steelDark, { p: [0, top + 0.3, 0] });
@@ -551,6 +595,7 @@ export function greenTowerModel(seed: number): HarborModel {
     const a = (i / 10) * Math.PI * 2;
     kit.box(0.1, 4.0, 0.1, HARBOR_COL.steelDark, { p: [Math.cos(a) * 2.34, top + 3.1, Math.sin(a) * 2.34] });
   }
+  yield;
   // Cúpula de cobre y veleta
   kit.add(new THREE.SphereGeometry(2.7, 10, 4, 0, Math.PI * 2, 0, Math.PI / 2), HARBOR_COL.copper, { p: [0, top + 5.1, 0] });
   kit.cyl(0.06, 0.1, 2.2, 5, HARBOR_COL.steelDark, { p: [0, top + 8.6, 0] });
@@ -573,6 +618,7 @@ export function greenTowerModel(seed: number): HarborModel {
     }
     // Mástil de la guirnalda
     kit.cyl(0.08, 0.1, 3.4, 5, HARBOR_COL.woodDark, { p: [p1[0], plazaY + 1.7, p1[2]] });
+    yield;
   }
   // --- Casitas de colores en la plaza ---
   const housesAt = [
@@ -588,6 +634,7 @@ export function greenTowerModel(seed: number): HarborModel {
     const top2 = house(kit, lights, 0, plazaY + 0.1, 0, 4.5 + rnd() * 1.5, 3.4, 2.6 + rnd() * 1.2, w, pick(ROOF_COLORS, rnd()), rnd, { door: 1 });
     if (rnd() < 0.6) hangingGarden(kit, 0, top2 - 0.6, 1.95, 2.6, 1, rnd);
     kit.pop();
+    yield;
   }
   // Árboles de la plaza
   for (let i = 0; i < 7; i++) {
@@ -599,11 +646,13 @@ export function greenTowerModel(seed: number): HarborModel {
     kit.cyl(0.18, 0.25, 2.4, 5, '#8b6b4a', { p: [x, plazaY + 1.2, z] });
     kit.rock(1.6 + rnd() * 0.6, 0, rnd() < 0.5 ? HARBOR_COL.leaf : HARBOR_COL.leafLight, { p: [x, plazaY + 3.2, z] }, 0.25);
   }
+  yield;
   // Farolas de la plaza
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + 0.2;
     lampPost(kit, lights, Math.cos(a) * 16.5, plazaY + 0.1, Math.sin(a) * 16.5, 3.2);
   }
+  yield;
   // --- Muelle principal (hacia +x) con el Albatros amarrado ---
   const pierY = 1.6;
   const pierL = 54;
@@ -617,15 +666,18 @@ export function greenTowerModel(seed: number): HarborModel {
   kit.cyl(0.08, 0.08, 1.4, 4, HARBOR_COL.woodDark, { p: [px0 + 1.5, pierY + 0.7, -1.2] });
   kit.cyl(0.08, 0.08, 1.4, 4, HARBOR_COL.woodDark, { p: [px0 + 1.5, pierY + 0.7, 1.2] });
   kit.box(0.12, 0.7, 2.7, '#a0784a', { p: [px0 + 1.5, pierY + 1.5, 0] });
+  yield;
   // El Albatros: viejo casco de la primera ciudad flotante, amarrado de costado
   kit.push({ p: [px0 + pierL / 2 + 2, 0, 9.4] });
   loftHull(kit, { length: 40, halfWidth: 5.2, draft: 2.2, freeboard: 3.0, bowFrac: 0.28, bottom: '#5a3324', top: '#d9d4c3', stripe: '#3d7a8a', deck: '#a88a5c', sheer: 1.2, stations: 9 });
+  yield;
   // Casas sobre su cubierta (la primera ciudad)
   let hx = -15;
   for (let i = 0; i < 4; i++) {
     const len = 5 + rnd() * 2;
     house(kit, lights, hx + len / 2, 3.0, (i % 2 ? -1 : 1) * 1.2, len, 5.2, 2.4 + (i % 2) * 0.6, pick(HOUSE_COLORS, rnd()), pick(ROOF_COLORS, rnd()), rnd, { door: 0 });
     hx += len + 1.2;
+    yield;
   }
   // Mástil viejo con la vela recogida y ristra de farolillos hasta el muelle
   kit.cyl(0.25, 0.32, 14, 6, HARBOR_COL.woodDark, { p: [12, 3 + 7, 0] });
@@ -636,7 +688,8 @@ export function greenTowerModel(seed: number): HarborModel {
   // Barcos-hogar amarrados al otro lado del muelle
   for (let i = 0; i < 3; i++) {
     const len = 11 + rnd() * 4;
-    houseboat(kit, lights, { x: px0 + 10 + i * 15, z: -8.5, len, hw: 2.4 + rnd() * 0.6, kind: i === 1 ? 'huerto' : i === 2 ? 'doble' : 'casa' }, rnd);
+    yield* houseboat(kit, lights, { x: px0 + 10 + i * 15, z: -8.5, len, hw: 2.4 + rnd() * 0.6, kind: i === 1 ? 'huerto' : i === 2 ? 'doble' : 'casa' }, rnd);
+    yield;
   }
   const geo = kit.build(true);
   geo.computeBoundingSphere();

@@ -58,9 +58,10 @@ export abstract class PropDynamic {
     readonly level: number,
   ) {}
   abstract update(ctx: DynContext): void;
+  /** Libera las geometrías propias de sus partes (mallas, y también líneas como el cable de la grúa). */
   dispose(): void {
     this.proxy.traverse((o) => {
-      if (o instanceof THREE.Mesh && o.userData.ownGeometry) o.geometry.dispose();
+      if (o.userData.ownGeometry && (o instanceof THREE.Mesh || o instanceof THREE.Line || o instanceof THREE.Points)) o.geometry.dispose();
     });
   }
   /** Punto local del prop → coordenadas del barco. */

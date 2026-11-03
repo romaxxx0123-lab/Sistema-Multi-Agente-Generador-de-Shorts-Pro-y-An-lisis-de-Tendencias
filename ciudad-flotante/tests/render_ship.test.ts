@@ -948,6 +948,40 @@ describe('reconstrucción por niveles (QA P4)', () => {
 });
 
 describe('módulos especializados: animación', () => {
+  it('la geometría del cable de la grúa se libera al rehacer o quitar la grúa (ronda 2: fuga en cada mejora)', () => {
+    const { view, root, state } = newView();
+    const { m } = addModule(state, 'grua', 1, 6, 0);
+    let layout = computeLayout(state.ship);
+    view.sync(state, layout, OPTS, 1 / 60, camera);
+    const cables: THREE.BufferGeometry[] = [];
+    const freed = new Set<THREE.BufferGeometry>();
+    const grab = (): void => {
+      const c = root.getObjectByName('cable') as THREE.Line;
+      expect(c).toBeInstanceOf(THREE.Line);
+      if (!cables.includes(c.geometry)) {
+        cables.push(c.geometry);
+        c.geometry.addEventListener('dispose', () => freed.add(c.geometry));
+      }
+    };
+    grab();
+    // cada cambio de nivel de mejora rehace la grúa: el cable anterior se libera
+    for (let i = 0; i < 4; i++) {
+      m.tier = i % 2 ? 1 : 2;
+      state.ship.revision++;
+      layout = computeLayout(state.ship);
+      view.sync(state, layout, OPTS, 1 / 60, camera);
+      grab();
+    }
+    expect(cables.length).toBe(5);
+    expect(cables.slice(0, -1).every((g) => freed.has(g))).toBe(true);
+    // al quitar la grúa también
+    state.ship.modules = state.ship.modules.filter((x) => x !== m);
+    state.ship.revision++;
+    view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
+    expect(root.getObjectByName('cable')).toBeUndefined();
+    expect(cables.every((g) => freed.has(g))).toBe(true);
+  });
+
   it('grúa: sigue el estado guardado en el módulo como gruaStatus/gruaTarget', () => {
     const st = createNewGame(1);
     const { m } = addModule(st, 'grua', 1, 6, 0);

@@ -1530,7 +1530,7 @@ function disposeChunk(c: StructCache): void {
 function disposeObject(o: THREE.Object3D): void {
   o.removeFromParent();
   o.traverse((c) => {
-    if (c instanceof THREE.Mesh || c instanceof THREE.LineSegments) {
+    if (c instanceof THREE.Mesh || c instanceof THREE.Line || c instanceof THREE.Points) {
       if (c.userData.ownGeometry || c.name.startsWith('nivel-') || c.name.startsWith('casco') || c.name.startsWith('ojos') || c.name === 'luces-navegacion' || c.name === 'focos-cubierta' || c.name === 'rotulo') c.geometry.dispose();
       if (c.userData.ownMaterial) {
         const m = c.material as THREE.MeshLambertMaterial;
