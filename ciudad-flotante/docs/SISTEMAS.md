@@ -108,6 +108,8 @@ Valores iniciales de equilibrio. Todo el texto visible está en español. Tiempo
 - `deserialize`: valida y **rellena campos ausentes** con los de `createNewGame` (fusión profunda),
   aplica migraciones por `version`. Errores claros si está dañado.
 - Gestiona errores de cuota.
+- Guardado automático (ranura `auto`, lo hace `Game`): al empezar cada día, cada 5 minutos reales de partida (sin contar la pausa) y, sin aviso, al ocultar o cerrar la página (`visibilitychange`/`pagehide`). Al recargar, cerrar la pestaña o publicar una versión nueva, el menú principal ofrece «Continuar». «Salir sin guardar» no escribe nada.
+- Sin almacenamiento local (iframe de origen opaco, modo privado estricto), el menú principal avisa una vez; los guardados automáticos no se intentan y guardar a mano explica el motivo.
 
 ---
 

@@ -14,7 +14,7 @@ Documento de referencia para desarrollar y ampliar el juego. El diseño de juego
 | Mundo | Cuadrícula de celdas de 4 m × 3 niveles, módulos rectangulares | Construcción clara, validación robusta, geometría generada. |
 | Física | Propia y simple: superficies por celda + AABBs | Suficiente para un barco; sin motor físico externo. |
 | IA | Necesidades + utilidad + máquina de estados; A* en rejilla fina de 0,5 m | Habitantes coherentes con coste bajo. |
-| Guardado | JSON del `GameState` en `localStorage`, con versión y migración | Simple y transparente. |
+| Guardado | JSON del `GameState` en `localStorage`, con versión y migración; se guarda solo al ocultar o cerrar la página | Simple y transparente. |
 | Audio | WebAudio procedural | Sin ficheros de audio que descargar. |
 
 ## 2. Capas y flujo de datos
@@ -102,6 +102,7 @@ Props: el frente del modelo mira a -z local con `rot = 0`; el eje largo va en x 
 - `npm run typecheck` — TypeScript estricto.
 - `node scripts/shot.mjs …` — arranca el juego en Chromium headless (WebGL por software),
   ejecuta pasos con la API de depuración `window.__game` y guarda capturas. Falla si hay errores en consola.
+  Opción `--browser-arg=<arg>` (repetible) para argumentos de Chromium, p. ej. `--browser-arg=--disable-3d-apis` para comprobar la pantalla «necesita WebGL 2» (`#app[data-fatal]`).
 
 API de depuración (`window.__game`): `state`, `sim`, `ctx` y `cmd.*`. Cada módulo registra los suyos
 con `registerDebug(nombre, fn)` (`src/game/debug.ts`); `Object.keys(__game.cmd)` los lista.

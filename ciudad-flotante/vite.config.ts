@@ -6,7 +6,8 @@ export default defineConfig({
   assetsInclude: ['**/*.glb'],
   build: {
     target: 'es2022',
-    chunkSizeWarningLimit: 1500,
+    // Un solo módulo a propósito (build-single lo incrusta y falla si aparece un trozo aparte).
+    chunkSizeWarningLimit: 2500,
   },
   test: {
     environment: 'node',

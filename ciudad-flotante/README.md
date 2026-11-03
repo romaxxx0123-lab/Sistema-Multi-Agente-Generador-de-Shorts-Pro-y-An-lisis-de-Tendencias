@@ -40,7 +40,7 @@ npm run build:single   # crea dist-single/ciudad-flotante.html
 | Acción | Tecla |
 |---|---|
 | Moverse / correr / saltar | WASD / Mayús / Espacio |
-| Mirar | Ratón |
+| Mirar | Ratón (sin captura del ratón, p. ej. en un iframe sin permiso: lleva el cursor al borde o usa ← →) |
 | Interactuar (beber del depósito, coger una caja, cosechar, abrir, dormir, hablar) | E (mantener E: abrir el panel o ayudar en obras) |
 | Usar la herramienta (gancho, caña, cubo, martillo) | Clic izquierdo |
 | Comer o beber lo seleccionado | Clic derecho o F |
@@ -49,7 +49,7 @@ npm run build:single   # crea dist-single/ciudad-flotante.html
 | Inventario / fabricar / diario | Tab o I / C / J |
 | Modo construcción | B |
 | Primera o tercera persona | V |
-| Pausa | Esc |
+| Pausa | Esc (también se pausa sola al hacer clic fuera del juego) |
 
 ### Primeros pasos
 
