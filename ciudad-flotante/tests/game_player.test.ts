@@ -1057,7 +1057,7 @@ describe('[fix3] martillo en las mejoras, aviso de la caña en interiores y hoja
     expect(tested).toBeGreaterThan(0);
   });
 
-  it('un camarote en mejora conserva el foco en la cama (E duerme) y el clic con el martillo ayuda', () => {
+  it('un camarote en mejora conserva el foco en la cama (E duerme); con el martillo, el clic ayuda y el aviso lo dice', () => {
     const h = harness();
     const sim = h.sim;
     sim.state.npcs = [];
@@ -1068,9 +1068,16 @@ describe('[fix3] martillo en las mejoras, aviso de la caña en interiores y hoja
     expect(h.ia.focus?.kind).toBe('prop');
     expect(h.ia.focus?.prop?.interact).toBe('dormir');
     expect(h.ui.prompt?.text).toMatch(/^Dormir/);
+    // Su aviso habla del sueño: con el martillo en la mano, la segunda línea dice que el clic ayuda.
+    expect(h.ui.prompt?.alt).toEqual({ key: 'Clic', text: 'Ayudar en la mejora (0 %)' });
     const p0 = m.upgrade!.progress;
     holdClick(h, 60);
     expect(m.upgrade!.progress).toBeGreaterThan(p0);
+    // Con otra cosa en la mano, ni la línea del martillo ni la obra.
+    st.inventory.slots[st.hotbar] = { id: 'cana', qty: 1 };
+    h.frame();
+    expect(h.ia.focus?.prop?.interact).toBe('dormir');
+    expect(h.ui.prompt?.alt).toBeUndefined();
   });
 
   it('con la caña en la mano, «Lanzar la caña» desactivado no sale bajo la cama, la cocina ni el timón', () => {
@@ -1120,10 +1127,27 @@ describe('[fix3] martillo en las mejoras, aviso de la caña en interiores y hoja
       geo.computeBoundingBox();
       const size = geo.boundingBox!.getSize(new THREE.Vector3());
       const dims = [size.x, size.y, size.z].sort((a, b) => a - b);
-      // Ancho y alto de una hoja de cuaderno (no un cubo de 8 cm) y poco fondo (solo la curva).
+      // Ancho y alto de una hoja de cuaderno (no un cubo de 8 cm); el fondo es solo la curva.
       expect(dims[1]).toBeGreaterThan(0.12);
       expect(dims[2]).toBeGreaterThan(0.16);
-      expect(dims[0]).toBeLessThan(0.06);
+      expect(dims[0]).toBeLessThan(dims[1] * 0.6);
+      // Fina: un rayo que atraviesa la hoja entra y sale en menos de 5 mm (cara, renglones y dorso).
+      const probe = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      const ray = new THREE.Raycaster();
+      const bb = geo.boundingBox!;
+      let crossed = 0;
+      for (const fx of [0.3, 0.5, 0.7]) {
+        for (const fy of [0.3, 0.6, 0.85]) {
+          const x = bb.min.x + (bb.max.x - bb.min.x) * fx;
+          const y = bb.min.y + (bb.max.y - bb.min.y) * fy;
+          ray.set(new THREE.Vector3(x, y, 1), new THREE.Vector3(0, 0, -1));
+          const hits = ray.intersectObject(probe);
+          if (hits.length < 2) continue;
+          crossed++;
+          expect(hits[hits.length - 1]!.distance - hits[0]!.distance).toBeLessThan(0.005);
+        }
+      }
+      expect(crossed).toBeGreaterThanOrEqual(6);
       // Curvada: las caras del papel no son coplanarias (varias normales distintas).
       const nrm = geo.getAttribute('normal');
       const col = geo.getAttribute('color');

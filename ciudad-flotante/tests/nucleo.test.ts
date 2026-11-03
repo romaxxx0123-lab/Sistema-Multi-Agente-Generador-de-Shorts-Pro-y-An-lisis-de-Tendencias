@@ -258,16 +258,17 @@ describe('[nucleo-1] guardado al ocultar o cerrar la página y periódico en tie
 
   it('el guardado periódico cuenta tiempo real de partida (no el dt recortado) y no la pausa', () => {
     const f = fakeGame();
-    // A 5 fps (0,2 s por frame) el dt de la simulación se recorta a 0,1 s, pero cuenta el real.
-    const frames = Math.ceil(AUTOSAVE_INTERVAL / 0.2);
-    for (let i = 0; i < frames - 2; i++) f.game.tickAutosave(0.2);
+    // A 4 fps (0,25 s por frame) el dt de la simulación se recorta a 0,1 s, pero cuenta el real.
+    const frames = AUTOSAVE_INTERVAL / 0.25;
+    for (let i = 0; i < frames - 2; i++) f.game.tickAutosave(0.25);
     expect(f.storage.getItem(AUTO_KEY)).toBeNull();
     f.game.paused = true;
-    for (let i = 0; i < 100; i++) f.game.tickAutosave(0.2);
+    for (let i = 0; i < 100; i++) f.game.tickAutosave(0.25);
     expect(f.storage.getItem(AUTO_KEY)).toBeNull();
     f.game.paused = false;
-    f.game.tickAutosave(0.2);
-    f.game.tickAutosave(0.2);
+    f.game.tickAutosave(0.25);
+    expect(f.storage.getItem(AUTO_KEY)).toBeNull();
+    f.game.tickAutosave(0.25);
     expect(f.storage.getItem(AUTO_KEY)).not.toBeNull();
     expect(f.notes).toContain('Partida guardada automáticamente');
     expect(f.game.autosaveClock).toBe(0);
@@ -527,7 +528,7 @@ describe('[nucleo-6] Input avisa de la pérdida de foco y de que el cursor sale 
   it('blur: suelta las teclas, marca el foco perdido una vez y el cursor fuera', () => {
     const inp = makeInput();
     const win = g['window'] as EventTarget;
-    win.dispatchEvent(ev('keydown', { code: 'KeyW', target: null, preventDefault() {} }));
+    win.dispatchEvent(ev('keydown', { code: 'KeyW' }));
     win.dispatchEvent(ev('mousemove', { clientX: 400, clientY: 300, movementX: 0, movementY: 0 }));
     expect(inp.down('KeyW')).toBe(true);
     expect(inp.pointerInside).toBe(true);

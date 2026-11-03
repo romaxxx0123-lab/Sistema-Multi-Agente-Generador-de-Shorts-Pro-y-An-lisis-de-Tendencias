@@ -941,6 +941,18 @@ export class Interaction implements ToolEnv {
     }
   }
 
+  /**
+   * Cama o camilla de un módulo en mejora con el martillo en la mano: el clic ayuda a la obra,
+   * pero su aviso habla del sueño (las estaciones ya lo dicen en su texto secundario).
+   */
+  private upgradeHelpAlt(f: Focus, tool: ToolKind | null): PromptInfo['alt'] | null {
+    if (tool !== 'martillo' || f.kind !== 'prop' || f.prop?.interact !== 'dormir' || f.moduleId === undefined) return null;
+    const m = findModule(this.ctx.sim, f.moduleId);
+    if (!m?.upgrade || m.status === 'construction') return null;
+    const cs = this.ctx.sim.constructionStatus(m.id);
+    return cs ? { key: 'Clic', text: `Ayudar en la mejora (${Math.floor(cs.progress * 100)} %)` } : null;
+  }
+
   /** Aviso de la herramienta seleccionada (gancho, caña, cubo) según lo que hay delante. */
   private toolPrompt(tool: ToolKind | null): PromptInfo | null {
     const sim = this.ctx.sim;
@@ -1006,6 +1018,8 @@ export class Interaction implements ToolEnv {
       if (!prompt && this.focus) {
         prompt = this.focusPrompt(this.focus, hasHammer);
         hl = this.focusHighlight(this.focus);
+        const help = this.upgradeHelpAlt(this.focus, tool);
+        if (prompt && help && !prompt.alt) prompt = { ...prompt, alt: help };
       }
       // 3) Herramienta seleccionada. Como segunda acción solo si se puede usar ya: la línea
       //    secundaria no lleva el motivo, y un «Clic Lanzar la caña» gris bajo «E Dormir» (el
