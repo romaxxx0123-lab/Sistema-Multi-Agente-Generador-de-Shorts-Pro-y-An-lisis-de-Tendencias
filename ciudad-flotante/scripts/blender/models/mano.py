@@ -167,16 +167,16 @@ WRIST = Vector((0.018, -0.056, -0.026))
 
 def forearm():
     """Muñeca desnuda, el remango de la manga y la manga hasta muy lejos, fuera de pantalla.
-    Con FOV 72 el eje del antebrazo sale de pantalla a 1–4 cm de la muñeca: el remango empieza a
-    2 cm para que una franja azul entre siempre en cuadro (sin ella, piel beige sobre cubierta
+    Con FOV 72 el eje del antebrazo sale de pantalla a 1–4 cm de la muñeca: el remango empieza en
+    la misma muñeca para que una franja azul entre siempre en cuadro (sin ella, piel beige sobre cubierta
     beige) y la manga llega a 1,1 m para que su extremo cortado no se vea ni con FOV 100 ni al
     volcar el cubo. Grosor de un antebrazo de verdad a la escala del puño."""
     d = ARM_DIR
     at = lambda s: WRIST + d * s  # noqa: E731
     # Sección ovalada (más ancha que gruesa) que engorda hacia el codo.
     skin = limb(
-        [at(-0.012), at(0.0), at(0.018), at(0.032)],
-        [(0.029, 0.024), (0.031, 0.026), (0.034, 0.028), (0.036, 0.03)],
+        [at(-0.012), at(0.0), at(0.014), at(0.024)],
+        [(0.029, 0.024), (0.031, 0.026), (0.033, 0.0275), (0.035, 0.029)],
         seg=8, color=SKIN, name='antebrazo', caps=(True, False), up=(1, 0, 0),
     )
     cf.paint(skin, SKIN_LIGHT, lambda p: p.normal.x > 0.55 or p.normal.z > 0.55)
@@ -185,19 +185,19 @@ def forearm():
     cf.jitter_colors(skin, 0.025, seed=13)
     # Remango: un rollo grueso de tela (revés más claro) con el doblez de la manga encima.
     roll = limb(
-        [at(0.018), at(0.027), at(0.046), at(0.072), at(0.084)],
-        [(0.043, 0.037), (0.051, 0.044), (0.055, 0.048), (0.055, 0.048), (0.051, 0.045)],
+        [at(0.004), at(0.013), at(0.033), at(0.06), at(0.072)],
+        [(0.043, 0.037), (0.052, 0.045), (0.056, 0.049), (0.056, 0.049), (0.052, 0.045)],
         seg=8, color=SHIRT_IN, name='remango', caps=(False, False), up=(1, 0, 0), phase=0.2,
     )
-    cf.paint(roll, SHIRT, lambda p: (p.center - WRIST).dot(d) > 0.062)
+    cf.paint(roll, SHIRT, lambda p: (p.center - WRIST).dot(d) > 0.05)
     cf.jitter_colors(roll, 0.05, seed=14)
     sleeve = limb(
-        [at(0.075), at(0.16), at(0.175), at(0.3), at(0.45), at(1.1)],
+        [at(0.064), at(0.15), at(0.165), at(0.3), at(0.45), at(1.1)],
         [(0.05, 0.044), (0.054, 0.047), (0.052, 0.045), (0.056, 0.049), (0.057, 0.05), (0.058, 0.051)],
         seg=8, color=SHIRT, name='manga', caps=(False, True), up=(1, 0, 0),
     )
     # Pliegue: una franja algo más oscura (y algo hundida) en la manga, por la cara de dentro.
-    cf.paint(sleeve, SHIRT_DARK, lambda p: 0.16 < (p.center - WRIST).dot(d) < 0.175 and p.normal.x < 0.2)
+    cf.paint(sleeve, SHIRT_DARK, lambda p: 0.15 < (p.center - WRIST).dot(d) < 0.165 and p.normal.x < 0.2)
     cf.jitter_colors(sleeve, 0.04, seed=15)
     return [skin, roll, sleeve]
 

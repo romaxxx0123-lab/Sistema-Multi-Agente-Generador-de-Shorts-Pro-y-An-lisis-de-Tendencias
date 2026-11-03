@@ -45,6 +45,7 @@ import { GeoBuilder, hash01 } from './ship/geo';
 import { buildHull, funnel, radarMast, type HullGeometry } from './ship/hull';
 import { LightPool, type LightCandidate } from './ship/lights';
 import { ShipMaterials } from './ship/materials';
+import { ShipOutfit } from './ship/outfit';
 import { Particles } from './ship/particles';
 import { crate as crateModel, localDims, propModel, propTier, type PropModel } from './ship/props';
 import { buildExpansionScaffold, buildSite, buildUpgradeSite, setProgress, siteProgress, type SiteEntry, type UpgradeSiteEntry } from './ship/sites';
@@ -234,6 +235,8 @@ export class ShipView {
   private lightPool: LightPool;
   private particles: Particles;
   private fires: FireView;
+  /** Aparejo exterior hecho con Blender (costados, proa, techos sin acceso y faroles): ship/outfit.ts. */
+  readonly outfit: ShipOutfit;
   private sites = new Map<number, SiteEntry>();
   private crates = new Map<number, THREE.Mesh>();
   private crateGeo: THREE.BufferGeometry;
@@ -293,6 +296,8 @@ export class ShipView {
     this.lightPool = new LightPool(this.group);
     this.particles = new Particles(this.group);
     this.fires = new FireView(this.group, this.mats);
+    this.outfit = new ShipOutfit(this.mats);
+    this.group.add(this.outfit.group);
     const cg = new GeoBuilder();
     crateModel(cg, 0, 0, 0, 0.62, 0.5, 0.62, '#c8995f');
     cg.box(-0.33, 0.18, -0.06, 0.33, 0.22, 0.06, '#d6b97b');
@@ -329,6 +334,7 @@ export class ShipView {
     this.plannedStruct.clear();
     this.clearStaged();
     this.forceFull = true;
+    this.outfit.reset();
     for (const c of this.crates.values()) c.removeFromParent();
     this.crates.clear();
     this.particles.clear();
@@ -391,10 +397,13 @@ export class ShipView {
     }
     this.syncExpansion(state, layout);
     this.syncCrates(state);
+    // el aparejo exterior cambia a la vez que los niveles (no antes: no flota sobre un techo aún sin construir)
+    if (!this.planned.size) this.outfit.sync(layout, state.ship.modules);
 
     // --- Visibilidad por nivel / corte ---
     const maxLevel = this.maxVisibleLevel(layout, opts);
     this.levelGroups.forEach((g, l) => (g.visible = l <= maxLevel));
+    this.outfit.setVisibleLevel(maxLevel, layout.levels);
 
     // --- Luz del día y materiales ---
     const day = daylight(state.time);
@@ -1460,6 +1469,7 @@ export class ShipView {
     for (const s of this.sites.values()) disposeObject(s.group);
     for (const u of this.upgrades.values()) disposeObject(u.group);
     for (const f of this.flags) f.dispose();
+    this.outfit.dispose();
     this.particles.dispose();
     this.fires.dispose();
     this.lightPool.dispose();

@@ -168,8 +168,10 @@ def costura(v):
     cols = []
     x = -width / 2
     while x < width / 2 - 0.05:
-        w = 0.08 + r.random() * 0.1
-        length = 0.1 + r.random() * (0.38 if r.random() < 0.35 else 0.14)
+        w = 0.07 + r.random() * 0.12
+        # casi toda la costura rezuma poco; de vez en cuando, un goterón largo
+        long = r.random() < 0.22
+        length = (0.2 + r.random() * 0.28) if long else (0.035 + r.random() * 0.07)
         cols.append((x, min(width / 2, x + w), length))
         x += w
     top = max(c[2] for c in cols) + 0.03
@@ -246,9 +248,7 @@ def escalerilla():
         cf.bevel(rung, 0.01)
         parts.append(rung)
         for s in (-1, 1):
-            knot = cf.box((0.06, 0.12, 0.07), at=(s * half, 0.085, z - 0.015), color='rope')
-            cf.bevel(knot, 0.012)
-            parts.append(knot)
+            parts.append(cf.box((0.06, 0.12, 0.07), at=(s * half, 0.085, z - 0.015), color='rope'))
     return cf.model(parts, 'escalerilla')
 
 
@@ -301,7 +301,7 @@ def farol_poste():
     foot = cf.box((0.16, 0.16, 0.05), color=IRON)
     cf.bevel(foot, 0.008)
     post = cf.cylinder(0.035, H, seg=6, at=(0, 0, 0.0), color=IRON)
-    arm = cf.tube([(0, 0, H - 0.06), (0, A * 0.45, H + 0.02), (0, A, H - 0.04), (0, A, H - 0.24)], 0.016, seg=4, color=IRON)
+    arm = cf.tube([(0, 0, H - 0.06), (0, A * 0.45, H + 0.02), (0, A, H - 0.04), (0, A, H - 0.27)], 0.016, seg=4, color=IRON)
     brace = cf.tube([(0, 0, H - 0.4), (0, A * 0.55, H - 0.04)], 0.012, seg=4, color=IRON)
     knob = cf.sphere(0.04, at=(0, 0, H + 0.02), color=BRASS)
     parts += [foot, post, arm, brace, knob]
