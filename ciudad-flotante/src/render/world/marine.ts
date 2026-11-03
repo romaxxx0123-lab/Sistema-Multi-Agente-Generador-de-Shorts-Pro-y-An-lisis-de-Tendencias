@@ -2,10 +2,30 @@
  * VIDA MARINA: peces que saltan cuando hay un banco de peces (evento `banco_peces`) y delfines
  * que, de vez en cuando y con buen tiempo, acompañan a la proa saltando en arco. Mallas
  * instanciadas; las salpicaduras de entrada y salida las pone `Spray.burst`.
+ *
+ * Con los modelos de Blender (`mundo_delfin` y `mundo_pez`, scripts/blender/models/mundo.py) se usa
+ * su geometría bajada para que el eje del cuerpo quede en el origen (como la procedimental, que
+ * sigue de respaldo si faltan).
  */
 import * as THREE from 'three';
+import { registerDebug } from '../../game/debug';
+import { modelGeometry } from '../assets';
+import { blenderWorldModels } from './models';
 import { Kit, makeRng } from './kit';
 import type { HullProfile } from './waves';
+
+/** Altura del eje del cuerpo sobre la base de los modelos de Blender (mundo.py: DOLPHIN_AXIS, FISH_AXIS). */
+export const DOLPHIN_AXIS = 0.5;
+export const FISH_AXIS = 0.1;
+
+/** Copia de un modelo de Blender con el eje del cuerpo en el origen, o null si falta. */
+function blenderFauna(name: string, axis: number): THREE.BufferGeometry | null {
+  const g = blenderWorldModels() ? modelGeometry(name) : null;
+  if (!g) return null;
+  const c = g.clone();
+  c.translate(0, -axis, 0);
+  return c;
+}
 
 interface Jumper {
   active: boolean;
@@ -24,6 +44,8 @@ interface Jumper {
 }
 
 function fishGeometry(): THREE.BufferGeometry {
+  const b = blenderFauna('mundo_pez', FISH_AXIS);
+  if (b) return b;
   const k = new Kit(9, 0.06);
   k.add(new THREE.OctahedronGeometry(0.5, 0), '#b8c4cc', { s: [0.45, 0.14, 0.09] });
   k.add(new THREE.OctahedronGeometry(0.5, 0), '#4f6d80', { p: [0.02, 0.03, 0], s: [0.4, 0.08, 0.07] });
@@ -39,6 +61,8 @@ function fishGeometry(): THREE.BufferGeometry {
 }
 
 function dolphinGeometry(): THREE.BufferGeometry {
+  const b = blenderFauna('mundo_delfin', DOLPHIN_AXIS);
+  if (b) return b;
   const k = new Kit(19, 0.05);
   k.add(new THREE.IcosahedronGeometry(0.5, 1), '#6c7a86', { s: [2.3, 0.55, 0.6] });
   k.add(new THREE.IcosahedronGeometry(0.5, 1), '#c9d1d6', { p: [0.1, -0.1, 0], s: [1.9, 0.36, 0.46] });
@@ -107,6 +131,17 @@ export class MarineLife {
     this.dolphinMesh.name = 'delfines';
     for (let i = 0; i < FISH; i++) this.fish.push(this.blank());
     for (let i = 0; i < DOLPHINS; i++) this.dolphins.push({ ...this.blank(), slot: i, next: i * 0.9 });
+    // Tras mundoBlender(…): faunaBlender() vuelve a pedir las geometrías de peces y delfines.
+    registerDebug('faunaBlender', (() => this.refreshModels()) as never);
+  }
+
+  /** Vuelve a construir las geometrías (tras cambiar entre los modelos de Blender y los procedimentales). */
+  refreshModels(): boolean {
+    this.fishMesh.geometry.dispose();
+    this.dolphinMesh.geometry.dispose();
+    this.fishMesh.geometry = fishGeometry();
+    this.dolphinMesh.geometry = dolphinGeometry();
+    return blenderWorldModels();
   }
 
   private blank(): Jumper {

@@ -678,8 +678,10 @@ def stand_legs(p, t, sway=0.0):
 
 
 def seated_legs(p, spread=4):
-    """Sentado en silla, sofá o taburete (asiento a ~0,47 m del suelo)."""
-    root(p, loc=(0, -0.05, -0.32))
+    """Sentado en silla, sofá o taburete (asiento a ~0,47 m del suelo): pelvis algo hundida en el
+    cojín, muslos casi horizontales y pies en el suelo. La cadera no se inclina (movería las
+    piernas): la espalda se recuesta con la columna."""
+    root(p, loc=(0, -0.05, -0.335))
     for s in 'id':
         leg_pose(p, s, flex=80, abd=spread, knee=82, ankle=2)
 
@@ -800,7 +802,7 @@ def a_sentado(t):
     p = base()
     b = S(t, 2)
     seated_legs(p)
-    spine(p, hips=(-5, 0, 0), low=(2, 0, 0), chest=(2 - 1.2 * b, 0, 0),
+    spine(p, low=(-3, 0, 0), chest=(2 - 1.2 * b, 0, 0),
           head=(4 + 3 * S(t, 1, 0.4), 0, 16 * S(t, 1, 0.1)))
     for s in 'id':
         arm_pose(p, s, flex=14 + b, abd=6, cross=4, el=48, wrist=-12, lift=b)
@@ -811,7 +813,7 @@ def a_comer(t):
     p = base()
     seated_legs(p)
     k = smooth(max(0.0, S(t, 1)) * 1.4)
-    spine(p, hips=(-4, 0, 0), low=(4, 0, 0), chest=(5 - 2 * k, 0, 0), head=(10 - 16 * k, 0, 0))
+    spine(p, low=(0, 0, 0), chest=(5 - 2 * k, 0, 0), head=(10 - 16 * k, 0, 0))
     arm_pose(p, 'd', flex=34 + 30 * k, abd=6, cross=8 + 22 * k, el=72 + 46 * k, wrist=-10 - 10 * k)
     arm_pose(p, 'i', flex=44, abd=6, cross=14, el=56, wrist=-6)
     return p
@@ -835,8 +837,8 @@ def a_dormir(t):
     leg_pose(p, 'd', flex=2, abd=3, knee=3, ankle=-24)
     spine(p, chest=(-1.5 * b, 0, 0), neck=(-6, 0, 6), head=(-4, 4, 16))
     # brazos a lo largo del cuerpo, bajo la manta
-    arm_pose(p, 'd', flex=6, abd=9, cross=-6, el=14, wrist=-4, lift=0.6 * b)
-    arm_pose(p, 'i', flex=4, abd=11, cross=-4, el=18, wrist=4)
+    arm_pose(p, 'd', flex=-3, abd=3, cross=-4, el=6, wrist=-2, lift=0.6 * b)
+    arm_pose(p, 'i', flex=-3, abd=3, cross=-4, el=8, wrist=2)
     return p
 
 
@@ -864,10 +866,11 @@ def a_remover(t):
 
 def a_arrodillado(t):
     p = base()
-    root(p, loc=(0, 0.02, -0.34))
-    leg_pose(p, 'i', flex=74, abd=6, knee=78, ankle=4)
-    leg_pose(p, 'd', flex=-6, abd=4, knee=92, ankle=-58)
-    spine(p, hips=(6, 0, 0), low=(10, 0, 0), chest=(8, 0, 0), head=(14, 0, 5 * S(t)))
+    # rodilla derecha en el suelo con el empeine apoyado; el pie izquierdo plantado delante
+    root(p, loc=(0, 0.02, -0.32))
+    leg_pose(p, 'i', flex=84, abd=6, knee=78, ankle=0)
+    leg_pose(p, 'd', flex=0, abd=4, knee=92, ankle=-80)
+    spine(p, low=(14, 0, 0), chest=(10, 0, 0), head=(14, 0, 5 * S(t)))
     arm_pose(p, 'd', flex=62 + 12 * S(t), abd=6, cross=6, el=22 + 10 * C(t), wrist=-20)
     arm_pose(p, 'i', flex=50 + 9 * S(t, 1, 0.33), abd=12, cross=4, el=34 + 8 * C(t, 1, 0.33), wrist=-16)
     return p
@@ -1052,7 +1055,7 @@ def a_cartas(t):
     b = S(t, 2)
     seated_legs(p)
     play = smooth(max(0.0, S(t, 1, 0.1)) ** 6 * 1.6)
-    spine(p, hips=(-2, 0, 0), low=(5, 0, 0), chest=(4 - b + 4 * play, 0, 0),
+    spine(p, low=(3, 0, 0), chest=(4 - b + 4 * play, 0, 0),
           head=(14 + 8 * play, 0, 14 * S(t, 1, 0.35)))
     cards_hands(p, t, play)
     return p
@@ -1073,7 +1076,7 @@ def a_leer(t):
     b = S(t, 2)
     seated_legs(p)
     turn = smooth(max(0.0, S(t, 1, 0.15)) ** 8 * 2.0)
-    spine(p, hips=(-6, 0, 0), low=(3, 0, 0), chest=(3 - b, 0, 0), head=(24 + 2 * S(t, 1, 0.4), 0, 3 * S(t)))
+    spine(p, low=(-3, 0, 0), chest=(3 - b, 0, 0), head=(24 + 2 * S(t, 1, 0.4), 0, 3 * S(t)))
     arm_pose(p, 'd', flex=44 + 6 * turn, abd=6, cross=20 + 12 * turn, el=86 - 10 * turn, wrist=-14 + 10 * turn)
     arm_pose(p, 'i', flex=44, abd=6, cross=22, el=86, wrist=-14)
     return p
@@ -1139,6 +1142,27 @@ def moving_bones(poses):
     return names, loc
 
 
+# Clips de pie: en cada fotograma se sube o se baja el cuerpo para que el pie más bajo (tobillo o
+# punta) quede en el suelo, como en reposo (0,08 m). Así no se hunden los pies al doblar las
+# rodillas ni flotan al abrir las piernas, y el paso tiene su vaivén real.
+PLANTED = {'idle', 'idle_carga', 'idle_cojo', 'andar', 'andar_carga', 'cojear', 'trabajar', 'remover', 'martillear', 'lanzar',
+           'lanzar_gancho', 'recoger', 'usar', 'hablar', 'cubierto', 'herido', 'saludar', 'beber', 'cartas_pie'}
+FOOT_Z = 0.08
+
+
+def lowest_foot(arm):
+    bpy.context.view_layer.update()
+    return min(min(arm.pose.bones[f'pie_{s}'].head.z, arm.pose.bones[f'pie_{s}'].tail.z) for s in 'id')
+
+
+def plant(arm, pose, rest):
+    """Ajusta la altura de la raíz para que el pie más bajo apoye en el suelo."""
+    apply_pose(arm, pose, rest)
+    x, y, z = pose.get('raiz_loc', (0, 0, 0))
+    pose['raiz_loc'] = (x, y, z + FOOT_Z - lowest_foot(arm))
+    return pose
+
+
 def bake_actions(arm):
     rest = {b.name: b.matrix_local.to_3x3() for b in arm.data.bones}
     arm.animation_data_create()
@@ -1147,6 +1171,10 @@ def bake_actions(arm):
         arm.animation_data.action = act
         n = max(2, round(dur * FPS))
         poses = [fn((i % n) / n) for i in range(n + 1)]
+        if name in PLANTED:
+            arm.animation_data.action = None
+            poses = [plant(arm, pp, rest) for pp in poses]
+            arm.animation_data.action = act
         bones, loc = moving_bones(poses)
         for i, pose in enumerate(poses):
             apply_pose(arm, pose, rest)
@@ -1160,7 +1188,9 @@ def bake_actions(arm):
         track.strips.new(name, 0, act)
         track.mute = True
         arm.animation_data.action = None
+    # en reposo (y evaluado: la caja del manifiesto sale de la malla evaluada)
     apply_pose(arm, {}, rest)
+    bpy.context.view_layer.update()
 
 
 def export_without_still_channels():

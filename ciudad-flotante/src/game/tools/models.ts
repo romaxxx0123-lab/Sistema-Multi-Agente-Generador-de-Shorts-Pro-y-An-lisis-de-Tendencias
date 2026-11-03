@@ -125,10 +125,7 @@ export function buildGrapnel(b: GeoBuilder, s = 1): void {
 export function buildBobber(b: GeoBuilder, s = 1): void {
   b.push();
   b.scale(s, s, s);
-  if (appendHandModel(b, 'vm_corcho')) {
-    b.pop();
-    return;
-  }
+  // (Se probó uno de Blender y no mejoraba al procedimental: se queda este.)
   b.sphere(0, 0.015, 0, 0.045, '#e63946', 0, 0.9);
   b.cylinder(0, -0.045, 0, 0.012, 0.04, 0.05, 6, '#f8f9fa', { capTop: false });
   b.cylinder(0, 0.05, 0, 0.006, 0.004, 0.07, 4, '#f8f9fa');

@@ -1,11 +1,11 @@
 """
-Objetos en mano del jugador (primera persona) y piezas que vuelan por el mundo (garfio lanzado,
-corcho de la caña, pez capturado).
+Objetos en mano del jugador (primera persona) y piezas que vuelan por el mundo (garfio lanzado y
+pez capturado). El corcho de la caña sigue siendo el procedimental: el de Blender no lo mejoraba.
 
 MARCO: el de `buildItemModel` en src/game/tools/models.ts pasado a Blender. El puño agarra el eje
 Z en el origen; +Y es «hacia delante», lejos de la cámara (juego −z); +X, a la derecha. Las piezas
-que el juego monta con su propia transformación (garfio, corcho, pez) usan el marco de su función
-(`buildGrapnel`, `buildBobber`, `buildFish`). Mismas medidas que el procedimental: alturas, anclajes
+que el juego monta con su propia transformación (garfio, pez) usan el marco de su función
+(`buildGrapnel`, `buildFish`). Mismas medidas que el procedimental: alturas, anclajes
 (punta de la caña, cabeza del martillo, boca del cubo…) y huella no cambian.
 
 Todos se suben VM_LIFT metros (convención de base apoyada, ver mano.py) y models.ts los baja.
@@ -210,18 +210,6 @@ def cana():
     crank = limb([(0.031, c0.y, c0.z), (0.036, c0.y - 0.004, c0.z - 0.012), (0.04, c0.y - 0.006, c0.z - 0.024)], [(0.004, 0.0025)] * 3, seg=4, color=STEEL_DARK)
     knob = cf.cylinder(0.0065, 0.02, seg=6, at=(0.04, c0.y - 0.006, c0.z - 0.024), rot=(0, 90, 0), color='#2b2d42')
     return finish([cap, cork, ferrule, blank1, blank2, joint, *rings, tiptop, stem, seat, drum, hub, crank, knob], 'vm_cana')
-
-
-def corcho():
-    """Corcho de pesca en el marco de `buildBobber` (origen en la línea de flotación): mitad de
-    arriba roja, de abajo blanca, con varilla blanca de punta roja."""
-    prof = [(0.0, -0.05), (0.008, -0.047), (0.022, -0.03), (0.036, -0.008), (0.0445, 0.012), (0.042, 0.032), (0.03, 0.05),
-            (0.012, 0.058), (0.0055, 0.059), (0.0052, 0.09), (0.0048, 0.105), (0.0042, 0.118), (0.0, 0.12)]
-    ob = cf.lathe(prof, seg=10, color='#f8f9fa')
-    cf.paint(ob, '#e63946', lambda p: 0.012 < p.center.z < 0.06)
-    cf.paint(ob, '#e63946', lambda p: p.center.z > 0.104)
-    cf.paint(ob, '#c62f3a', lambda p: 0.04 < p.center.z < 0.06)
-    return finish([ob], 'vm_corcho')
 
 
 def cubo():
@@ -537,11 +525,6 @@ def semillas_cordel():
 
 # ================================================================ materiales y piezas
 
-def rotz(ob, deg):
-    ob.data.transform(Matrix.Rotation(math.radians(deg), 4, 'Z'))
-    return ob
-
-
 def tabla(L, w, t, at, rot_z, seed):
     """Tablón: cuatro listones a lo largo (las vetas, por color), testas más claras y dos
     cabezas de clavo."""
@@ -561,8 +544,8 @@ def tabla(L, w, t, at, rot_z, seed):
 
 
 def madera():
+    """Dos tablones cruzados sobre el puño, como el montón procedimental."""
     parts = tabla(0.26, 0.06, 0.025, (0, 0, 0.02), 17, 151) + tabla(0.24, 0.058, 0.024, (0.004, 0.006, 0.045), 22, 152)
-    # Subdivide la cara de arriba para que se vean las vetas.
     return finish(parts, 'vm_madera')
 
 
@@ -582,7 +565,7 @@ def chatarra():
 
 def placa_metal():
     """Chapa cortada con el canto biselado, agujeros de remache y rayas de lijado."""
-    ob = cf.box((0.16, 0.12, 0.008), at=(0, 0, 0.022), rot=(17, 0, 0), color='#9fb3c1')
+    ob = cf.box((0.16, 0.12, 0.008), at=(0, 0.012, 0.05), rot=(-17, 0, 0), color='#9fb3c1')
     cf.bevel(ob, 0.002, 1, 35)
     cf.paint(ob, '#b9cad6', lambda p: p.normal.z > 0.7 and int((p.center.x + 0.2) / 0.02) % 2 == 0)
     cf.jitter_colors(ob, 0.04, seed=171)
@@ -590,7 +573,7 @@ def placa_metal():
     for sx in (-1, 1):
         for sy in (-1, 1):
             h = cf.cylinder(0.005, 0.0095, seg=6, at=(sx * 0.064, sy * 0.044, 0.0), color='#3a4148')
-            h.data.transform(Matrix.Translation((0, 0, 0.0215)) @ Matrix.Rotation(math.radians(17), 4, 'X'))
+            h.data.transform(Matrix.Translation((0, 0.012, 0.0495)) @ Matrix.Rotation(math.radians(-17), 4, 'X'))
             holes.append(h)
     return finish([ob, *holes], 'vm_placa_metal')
 
@@ -704,10 +687,9 @@ def combustible():
     cf.jitter_colors(body, 0.04, seed=211)
     parts = [body]
     for sy in (-1, 1):
-        for x0, x1 in ((-0.05, 0.05),):
-            # Marco estampado de la cara.
-            parts.append(cf.box((x1 - x0, 0.003, 0.006), at=(0, sy * 0.0305, 0.11), color='#a3412d', base=False))
-            parts.append(cf.box((x1 - x0, 0.003, 0.006), at=(0, sy * 0.0305, 0.01), color='#a3412d', base=False))
+        # Marco estampado de cada cara.
+        parts.append(cf.box((0.1, 0.003, 0.006), at=(0, sy * 0.0305, 0.11), color='#a3412d', base=False))
+        parts.append(cf.box((0.1, 0.003, 0.006), at=(0, sy * 0.0305, 0.01), color='#a3412d', base=False))
     for x in (-0.03, 0.0, 0.03):
         parts.append(limb([(x, 0, 0.128), (x, 0, 0.15), (x, 0, 0.15)], [(0.004, 0.006)] * 3, seg=4, color='#2b2d42', up=(1, 0, 0)))
     parts.append(cf.box((0.075, 0.014, 0.008), at=(0, 0, 0.148), color='#2b2d42'))
@@ -762,7 +744,7 @@ def celula_solar():
         parts.append(cf.box((0.002, 0.108, 0.0012), at=(-0.074 + i * 0.037, 0, 0.0405), color='#98c1d9'))
     parts.append(cf.box((0.148, 0.002, 0.0012), at=(0, 0, 0.0405), color='#98c1d9'))
     for part in parts:
-        part.data.transform(Matrix.Translation((0, 0, 0.03)) @ Matrix.Rotation(math.radians(28), 4, 'X') @ Matrix.Translation((0, 0, -0.03)))
+        part.data.transform(Matrix.Translation((0, 0.012, 0.052)) @ Matrix.Rotation(math.radians(-20), 4, 'X') @ Matrix.Translation((0, 0, -0.03)))
     return finish(parts, 'vm_celula_solar')
 
 
@@ -783,7 +765,6 @@ def build():
     garfio()
     gancho_rollo()
     cana()
-    corcho()
     cubo()
     cubo_agua()
     pez('vm_pez_crudo', back='#457b9d', flank='#8ecae6', belly='#e8f4f2', fin='#6fa8c7', eye=('#f8f9fa', '#1a1a1a'), bars='#335f7a')

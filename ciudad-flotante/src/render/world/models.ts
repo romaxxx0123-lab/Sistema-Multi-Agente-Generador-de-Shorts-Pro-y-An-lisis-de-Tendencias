@@ -6,9 +6,102 @@
  * Convención: el nivel del agua es y = 0 en el modelo; +x es la proa; un modelo se coloca en el
  * marco del océano con `position.y = WATERLINE_Y`. Cada constructor devuelve la geometría sólida
  * y, si tiene luces nocturnas, la geometría "luminosa" aparte (ventanas, faroles, linternas).
+ *
+ * MODELOS DE BLENDER (scripts/blender/models/mundo.py y restos.py): el casco partido del naufragio,
+ * las palmeras, las rocas facetadas y la cabaña de las islas, el islote del faro y la balsa lejana
+ * (el mismo modelo que la balsa de rescate). Se funden con la geometría del Kit en la misma malla
+ * (una llamada de dibujo por modelo, como antes); si un modelo falta, se dibuja la pieza
+ * procedimental de siempre.
  */
 import * as THREE from 'three';
-import { Kit, type V3 } from './kit';
+import { modelGeometry } from '../assets';
+import { DEBRIS_LIFT } from '../ship/debrisModels';
+import { Kit, placeMatrix, type Place, type V3 } from './kit';
+
+/** Altura de la superficie del agua sobre la base de los modelos de Blender del mundo (mundo.py: WL). */
+export const WORLD_LIFT = 3.0;
+/** Altura de referencia de las palmeras de Blender (mundo.py: PALM_H). */
+const PALM_H = 8.0;
+
+let blenderOn = true;
+
+/** Usa (o no) los modelos de Blender del mundo (para comparar con el procedimental). Afecta a los modelos que se construyan después. */
+export function setBlenderWorldModels(on: boolean): void {
+  blenderOn = on;
+}
+
+export function blenderWorldModels(): boolean {
+  return blenderOn;
+}
+
+const _pm = new THREE.Matrix4();
+const _lift = new THREE.Matrix4();
+const _v = new THREE.Vector3();
+
+/**
+ * Piezas de Blender (`modelGeometry`) colocadas con su color por vértice; `merge` las funde con la
+ * geometría de un Kit en una sola (no indexada, normales planas). `base` es la transformación común
+ * (p. ej. la escala del modelo).
+ */
+export class Pieces {
+  private pos: number[] = [];
+  private col: number[] = [];
+  private readonly m = new THREE.Matrix4();
+
+  constructor(private readonly base: THREE.Matrix4 = new THREE.Matrix4()) {}
+
+  get count(): number {
+    return this.pos.length / 9;
+  }
+
+  /** Añade el modelo `name` en `t` (bajado `lift` metros: la altura del agua en su modelo). Devuelve false si no existe. */
+  add(name: string, t?: Place, lift = 0): boolean {
+    const g = blenderOn ? modelGeometry(name) : null;
+    if (!g) return false;
+    this.m.multiplyMatrices(this.base, placeMatrix(t, _pm));
+    if (lift) this.m.multiply(_lift.makeTranslation(0, -lift, 0));
+    const p = g.getAttribute('position');
+    const c = g.getAttribute('color');
+    const index = g.getIndex();
+    const n = index ? index.count : p.count;
+    const flip = this.m.determinant() < 0;
+    for (let i = 0; i + 2 < n; i += 3) {
+      for (const k of flip ? [i, i + 2, i + 1] : [i, i + 1, i + 2]) {
+        const vi = index ? index.getX(k) : k;
+        _v.fromBufferAttribute(p, vi).applyMatrix4(this.m);
+        this.pos.push(_v.x, _v.y, _v.z);
+        if (c) this.col.push(c.getX(vi), c.getY(vi), c.getZ(vi));
+        else this.col.push(1, 1, 1);
+      }
+    }
+    return true;
+  }
+
+  /** Funde las piezas con `geo` (no indexada, de un Kit) y libera `geo`. Sin piezas, devuelve `geo`. */
+  merge(geo: THREE.BufferGeometry): THREE.BufferGeometry {
+    if (!this.pos.length) return geo;
+    const out = new THREE.BufferGeometry();
+    // Primero lo del Kit y detrás las piezas; `extra` null = piezas sin ese atributo (ceros).
+    const join = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined, extra: number[] | null): THREE.BufferAttribute => {
+      const n0 = a ? a.count * 3 : 0;
+      const r = new Float32Array(n0 + this.pos.length);
+      if (a) r.set(a.array as Float32Array);
+      if (extra) r.set(extra, n0);
+      return new THREE.BufferAttribute(r, 3);
+    };
+    out.setAttribute('position', join(geo.getAttribute('position'), this.pos));
+    out.setAttribute('color', join(geo.getAttribute('color'), this.col));
+    const emit = geo.getAttribute('aEmit');
+    if (emit) out.setAttribute('aEmit', join(emit, null));
+    out.computeVertexNormals();
+    out.computeBoundingSphere();
+    out.computeBoundingBox();
+    geo.dispose();
+    this.pos = [];
+    this.col = [];
+    return out;
+  }
+}
 
 export interface WorldModel {
   solid: THREE.BufferGeometry;
@@ -149,7 +242,10 @@ export function loftHull(kit: Kit, o: HullOpts): void {
 /* Palmeras, rocas, cabañas                                             */
 /* ------------------------------------------------------------------ */
 
-function palm(kit: Kit, x: number, y: number, z: number, h: number, lean: number, yaw: number): void {
+function palm(kit: Kit, x: number, y: number, z: number, h: number, lean: number, yaw: number, pieces?: Pieces): void {
+  // Palmera de Blender: la más inclinada para los troncos muy vencidos.
+  const variant = lean > 1.15 ? 1 : lean < 0.8 ? 2 : 0;
+  if (pieces?.add(`mundo_palmera_${variant}`, { p: [x, y - 0.1, z], r: [0, yaw, 0], s: h / PALM_H })) return;
   kit.push({ p: [x, y, z], r: [0, yaw, 0] });
   const segs = 5;
   let px = 0;
@@ -184,12 +280,18 @@ function palm(kit: Kit, x: number, y: number, z: number, h: number, lean: number
   kit.pop();
 }
 
-function rockCluster(kit: Kit, x: number, z: number, r: number, n: number, y = 0, color = COL.rock): void {
+function rockCluster(kit: Kit, x: number, z: number, r: number, n: number, y = 0, color = COL.rock, pieces?: Pieces): void {
   for (let i = 0; i < n; i++) {
     const a = kit.random() * Math.PI * 2;
     const d = kit.random() * r * 0.6;
     const s = r * (0.35 + kit.random() * 0.5);
-    kit.rock(1, 0, i % 2 ? color : COL.rockDark, { p: [x + Math.cos(a) * d, y + s * 0.15, z + Math.sin(a) * d], r: [kit.random(), kit.random() * 3, kit.random()], s: [s, s * (0.6 + kit.random() * 0.5), s] }, 0.22);
+    const rx = kit.random();
+    const ry = kit.random() * 3;
+    const rz = kit.random();
+    const sy = s * (0.6 + kit.random() * 0.5);
+    // Roca facetada de Blender (base en su pie): se hunde un poco para que asome como la procedimental.
+    if (pieces?.add(`mundo_roca_${i % 3}`, { p: [x + Math.cos(a) * d, y - sy * 0.45, z + Math.sin(a) * d], r: [0, ry * 2, 0], s: [s * 1.1, sy * 1.3, s] })) continue;
+    kit.rock(1, 0, i % 2 ? color : COL.rockDark, { p: [x + Math.cos(a) * d, y + s * 0.15, z + Math.sin(a) * d], r: [rx, ry, rz], s: [s, sy, s] }, 0.22);
   }
 }
 
@@ -197,53 +299,66 @@ function rockCluster(kit: Kit, x: number, z: number, r: number, n: number, y = 0
 /* Avistamientos                                                       */
 /* ------------------------------------------------------------------ */
 
-/** Naufragio: casco semihundido y escorado, mástil roto, vela rasgada y restos. */
+/** Restos de Blender que flotan alrededor del naufragio (mismos modelos que los que se pescan). */
+const WRECK_JUNK = ['resto_tablones_2', 'resto_barril_0', 'resto_caja_2', 'resto_restos_0', 'resto_barril_2', 'resto_tablones_0', 'resto_bidon_1'];
+
+/**
+ * Naufragio: casco semihundido y escorado, mástil roto, vela rasgada y restos. Con Blender, un
+ * casco de madera partido en dos (proa al aire con las cuadernas a la vista y popa medio hundida
+ * con su caseta) y restos de los que se pescan flotando alrededor.
+ */
 export function wreckModel(seed: number, scale = 1): WorldModel {
   const kit = new Kit(seed, 0.09);
+  const pieces = new Pieces(new THREE.Matrix4().makeScale(scale, scale, scale));
+  const blender = pieces.add('mundo_naufragio', undefined, WORLD_LIFT);
   kit.push({ s: scale });
-  // Casco: inclinado (escora y proa al aire) y hundido de popa.
-  kit.push({ p: [0, -2.1, 0], r: [0.4, 0, 0.27] });
-  loftHull(kit, { length: 24, halfWidth: 3.6, draft: 2.4, freeboard: 2.6, bowFrac: 0.32, bottom: COL.rustDark, top: COL.rust, stripe: COL.rustLight, deck: COL.woodDark, sheer: 1.1 });
-  // Caseta destrozada
-  kit.box(5, 2.2, 4.6, '#6e5a48', { p: [-5, 3.6, 0], r: [0, 0, 0.06] });
-  kit.box(5.4, 0.25, 5, COL.rustDark, { p: [-5, 4.8, 0.2], r: [0.12, 0, -0.1] });
-  kit.box(1.2, 0.9, 0.12, '#1f2a30', { p: [-3.3, 3.9, 2.32] });
-  // Mástil roto y su trozo caído
-  kit.cyl(0.28, 0.34, 7, 7, COL.woodDark, { p: [3, 5.9, 0] });
-  kit.cone(0.32, 1.1, 6, COL.woodDark, { p: [3.1, 9.7, 0.05], r: [0.4, 0, 0.5] });
-  kit.cyl(0.24, 0.28, 9, 7, COL.woodDark, { p: [7.5, 3.4, -3.4], r: [0.9, 0.3, 1.0] });
-  // Vela rasgada colgando de la verga
-  kit.box(5.5, 0.18, 0.18, COL.woodDark, { p: [3, 8.4, 0], r: [0, 0, 0.12] });
-  kit.poly(
-    [
-      [0.5, 8.3, 0.05],
-      [5.4, 8.9, 0.05],
-      [4.9, 6.2, 0.2],
-      [3.4, 5.1, 0.4],
-      [1.9, 6.8, 0.15],
-      [0.9, 5.9, 0.2],
-    ],
-    COL.canvasDirty,
-  );
-  // Cabos colgando
-  kit.box(0.06, 5.5, 0.06, COL.canvasDirty, { p: [0.2, 6.4, 3.2], r: [0.5, 0, 0] });
-  kit.pop();
+  if (!blender) {
+    // Casco: inclinado (escora y proa al aire) y hundido de popa.
+    kit.push({ p: [0, -2.1, 0], r: [0.4, 0, 0.27] });
+    loftHull(kit, { length: 24, halfWidth: 3.6, draft: 2.4, freeboard: 2.6, bowFrac: 0.32, bottom: COL.rustDark, top: COL.rust, stripe: COL.rustLight, deck: COL.woodDark, sheer: 1.1 });
+    // Caseta destrozada
+    kit.box(5, 2.2, 4.6, '#6e5a48', { p: [-5, 3.6, 0], r: [0, 0, 0.06] });
+    kit.box(5.4, 0.25, 5, COL.rustDark, { p: [-5, 4.8, 0.2], r: [0.12, 0, -0.1] });
+    kit.box(1.2, 0.9, 0.12, '#1f2a30', { p: [-3.3, 3.9, 2.32] });
+    // Mástil roto y su trozo caído
+    kit.cyl(0.28, 0.34, 7, 7, COL.woodDark, { p: [3, 5.9, 0] });
+    kit.cone(0.32, 1.1, 6, COL.woodDark, { p: [3.1, 9.7, 0.05], r: [0.4, 0, 0.5] });
+    kit.cyl(0.24, 0.28, 9, 7, COL.woodDark, { p: [7.5, 3.4, -3.4], r: [0.9, 0.3, 1.0] });
+    // Vela rasgada colgando de la verga
+    kit.box(5.5, 0.18, 0.18, COL.woodDark, { p: [3, 8.4, 0], r: [0, 0, 0.12] });
+    kit.poly(
+      [
+        [0.5, 8.3, 0.05],
+        [5.4, 8.9, 0.05],
+        [4.9, 6.2, 0.2],
+        [3.4, 5.1, 0.4],
+        [1.9, 6.8, 0.15],
+        [0.9, 5.9, 0.2],
+      ],
+      COL.canvasDirty,
+    );
+    // Cabos colgando
+    kit.box(0.06, 5.5, 0.06, COL.canvasDirty, { p: [0.2, 6.4, 3.2], r: [0.5, 0, 0] });
+    kit.pop();
+  }
   // Restos flotando alrededor
   for (let i = 0; i < 7; i++) {
     const a = kit.random() * Math.PI * 2;
     const d = 9 + kit.random() * 7;
     const t = kit.random();
+    if (blender && pieces.add(WRECK_JUNK[(i + seed) % WRECK_JUNK.length]!, { p: [Math.cos(a) * d, 0, Math.sin(a) * d], r: [0, a, 0], s: 1.5 }, DEBRIS_LIFT)) continue;
     if (t < 0.4) kit.box(1.1, 0.55, 1.1, i % 2 ? COL.woodLight : COL.wood, { p: [Math.cos(a) * d, 0.1, Math.sin(a) * d], r: [0.2, a, 0.1] });
     else if (t < 0.7) kit.cyl(0.4, 0.4, 1.1, 8, COL.rustLight, { p: [Math.cos(a) * d, 0.15, Math.sin(a) * d], r: [Math.PI / 2, a, 0] });
     else kit.box(3.2, 0.2, 0.5, COL.wood, { p: [Math.cos(a) * d, 0.05, Math.sin(a) * d], r: [0, a, 0.05] });
   }
   kit.pop();
-  return { solid: kit.build(), glow: null, beamY: null, radius: 16 * scale };
+  return { solid: pieces.merge(kit.build()), glow: null, beamY: null, radius: 16 * scale };
 }
 
 /** Isla tropical: playa, colinas verdes, rocas, palmeras, cabaña y rompiente. */
 export function islandModel(seed: number, scale = 1, hut = true): WorldModel {
   const kit = new Kit(seed, 0.08);
+  const pieces = new Pieces(new THREE.Matrix4().makeScale(scale, scale, scale));
   kit.push({ s: scale });
   // Base sumergida y playa
   kit.cyl(30, 40, 6, 18, COL.sandWet, { p: [0, -3.4, 0] });
@@ -257,15 +372,15 @@ export function islandModel(seed: number, scale = 1, hut = true): WorldModel {
   // Cumbre rocosa
   kit.rock(4.5, 0, COL.rock, { p: [7.5, 11.5, 4], s: [1, 1.3, 1] }, 0.25);
   // Rocas en la orilla
-  rockCluster(kit, 24, -10, 6, 4);
-  rockCluster(kit, -22, 14, 5, 3);
-  rockCluster(kit, -8, -26, 4, 3);
+  rockCluster(kit, 24, -10, 6, 4, 0, COL.rock, pieces);
+  rockCluster(kit, -22, 14, 5, 3, 0, COL.rock, pieces);
+  rockCluster(kit, -8, -26, 4, 3, 0, COL.rock, pieces);
   // Palmeras repartidas por la playa
   const palms = 9;
   for (let i = 0; i < palms; i++) {
     const a = (i / palms) * Math.PI * 2 + kit.random() * 0.5;
     const d = 18 + kit.random() * 6;
-    palm(kit, Math.cos(a) * d, 1.2, Math.sin(a) * d, 6 + kit.random() * 3.5, 0.6 + kit.random() * 0.8, a + Math.PI / 2 + (kit.random() - 0.5));
+    palm(kit, Math.cos(a) * d, 1.2, Math.sin(a) * d, 6 + kit.random() * 3.5, 0.6 + kit.random() * 0.8, a + Math.PI / 2 + (kit.random() - 0.5), pieces);
   }
   // Arbustos
   for (let i = 0; i < 8; i++) {
@@ -273,7 +388,8 @@ export function islandModel(seed: number, scale = 1, hut = true): WorldModel {
     const d = 8 + kit.random() * 10;
     kit.rock(1.6 + kit.random() * 1.2, 0, i % 2 ? COL.leaf : COL.grassDark, { p: [Math.cos(a) * d, 2.5 + kit.random() * 2, Math.sin(a) * d] }, 0.25);
   }
-  if (hut) {
+  // La cabaña de Blender abre su frente (−z) hacia el mar.
+  if (hut && !pieces.add('mundo_cabana', { p: [16, 1.3, 11], r: [0, Math.atan2(-16, -11), 0] })) {
     // Cabaña de náufrago con techo de hojas
     kit.push({ p: [16, 1.4, 11], r: [0, -0.7, 0] });
     for (const [px, pz] of [[-1.3, -1.1], [1.3, -1.1], [-1.3, 1.1], [1.3, 1.1]] as const) kit.cyl(0.12, 0.14, 2.4, 5, COL.woodDark, { p: [px, 1.2, pz] });
@@ -283,7 +399,7 @@ export function islandModel(seed: number, scale = 1, hut = true): WorldModel {
     kit.pop();
   }
   kit.pop();
-  return { solid: kit.build(), glow: null, beamY: null, radius: 36 * scale };
+  return { solid: pieces.merge(kit.build()), glow: null, beamY: null, radius: 36 * scale };
 }
 
 /** Pequeño carguero con contenedores (navega a la par para comerciar). */
@@ -510,9 +626,21 @@ export function platformModel(seed: number): WorldModel {
 export function lighthouseModel(seed: number): WorldModel {
   const kit = new Kit(seed, 0.08);
   const glow = new Kit(seed + 1, 0);
-  rockCluster(kit, 0, 0, 16, 7, -1.5);
-  rockCluster(kit, 9, 6, 8, 4, -1);
-  kit.rock(10, 1, COL.rockDark, { p: [0, -2, 0], s: [1.5, 0.5, 1.3] }, 0.2);
+  const pieces = new Pieces();
+  if (pieces.add('mundo_roca_2', { p: [0, -1.6, 0], s: [12.5, 10, 11] })) {
+    // Islote de Blender: una losa ancha de base y rocas más bajas alrededor, que no tapan la torre.
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + kit.random() * 0.4;
+      const d = 10 + kit.random() * 4;
+      const s = 2.2 + kit.random() * 2.6;
+      pieces.add(`mundo_roca_${i % 3}`, { p: [Math.cos(a) * d, -s * 0.5, Math.sin(a) * d], r: [0, a * 2, 0], s: [s * 1.2, s * (i % 3 === 1 ? 1.4 : 1.1), s] });
+    }
+    pieces.add('mundo_roca_0', { p: [9, -1.4, 6], s: [5, 4, 4.5] });
+  } else {
+    rockCluster(kit, 0, 0, 16, 7, -1.5);
+    rockCluster(kit, 9, 6, 8, 4, -1);
+    kit.rock(10, 1, COL.rockDark, { p: [0, -2, 0], s: [1.5, 0.5, 1.3] }, 0.2);
+  }
   // Torre de franjas rojas y blancas
   const base = 3;
   const bands = 6;
@@ -537,7 +665,7 @@ export function lighthouseModel(seed: number): WorldModel {
   glow.box(0.9, 0.9, 0.08, COL.windowLit, { p: [-7.8, base + 0.6, 5.28] });
   // Linterna
   glow.cyl(1.0, 1.0, 1.4, 10, COL.lampWhite, { p: [0, top + 1.4, 0] });
-  return { solid: kit.build(), glow: glow.build(), beamY: top + 1.4, radius: 16 };
+  return { solid: pieces.merge(kit.build()), glow: glow.build(), beamY: top + 1.4, radius: 16 };
 }
 
 /** Torre de señales oxidada sobre un cajón de hormigón, con antenas y balizas. */
@@ -612,6 +740,8 @@ export function weatherStationModel(seed: number): WorldModel {
 /** Balsa lejana con bandera de socorro. */
 export function raftModel(seed: number): WorldModel {
   const kit = new Kit(seed, 0.08);
+  const pieces = new Pieces();
+  if (pieces.add('resto_balsa_1', { s: 1.15 }, DEBRIS_LIFT)) return { solid: pieces.merge(kit.build()), glow: null, beamY: null, radius: 3 };
   for (let i = 0; i < 5; i++) kit.cyl(0.28, 0.28, 3.6, 6, i % 2 ? COL.wood : COL.woodLight, { p: [0, 0.12, -1.1 + i * 0.55], r: [0, 0, Math.PI / 2] });
   kit.cyl(0.07, 0.08, 3.4, 5, COL.woodDark, { p: [0.6, 1.8, 0] });
   kit.poly(
@@ -634,6 +764,7 @@ export function raftModel(seed: number): WorldModel {
 /** Isla grande del archipiélago: acantilados, selva y una cumbre. */
 export function bigIslandModel(seed: number): WorldModel {
   const kit = new Kit(seed, 0.1);
+  const pieces = new Pieces();
   const R = 70 + kit.random() * 60;
   const H = 30 + kit.random() * 45;
   kit.cyl(R * 0.95, R * 1.15, 6, 14, COL.sand, { p: [0, -2.4, 0] });
@@ -642,14 +773,14 @@ export function bigIslandModel(seed: number): WorldModel {
   kit.rock(R * 0.18, 0, COL.rock, { p: [R * 0.28, H * 1.05, -R * 0.1], s: [1, 1.4, 1] }, 0.3);
   for (let i = 0; i < 6; i++) {
     const a = kit.random() * Math.PI * 2;
-    rockCluster(kit, Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.85, R * 0.12, 2, 0);
+    rockCluster(kit, Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.85, R * 0.12, 2, 0, COL.rock, pieces);
   }
   for (let i = 0; i < 14; i++) {
     const a = kit.random() * Math.PI * 2;
     const d = R * (0.3 + kit.random() * 0.5);
     kit.rock(R * 0.08 + kit.random() * 4, 0, i % 2 ? COL.leaf : COL.jungle, { p: [Math.cos(a) * d, H * 0.35 + kit.random() * H * 0.3, Math.sin(a) * d * 0.85] }, 0.25);
   }
-  return { solid: kit.build(), glow: null, beamY: null, radius: R * 1.1 };
+  return { solid: pieces.merge(kit.build()), glow: null, beamY: null, radius: R * 1.1 };
 }
 
 /** Iceberg facetado. */
@@ -666,14 +797,19 @@ export function icebergModel(seed: number): WorldModel {
 /** Farallón rocoso (región del faro). */
 export function seaStackModel(seed: number): WorldModel {
   const kit = new Kit(seed, 0.1);
+  const pieces = new Pieces();
   const n = 2 + Math.floor(kit.random() * 3);
   for (let i = 0; i < n; i++) {
     const r = 6 + kit.random() * 10;
     const h = 14 + kit.random() * 30;
-    kit.rock(r, 0, i % 2 ? COL.rock : COL.rockDark, { p: [(kit.random() - 0.5) * 30, h * 0.4, (kit.random() - 0.5) * 24], s: [1, h / r, 0.9] }, 0.25);
+    const x = (kit.random() - 0.5) * 30;
+    const z = (kit.random() - 0.5) * 24;
+    // Aguja facetada de Blender (1.5 m de alto por 0.7 de radio en su modelo).
+    if (pieces.add('mundo_roca_1', { p: [x, -h * 0.12, z], r: [0, i * 2.1, 0], s: [r * 1.35, (h * 1.05) / 1.5, r * 1.25] })) continue;
+    kit.rock(r, 0, i % 2 ? COL.rock : COL.rockDark, { p: [x, h * 0.4, z], s: [1, h / r, 0.9] }, 0.25);
   }
-  rockCluster(kit, 0, 0, 22, 5, -1);
-  return { solid: kit.build(), glow: null, beamY: null, radius: 30 };
+  rockCluster(kit, 0, 0, 22, 5, -1, COL.rock, pieces);
+  return { solid: pieces.merge(kit.build()), glow: null, beamY: null, radius: 30 };
 }
 
 /** Velero lejano (vida en el mar en aguas tranquilas). */

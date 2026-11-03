@@ -612,7 +612,7 @@ def red_0():
     net = lattice(6, 6, sx, sy, 0.055, net_fn(1, sx, sy, lumps), color=ROPE)
     cf.paint(net, '#b39a68', lambda p: p.center.z < 0.08)
     cf.jitter_colors(net, 0.12, seed=11)
-    parts = [two_sided(net)]
+    parts = [net]
     fn = net_fn(1, sx, sy, lumps)
     edge = [fn(-sx / 2 + sx * i / 8, sy / 2 - 0.02) for i in range(9)]
     parts.append(cf.tube([(x, y, z + 0.02) for x, y, z in edge], 0.022, seg=4, color=ROPE))
@@ -633,7 +633,7 @@ def red_1():
     net = lattice(6, 6, sx, sy, 0.06, net_fn(2, sx, sy, lumps), color='#7f9a6e')
     cf.paint(net, ROPE, lambda p: p.center.z > 0.25)
     cf.jitter_colors(net, 0.12, seed=12)
-    parts = [two_sided(net)]
+    parts = [net]
     parts.append(float_ball(0.24, (0.05, 0.02, 0.3)))
     # Rollo de cabo
     turns = []
@@ -655,7 +655,7 @@ def red_2():
     net = lattice(7, 5, sx, sy, 0.05, net_fn(3, sx, sy, lumps), color=ROPE)
     cf.paint(net, '#b39a68', lambda p: p.center.z < 0.08)
     cf.jitter_colors(net, 0.12, seed=13)
-    parts = [two_sided(net)]
+    parts = [net]
     # Nasa (jaula de listones)
     cage = []
     for x in (-0.25, 0.25):

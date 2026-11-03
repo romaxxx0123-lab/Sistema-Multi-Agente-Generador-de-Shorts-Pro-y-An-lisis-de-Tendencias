@@ -13,6 +13,7 @@
  */
 import * as THREE from 'three';
 import { FINAL_REGION } from '../../data/story';
+import { registerDebug } from '../../game/debug';
 import { WATERLINE_Y } from '../../sim/constants';
 import type { GameState, Sighting } from '../../sim/types';
 import type { Atmosphere } from './atmosphere';
@@ -28,6 +29,7 @@ import {
   raftModel,
   sailboatModel,
   seaStackModel,
+  setBlenderWorldModels,
   signalTowerModel,
   weatherStationModel,
   wreckModel,
@@ -110,7 +112,32 @@ export class SightingsView {
   private time = 0;
   private beamGeo: THREE.BufferGeometry | null = null;
 
-  constructor(readonly worldRoot: THREE.Group) {}
+  private regionId = '';
+
+  constructor(readonly worldRoot: THREE.Group) {
+    // Compara los modelos de Blender del mundo con los procedimentales: mundoBlender(false) / mundoBlender(true).
+    registerDebug('mundoBlender', ((on = true) => {
+      setBlenderWorldModels(!!on);
+      this.rebuildModels();
+      return !!on;
+    }) as never);
+  }
+
+  /** Rehace los modelos (tras cambiar entre Blender y procedimental): los avistamientos vuelven a aparecer ya visibles. */
+  rebuildModels(): void {
+    for (const e of this.entries.values()) this.disposeEntry(e);
+    this.entries.clear();
+    for (const m of this.cache.values()) {
+      m.solid.dispose();
+      m.glow?.dispose();
+    }
+    this.cache.clear();
+    this.populate(this.regionId);
+    this.rebuilt = true;
+  }
+
+  /** Los avistamientos que se creen en la próxima actualización aparecen sin fundido. */
+  private rebuilt = false;
 
   get count(): number {
     return this.entries.size;
@@ -319,6 +346,9 @@ export class SightingsView {
   update(state: GameState, dt: number, ds: number, water: WaterFn, atm: Atmosphere, newSim: boolean): void {
     this.time += dt;
     const regionId = state.voyage.regionId;
+    this.regionId = regionId;
+    const instant = newSim || this.rebuilt;
+    this.rebuilt = false;
     const night = 1 - atm.day;
     const dGame = ds;
 
@@ -341,7 +371,7 @@ export class SightingsView {
       if (!e) {
         const m = this.sightingModel(s, regionId);
         e = this.makeEntry(s.id, m.kind, m.model, m.floats, tx, tz, s.id * 13 + 1);
-        if (newSim) e.fade = 1;
+        if (instant) e.fade = 1;
         if (m.kind === 'mercante') e.yaw = 0;
         this.entries.set(s.id, e);
       }

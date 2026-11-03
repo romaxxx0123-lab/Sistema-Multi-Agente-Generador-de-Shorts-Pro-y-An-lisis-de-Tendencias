@@ -233,14 +233,27 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
     expect(armTris).toBeLessThan(1500);
   });
 
-  it('los objetos siguen en la mano: alguna parte pasa por el puño (nada flota)', () => {
-    /** Distancia del centro del puño a la superficie más cercana del objeto. */
-    const gap = (model: ItemModel): number => {
-      model.group.updateMatrixWorld(true);
+  it('los objetos siguen en la mano: tocan los dedos o la palma (nada flota)', () => {
+    /** Hueco entre la superficie del objeto y la de la mano (puño a menos de 9 cm del origen). */
+    const gap = (id: string): number => {
+      const { model, arm } = build(id);
+      arm.rotation.set(model.armRot.x, model.armRot.y, model.armRot.z);
+      const g = new THREE.Group();
+      g.add(arm, model.group);
+      g.updateMatrixWorld(true);
+      const hand: THREE.Vector3[] = [];
+      arm.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const p = m.geometry.getAttribute('position');
+        for (let i = 0; i < p.count; i++) {
+          const v = new THREE.Vector3().fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
+          if (v.length() < 0.09) hand.push(v);
+        }
+      });
       let best = Infinity;
       const tri = new THREE.Triangle();
       const q = new THREE.Vector3();
-      const origin = new THREE.Vector3();
       model.group.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh || m.name === 'agua') return;
@@ -249,20 +262,12 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
           tri.a.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
           tri.b.fromBufferAttribute(p, i + 1).applyMatrix4(m.matrixWorld);
           tri.c.fromBufferAttribute(p, i + 2).applyMatrix4(m.matrixWorld);
-          best = Math.min(best, tri.closestPointToPoint(origin, q).length());
+          for (const v of hand) best = Math.min(best, tri.closestPointToPoint(v, q).distanceTo(v));
         }
       });
       return best;
     };
-    for (const id of IDS) {
-      const blend = gap(build(id).model);
-      setBlenderHandModels(false);
-      const proc = gap(buildItemModel(id, mat, lineMat));
-      setBlenderHandModels(true);
-      // El puño mide ~10 cm: el objeto toca el puño (a menos de 5 cm de su centro) y no se
-      // separa de él más que el procedimental.
-      expect(blend, id).toBeLessThan(Math.max(0.05, proc + 0.005));
-    }
+    for (const id of IDS) expect(gap(id), id).toBeLessThan(0.006);
   });
 
   it('las piezas clave coinciden con sus anclajes (boca del martillo, punta de la caña, boca del cubo, argolla)', () => {
@@ -325,10 +330,9 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
     }
   });
 
-  it('el garfio lanzado, el corcho y el pez capturado (efectos) también usan Blender, con el mismo tamaño', () => {
+  it('el garfio lanzado y el pez capturado (efectos) también usan Blender, con el mismo tamaño', () => {
     const cases: [string, (b: GeoBuilder) => void][] = [
       ['garfio', (b) => buildGrapnel(b, 2.2)],
-      ['corcho', (b) => buildBobber(b, 2.4)],
       ['pez', (b) => buildFish(b, FISH_RAW.color, FISH_RAW.belly, 2.2)],
       ['asado', (b) => buildFish(b, FISH_GRILLED.color, FISH_GRILLED.belly, 1, true)],
       ['ahumado', (b) => buildFish(b, FISH_SMOKED.color, FISH_SMOKED.belly, 1, true)],
@@ -342,15 +346,24 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
       const a = proc.boundingBox!.getSize(new THREE.Vector3());
       const b = blend.boundingBox!.getSize(new THREE.Vector3());
       // Mismo largo y alto (±25 %); el pez de Blender es más fino (de canto) que el procedimental.
-      for (const k of name === 'garfio' || name === 'corcho' ? [0, 1, 2] : [0, 1]) {
+      for (const k of name === 'garfio' ? [0, 1, 2] : [0, 1]) {
         expect(b.getComponent(k) / a.getComponent(k), `${name}[${k}]`).toBeGreaterThan(0.7);
         expect(b.getComponent(k) / a.getComponent(k), `${name}[${k}]`).toBeLessThan(1.6);
       }
-      // Mismo origen: la argolla del garfio y la línea de flotación del corcho siguen en 0.
+      // Mismo origen: la argolla del garfio sigue en 0 y el pez, centrado.
       const c = blend.boundingBox!.getCenter(new THREE.Vector3());
       const c0 = proc.boundingBox!.getCenter(new THREE.Vector3());
-      expect(c.distanceTo(c0), name).toBeLessThan(0.05 * (name === 'garfio' || name === 'pez' ? 2.2 : name === 'corcho' ? 2.4 : 1));
+      expect(c.distanceTo(c0), name).toBeLessThan(0.05 * (name === 'garfio' || name === 'pez' ? 2.2 : 1));
     }
+  });
+
+  it('el corcho sigue siendo el procedimental (el de Blender no lo mejoraba)', () => {
+    expect(modelGeometry('vm_corcho')).toBeNull();
+    const a = geoOf((b) => buildBobber(b, 2.4));
+    setBlenderHandModels(false);
+    const b = geoOf((g) => buildBobber(g, 2.4));
+    setBlenderHandModels(true);
+    expect(a.getAttribute('position').count).toBe(b.getAttribute('position').count);
   });
 
   it('el brazo mantiene la dirección del antebrazo del procedimental (el encuadre no cambia)', () => {

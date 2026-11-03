@@ -284,6 +284,16 @@ export class CharacterModel {
   /** Clip principal que se está mostrando (para pruebas y depuración). */
   clip = '';
 
+  /** Peso de cada clip activo (pruebas y depuración). */
+  weights(): Record<string, number> {
+    return Object.fromEntries([...this.layers].map(([k, l]) => [k, l.weight]));
+  }
+
+  /** Fase (0..1) del ciclo de paso, que avanza con la distancia recorrida. */
+  get stepPhase(): number {
+    return this.phase;
+  }
+
   constructor(
     private readonly tpl: Template,
     look: CharacterLook,
