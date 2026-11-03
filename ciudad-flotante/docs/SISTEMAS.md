@@ -337,6 +337,16 @@ de pausa y de muerte, ajustes, tutorial no intrusivo, iconos SVG propios.
 
 ### Audio — audio
 Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI; procedural.
+- **Fuentes continuas del barco:**
+  - Generador, motor, potabilizadora, torno, fogón e incendios.
+  - Grúa: suena distinta al izar, al lanzar y al recoger cable.
+  - Radar: ping suave en cada barrido.
+  - Vivero: aireadores, que callan con la bandeja llena.
+  - Ahumadero, mientras tiene encargos.
+  - Sala común: murmullo con dos o más despiertos; la estufa del nivel 2 arde siempre.
+- **Radio y radar:** los avisos «Radio: …» y «El radar detecta/marca…» suenan por el altavoz del radar.
+- **Llegada a Puerto Esperanza** (evento 'llegada' o `story.arrived`): una música breve que suena una sola vez y sustituye a la fanfarria y a la sirena del mercado del muelle.
+- **Ambiente de la región esperanza:** el muelle (más gente de día y en la fiesta), las campanas del puerto, las boyas y las gaviotas.
 
 ### Efectos de sonido por bus (`sfx`)
 - Simulación: interruptor, encargo, fabricar, fabricado, cocinado, plantar, cosechar, cuidar,
@@ -348,6 +358,7 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 - Interfaz y construcción: ui_abrir, ui_cerrar, ui_clic, ui_click, ui_error, ui_mover.
 
 ---
+- Ronda 2: `mejora_terminada`, `pagina` y `fuego_artificial` (con x, y, z: retardo de distancia/343 s y menos agudos lejos). Sonidos propios del audio: `grua_lanzar`, `grua_saca`, `radio`, `radar_contacto`, `llegada`, `campana_puerto`, `campana_boya` y `cartas`. tests/audio.test.ts recorre src y falla si un sfx emitido no tiene receta.
 
 ## 13. Mejoras de instalaciones (GDD §7)
 
@@ -451,3 +462,10 @@ Implementado en la simulación y probado. Las áreas de presentación deben cone
 **Audio (c2-audio)**
 - `'fuego_artificial'` (con x, y, z): cada estallido de los fuegos de la llegada, de 1 a 3 por segundo durante la celebración y la fiesta de 21 a 23 h. Silbido corto y estallido seco con chisporroteo, con retardo y atenuación por distancia como el trueno.
 - Sonidos nuevos que emite la simulación: `'mejora_terminada'` (alias de `'obra_terminada'`; mezclarlo con el martillo) y `'pagina'` (leer una hoja). Revisar también los que emiten ahumadero, vivero, grúa, radar y la llegada (buscar `sfx` en src/sim).
+
+- Hecho:
+  - Fuegos con retardo, y oclusión de exterior también desde dentro.
+  - `mejora_terminada` y `pagina` con receta propia.
+  - Grúa, radar, vivero, ahumadero y sala común como fuentes continuas.
+  - Radio y radar al recibir el aviso.
+  - Música de la llegada y ambiente del puerto.
