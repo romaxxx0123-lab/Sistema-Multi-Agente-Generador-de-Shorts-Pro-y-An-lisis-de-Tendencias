@@ -59,6 +59,11 @@ export function setBlenderHandModels(on: boolean): void {
   blenderOn = on;
 }
 
+/** ¿Están disponibles (y activados) todos estos modelos de Blender? */
+export function hasHandModels(...names: string[]): boolean {
+  return blenderOn && names.every((n) => modelGeometry(n) !== null);
+}
+
 /**
  * Añade el modelo de Blender `name` (en el marco del puño, o en el de la función que lo monta) a
  * `b`, teñido de `color` si se da (planos y semillas cambian de color según el objeto). Devuelve
@@ -463,6 +468,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'abrigo':
       pose = SMALL_POSE;
       add('abrigo', (b) => {
+        if (appendHandModel(b, 'vm_abrigo')) return;
         b.boxC(0, 0.05, 0, 0.16, 0.06, 0.12, '#3a5a40');
         b.boxC(0, 0.085, 0, 0.15, 0.02, 0.11, '#4f7a56');
         b.boxC(0.0, 0.05, -0.061, 0.012, 0.012, 0.004, '#d6b97b');
@@ -472,7 +478,11 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       if (def?.category === 'semilla') {
         pose = SMALL_POSE;
         add('semillas', (b) => {
-          if (appendHandModel(b, 'vm_semillas_saco', def.color) && appendHandModel(b, 'vm_semillas_cordel')) return;
+          if (hasHandModels('vm_semillas_saco', 'vm_semillas_cordel')) {
+            appendHandModel(b, 'vm_semillas_saco', def.color);
+            appendHandModel(b, 'vm_semillas_cordel');
+            return;
+          }
           b.frustum(0, 0.0, 0, 0.09, 0.06, 0.07, 0.045, 0.09, def.color);
           b.cylinder(0, 0.09, 0, 0.022, 0.012, 0.02, 6, ROPE);
           b.frustum(0, 0.11, 0, 0.04, 0.03, 0.06, 0.04, 0.025, def.color);
@@ -484,7 +494,11 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       } else if (def?.category === 'plano') {
         pose = { ...SMALL_POSE, ry: -0.2 };
         add('plano', (b) => {
-          if (appendHandModel(b, 'vm_plano_rollo', def.color) && appendHandModel(b, 'vm_plano_cinta')) return;
+          if (hasHandModels('vm_plano_rollo', 'vm_plano_cinta')) {
+            appendHandModel(b, 'vm_plano_rollo', def.color);
+            appendHandModel(b, 'vm_plano_cinta');
+            return;
+          }
           b.cylinderBetween(-0.1, 0.05, 0, 0.1, 0.05, 0, 0.032, 8, def.color);
           b.cylinderBetween(-0.025, 0.05, 0, 0.025, 0.05, 0, 0.034, 8, '#f3ead6');
           b.cylinderBetween(-0.105, 0.05, 0, -0.1, 0.05, 0, 0.026, 8, '#e8f4f2');
@@ -620,8 +634,9 @@ function buildPage(b: GeoBuilder, id: ItemId): void {
   });
 }
 
-/** Materiales y piezas (montones, rollos, placas…). */
+/** Materiales y piezas (montones, rollos, placas…). El de Blender se llama `vm_<id>`. */
 function buildMaterial(b: GeoBuilder, id: ItemId, color: string): void {
+  if (appendHandModel(b, `vm_${id}`)) return;
   switch (id) {
     case 'madera':
       b.push();

@@ -142,7 +142,7 @@ def gancho_rollo():
     R = 0.07
     parts = []
     for i, y in enumerate((-0.012, 0.0, 0.012)):
-        n = 22
+        n = 16
         pts = []
         for j in range(n + 1):
             t = j / n * 2 * math.pi
@@ -201,7 +201,7 @@ def cana():
     seat = limb([hp(0.095), hp(0.104), hp(0.125), hp(0.134)], [0.021, 0.0232, 0.0232, 0.021], seg=8, color=STEEL)
     c0 = Vector((0, -0.05, -0.075))
     drum = cf.lathe([(0.0, -0.028), (0.034, -0.028), (0.036, -0.024), (0.036, -0.02), (0.022, -0.02), (0.024, 0.0), (0.022, 0.02),
-                     (0.036, 0.02), (0.036, 0.024), (0.034, 0.028), (0.0, 0.028)], seg=12, rot=(0, 90, 0), color=STEEL)
+                     (0.036, 0.02), (0.036, 0.024), (0.034, 0.028), (0.0, 0.028)], seg=10, rot=(0, 90, 0), color=STEEL)
     drum.data.transform(Matrix.Translation(c0))
     cf.paint(drum, '#e8f4f2', lambda p: abs(p.center.x - c0.x) < 0.019 and (p.center - c0).length > 0.015)
     cf.paint(drum, STEEL_DARK, lambda p: abs(p.normal.x) > 0.8 and 0.012 < Vector((0, p.center.y - c0.y, p.center.z - c0.z)).length < 0.026
@@ -230,7 +230,7 @@ def cubo():
     prof = [(0.0, -0.378), (0.1, -0.378), (0.108, -0.372), (0.11, -0.36), (0.113, -0.335), (0.1155, -0.33), (0.1145, -0.325),
             (0.131, -0.205), (0.1335, -0.2), (0.1325, -0.195), (0.14, -0.152), (0.147, -0.147), (0.1485, -0.14), (0.1445, -0.134),
             (0.137, -0.138), (0.134, -0.146), (0.106, -0.352), (0.099, -0.36), (0.0, -0.36)]
-    body = cf.lathe(prof, seg=14, color='#adb5bd')
+    body = cf.lathe(prof, seg=12, color='#adb5bd')
     cf.paint(body, '#7d8590', lambda p: Vector((p.center.x, p.center.y, 0)).length < 0.134 and p.center.z > -0.355 and p.normal.z < 0.9 and p.center.z < -0.14 and Vector((p.normal.x, p.normal.y, 0)).dot(Vector((p.center.x, p.center.y, 0))) < 0)
     cf.paint(body, '#6c757d', lambda p: p.normal.z > 0.9 and p.center.z < -0.3)
     cf.paint(body, '#ced4da', lambda p: p.center.z > -0.15 and Vector((p.center.x, p.center.y, 0)).length > 0.136)
@@ -335,7 +335,7 @@ def conserva():
     prof = [(0.0, 0.0), (0.036, 0.0), (0.0412, 0.0025), (0.0428, 0.0055), (0.0414, 0.0085), (0.0414, 0.0125), (0.0421, 0.0135),
             (0.0421, 0.03), (0.0423, 0.0305), (0.0423, 0.0425), (0.0421, 0.043), (0.0421, 0.0615), (0.0414, 0.0625), (0.0414, 0.066), (0.0428, 0.0692), (0.0418, 0.0728), (0.0385, 0.075), (0.0372, 0.0725),
             (0.0362, 0.0715), (0.0, 0.0715)]
-    can = cf.lathe(prof, seg=14, color='#adb5bd')
+    can = cf.lathe(prof, seg=12, color='#adb5bd')
     cf.paint(can, '#ced4da', lambda p: p.normal.z > 0.6)
     cf.paint(can, '#c8553d', lambda p: 0.0135 < p.center.z < 0.0615 and abs(p.normal.z) < 0.5)
     cf.paint(can, '#f3ead6', lambda p: 0.03 < p.center.z < 0.043 and abs(p.normal.z) < 0.5)
@@ -535,6 +535,245 @@ def semillas_cordel():
     return finish([tie, end], 'vm_semillas_cordel')
 
 
+# ================================================================ materiales y piezas
+
+def rotz(ob, deg):
+    ob.data.transform(Matrix.Rotation(math.radians(deg), 4, 'Z'))
+    return ob
+
+
+def tabla(L, w, t, at, rot_z, seed):
+    """Tablón con vetas a lo largo, testas más claras y dos cabezas de clavo."""
+    ob = cf.box((L, w, t), at=(0, 0, 0), color='#b07d48')
+    cf.bevel(ob, 0.003, 1, 35)
+    cf.paint(ob, '#d2a774', lambda p: abs(p.normal.x) > 0.7)
+    cf.jitter_colors(ob, 0.08, seed=seed)
+    nails = [cf.cylinder(0.0035, 0.0012, seg=6, at=(sx * (L / 2 - 0.018), 0, t), color=STEEL_DARK) for sx in (-1, 1)]
+    parts = [ob, *nails]
+    for part in parts:
+        part.data.transform(Matrix.Translation(at) @ Matrix.Rotation(math.radians(rot_z), 4, 'Z'))
+    # Vetas: franjas oscuras a lo largo de la cara de arriba.
+    cf.paint(ob, '#8c5e33', lambda p: p.normal.z > 0.7 and math.sin(p.center.y * 260 + p.center.x * 7) > 0.75)
+    return parts
+
+
+def madera():
+    parts = tabla(0.26, 0.06, 0.025, (0, 0, 0.02), 17, 151) + tabla(0.24, 0.058, 0.024, (0.004, 0.006, 0.045), 22, 152)
+    # Subdivide la cara de arriba para que se vean las vetas.
+    return finish(parts, 'vm_madera')
+
+
+def chatarra():
+    """Chatarra: chapa doblada, un ángulo oxidado y un tornillo largo."""
+    plate = cf.box((0.12, 0.08, 0.008), at=(0, 0, 0.02), color='metal')
+    for v in plate.data.vertices:
+        v.co.z += 0.02 * max(0.0, v.co.x) * 6
+    plate.data.update()
+    cf.jitter_colors(plate, 0.12, seed=161)
+    angle = cf.prism([(0, 0), (0.07, 0), (0.07, 0.008), (0.008, 0.008), (0.008, 0.05), (0, 0.05)], 0.04, at=(-0.04, -0.02, 0.03), rot=(90, 0, 25), color='rust')
+    cf.jitter_colors(angle, 0.15, seed=162)
+    bolt = limb([(-0.03, 0.02, 0.04), (0.05, -0.02, 0.1)], [0.006, 0.006], seg=6, color=STEEL_DARK)
+    head = cf.cylinder(0.011, 0.007, seg=6, at=(-0.034, 0.022, 0.037), rot=(0, -55, 25), color=STEEL)
+    return finish([plate, angle, bolt, head], 'vm_chatarra')
+
+
+def placa_metal():
+    """Chapa cortada con el canto biselado, agujeros de remache y rayas de lijado."""
+    ob = cf.box((0.16, 0.12, 0.008), at=(0, 0, 0.022), rot=(17, 0, 0), color='#9fb3c1')
+    cf.bevel(ob, 0.002, 1, 35)
+    cf.paint(ob, '#b9cad6', lambda p: p.normal.z > 0.7 and int((p.center.x + 0.2) / 0.02) % 2 == 0)
+    cf.jitter_colors(ob, 0.04, seed=171)
+    holes = []
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            h = cf.cylinder(0.005, 0.0095, seg=6, at=(sx * 0.064, sy * 0.044, 0.0), color='#3a4148')
+            h.data.transform(Matrix.Translation((0, 0, 0.0215)) @ Matrix.Rotation(math.radians(17), 4, 'X'))
+            holes.append(h)
+    return finish([ob, *holes], 'vm_placa_metal')
+
+
+def tornillos():
+    """Lata de tornillería: caja de madera abierta con tornillos, tuercas y arandelas."""
+    box = cf.box((0.09, 0.07, 0.045), at=(0, 0, 0.008), color='#7a5230')
+    cf.bevel(box, 0.003, 1, 35)
+    inner = cf.box((0.08, 0.06, 0.004), at=(0, 0, 0.049), color='#4a3220')
+    parts = [box, inner]
+    r = cf.rng(181)
+    for i in range(9):
+        x = -0.03 + (i % 3) * 0.03 + (r.random() - 0.5) * 0.008
+        y = -0.02 + (i // 3) * 0.02 + (r.random() - 0.5) * 0.006
+        kind = i % 3
+        if kind == 0:
+            parts.append(cf.cylinder(0.0075, 0.005, seg=6, at=(x, y, 0.053), color='#c9c3b6'))
+            parts.append(cf.cylinder(0.0035, 0.018, seg=5, at=(x, y, 0.035), color='#a8a294'))
+        elif kind == 1:
+            nut = cf.cylinder(0.008, 0.006, seg=6, at=(x, y, 0.053), color=STEEL, rot=(r.random() * 40, 0, 0))
+            parts.append(nut)
+        else:
+            parts.append(cf.torus(0.0065, 0.002, seg=8, tube_seg=3, at=(x, y, 0.055), color='#d8d2c4'))
+    return finish(parts, 'vm_tornillos')
+
+
+def fibra():
+    """Manojo de fibra vegetal atado por el centro, abierto en abanico por arriba."""
+    parts = []
+    for i in range(9):
+        a = (i / 9) * 2 * math.pi
+        bx, by = math.cos(a) * 0.008, math.sin(a) * 0.008
+        tx, ty = bx * 3.5 + (i % 3 - 1) * 0.01, by * 3.5
+        c = '#a9b665' if i % 2 else '#c2c97f'
+        parts.append(limb([(bx * 0.6, by * 0.6, -0.025), (bx, by, 0.03), (tx, ty, 0.16)], [0.004, 0.005, 0.0025], seg=4, color=c))
+    tie = cf.torus(0.016, 0.004, seg=8, tube_seg=4, at=(0, 0, 0.04), color=ROPE)
+    return finish([*parts, tie], 'vm_fibra')
+
+
+def cuerda():
+    """Rollo de cuerda pequeño (tres vueltas apretadas) con el chicote suelto."""
+    parts = []
+    for i in range(3):
+        n = 16
+        pts = []
+        for j in range(n + 1):
+            t = j / n * 2 * math.pi
+            r = 0.058 - i * 0.004
+            pts.append((r * math.cos(t), r * math.sin(t) * 0.92, 0.036 + i * 0.015 + 0.004 * math.sin(t * 2)))
+        ring = limb(pts, [0.0135] * len(pts), seg=5, color=ROPE if i % 2 == 0 else ROPE_DARK, caps=(False, False))
+        cf.paint(ring, ROPE_DARK if i % 2 == 0 else ROPE, lambda p: math.sin(math.atan2(p.center.y, p.center.x) * 14 + p.center.z * 200) > 0.4)
+        parts.append(ring)
+    for part in parts:
+        part.data.transform(Matrix.Translation((0, 0, 0.045)) @ Matrix.Rotation(math.radians(-20), 4, 'X') @ Matrix.Translation((0, 0, -0.045)))
+    end = limb([(0.05, -0.03, 0.06), (0.07, -0.05, 0.04), (0.075, -0.07, 0.015)], [0.012, 0.012, 0.011], seg=6, color=ROPE)
+    return finish([*parts, end], 'vm_cuerda')
+
+
+def tela():
+    """Lona doblada: tres pliegues con los cantos redondeados y una costura."""
+    parts = []
+    for i, (w, d) in enumerate(((0.14, 0.1), (0.135, 0.095), (0.13, 0.09))):
+        layer = limb([(-w / 2, 0, 0.022 + i * 0.016), (w / 2, 0, 0.022 + i * 0.016)], [(0.0085, d / 2)] * 2, seg=8, color='#e8dcc0' if i % 2 == 0 else '#f3ead6', up=(0, 0, 1))
+        cf.jitter_colors(layer, 0.04, seed=191 + i)
+        parts.append(layer)
+    seam = cf.box((0.12, 0.002, 0.002), at=(0, -0.046, 0.056), color='#c4a466')
+    return finish([*parts, seam], 'vm_tela')
+
+
+def plastico():
+    """Botella de plástico vieja y abollada con el tapón rojo."""
+    prof = [(0.0, -0.02), (0.034, -0.02), (0.04, -0.012), (0.04, 0.03), (0.036, 0.034), (0.04, 0.04), (0.04, 0.078), (0.032, 0.092),
+            (0.019, 0.104), (0.017, 0.11), (0.0, 0.11)]
+    ob = cf.lathe(prof, seg=9, color='#5fb3c9')
+    for v in ob.data.vertices:
+        if 0.0 < v.co.z < 0.07 and v.co.x > 0.02:
+            v.co.x *= 0.82
+    ob.data.update()
+    cf.paint(ob, '#8fd0e0', lambda p: p.center.z > 0.08)
+    cf.jitter_colors(ob, 0.06, seed=201)
+    cap = cf.cylinder(0.019, 0.016, seg=8, at=(0, 0, 0.108), color='#e63946')
+    return finish([ob, cap], 'vm_plastico')
+
+
+def componentes():
+    """Placa de circuito verde con chips, condensadores, una bobina de cobre y dos cables."""
+    board = cf.box((0.12, 0.08, 0.006), at=(0, 0, 0.036), color='#2d6a4f')
+    cf.bevel(board, 0.0015, 1, 35)
+    parts = [board]
+    # Pistas (franjas doradas) sobre la placa.
+    for k in range(4):
+        parts.append(cf.box((0.07, 0.0022, 0.0008), at=(0.01, -0.03 + k * 0.012, 0.042), color='#e0a458'))
+    parts.append(cf.box((0.032, 0.022, 0.007), at=(-0.02, 0.012, 0.042), color='#1a1a1a'))
+    parts.append(cf.box((0.02, 0.016, 0.006), at=(0.03, 0.022, 0.042), color='#22262a'))
+    for i, c in enumerate(('#4361ee', '#e63946', '#4361ee')):
+        parts.append(cf.cylinder(0.006, 0.016, seg=8, at=(0.03 + i * 0.014 - 0.01, -0.022, 0.042), color=c))
+    coil = cf.cylinder(0.009, 0.014, seg=8, at=(-0.042, -0.02, 0.048), rot=(0, 90, 0), color='#c8783a')
+    cf.paint(coil, '#e09a5a', lambda p: int((p.center.x + 0.1) / 0.003) % 2 == 0)
+    parts.append(coil)
+    parts.append(limb([(0.06, 0.03, 0.042), (0.075, 0.03, 0.055), (0.085, 0.02, 0.075)], [0.0022] * 3, seg=4, color='#e63946'))
+    parts.append(limb([(0.06, 0.036, 0.042), (0.072, 0.04, 0.05), (0.09, 0.04, 0.06)], [0.0022] * 3, seg=4, color='#2b2d42'))
+    return finish(parts, 'vm_componentes')
+
+
+def combustible():
+    """Bidón de combustible metálico rojo: aspa estampada, asa triple arriba y boquilla."""
+    body = cf.box((0.12, 0.06, 0.14), at=(0, 0, -0.01), color='hullStripe')
+    cf.bevel(body, 0.01, 2, 30)
+    # Aspa en relieve (franjas más oscuras en diagonal) en las dos caras grandes.
+    cf.paint(body, '#a3412d', lambda p: abs(p.normal.y) > 0.7 and (abs((p.center.x) - (p.center.z - 0.06) * 0.85) < 0.012 or abs((p.center.x) + (p.center.z - 0.06) * 0.85) < 0.012))
+    cf.jitter_colors(body, 0.04, seed=211)
+    parts = [body]
+    for sy in (-1, 1):
+        for x0, x1 in ((-0.05, 0.05),):
+            # Marco estampado de la cara.
+            parts.append(cf.box((x1 - x0, 0.003, 0.006), at=(0, sy * 0.0305, 0.11), color='#a3412d', base=False))
+            parts.append(cf.box((x1 - x0, 0.003, 0.006), at=(0, sy * 0.0305, 0.01), color='#a3412d', base=False))
+    for x in (-0.03, 0.0, 0.03):
+        parts.append(limb([(x, 0, 0.128), (x, 0, 0.15), (x, 0, 0.15)], [(0.004, 0.006)] * 3, seg=4, color='#2b2d42', up=(1, 0, 0)))
+    parts.append(cf.box((0.075, 0.014, 0.008), at=(0, 0, 0.148), color='#2b2d42'))
+    spout = cf.cylinder(0.011, 0.028, seg=8, at=(0.04, 0, 0.122), rot=(0, 30, 0), color='#2b2d42')
+    cap = cf.cylinder(0.0135, 0.008, seg=8, at=(0.054, 0, 0.143), rot=(0, 30, 0), color='#5c6770')
+    return finish([*parts, spout, cap], 'vm_combustible')
+
+
+def pieza_mecanica():
+    """Engranaje de repuesto: dientes trapezoidales, cubo con chavetero y agujeros de aligerado;
+    inclinado hacia la cámara como el procedimental."""
+    teeth = 10
+    pts = []
+    for k in range(teeth):
+        a0 = 2 * math.pi * k / teeth
+        for da, r in ((-0.13, 0.05), (-0.08, 0.064), (0.08, 0.064), (0.13, 0.05)):
+            a = a0 + da * 2 * math.pi / teeth * 1.6
+            pts.append((r * math.cos(a), r * math.sin(a)))
+    gear = cf.prism(pts, 0.02, at=(0, 0, -0.01), color='#7d8597')
+    cf.paint(gear, '#a3abb8', lambda p: abs(p.normal.z) > 0.7 and Vector((p.center.x, p.center.y, 0)).length > 0.045)
+    hub = cf.cylinder(0.018, 0.028, seg=10, at=(0, 0, -0.014), color='#5c6770')
+    bore = cf.cylinder(0.0085, 0.0284, seg=8, at=(0, 0, -0.0142), color='#2b2d42')
+    holes = [cf.cylinder(0.007, 0.0204, seg=6, at=(0.032 * math.cos(a), 0.032 * math.sin(a), -0.0102), color='#3a4148') for a in (0.5, 0.5 + 2.094, 0.5 + 4.189)]
+    parts = [gear, hub, bore, *holes]
+    for part in parts:
+        part.data.transform(Matrix.Translation((0, 0, 0.06)) @ Matrix.Rotation(math.radians(-90 + 17), 4, 'X'))
+    return finish(parts, 'vm_pieza_mecanica')
+
+
+def kit_reparacion():
+    """Caja de herramientas de madera con asa metálica, tablillas, clavos y bote de masilla."""
+    box = cf.box((0.14, 0.08, 0.07), at=(0, 0, 0.012), color='#d4a373')
+    cf.bevel(box, 0.004, 1, 35)
+    cf.paint(box, '#b07d48', lambda p: p.normal.z < 0.5 and int((p.center.z + 0.1) / 0.0175) % 2 == 0)
+    cf.jitter_colors(box, 0.06, seed=221)
+    inside = cf.box((0.13, 0.07, 0.003), at=(0, 0, 0.074), color='#6e4a2e')
+    posts = [cf.box((0.006, 0.012, 0.04), at=(sx * 0.064, 0, 0.08), color='#b07d48') for sx in (-1, 1)]
+    bar = cf.cylinder(0.0045, 0.13, seg=6, at=(-0.065, 0, 0.115), rot=(0, 90, 0), color=STEEL_DARK)
+    slats = [cf.box((0.11, 0.016, 0.006), at=(0.0, -0.02 + i * 0.018, 0.077), rot=(0, 0, 4 * i), color='#c89f6c') for i in range(2)]
+    putty = cf.cylinder(0.014, 0.026, seg=8, at=(0.04, 0.022, 0.076), color='#e9c46a')
+    lid = cf.cylinder(0.0145, 0.004, seg=8, at=(0.04, 0.022, 0.102), color='#5c6770')
+    return finish([box, inside, *posts, bar, *slats, putty, lid], 'vm_kit_reparacion')
+
+
+def celula_solar():
+    """Célula solar con marco de aluminio, celdas azules y las pistas plateadas."""
+    frame = cf.box((0.16, 0.12, 0.01), at=(0, 0, 0.03), color='#c9d1d6')
+    cf.bevel(frame, 0.002, 1, 35)
+    panel = cf.box((0.148, 0.108, 0.0012), at=(0, 0, 0.0398), color='#3d5a80')
+    parts = [frame, panel]
+    for i in range(1, 4):
+        parts.append(cf.box((0.002, 0.108, 0.0012), at=(-0.074 + i * 0.037, 0, 0.0405), color='#98c1d9'))
+    parts.append(cf.box((0.148, 0.002, 0.0012), at=(0, 0, 0.0405), color='#98c1d9'))
+    for part in parts:
+        part.data.transform(Matrix.Translation((0, 0, 0.03)) @ Matrix.Rotation(math.radians(28), 4, 'X') @ Matrix.Translation((0, 0, -0.03)))
+    return finish(parts, 'vm_celula_solar')
+
+
+def abrigo():
+    """Abrigo de lona doblado: cuerpo, cuello vuelto, botones de madera y un bolsillo."""
+    body = cf.box((0.16, 0.12, 0.05), at=(0, 0, 0.02), color='#3a5a40')
+    cf.bevel(body, 0.012, 2, 30)
+    cf.jitter_colors(body, 0.05, seed=231)
+    collar = limb([(-0.07, 0.03, 0.072), (0.0, 0.045, 0.078), (0.07, 0.03, 0.072)], [(0.012, 0.02)] * 3, seg=6, color='#4f7a56', up=(0, 0, 1))
+    pocket = cf.box((0.05, 0.002, 0.03), at=(0.035, -0.061, 0.03), color='#2f4a35')
+    buttons = [cf.cylinder(0.0055, 0.003, seg=6, at=(-0.01, -0.0605, z), rot=(90, 0, 0), color='rope') for z in (0.035, 0.055)]
+    return finish([body, collar, pocket, *buttons], 'vm_abrigo')
+
+
 def build():
     martillo()
     llave()
@@ -559,3 +798,17 @@ def build():
     plano_cinta()
     semillas_saco()
     semillas_cordel()
+    madera()
+    chatarra()
+    placa_metal()
+    tornillos()
+    fibra()
+    cuerda()
+    tela()
+    plastico()
+    componentes()
+    combustible()
+    pieza_mecanica()
+    kit_reparacion()
+    celula_solar()
+    abrigo()

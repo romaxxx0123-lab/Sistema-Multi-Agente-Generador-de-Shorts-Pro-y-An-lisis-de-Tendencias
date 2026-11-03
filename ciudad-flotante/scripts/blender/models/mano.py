@@ -92,6 +92,8 @@ def lift(ob):
     """Sube el modelo terminado VM_LIFT metros (convención de base apoyada)."""
     ob.data.transform(Matrix.Translation((0, 0, VM_LIFT)))
     ob.data.update()
+    # Refresca la caja envolvente del objeto (la usa el manifiesto).
+    bpy.context.view_layer.update()
     return ob
 
 
@@ -185,8 +187,8 @@ def forearm():
     cf.paint(roll, SHIRT, lambda p: (p.center - WRIST).dot(d) > 0.15)
     cf.jitter_colors(roll, 0.05, seed=14)
     sleeve = limb(
-        [at(0.165), at(0.24), at(0.38), at(0.56)],
-        [(0.053, 0.046), (0.055, 0.048), (0.058, 0.051), (0.06, 0.052)],
+        [at(0.165), at(0.24), at(0.36), at(0.47)],
+        [(0.053, 0.046), (0.055, 0.048), (0.056, 0.049), (0.056, 0.049)],
         seg=8, color=SHIRT, name='manga', caps=(False, True), up=(1, 0, 0),
     )
     # Pliegues: franjas algo más oscuras en la manga.
