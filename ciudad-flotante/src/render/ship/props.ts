@@ -20,12 +20,28 @@
  * de riego y luego tierra abonada, camarote con cortinas y lámpara, cocina de hierro…). Solo
  * cambia el modelo de los props de los módulos que tienen esa mejora (`propTier`).
  * Los modelos se cachean por tipo + medidas + variante.
+ *
+ * MODELOS DE BLENDER (scripts/blender/models/muebles.py y maquinas.py; docs/ARQUITECTURA.md §8):
+ * - `prop_<kind>` sustituye SOLO la geometría sólida «base» del procedimental, ajustada a las
+ *   medidas del layout (`fitToDims`: se modela con las del colisionador de data/modules.ts).
+ *   Anclajes, cristal, luces, contenido, piezas y placa siguen saliendo del procedimental, que se
+ *   construye siempre. Lo que el builder añade después de `extras()` (detalles de los niveles de
+ *   mejora, objetos sueltos encima) se conserva y se pinta sobre el modelo.
+ * - `prop_<kind>@<nivel>` (opcional) sustituye toda la geometría sólida de ese nivel de mejora.
+ *   Sin él, un nivel > 1 usa `prop_<kind>` + sus extras solo si el builder marca `extras()` (el
+ *   nivel no cambia la base); si no, ese nivel sigue siendo procedimental.
+ * - Piezas móviles: `prop_<kind>_<pieza>` (la parte `moving` se llama como en `MOVING_PIECE`, p.
+ *   ej. `prop_timon_rueda`; las de `parts`, por su nombre: `prop_radar_antenna`), exportadas con su
+ *   pivote en (0, PIECE_LIFT, 0) para que queden apoyadas en y ≥ 0 como todo modelo.
+ * Si un modelo falta (o `setBlenderProps(false)`), todo es procedimental como antes.
  */
 import * as THREE from 'three';
-import type { PropKind } from '../../data/modules';
+import { MODULE_LIST, type PropKind } from '../../data/modules';
+import { registerDebug } from '../../game/debug';
 import type { PropInstance } from '../../sim/ship';
 import { WALL_H } from '../../sim/constants';
 import { GAME_REACH } from '../../sim/npc';
+import { hasModel, modelGeometry } from '../assets';
 import { PALETTE } from '../palette';
 import { GeoBuilder, hash01, shade, type ColorLike } from './geo';
 
@@ -83,6 +99,11 @@ interface Ctx {
   tier: number;
   /** Constructor de una pieza articulada (ver `PropModel.parts`). */
   part: (name: string) => GeoBuilder;
+  /**
+   * Marca el final de la geometría «base» de `g` y `moving`: lo que se añada después (detalles de
+   * los niveles de mejora, objetos sueltos encima) se conserva sobre un modelo de Blender.
+   */
+  extras: () => void;
 }
 
 /**
@@ -248,13 +269,14 @@ const bed = (g: GeoBuilder, hx: number, hz: number, y0: number, blanket: ColorLi
 };
 
 const BUILDERS: Record<PropKind, Builder> = {
-  cama: ({ g, glow, tier }, d) => {
+  cama: ({ g, glow, tier, extras }, d) => {
     const { hx, hz } = d;
     legs(g, hx, hz, 0.14, 0.09, WOOD_DARK);
     bed(g, hx, hz, 0.14, BLANKETS[0]!, WOOD, true);
     // cabecero alto con remate y pie bajo
     g.box(-hx - 0.04, 0.72, -hz - 0.02, -hx + 0.08, 0.98, hz + 0.02, WOOD_DARK);
     g.box(hx - 0.06, 0, -hz, hx + 0.02, 0.6, hz, WOOD_DARK);
+    extras();
     if (tier >= 2) {
       // Camarote acogedor: dosel con cortinas recogidas, colcha de cuadros y lámpara de lectura.
       const top = 2.05;
@@ -277,7 +299,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     }
   },
 
-  litera: ({ g, glow, tier }, d) => {
+  litera: ({ g, glow, tier, extras }, d) => {
     const { hx, hz, h } = d;
     const post = 0.08;
     legs(g, hx, hz, h, post, WOOD_DARK, 0.04);
@@ -293,6 +315,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     const lx1 = hx - 0.08;
     for (const x of [lx0, lx1]) g.box(x - 0.025, 0, -hz - 0.08, x + 0.025, h - 0.1, -hz - 0.03, WOOD_LIGHT);
     for (let k = 1; k <= 5; k++) g.box(lx0, k * 0.3, -hz - 0.075, lx1, k * 0.3 + 0.04, -hz - 0.035, WOOD_LIGHT);
+    extras();
     if (tier >= 2) {
       // Dormitorio con taquillas: cortinilla y lamparita de lectura en cada litera.
       for (const [y0, y1, c] of [[0.36, 1.12, '#6d597a'], [1.36, 2.1, '#457b9d']] as const) {
@@ -386,7 +409,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     }
   },
 
-  fogon: ({ g, anchors, tier }, d) => {
+  fogon: ({ g, anchors, tier, extras }, d) => {
     const { hx, hz } = d;
     const top = 0.9;
     legs(g, hx, hz, 0.12, 0.08, IRON);
@@ -417,6 +440,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     anchors.firebox = new THREE.Vector3(fx, 0.47, -hz - 0.04);
     anchors.pot = new THREE.Vector3(-hx * 0.5, top + 0.36, -0.02);
     anchors.kettle = new THREE.Vector3(hx * 0.15 + 0.24, top + 0.24, -0.02);
+    extras();
     if (tier >= 2) {
       // Cocina de hierro colado: copete alto con estante calientaplatos, remates de latón,
       // termómetro en el horno y batería de cazos colgada.
@@ -482,12 +506,13 @@ const BUILDERS: Record<PropKind, Builder> = {
     }
   },
 
-  mesa: ({ g, glow, tier }, d) => {
+  mesa: ({ g, glow, tier, extras }, d) => {
     const { hx, hz, h } = d;
     const top = h;
     g.box(-hx, top - 0.06, -hz, hx, top, hz, WOOD_LIGHT);
     g.box(-hx + 0.06, top - 0.16, -hz + 0.06, hx - 0.06, top - 0.06, hz - 0.06, WOOD);
     legs(g, hx, hz, top - 0.06, 0.09, WOOD_DARK, 0.1);
+    extras();
     if (tier >= 2) {
       // Comedor mejorado: mantel de cuadros con caída, farolillo encendido y servicio para cuatro.
       const cloth = '#f1ece0';
@@ -785,7 +810,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     }
   },
 
-  bancal: ({ g, anchors, tier }, d) => {
+  bancal: ({ g, anchors, tier, extras }, d) => {
     const { hx, hz, h } = d;
     const t = 0.09;
     const wc = WOOD;
@@ -801,6 +826,8 @@ const BUILDERS: Record<PropKind, Builder> = {
       g.box(-hx - 0.005, y - 0.01, hz - 0.01, hx + 0.005, y + 0.01, hz + 0.005, WOOD_DARK);
     }
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.box(sx * hx - 0.06, 0, sz * hz - 0.06, sx * hx + 0.06, h + 0.05, sz * hz + 0.06, WOOD_DARK);
+    // la tierra, los surcos y el riego cambian con la mejora: van encima del cajón de Blender
+    extras();
     g.box(-hx + t, h - 0.1, -hz + t, hx - t, h - 0.07, hz - t, soil);
     // surcos
     for (let k = -2; k <= 2; k++) g.box(-hx + t + 0.05, h - 0.07, k * 0.4 - 0.05, hx - t - 0.05, h - 0.05, k * 0.4 + 0.05, shade(soil, 1.15), { ny: true });
@@ -1354,7 +1381,7 @@ const BUILDERS: Record<PropKind, Builder> = {
   },
   /* ---------------- Ronda de contenido 2: módulos especializados ---------------- */
 
-  sofa: ({ g, tier }, d) => {
+  sofa: ({ g, tier, extras }, d) => {
     const { hx, hz } = d;
     const fabric = '#9b4a3c';
     const fabricDark = shade(fabric, 0.78);
@@ -1380,6 +1407,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     }
     // botones del capitoné
     for (let k = 0; k < 5; k++) g.boxC(-hx + 0.35 + k * ((2 * hx - 0.7) / 4), 0.68, hz - 0.205, 0.03, 0.03, 0.012, shade(fabric, 0.6));
+    extras();
     if (tier >= 2) {
       // cojines sueltos y una manta de ganchillo sobre el respaldo
       const pillows: [number, string][] = [[-hx + 0.32, '#e9c46a'], [hx - 0.34, '#2a9d8f'], [0.18, '#f1ece0']];
@@ -1911,16 +1939,130 @@ function fillTiers(contents: GeoBuilder, tiers: number[], items: (() => void)[])
 
 const cache = new Map<string, PropModel>();
 
+/* ------------------------------------------------------------------ */
+/* Modelos de Blender                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Altura a la que se exportan las piezas móviles de Blender (`prop_<kind>_<pieza>`): su pivote
+ * queda en (0, PIECE_LIFT, 0) y aquí se vuelve a bajar (todo modelo queda apoyado en y ≥ 0).
+ */
+export const PIECE_LIFT = 1;
+
+/** Nombre de la pieza `moving` de cada prop en Blender (`prop_<kind>_<nombre>`; por defecto «movil»). */
+const MOVING_PIECE: Partial<Record<PropKind, string>> = { timon: 'rueda' };
+
+let blenderProps = true;
+
+/** Usa (o no) los modelos de Blender de los props; vacía la caché para que se reconstruyan. */
+export function setBlenderProps(on: boolean): void {
+  blenderProps = on;
+  cache.clear();
+}
+
+/** Hay algún modelo de Blender para este prop y nivel (base, del nivel o pieza móvil). */
+export function hasBlenderProp(kind: PropKind, tier = 1): boolean {
+  if (!blenderProps) return false;
+  return hasModel(`prop_${kind}`) || hasModel(`prop_${kind}@${tier}`) || hasModel(`prop_${kind}_${MOVING_PIECE[kind] ?? 'movil'}`);
+}
+
+// Comparar en el juego: mueblesBlender(false) / mueblesBlender(true) (rehace el barco).
+registerDebug('mueblesBlender', ((on = true) => {
+  setBlenderProps(!!on);
+  (globalThis as { __game?: { sim?: { shipChanged?: () => void } } }).__game?.sim?.shipChanged?.();
+  return !!on;
+}) as never);
+
+let authored: Map<PropKind, PropDims | null> | null = null;
+
+/** Medidas con las que se modeló cada prop en Blender: su colisionador en data/modules.ts (null: tamaño fijo). */
+function authoredDims(kind: PropKind): PropDims | null {
+  if (!authored) {
+    authored = new Map();
+    for (const m of MODULE_LIST)
+      for (const p of m.props) if (!authored.has(p.kind)) authored.set(p.kind, p.collider ? { hx: p.collider[0], hz: p.collider[1], h: p.collider[2] } : null);
+  }
+  return authored.get(kind) ?? null;
+}
+
+/**
+ * Reparte un cambio de medida sin deformar los bordes: la franja exterior (`m`) se desplaza
+ * entera (postes, cantos, herrajes) y solo se estira o encoge el centro.
+ */
+function slice(v: number, from: number, to: number, lo = false): number {
+  if (Math.abs(from - to) < 1e-4) return v;
+  const m = Math.min(0.15, from * 0.25);
+  if (lo) return v <= from - m ? (v * (to - m)) / (from - m) : v - from + to;
+  const a = Math.abs(v);
+  return Math.sign(v) * (a <= from - m ? (a * (to - m)) / (from - m) : a - from + to);
+}
+
+/** Geometría de un modelo ajustada de sus medidas de modelado a las del layout. */
+export function fitToDims(geo: THREE.BufferGeometry, from: PropDims | null, to: PropDims): THREE.BufferGeometry {
+  if (!from || (Math.abs(from.hx - to.hx) < 1e-4 && Math.abs(from.hz - to.hz) < 1e-4 && Math.abs(from.h - to.h) < 1e-4)) return geo;
+  const out = geo.index ? geo.toNonIndexed() : geo.clone();
+  const p = out.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) p.setXYZ(i, slice(p.getX(i), from.hx, to.hx), slice(p.getY(i), from.h, to.h, true), slice(p.getZ(i), from.hz, to.hz));
+  return out;
+}
+
+/** Los vértices de `geo` a partir de `from` (lo que el builder añadió tras `extras()`). */
+function tail(geo: THREE.BufferGeometry, from: number): THREE.BufferGeometry | null {
+  const p = geo.getAttribute('position');
+  if (from >= p.count) return null;
+  const out = new THREE.BufferGeometry();
+  for (const name of ['position', 'color'] as const) {
+    const a = geo.getAttribute(name) as THREE.BufferAttribute;
+    out.setAttribute(name, new THREE.BufferAttribute((a.array as Float32Array).slice(from * 3), 3));
+  }
+  return out;
+}
+
+/** Modelo base + extras procedimentales en una sola geometría (posición, normal plana y color). */
+function merge(base: THREE.BufferGeometry, rest: THREE.BufferGeometry | null, lift = 0): THREE.BufferGeometry {
+  const b = new GeoBuilder();
+  b.appendGeometry(base, lift ? new THREE.Matrix4().makeTranslation(0, -lift, 0) : null);
+  if (rest) b.appendGeometry(rest);
+  return b.build();
+}
+
+interface Built {
+  solid: THREE.BufferGeometry;
+  moving: THREE.BufferGeometry | null;
+  /** Vértices de `solid` y `moving` al llamar a `extras()` (null si el builder no lo marca). */
+  mark: { solid: number; moving: number } | null;
+}
+
+/**
+ * Sustituye la geometría sólida (y la pieza móvil) del procedimental por la de Blender si existe
+ * (ver la cabecera). Devuelve null si este prop y nivel siguen siendo procedimentales.
+ */
+function blenderGeometry(kind: PropKind, t: number, d: PropDims, built: Built): { solid: THREE.BufferGeometry | null; moving: THREE.BufferGeometry | null } {
+  const res = { solid: null as THREE.BufferGeometry | null, moving: null as THREE.BufferGeometry | null };
+  if (!blenderProps) return res;
+  // Sin modelo del nivel, la base solo vale si el nivel no la cambia (marca de extras o nivel 1).
+  const baseOk = t === 1 || built.mark !== null;
+  const whole = modelGeometry(`prop_${kind}@${t}`);
+  const base = whole ? null : baseOk ? modelGeometry(`prop_${kind}`) : null;
+  if (whole) res.solid = merge(fitToDims(whole, authoredDims(kind), d), null);
+  else if (base) res.solid = merge(fitToDims(base, authoredDims(kind), d), built.mark ? tail(built.solid, built.mark.solid) : null);
+  const piece = baseOk ? modelGeometry(`prop_${kind}_${MOVING_PIECE[kind] ?? 'movil'}`) : null;
+  if (piece && built.moving) res.moving = merge(piece, built.mark ? tail(built.moving, built.mark.moving) : null, PIECE_LIFT);
+  return res;
+}
+
 /**
  * Modelo (cacheado) de un tipo de prop con unas medidas. `tier` y `moduleType` eligen la variante
- * de la mejora (ver `propTier`); sin ellos, el modelo básico.
+ * de la mejora (ver `propTier`); sin ellos, el modelo básico. Con modelos de Blender cargados, la
+ * geometría sólida y las piezas salen de ellos (ver la cabecera); lo demás, del procedimental.
  */
 export function propModel(kind: PropKind, d: PropDims, tier = 1, moduleType = ''): PropModel {
   const t = propTier(kind, moduleType, tier);
-  const k = `${kind}|${d.hx.toFixed(3)}|${d.hz.toFixed(3)}|${d.h.toFixed(3)}|${t}`;
+  const k = `${kind}|${d.hx.toFixed(3)}|${d.hz.toFixed(3)}|${d.h.toFixed(3)}|${t}|${hasBlenderProp(kind, t) ? 'b' : 'p'}`;
   let m = cache.get(k);
   if (m) return m;
   const parts = new Map<string, GeoBuilder>();
+  let mark: Built['mark'] = null;
   const ctx: Ctx = {
     g: new GeoBuilder(),
     glass: new GeoBuilder(),
@@ -1935,6 +2077,9 @@ export function propModel(kind: PropKind, d: PropDims, tier = 1, moduleType = ''
       if (!b) parts.set(name, (b = new GeoBuilder()));
       return b;
     },
+    extras: () => {
+      mark = { solid: ctx.g.vertexCount, moving: ctx.moving.vertexCount };
+    },
   };
   const b = BUILDERS[kind];
   b(ctx, d);
@@ -1943,12 +2088,18 @@ export function propModel(kind: PropKind, d: PropDims, tier = 1, moduleType = ''
   if (kind === 'timon' && anchors.wheel) movingPivot = anchors.wheel.clone();
   defaultPlaque(anchors, d);
   const builtParts: Record<string, THREE.BufferGeometry> = {};
-  for (const [name, pb] of parts) builtParts[name] = pb.build();
+  for (const [name, pb] of parts) {
+    const piece = blenderProps ? modelGeometry(`prop_${kind}_${name}`) : null;
+    builtParts[name] = piece ? merge(piece, null, PIECE_LIFT) : pb.build();
+  }
+  const solid = ctx.g.build();
+  const moving = ctx.moving.isEmpty() ? null : ctx.moving.build();
+  const bl = blenderGeometry(kind, t, d, { solid, moving, mark });
   m = {
-    solid: ctx.g.build(),
+    solid: bl.solid ?? solid,
     glass: ctx.glass.isEmpty() ? null : ctx.glass.build(),
     glow: ctx.glow.isEmpty() ? null : ctx.glow.build(),
-    moving: ctx.moving.isEmpty() ? null : ctx.moving.build(),
+    moving: bl.moving ?? moving,
     movingPivot,
     contents: ctx.contents.isEmpty() ? null : ctx.contents.build(),
     tiers: ctx.tiers,

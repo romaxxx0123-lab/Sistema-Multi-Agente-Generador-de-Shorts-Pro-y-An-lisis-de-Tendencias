@@ -123,7 +123,7 @@ def turned_leg(x, z, h, r, color=WOOD_DARK, seg=8, light=False):
     """Pata torneada: pie, cuello, bulbo, anillo y collarín (perfil de abajo arriba). `light`:
     perfil de menos anillos para piezas pequeñas (sillas, sofá)."""
     if light:
-        p = [(0.0, 0.0), (r * 0.8, 0.0), (r * 0.65, h * 0.12), (r * 1.1, h * 0.36), (r * 0.65, h * 0.62), (r * 0.95, h * 0.8), (r * 0.8, h), (0.0, h)]
+        p = [(0.0, 0.0), (r * 0.8, 0.0), (r * 1.1, h * 0.3), (r * 0.65, h * 0.6), (r * 0.95, h * 0.8), (r * 0.8, h), (0.0, h)]
     else:
         p = [
             (0.0, 0.0), (r * 0.75, 0.0), (r * 0.85, h * 0.06), (r * 0.6, h * 0.12), (r * 1.05, h * 0.3),
@@ -429,11 +429,11 @@ def silla():
         parts.append(gsphere(sx * (hx - 0.03), seat + 0.52, hz + 0.02, 0.026, WOOD_DARK, subdiv=0))
     # travesaños
     for z in (-hz + 0.035, hz - 0.035):
-        parts.append(gcylx(-hx + 0.035, hx - 0.035, 0.14, z, 0.012, 5, WOOD_DARK))
+        parts.append(gcylx(-hx + 0.035, hx - 0.035, 0.14, z, 0.012, 4, WOOD_DARK))
     for sx in (-1, 1):
-        parts.append(gcylz(sx * (hx - 0.035), 0.2, -hz + 0.035, hz - 0.035, 0.012, 5, WOOD_DARK))
+        parts.append(gcylz(sx * (hx - 0.035), 0.2, -hz + 0.035, hz - 0.035, 0.012, 4, WOOD_DARK))
     # asiento con el frente redondeado
-    s = gbox(-hx, seat - 0.05, -hz, hx, seat, hz, WOOD, 0.015, 2)
+    s = gbox(-hx, seat - 0.05, -hz, hx, seat, hz, WOOD, 0.015, 1)
     cf.jitter_colors(s, 0.05, 41)
     parts.append(s)
     # respaldo: travesaño curvo arriba y dos lamas
@@ -441,17 +441,16 @@ def silla():
         r = gbox(-hx + 0.02, y0, hz - 0.01, hx - 0.02, y1, hz - 0.01 + t, WOOD)
         bm = bmesh.new()
         bm.from_mesh(r.data)
-        bmesh.ops.subdivide_edges(bm, edges=[e for e in bm.edges if abs(e.verts[0].co.x - e.verts[1].co.x) > 0.1], cuts=4, use_grid_fill=True)
+        bmesh.ops.subdivide_edges(bm, edges=[e for e in bm.edges if abs(e.verts[0].co.x - e.verts[1].co.x) > 0.1], cuts=3, use_grid_fill=True)
         bm.to_mesh(r.data)
         bm.free()
         cf.paint(r, WOOD)
         zoff = (y0 - seat) * 0.12
         deform(r, lambda x, y, z, zoff=zoff: (x, y, z + zoff + 0.04 * (1 - (x / hx) ** 2)))
-        cf.bevel(r, 0.008)
         parts.append(r)
     # cojín rojo atado
     c = gbox(-hx + 0.03, seat, -hz + 0.03, hx - 0.03, seat + 0.045, hz - 0.06, '#bc4749')
-    soft(c, 0.02, 1)
+    cf.bevel(c, 0.018, 2, angle=30)
     parts.append(c)
     return cf.model(parts, 'prop_silla')
 
@@ -472,16 +471,16 @@ def mesa():
         parts.append(gbox(sx * hx - 0.03 * (sx > 0), top - 0.065, -hz, sx * hx + 0.03 * (sx < 0), top - 0.005, hz, WOOD_LIGHT, 0.008))
         cf.paint(parts[-1], WOOD_LIGHT, f=0.9)
     # faldón
-    parts.append(gbox(-hx + 0.08, top - 0.16, -hz + 0.08, hx - 0.08, top - 0.06, -hz + 0.11, WOOD, 0.006))
-    parts.append(gbox(-hx + 0.08, top - 0.16, hz - 0.11, hx - 0.08, top - 0.06, hz - 0.08, WOOD, 0.006))
-    parts.append(gbox(-hx + 0.08, top - 0.16, -hz + 0.11, -hx + 0.11, top - 0.06, hz - 0.11, WOOD, 0.006))
-    parts.append(gbox(hx - 0.11, top - 0.16, -hz + 0.11, hx - 0.08, top - 0.06, hz - 0.11, WOOD, 0.006))
+    parts.append(gbox(-hx + 0.08, top - 0.16, -hz + 0.08, hx - 0.08, top - 0.06, -hz + 0.11, WOOD))
+    parts.append(gbox(-hx + 0.08, top - 0.16, hz - 0.11, hx - 0.08, top - 0.06, hz - 0.08, WOOD))
+    parts.append(gbox(-hx + 0.08, top - 0.16, -hz + 0.11, -hx + 0.11, top - 0.06, hz - 0.11, WOOD))
+    parts.append(gbox(hx - 0.11, top - 0.16, -hz + 0.11, hx - 0.08, top - 0.06, hz - 0.11, WOOD))
     # patas torneadas con dado cuadrado arriba
     for sx in (-1, 1):
         for sz in (-1, 1):
             x, z = sx * (hx - 0.1), sz * (hz - 0.1)
-            parts.append(turned_leg(x, z, top - 0.17, 0.045, WOOD_DARK, seg=8))
-            parts.append(gbox(x - 0.045, top - 0.18, z - 0.045, x + 0.045, top - 0.06, z + 0.045, WOOD_DARK, 0.006))
+            parts.append(turned_leg(x, z, top - 0.17, 0.045, WOOD_DARK, seg=8, light=True))
+            parts.append(gbox(x - 0.045, top - 0.18, z - 0.045, x + 0.045, top - 0.06, z + 0.045, WOOD_DARK))
     return cf.model(parts, 'prop_mesa')
 
 
