@@ -90,10 +90,12 @@ def lattice(nx, ny, sx, sy, bar, fn, color=ROPE, name='red'):
     bm = bmesh.new()
     vs = [[bm.verts.new((-sx / 2 + sx * i / nx, -sy / 2 + sy * j / ny, 0)) for j in range(ny + 1)] for i in range(nx + 1)]
     faces = [bm.faces.new((vs[i][j], vs[i + 1][j], vs[i + 1][j + 1], vs[i][j + 1])) for i in range(nx) for j in range(ny)]
+    bm.normal_update()  # sin normales, el inset no sabe hacia dónde encoger
     bmesh.ops.inset_individual(bm, faces=faces, thickness=bar, depth=0)
     bmesh.ops.delete(bm, geom=faces, context='FACES')
     for v in bm.verts:
         v.co = Vector(fn(v.co.x, v.co.y))
+    bm.normal_update()
     for f in bm.faces:
         if f.normal.z < 0:
             f.normal_flip()
@@ -824,7 +826,8 @@ def cofre_1():
         o.data.transform(Matrix.Translation((0, 0, -0.18)))
     parts = c
     for y in (-0.48, 0.48):
-        fl = cf.cylinder(0.14, 1.25, seg=8, at=(-0.625, y, 0.0), rot=(0, 90, 0), color=CORK if y < 0 else WHITE)
+        fl = cf.lathe([(0.0, 0.0), (0.1, 0.0), (0.14, 0.08), (0.14, 1.17), (0.1, 1.25), (0.0, 1.25)], seg=8, at=(-0.625, y, 0.0), rot=(0, 90, 0), color=BUOY if y < 0 else WHITE)
+        cf.paint(fl, WHITE if y < 0 else BUOY, lambda p: abs(p.center.x) > 0.5)
         cf.jitter_colors(fl, 0.06, seed=int(y * 10) + 5)
         parts.append(fl)
     for x in (-0.25, 0.25):

@@ -447,14 +447,15 @@ def head():
 # ---------------------------------------------------------------- pelo y gorros
 
 def hair_cap(name, bone, top=1.783, front=1.69, side=1.615, back=1.56, ex=0.147, ey=0.155, fringe=True):
-    """Casquete de pelo: coronilla achaflanada, nacimiento en la frente, patillas y nuca."""
-    bev = 0.045
+    """Casquete de pelo: coronilla redondeada (chaflán ancho: así cabe bajo los gorros sin
+    asomar por las esquinas), nacimiento en la frente, patillas y nuca."""
+    bev = 0.07
     pts = []
     for sx in (-1, 1):
         for sy in (-1, 1):
             pts += [(sx * ex, sy * (ey - bev), top - 0.03), (sx * (ex - bev), sy * ey, top - 0.03), (sx * (ex - bev * 0.8), sy * (ey - bev * 0.8), top)]
     # frente (nacimiento del pelo), sienes, patillas y nuca
-    pts += [(x, ey, front) for x in (-0.1, 0.1)]
+    pts += [(x, ey, front) for x in (-0.085, 0.085)]
     pts += [(sx * ex, y, z) for sx in (-1, 1) for y, z in ((0.1, front - 0.01), (0.06, side), (-0.02, side - 0.01))]
     pts += [(sx * (ex - 0.02), -ey, back) for sx in (-1, 1)] + [(0, -ey - 0.006, back - 0.012)]
     pts += [(sx * ex, -0.08, back + 0.02) for sx in (-1, 1)]
@@ -474,8 +475,8 @@ def hairstyles():
     # 1 media melena: casquete y una cortina por detrás y a los lados hasta la mandíbula
     cap = hair_cap('pelo_melena_casquete', 'pelo_melena', front=1.685, side=1.6, back=1.5, ex=0.151, ey=0.158)
     curtain = hull('pelo_melena_cortina', [
-        (sx * 0.158, y, z) for sx in (-1, 1) for y, z in ((0.07, 1.47), (0.075, 1.66), (-0.1, 1.71), (-0.166, 1.45), (0.02, 1.44))
-    ] + [(0, -0.178, 1.44), (0, -0.174, 1.7)], dissolve=1.0)
+        (sx * 0.158, y, z) for sx in (-1, 1) for y, z in ((0.07, 1.47), (0.075, 1.64), (-0.1, 1.665), (-0.166, 1.45), (0.02, 1.44))
+    ] + [(0, -0.178, 1.44), (0, -0.178, 1.66)], dissolve=1.0)
     finish_part(curtain, 'hair', one('pelo_melena'))
     jitter(curtain, 0.06, 77)
     mult(curtain, 0.88, lambda p: p.normal.z < -0.3)
@@ -494,8 +495,8 @@ def hairstyles():
 def hats():
     # Gorro de lana: cúpula octogonal (encierra cualquier peinado), vuelta doblada y borla.
     band_top = 1.705
-    beanie = lathe_z('gorro_lana', [(0.178, 1.63), (0.184, 1.66), (0.184, band_top), (0.176, band_top + 0.008), (0.174, 1.785),
-                                    (0.146, 1.84), (0.092, 1.872), (0.0, 1.884)], seg=8, phase=math.pi / 8)
+    beanie = lathe_z('gorro_lana', [(0.19, 1.63), (0.197, 1.66), (0.197, band_top), (0.189, band_top + 0.008), (0.188, 1.79),
+                                    (0.158, 1.848), (0.1, 1.881), (0.0, 1.893)], seg=8, phase=math.pi / 8)
     finish_part(beanie, 'hat', one('gorro_lana'))
     mult(beanie, 0.78, lambda p: p.center.z < band_top + 0.002)
     jitter(beanie, 0.05, 55)
@@ -504,10 +505,10 @@ def hats():
     mult(pom, 1.18)
     beanie = cf.join([beanie, pom], 'gorro_lana')
     # Gorra de marinero: copa clara, cinta y visera oscuras.
-    crown = lathe_z('gorra', [(0.174, 1.705), (0.18, 1.78), (0.186, 1.805), (0.0, 1.811)], seg=8, phase=math.pi / 8)
+    crown = lathe_z('gorra', [(0.18, 1.705), (0.188, 1.78), (0.194, 1.805), (0.0, 1.811)], seg=8, phase=math.pi / 8)
     finish_part(crown, 'hat', one('gorra'))
     mult(crown, 0.9, lambda p: p.normal.z < 0.7)
-    band = lathe_z('gorra_cinta', [(0.177, 1.67), (0.178, 1.71)], seg=8, phase=math.pi / 8)
+    band = lathe_z('gorra_cinta', [(0.183, 1.67), (0.184, 1.71)], seg=8, phase=math.pi / 8)
     finish_part(band, 'detalle', one('gorra'))
     absolute(band, DARK)
     visor = hull('visera', [(x * s, y, z) for s in (1,) for x, y, z in (
@@ -833,8 +834,9 @@ def a_dormir(t):
     leg_pose(p, 'i', flex=10, abd=4, knee=14, ankle=-20)
     leg_pose(p, 'd', flex=2, abd=3, knee=3, ankle=-24)
     spine(p, chest=(-1.5 * b, 0, 0), neck=(-6, 0, 6), head=(-4, 4, 16))
-    arm_pose(p, 'd', flex=16, abd=8, cross=78, el=94, wrist=-6, lift=0.6 * b)
-    arm_pose(p, 'i', flex=4, abd=12, el=16, wrist=4)
+    # brazos a lo largo del cuerpo, bajo la manta
+    arm_pose(p, 'd', flex=6, abd=9, cross=-6, el=14, wrist=-4, lift=0.6 * b)
+    arm_pose(p, 'i', flex=4, abd=11, cross=-4, el=18, wrist=4)
     return p
 
 

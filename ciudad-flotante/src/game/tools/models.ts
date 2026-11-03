@@ -285,7 +285,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       pose = { x: 0.35, y: -0.32, z: -0.5, rx: -0.15, ry: -0.2, rz: 0.08 };
       scale = 0.64;
       add('rollo', (b) => {
-        // rollo de cabo en la mano (el de Blender pasa por dentro del puño y cuelga por delante)
+        // rollo de cabo en la mano (el de Blender pasa por dentro del puño y cuelga a su izquierda)
         if (appendHandModel(b, 'vm_gancho_rollo')) return;
         b.push();
         b.rotateY(Math.PI / 2);

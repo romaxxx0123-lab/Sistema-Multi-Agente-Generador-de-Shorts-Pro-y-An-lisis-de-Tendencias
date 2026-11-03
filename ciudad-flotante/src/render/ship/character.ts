@@ -1,17 +1,38 @@
 /**
  * PERSONAJE LOW-POLY ARTICULADO (habitantes, jugador y náufragos).
  *
+ * Con el modelo de Blender cargado (`persona`, ver characterModel.ts) cada personaje es UNA malla
+ * con esqueleto (una llamada de dibujo) animada con un clip por pose y fundidos entre clips; la
+ * herramienta va en el hueso de la mano derecha, la caja que carga en el pecho y la manta se tumba
+ * con el cuerpo. Si el modelo falta, se usa el rig procedimental de siempre:
+ *
  * Jerarquía: root (pies, yaw) → body (desplazamientos para tumbarse/sentarse) → hips →
  * torso → cuello/cabeza, hombros → codos → manos (con herramienta en la derecha) y
  * caderas → rodillas → pies. El frente mira a -z (convención three.js: adelante = -z con yaw 0).
  *
  * `animate()` recibe una pose (andar, sentarse, dormir, trabajar, martillear, lanzar, charlar,
  * a cubierto, herido, cargar, pescar, recoger, saludar…) y la velocidad real, y mezcla
- * suavemente los ángulos de las articulaciones hacia la pose objetivo.
+ * suavemente los ángulos de las articulaciones (o los clips) hacia la pose objetivo.
  */
 import * as THREE from 'three';
 import { PALETTE } from '../palette';
+import { CharacterModel, characterTemplate } from './characterModel';
 import { GeoBuilder, hash01, shade } from './geo';
+
+let useModels = true;
+
+/**
+ * Usa (o no) el modelo de Blender en los personajes que se creen a partir de ahora (pruebas y
+ * comparaciones con el procedimental). Por defecto, sí, si está cargado.
+ */
+export function setCharacterModels(on: boolean): void {
+  useModels = on;
+}
+
+/** ¿Los personajes nuevos usarán el modelo con esqueleto? */
+export function characterModelsActive(): boolean {
+  return useModels && characterTemplate() !== null;
+}
 
 export type RigPose =
   | 'stand'
@@ -259,10 +280,26 @@ export class CharacterRig {
   private time = 0;
   private currentTool: RigTool = null;
   private highlighted = false;
+  /** Modelo con esqueleto (null = rig procedimental). */
+  readonly model: CharacterModel | null = null;
+  /** Enganche de la herramienta (la mano derecha del modelo o del procedimental). */
+  private toolSocket: THREE.Object3D = this.handR;
   look: CharacterLook;
 
   constructor(look: CharacterLook, readonly seed = 0) {
     this.look = look;
+    this.root.add(this.body);
+    const tpl = useModels ? characterTemplate() : null;
+    if (tpl) {
+      this.model = new CharacterModel(tpl, look, seed);
+      this.body.add(this.model.object);
+      this.toolSocket = this.model.socket('tool');
+      this.blanket = this.makeBlanket(this.model.socket('blanket'));
+      this.toolMesh = this.makeTool(this.toolSocket);
+      this.carryMesh = this.makeCarry(this.model.socket('carry'));
+      this.root.scale.setScalar(look.height);
+      return;
+    }
     const seg = (name: SegName, parent: THREE.Object3D): void => {
       const m = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
       m.castShadow = true;
@@ -271,7 +308,6 @@ export class CharacterRig {
       parent.add(m);
       this.segs[name] = m;
     };
-    this.root.add(this.body);
     this.body.add(this.hips);
     this.hips.position.y = HIP_Y;
     seg('hips', this.hips);
@@ -305,28 +341,50 @@ export class CharacterRig {
       kn.position.y = -THIGH;
       seg(sh, kn);
     }
-    // manta (solo al dormir en una cama)
-    this.blanket = new THREE.Mesh(boxGeo(0.62, 1.22, 0.26, 0.02, -0.06), this.blanketMat);
-    this.blanket.visible = false;
-    this.blanket.castShadow = true;
-    this.body.add(this.blanket);
-    // herramienta y caja
-    this.toolMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
-    this.toolMesh.castShadow = true;
+    // manta (solo al dormir en una cama), herramienta y caja
+    this.blanket = this.makeBlanket(this.body);
+    this.toolMesh = this.makeTool(this.handR);
     this.toolMesh.position.set(0, -0.07, 0);
-    this.handR.add(this.toolMesh);
-    this.carryMesh = new THREE.Mesh(carryCrateGeo(), this.mat);
-    this.carryMesh.castShadow = true;
-    this.carryMesh.visible = false;
-    this.torso.add(this.carryMesh);
+    this.carryMesh = this.makeCarry(this.torso);
     this.carryMesh.position.set(0, 0.16, -0.36);
     this.applyLook(look);
+  }
+
+  private makeBlanket(parent: THREE.Object3D): THREE.Mesh {
+    const m = new THREE.Mesh(boxGeo(0.62, 1.22, 0.26, 0.02, -0.06), this.blanketMat);
+    m.name = 'manta';
+    m.visible = false;
+    m.castShadow = true;
+    parent.add(m);
+    return m;
+  }
+
+  private makeTool(parent: THREE.Object3D): THREE.Mesh {
+    const m = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
+    m.name = 'herramienta';
+    m.castShadow = true;
+    m.visible = false;
+    parent.add(m);
+    return m;
+  }
+
+  private makeCarry(parent: THREE.Object3D): THREE.Mesh {
+    const m = new THREE.Mesh(carryCrateGeo(), this.mat);
+    m.name = 'carga';
+    m.castShadow = true;
+    m.visible = false;
+    parent.add(m);
+    return m;
   }
 
   /** Cambia el aspecto (colores, pelo, gorro, abrigo, altura): regenera las mallas de los segmentos. */
   applyLook(look: CharacterLook): void {
     this.look = look;
     this.root.scale.setScalar(look.height);
+    if (this.model) {
+      this.model.applyLook(look);
+      return;
+    }
     const coat = look.coat;
     const shirt = coat ?? look.shirt;
     const dark = '#1d1d1d';
@@ -420,6 +478,7 @@ export class CharacterRig {
     this.highlighted = on;
     this.mat.emissive.set(on ? '#5a4520' : '#000000');
     this.blanketMat.emissive.set(on ? '#5a4520' : '#000000');
+    this.model?.setHighlight(on);
   }
 
   private setTool(tool: RigTool): void {
@@ -441,6 +500,11 @@ export class CharacterRig {
     this.carryMesh.visible = !!st.carry && (st.pose === 'walk' || st.pose === 'stand');
     this.blanket.visible = st.pose === 'lie' && !!st.blanket;
     if (st.blanket) this.blanketMat.color.set(st.blanket);
+    if (this.model) {
+      this.model.animate(st, dt);
+      this.orientModelTool();
+      return;
+    }
     const breathe = Math.sin(t * 2.1) * 0.015;
     let lieDown = false;
     let sitting = 0;
@@ -782,6 +846,25 @@ export class CharacterRig {
   }
 
   /**
+   * Herramienta con el modelo: la caña apunta siempre hacia delante y arriba, el cubo, la regadera
+   * y el cuenco cuelgan derechos, las cartas y el libro quedan de cara a quien los sostiene (como en
+   * el procedimental, pero con la orientación real de la mano); el resto sigue a la mano.
+   */
+  private orientModelTool(): void {
+    const tool = this.currentTool;
+    if (!tool || !this.model) return;
+    const fixed: Partial<Record<Exclude<RigTool, null>, number>> = { cana: 0.55, cubo: 0, cubo_lleno: 0, regadera: 0, cuenco: 0, cartas: 0.25, libro: 1.0 };
+    const pitch = fixed[tool];
+    if (pitch === undefined) {
+      this.toolMesh.rotation.set(1.1, 0, 0);
+      return;
+    }
+    this.root.updateWorldMatrix(false, true);
+    const q = this.model.socketToRoot(this.toolSocket, this.root, _toolQ);
+    this.toolMesh.quaternion.setFromAxisAngle(_xAxis, pitch).premultiply(q.invert());
+  }
+
+  /**
    * Punta de la caña (coordenadas de mundo) si lleva la caña en la mano, o null.
    * Llamar después de `animate` (actualiza las matrices del personaje).
    */
@@ -793,8 +876,12 @@ export class CharacterRig {
 
   dispose(): void {
     for (const m of Object.values(this.segs)) m.geometry.dispose();
+    this.model?.dispose();
     this.mat.dispose();
     this.blanketMat.dispose();
     this.root.removeFromParent();
   }
 }
+
+const _toolQ = new THREE.Quaternion();
+const _xAxis = new THREE.Vector3(1, 0, 0);
