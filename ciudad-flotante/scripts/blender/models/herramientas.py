@@ -543,17 +543,20 @@ def rotz(ob, deg):
 
 
 def tabla(L, w, t, at, rot_z, seed):
-    """Tablón con vetas a lo largo, testas más claras y dos cabezas de clavo."""
-    ob = cf.box((L, w, t), at=(0, 0, 0), color='#b07d48')
-    cf.bevel(ob, 0.003, 1, 35)
-    cf.paint(ob, '#d2a774', lambda p: abs(p.normal.x) > 0.7)
-    cf.jitter_colors(ob, 0.08, seed=seed)
-    nails = [cf.cylinder(0.0035, 0.0012, seg=6, at=(sx * (L / 2 - 0.018), 0, t), color=STEEL_DARK) for sx in (-1, 1)]
-    parts = [ob, *nails]
+    """Tablón: cuatro listones a lo largo (las vetas, por color), testas más claras y dos
+    cabezas de clavo."""
+    r = cf.rng(seed)
+    parts = []
+    n = 4
+    for k in range(n):
+        y = -w / 2 + w * (k + 0.5) / n
+        strip = cf.box((L - r.random() * 0.004, w / n, t), at=(0, y, 0), color='#c28d58' if k % 2 == 0 else '#a87444')
+        cf.paint(strip, '#dcb07c', lambda p: abs(p.normal.x) > 0.7)
+        cf.jitter_colors(strip, 0.06, seed=seed * 10 + k)
+        parts.append(strip)
+    parts += [cf.cylinder(0.0035, 0.0012, seg=6, at=(sx * (L / 2 - 0.018), 0, t), color=STEEL_DARK) for sx in (-1, 1)]
     for part in parts:
         part.data.transform(Matrix.Translation(at) @ Matrix.Rotation(math.radians(rot_z), 4, 'Z'))
-    # Vetas: franjas oscuras a lo largo de la cara de arriba.
-    cf.paint(ob, '#8c5e33', lambda p: p.normal.z > 0.7 and math.sin(p.center.y * 260 + p.center.x * 7) > 0.75)
     return parts
 
 
@@ -784,7 +787,7 @@ def build():
     cubo()
     cubo_agua()
     pez('vm_pez_crudo', back='#457b9d', flank='#8ecae6', belly='#e8f4f2', fin='#6fa8c7', eye=('#f8f9fa', '#1a1a1a'), bars='#335f7a')
-    pez('vm_pez_asado', back='#8b4a22', flank='#c9844a', belly='#e9a25f', fin='#6e3b1c', eye=('#f3ead6', '#c9b98f'), grill='#5a3216')
+    pez('vm_pez_asado', back='#a35a2a', flank='#d08e52', belly='#ecb070', fin='#7a4420', eye=('#f3ead6', '#c9b98f'), grill='#6b3a1a')
     pez('vm_pez_ahumado', back='#6e3f1c', flank='#c97c3d', belly='#e0a458', fin='#8b5a2b', eye=('#3a2a1a', '#1a1a1a'), twine=True)
     conserva()
     botella()

@@ -5,12 +5,14 @@
  * con un brillo y un aro pulsante sobre el agua (`setHighlight(id)`).
  */
 import * as THREE from 'three';
+import { registerDebug } from '../game/debug';
 import type { DebrisKind, GameState } from '../sim/types';
 import { CharacterRig, lookFromAppearance } from './ship/character';
-import { DEBRIS_RADIUS, debrisGeometry } from './ship/debrisModels';
+import { DEBRIS_RADIUS, debrisGeometry, setBlenderDebrisModels } from './ship/debrisModels';
 import { hash01 } from './ship/geo';
 
 interface DebrisEntry {
+  id: number;
   group: THREE.Group;
   model: THREE.Mesh;
   mat: THREE.MeshLambertMaterial;
@@ -45,6 +47,17 @@ export class DebrisView {
     this.marker.visible = false;
     this.marker.name = 'marca-objetivo';
     worldRoot.add(this.ring, this.marker);
+    // Compara los modelos de Blender con los procedimentales: restosBlender(false) / restosBlender(true).
+    registerDebug('restosBlender', ((on = true) => {
+      setBlenderDebrisModels(!!on);
+      this.refreshModels();
+      return !!on;
+    }) as never);
+  }
+
+  /** Vuelve a pedir la geometría de cada resto (tras cambiar entre Blender y procedimental). */
+  refreshModels(): void {
+    for (const e of this.meshes.values()) e.model.geometry = debrisGeometry(e.kind, e.id);
   }
 
   reset(): void {
@@ -145,7 +158,7 @@ export class DebrisView {
       }
     }
     this.worldRoot.add(group);
-    return { group, model, mat, kind, survivors: rigs, tiltX: 0, tiltZ: 0, age: 0 };
+    return { id, group, model, mat, kind, survivors: rigs, tiltX: 0, tiltZ: 0, age: 0 };
   }
 
   private disposeEntry(e: DebrisEntry): void {

@@ -592,13 +592,13 @@ def net_fn(seed, sx, sy, lumps):
         # Malla arrugada: se desplaza en planta y se abomba sobre las boyas (lumps: (x, y, alto, radio)).
         nx = x + 0.08 * math.sin(y * 4.1 + ph[0]) + 0.05 * math.sin(x * 6 + ph[1])
         ny = y + 0.08 * math.cos(x * 3.7 + ph[2])
-        z = 0.02 + 0.04 * math.sin(x * 5 + ph[3]) * math.cos(y * 4)
+        z = 0.06 + 0.05 * math.sin(x * 5 + ph[3]) * math.cos(y * 4)
         for lx, ly, lh, lr in lumps:
             d = math.hypot(nx - lx, ny - ly)
             if d < lr:
-                z += lh * (1 - (d / lr) ** 2)
+                z += lh * (1 - (d / lr) ** 2) ** 0.7
         edge = max(abs(x) / (sx / 2), abs(y) / (sy / 2))
-        z -= max(0, edge - 0.75) * 0.5
+        z -= max(0, edge - 0.8) * 0.35
         return (nx, ny, z)
     return fn
 
@@ -606,19 +606,19 @@ def net_fn(seed, sx, sy, lumps):
 def red_0():
     """Red de pesca arrugada con su relinga de corchos, dos boyas y algas enredadas."""
     sx = sy = 1.9
-    lumps = [(0.55, 0.55, 0.12, 0.45), (-0.5, 0.2, 0.08, 0.4)]
-    net = lattice(7, 7, sx, sy, 0.035, net_fn(1, sx, sy, lumps), color=ROPE)
-    cf.paint(net, '#b8a070', lambda p: p.center.z < 0.0)
-    cf.jitter_colors(net, 0.08, seed=11)
-    parts = [net]
+    lumps = [(0.5, 0.5, 0.26, 0.6), (-0.45, 0.15, 0.2, 0.55), (0.1, -0.45, 0.12, 0.45)]
+    net = lattice(6, 6, sx, sy, 0.055, net_fn(1, sx, sy, lumps), color=ROPE)
+    cf.paint(net, '#b39a68', lambda p: p.center.z < 0.08)
+    cf.jitter_colors(net, 0.12, seed=11)
+    parts = [two_sided(net)]
     fn = net_fn(1, sx, sy, lumps)
     edge = [fn(-sx / 2 + sx * i / 8, sy / 2 - 0.02) for i in range(9)]
     parts.append(cf.tube([(x, y, z + 0.02) for x, y, z in edge], 0.022, seg=4, color=ROPE))
     for i in range(1, 8, 2):
         x, y, z = edge[i]
         parts.append(cork((x, y, z + 0.03), rot=(0, 90, 0)))
-    parts.append(float_ball(0.15, (0.6, 0.6, 0.16)))
-    parts.append(float_ball(0.12, (-0.55, 0.22, 0.1), color=WHITE))
+    parts.append(float_ball(0.15, (0.55, 0.55, 0.3)))
+    parts.append(float_ball(0.12, (-0.5, 0.18, 0.22), color=WHITE))
     parts.append(strand(wavy((-0.7, -0.6, 0.06), (0.3, -0.25, 0.05), n=8, amp=0.06, lift=0.04, seed=1), 0.022, ALGA))
     parts.append(strand(wavy((0.1, 0.3, 0.1), (0.6, -0.5, 0.0), n=6, amp=0.05, lift=0.03, seed=2), 0.02, ALGA_D))
     return finish_debris(parts, 'resto_red_0')
@@ -627,12 +627,12 @@ def red_0():
 def red_1():
     """Red enmarañada en un montón sobre una boya grande, con un rollo de cabo."""
     sx = sy = 1.7
-    lumps = [(0.0, 0.0, 0.3, 0.6), (0.4, -0.3, 0.12, 0.35)]
-    net = lattice(6, 6, sx, sy, 0.04, net_fn(2, sx, sy, lumps), color='#8fa37a')
-    cf.paint(net, ROPE, lambda p: p.center.z > 0.15)
-    cf.jitter_colors(net, 0.1, seed=12)
-    parts = [net]
-    parts.append(float_ball(0.24, (0.05, 0.02, 0.12)))
+    lumps = [(0.0, 0.0, 0.42, 0.75), (0.4, -0.3, 0.16, 0.4)]
+    net = lattice(6, 6, sx, sy, 0.06, net_fn(2, sx, sy, lumps), color='#7f9a6e')
+    cf.paint(net, ROPE, lambda p: p.center.z > 0.25)
+    cf.jitter_colors(net, 0.12, seed=12)
+    parts = [two_sided(net)]
+    parts.append(float_ball(0.24, (0.05, 0.02, 0.3)))
     # Rollo de cabo
     turns = []
     for i in range(41):
@@ -649,10 +649,11 @@ def red_1():
 def red_2():
     """Red tendida con su nasa de cabos: una jaula de listones enredada y boyas en fila."""
     sx, sy = 2.0, 1.6
-    lumps = [(-0.35, 0.0, 0.1, 0.5)]
-    net = lattice(8, 6, sx, sy, 0.03, net_fn(3, sx, sy, lumps), color=ROPE)
-    cf.jitter_colors(net, 0.08, seed=13)
-    parts = [net]
+    lumps = [(-0.4, 0.05, 0.22, 0.6), (0.45, 0.15, 0.3, 0.5)]
+    net = lattice(7, 5, sx, sy, 0.05, net_fn(3, sx, sy, lumps), color=ROPE)
+    cf.paint(net, '#b39a68', lambda p: p.center.z < 0.08)
+    cf.jitter_colors(net, 0.12, seed=13)
+    parts = [two_sided(net)]
     # Nasa (jaula de listones)
     cage = []
     for x in (-0.25, 0.25):
@@ -667,12 +668,12 @@ def red_2():
         cage.append(cf.box((0.02, 0.39, 0.02), at=(x, 0, 0.285), color=WOOD))
     tilt(cage, rx=8, rz=20)
     for o in cage:
-        o.data.transform(Matrix.Translation((0.45, 0.15, -0.1)))
+        o.data.transform(Matrix.Translation((0.45, 0.15, 0.02)))
     parts += cage
     for i in range(4):
         x = -0.85 + i * 0.55
-        parts.append(float_ball(0.09, (x, -0.72, 0.04), color=BUOY if i % 2 == 0 else WHITE, seg=6))
-    parts.append(cf.tube([(-0.95, -0.72, 0.03), (0.85, -0.72, 0.03)], 0.015, seg=4, color=ROPE))
+        parts.append(float_ball(0.1, (x, -0.72, 0.05), color=BUOY if i % 2 == 0 else WHITE, seg=6))
+    parts.append(cf.tube([(-0.95, -0.72, 0.04), (0.85, -0.72, 0.04)], 0.018, seg=4, color=ROPE))
     parts.append(strand(wavy((-0.8, 0.5, 0.06), (-0.1, 0.25, 0.08), n=6, amp=0.05, seed=5), 0.02, ALGA))
     return finish_debris(parts, 'resto_red_2')
 

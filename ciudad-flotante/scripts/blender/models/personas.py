@@ -37,12 +37,14 @@ from mathutils import Euler, Matrix, Vector
 import cf
 
 ANIMATIONS = True
-FPS = 15
+# Muestreo de las acciones: el exportador escribe una clave por fotograma y three.js interpola
+# entre ellas; 10 por segundo bastan para estos ciclos y dejan el archivo en la mitad.
+FPS = 10
 
 SLOTS = ('skin', 'shirt', 'pants', 'shoes', 'hair', 'hat', 'coat', 'eyes', 'detalle', 'botones')
 # Colores de muestra (solo para ver el modelo en Blender; el juego pone los suyos).
 PREVIEW = {'skin': '#e0ac69', 'shirt': '#e76f51', 'pants': '#3d405b', 'shoes': '#3b2a1e', 'hair': '#5a3825',
-           'hat': '#bc4749', 'coat': '#3a5a40', 'eyes': '#1d1d1d', 'detalle': '#ffffff', 'botones': '#ffffff'}
+           'hat': '#bc4749', 'coat': '#3a5a40', 'eyes': '#1d1d1d', 'detalle': '#ffffff', 'botones': '#c9a35a'}
 
 DARK = '#22262a'
 BRASS = '#c9a35a'
@@ -831,7 +833,7 @@ def a_dormir(t):
     leg_pose(p, 'i', flex=10, abd=4, knee=14, ankle=-20)
     leg_pose(p, 'd', flex=2, abd=3, knee=3, ankle=-24)
     spine(p, chest=(-1.5 * b, 0, 0), neck=(-6, 0, 6), head=(-4, 4, 16))
-    arm_pose(p, 'd', flex=34, abd=4, cross=34, el=78, wrist=-8, lift=0.6 * b)
+    arm_pose(p, 'd', flex=16, abd=8, cross=78, el=94, wrist=-6, lift=0.6 * b)
     arm_pose(p, 'i', flex=4, abd=12, el=16, wrist=4)
     return p
 
@@ -1084,10 +1086,10 @@ CLIPS = [
     ('correr', 0.8, a_correr),
     ('andar_carga', 1.0, a_andar_carga),
     ('cojear', 1.4, a_cojear),
-    ('sentado', 4.0, a_sentado),
-    ('comer', 2.8, a_comer),
-    ('suelo', 4.0, a_suelo),
-    ('dormir', 5.0, a_dormir),
+    ('sentado', 3.0, a_sentado),
+    ('comer', 2.4, a_comer),
+    ('suelo', 3.0, a_suelo),
+    ('dormir', 4.0, a_dormir),
     ('trabajar', 1.2, a_trabajar),
     ('remover', 2.0, a_remover),
     ('arrodillado', 1.6, a_arrodillado),
@@ -1101,11 +1103,11 @@ CLIPS = [
     ('herido', 3.0, a_herido),
     ('saludar', 1.6, a_saludar),
     ('saludar_suelo', 1.6, a_saludar_suelo),
-    ('beber', 3.6, a_beber),
+    ('beber', 3.0, a_beber),
     ('saltar', 0.8, a_saltar),
     ('cartas', 4.0, a_cartas),
-    ('cartas_pie', 4.0, a_cartas_pie),
-    ('leer', 6.0, a_leer),
+    ('cartas_pie', 3.0, a_cartas_pie),
+    ('leer', 4.0, a_leer),
 ]
 
 
@@ -1123,6 +1125,18 @@ def apply_pose(arm, pose, rest):
             pb.location = (0, 0, 0)
 
 
+def moving_bones(poses):
+    """Huesos que la acción gira (o deja fuera del reposo) y si mueve la raíz: solo esos llevan
+    claves, y el resto no se exporta (en el juego quedan en reposo)."""
+    names = set()
+    for p in poses:
+        for k, v in p.items():
+            if k != 'raiz_loc' and any(abs(x) > 1e-4 for x in v):
+                names.add(k)
+    loc = any(any(abs(x) > 1e-5 for x in p.get('raiz_loc', (0, 0, 0))) for p in poses)
+    return names, loc
+
+
 def bake_actions(arm):
     rest = {b.name: b.matrix_local.to_3x3() for b in arm.data.bones}
     arm.animation_data_create()
@@ -1130,11 +1144,14 @@ def bake_actions(arm):
         act = bpy.data.actions.new(name)
         arm.animation_data.action = act
         n = max(2, round(dur * FPS))
-        for i in range(n + 1):
-            apply_pose(arm, fn((i % n) / n), rest)
+        poses = [fn((i % n) / n) for i in range(n + 1)]
+        bones, loc = moving_bones(poses)
+        for i, pose in enumerate(poses):
+            apply_pose(arm, pose, rest)
             for pb in arm.pose.bones:
-                pb.keyframe_insert('rotation_quaternion', frame=i)
-                if pb.name == 'raiz':
+                if pb.name in bones:
+                    pb.keyframe_insert('rotation_quaternion', frame=i)
+                if pb.name == 'raiz' and loc:
                     pb.keyframe_insert('location', frame=i)
         track = arm.animation_data.nla_tracks.new()
         track.name = name
@@ -1144,12 +1161,56 @@ def bake_actions(arm):
     apply_pose(arm, {}, rest)
 
 
+def export_without_still_channels():
+    """
+    El exportador común (cf.export_glb) deja en cada clip la traslación, el giro y la escala de
+    TODOS los huesos aunque no cambien (dos claves): 27 huesos × 3 × 29 clips son más de 2300
+    canales y unos 300 KB de JSON. Para este archivo se exporta igual que cf.export_glb pero sin
+    esos canales quietos (`export_optimize_animation_keep_anim_armature=False`): los huesos sin
+    claves en un clip quedan en reposo, que es lo que hace el AnimationMixer del juego. Se instala
+    para una sola llamada (la de este archivo) y deja cf.export_glb como estaba.
+    """
+    orig = cf.export_glb
+
+    def export_glb(path, animations=False):
+        cf.export_glb = orig
+        if not animations:
+            return orig(path, animations)
+        bpy.ops.export_scene.gltf(
+            filepath=path,
+            export_format='GLB',
+            use_selection=False,
+            export_apply=True,
+            export_yup=True,
+            export_normals=True,
+            export_texcoords=False,
+            export_materials='EXPORT',
+            export_vertex_color='ACTIVE',
+            export_all_vertex_colors=False,
+            export_animations=True,
+            export_skins=True,
+            export_morph=False,
+            export_image_format='NONE',
+            export_optimize_animation_keep_anim_armature=False,
+        )
+
+    cf.export_glb = export_glb
+
+
 # ---------------------------------------------------------------- montaje
 
 def materials():
+    """Un material por nombre estable. Cada uno con su color de muestra: el optimizador (dedup)
+    fusionaría materiales idénticos y se perderían los nombres."""
     for s in SLOTS:
         m = bpy.data.materials.get(s) or bpy.data.materials.new(s)
-        m.diffuse_color = cf.rgba(PREVIEW[s])
+        c = cf.rgba(PREVIEW[s])
+        m.diffuse_color = c
+        if m.node_tree is not None:
+            for n in m.node_tree.nodes:
+                if n.type == 'BSDF_PRINCIPLED':
+                    n.inputs['Base Color'].default_value = c
+                    n.inputs['Roughness'].default_value = 1.0
 
 
 def build():
@@ -1174,4 +1235,5 @@ def build():
     mod = body.modifiers.new('esqueleto', 'ARMATURE')
     mod.object = skel
     bake_actions(skel)
+    export_without_still_channels()
     return body

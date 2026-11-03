@@ -2,14 +2,46 @@
  * Modelos low-poly de los RESTOS FLOTANTES (DebrisKind): tablones atados, barril, caja de
  * madera, chapas y restos metálicos, red con boyas, bidón, cofre y balsa. Origen a ras del
  * agua (y = 0 = superficie): lo que queda por debajo se ve sumergido.
+ *
+ * MODELOS DE BLENDER (scripts/blender/models/restos.py): `resto_<tipo>_<v>` con tres variantes por
+ * tipo (v = id % 3), modelados con la superficie del agua a DEBRIS_LIFT metros sobre su base (así
+ * respetan la convención de base apoyada aunque vayan medio hundidos); aquí se bajan esa altura y
+ * quedan con el mismo origen, radio y cubierta (balsa) que el procedimental. Si un modelo falta, se
+ * dibuja la versión procedimental de siempre.
  */
 import type * as THREE from 'three';
 import type { DebrisKind } from '../../sim/types';
+import { modelGeometry } from '../assets';
 import { PALETTE } from '../palette';
 import { GeoBuilder, hash01, shade } from './geo';
 import { crate } from './props';
 
 const cache = new Map<string, THREE.BufferGeometry>();
+
+/** Altura de la superficie del agua sobre la base de los modelos `resto_*` de Blender (m). */
+export const DEBRIS_LIFT = 1.0;
+
+/** Nombre del modelo de Blender de un resto (variante 0..2). */
+export function debrisModelName(kind: DebrisKind, variant: number): string {
+  return `resto_${kind}_${((variant % 3) + 3) % 3}`;
+}
+
+let blenderOn = true;
+
+/**
+ * Usa (o no) los modelos de Blender de los restos (para comparar con el procedimental en pruebas y
+ * capturas). Vacía la caché: los restos que se creen a partir de ahora usan la elección nueva.
+ */
+export function setBlenderDebrisModels(on: boolean): void {
+  if (blenderOn === on) return;
+  blenderOn = on;
+  cache.clear();
+}
+
+/** Geometría del modelo de Blender del resto, o null si no existe o están apagados. */
+function blenderGeometry(kind: DebrisKind, variant: number): THREE.BufferGeometry | null {
+  return blenderOn ? modelGeometry(debrisModelName(kind, variant)) : null;
+}
 
 /** Radio aproximado en planta (para el aro de resaltado y el gancho). */
 export const DEBRIS_RADIUS: Record<DebrisKind, number> = {
@@ -24,11 +56,22 @@ export const DEBRIS_RADIUS: Record<DebrisKind, number> = {
 };
 
 export function debrisGeometry(kind: DebrisKind, variant = 0): THREE.BufferGeometry {
-  const key = `${kind}|${variant % 3}`;
+  const blender = blenderGeometry(kind, variant);
+  const key = `${kind}|${variant % 3}|${blender ? 'blender' : 'proc'}`;
   let g = cache.get(key);
   if (g) return g;
   const b = new GeoBuilder();
   const v = variant % 3;
+  if (blender) {
+    // Modelo de Blender: misma malla (una llamada de dibujo por resto), bajado a ras del agua.
+    b.push();
+    b.translate(0, -DEBRIS_LIFT, 0);
+    b.appendGeometry(blender);
+    b.pop();
+    g = b.build();
+    cache.set(key, g);
+    return g;
+  }
   switch (kind) {
     case 'tablones': {
       const n = 5;
