@@ -21,7 +21,7 @@ export default async (page, h) => {
   const sh = async (n) => {
     if (SHOTS) await shot(page, h, n);
   };
-  const ev = (js) => page.evaluate(js);
+  const ev = (js, arg) => page.evaluate(js, arg);
 
   page.on('dialog', (d) => d.dismiss());
   // En headless no hay captura real del ratón: mirada libre con deltas.
