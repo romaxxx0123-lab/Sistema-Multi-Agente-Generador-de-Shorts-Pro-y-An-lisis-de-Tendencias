@@ -136,26 +136,29 @@ def garfio():
 
 
 def gancho_rollo():
-    """Rollo de cabo del gancho: tres vueltas que pasan por dentro del puño (el puño agarra el
-    haz) y cuelgan por delante; el cabo está trenzado (franjas en diagonal)."""
-    R = 0.078
+    """Rollo de cabo del gancho: tres vueltas en el plano XZ (de cara a la cámara) que pasan por
+    dentro del puño, que agarra el haz por su lado derecho; el rollo cuelga a la izquierda de la
+    mano. Cabo trenzado (franjas en diagonal) y una ligadura que sujeta el haz."""
+    R = 0.07
     parts = []
-    for i, x in enumerate((-0.012, 0.004, 0.02)):
+    for i, y in enumerate((-0.012, 0.0, 0.012)):
         n = 22
         pts = []
         for j in range(n + 1):
             t = j / n * 2 * math.pi
-            # Círculo en el plano YZ que pasa por el origen (tangente vertical en el puño).
-            y = R - R * math.cos(t) * (1 - 0.04 * i)
-            z = R * math.sin(t) * (1 - 0.05 * i)
-            pts.append((x + 0.006 * math.sin(t * 2 + i), y, z))
-        ring = limb(pts, [0.0125] * len(pts), seg=6, color=ROPE, caps=(False, False))
-        cf.paint(ring, ROPE_DARK, lambda p: math.sin((math.atan2(p.center.z, p.center.y - R) * 9 + p.center.x * 300)) > 0.35)
+            # Círculo que pasa por el origen con tangente vertical (el puño agarra por ahí).
+            r = R * (1 - 0.05 * i)
+            x = -r + r * math.cos(t)
+            z = r * math.sin(t) - 0.012 * i
+            pts.append((x, y + 0.005 * math.sin(t * 2 + i), z))
+        ring = limb(pts, [0.0115] * len(pts), seg=6, color=ROPE, caps=(False, False))
+        cx = -r
+        cf.paint(ring, ROPE_DARK, lambda p, cx=cx: math.sin(math.atan2(p.center.z, p.center.x - cx) * 11 + p.center.y * 300) > 0.35)
         cf.jitter_colors(ring, 0.05, seed=40 + i)
         parts.append(ring)
-    # Ligada: unas vueltas de cabo que sujetan el haz por abajo, delante del puño.
-    tie = cf.torus(0.022, 0.006, seg=8, tube_seg=4, at=(0.004, 2 * R, 0), rot=(0, 90, 0), color=ROPE_DARK)
-    scale(tie, 1.0, 0.8, 1.0)
+    # Ligada: unas vueltas de cabo que sujetan el haz por abajo a la izquierda.
+    tie = cf.torus(0.02, 0.0055, seg=8, tube_seg=4, at=(-0.115, 0, -0.052), rot=(0, 52, 0), color=ROPE_DARK)
+    scale(tie, 1.0, 1.3, 1.0)
     return finish([*parts, tie], 'vm_gancho_rollo')
 
 
@@ -403,40 +406,50 @@ def fruta():
 
 
 def hortaliza():
-    """Manojo de zanahorias con sus hojas: las raíces bajan por el puño y las hojas salen por
-    arriba (el procedimental era una bola verde con una raíz naranja)."""
+    """Manojo de zanahorias agarrado por los cuellos: las raíces asoman en diagonal por la
+    izquierda del puño (hacia la cámara) y las hojas salen por arriba a la derecha."""
     parts = []
-    for i, (dx, dy, tilt) in enumerate(((0.0, 0.0, 0.0), (0.016, 0.01, 0.2), (-0.014, 0.012, -0.18))):
-        top = Vector((dx, dy, 0.035 - 0.006 * i))
-        down = Vector((math.sin(tilt) * 0.3, 0.05, -1)).normalized()
-        pts = [top + down * s for s in (-0.006, 0.0, 0.025, 0.06, 0.09, 0.105)]
-        root = limb(pts, [0.009, 0.0145, 0.0135, 0.0105, 0.0055, 0.0015], seg=6, color='#f4a261')
-        cf.paint(root, '#e07a3f', lambda p, pts=pts: int(((p.center - pts[1]).length) / 0.012) % 2 == 1)
+    root_dir = Vector((-0.78, -0.22, -0.58)).normalized()
+    for i, (off, spread) in enumerate(((Vector((0.0, 0.0, 0.03)), 0.0), (Vector((0.004, 0.014, 0.042)), 0.16), (Vector((-0.004, -0.012, 0.02)), -0.14))):
+        d = (root_dir + Vector((0, spread, spread * 0.5))).normalized()
+        base = off + Vector((0.012, 0, 0.0))
+        pts = [base - d * 0.008 + d * s for s in (0.0, 0.008, 0.035, 0.07, 0.1, 0.122)]
+        root = limb(pts, [0.008, 0.0135, 0.0128, 0.0098, 0.0055, 0.0015], seg=6, color='#f4a261')
+        cf.paint(root, '#e07a3f', lambda p, pts=pts: int((p.center - pts[1]).length / 0.011) % 2 == 1)
+        cf.paint(root, '#f8b67a', lambda p: p.normal.z > 0.6)
         parts.append(root)
+        neck = cf.cylinder(0.006, 0.02, seg=5, at=tuple(base), rot=(0, 25, 0), color='#7aa152', r2=0.004)
+        parts.append(neck)
     rng = cf.rng(101)
-    for k in range(9):
-        a = (k / 9) * 2 * math.pi + rng.random() * 0.4
-        lean = 0.35 + rng.random() * 0.35
-        base = Vector((math.cos(a) * 0.008, math.sin(a) * 0.008 + 0.008, 0.038))
-        d = Vector((math.cos(a) * lean, math.sin(a) * lean, 1)).normalized()
-        L = 0.07 + rng.random() * 0.035
-        pts = [base + d * (L * s) + Vector((0, 0, -0.012 * s * s)) for s in (0.0, 0.35, 0.7, 1.0)]
-        frond = limb(pts, [(0.0025, 0.0018), (0.011, 0.0018), (0.009, 0.0016), (0.0015, 0.0012)], seg=4, color='#6a994e' if k % 2 else '#90be6d', up=(math.sin(a), -math.cos(a), 0))
+    for k in range(7):
+        a = -0.9 + (k / 6) * 1.8 + rng.random() * 0.15
+        base = Vector((0.018, 0.0, 0.045))
+        d = Vector((math.sin(a) * 0.55 + 0.35, math.cos(a) * 0.25, 1)).normalized()
+        L = 0.065 + rng.random() * 0.03
+        pts = [base + d * (L * s) + Vector((0.01 * s * s, 0, -0.01 * s * s)) for s in (0.0, 0.35, 0.7, 1.0)]
+        frond = limb(pts, [(0.0025, 0.0018), (0.011, 0.0018), (0.009, 0.0016), (0.0015, 0.0012)], seg=4,
+                     color='#6a994e' if k % 2 else '#90be6d', up=(math.cos(a), -math.sin(a), 0))
         parts.append(frond)
-    stalks = cf.cylinder(0.011, 0.016, seg=6, at=(0.0, 0.008, 0.03), color='#a7c957', r2=0.008)
-    parts.append(stalks)
     return finish(parts, 'vm_hortaliza')
 
 
 def vendaje():
-    """Rollo de venda de gasa con el extremo suelto colgando."""
-    roll = cf.lathe([(0.011, -0.04), (0.033, -0.04), (0.0355, -0.036), (0.0355, 0.036), (0.033, 0.04), (0.011, 0.04)], seg=12, rot=(0, 90, 0), color='#f8f9fa')
+    """Venda elástica enrollada (color carne, con el hilo rojo del borde), las vueltas marcadas
+    en las tapas, la grapa metálica y el extremo suelto colgando."""
+    ends = [(0.011, 0.04), (0.017, 0.04), (0.023, 0.0405), (0.029, 0.04), (0.033, 0.04)]
+    prof = [(r, -z) for r, z in ends] + [(0.0355, -0.036), (0.0358, -0.03), (0.0358, 0.03), (0.0355, 0.036)] + ends[::-1]
+    roll = cf.lathe(prof, seg=12, rot=(0, 90, 0), color='#efdcbc')
     roll.data.transform(Matrix.Translation((0, 0, 0.05)))
-    cf.paint(roll, '#e9e4d8', lambda p: abs(p.normal.x) > 0.7 and int(Vector((0, p.center.y, p.center.z - 0.05)).length / 0.006) % 2 == 0)
+    cf.paint(roll, '#d9c39d', lambda p: abs(p.normal.x) > 0.7 and int(Vector((0, p.center.y, p.center.z - 0.05)).length / 0.006) % 2 == 0)
+    cf.paint(roll, '#c98b7a', lambda p: abs(p.normal.x) < 0.5 and abs(abs(p.center.x) - 0.033) < 0.004)
     cf.jitter_colors(roll, 0.03, seed=111)
-    core = cf.cylinder(0.011, 0.082, seg=8, at=(-0.041, 0, 0.05), rot=(0, 90, 0), color='#c9b98f', cap=False)
-    tail = limb([(0.0, -0.035, 0.048), (0.0, -0.045, 0.025), (0.0, -0.05, 0.0), (0.004, -0.046, -0.02)], [(0.034, 0.0015)] * 4, seg=4, color='#f1ece0', up=(1, 0, 0))
-    return finish([roll, core, tail], 'vm_vendaje')
+    core = cf.cylinder(0.011, 0.082, seg=8, at=(-0.041, 0, 0.05), rot=(0, 90, 0), color='#b8a27a', cap=False)
+    tail = limb([(0.0, -0.035, 0.048), (0.0, -0.045, 0.025), (0.0, -0.05, 0.0), (0.004, -0.046, -0.02)], [(0.034, 0.0015)] * 4, seg=4, color='#e8d3b0', up=(1, 0, 0))
+    cf.paint(tail, '#c98b7a', lambda p: abs(abs(p.center.x) - 0.031) < 0.004)
+    # Grapa de mariposa sujetando el extremo.
+    clip = cf.box((0.022, 0.004, 0.012), at=(0.0, -0.0372, 0.042), color=STEEL_LIGHT, base=False)
+    teeth = [cf.box((0.004, 0.006, 0.016), at=(sx * 0.012, -0.0362, 0.042), color=STEEL, base=False) for sx in (-1, 1)]
+    return finish([roll, core, tail, clip, *teeth], 'vm_vendaje')
 
 
 def botiquin():
