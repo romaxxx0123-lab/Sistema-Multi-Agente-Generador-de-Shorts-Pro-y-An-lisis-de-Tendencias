@@ -17,7 +17,7 @@ import { LEVEL_H, MINUTES_PER_DAY } from '../src/sim/constants';
 import { buildersOn, repair } from '../src/sim/construction';
 import * as debris from '../src/sim/debris';
 import * as events from '../src/sim/events';
-import { addItem, countItem, countIn } from '../src/sim/inventory';
+import { addItem, countItem, countIn, removeItem } from '../src/sim/inventory';
 import { createNewGame } from '../src/sim/newGame';
 import * as npc from '../src/sim/npc';
 import { deserialize, serialize } from '../src/sim/save';
@@ -28,6 +28,8 @@ import { spawnCrate, storageModules } from '../src/sim/helpers';
 import { hourOf } from '../src/sim/time';
 import type { ActiveEvent, ModuleInstance, NpcState, Rotation, Vec3 } from '../src/sim/types';
 import { forceWeather } from '../src/sim/weather';
+import { decideNpcPose } from '../src/render/NpcView';
+import { seatsOf } from '../src/render/ship/furniture';
 
 /* ------------------------------------------------------------------ */
 /* Utilidades                                                          */
@@ -2673,8 +2675,9 @@ describe('relaciones entre habitantes', () => {
     expect(said.slice(before).some((t) => /Tomás|Marina/.test(t))).toBe(true);
   });
 
-  it('compartir mesa acerca un poco', () => {
+  it('compartir mesa acerca un poco (a quien congenia)', () => {
     const { sim, marina, tomas } = pair();
+    tomas.trait = 'optimista'; // como Marina: congenian
     const now = sim.state.time;
     for (const [n, x] of [[marina, 0], [tomas, 1.2]] as const) {
       Object.assign(n.pos, { x, y: LEVEL_H, z: 4 });
@@ -2682,6 +2685,7 @@ describe('relaciones entre habitantes', () => {
       n.activity = 'eating';
       n.task = { kind: 'comer', until: now + 0.5, data: { phase: 'act', prio: 45, deadline: 1e12, stage: 'mesa', seatKey: null } };
     }
+    expect(npc.npcChemistry(marina, tomas)).toBeGreaterThan(0);
     run(sim, 2);
     expect(npc.relationBetween(marina, tomas)).toBeCloseTo(npc.MEAL_RELATION, 1); // (menos lo que se enfría en 2 min)
   });
@@ -2730,7 +2734,7 @@ describe('sala común', () => {
     runUntil(sim, at(1, 18));
     let seated = false;
     let inLounge = 0;
-    run(sim, 200, () => {
+    run(sim, 300, () => {
       keepFed(sim);
       for (const n of sim.state.npcs) {
         const d = n.task?.data as { job?: string; phase?: string; seatKey?: string } | undefined;
@@ -2958,5 +2962,594 @@ describe('textos de eventos con módulos mejorados', () => {
     expect(events.moduleTitle({ type: 'radar', tier: 1 })).toBe('Radar');
     events.startFire(sim, alm, 50);
     expect(sim.state.log.at(-1)!.text).toMatch(/¡Fuego en el almacén con altillo!/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Ronda de pruebas 2: vida a bordo (regresiones)                      */
+/* ------------------------------------------------------------------ */
+
+const ALL_FOOD = ['guiso', 'sopa', 'pescado_asado', 'pescado_ahumado', 'conserva', 'fruta', 'hortaliza', 'pescado_crudo'];
+
+/** Comida de esos tipos en todo el barco: módulos, cajas sueltas y lo que llevan en la mano. */
+function foodTotal(sim: Simulation, ids: readonly string[] = ALL_FOOD): number {
+  let n = 0;
+  for (const id of ids) {
+    n += countIn(
+      sim.state.ship.modules.flatMap((m) => [m.inventory, m.fuelInv]),
+      id,
+    );
+    n += countIn(sim.state.crates.map((c) => c.inventory), id);
+    for (const h of sim.state.npcs) if (h.carry?.id === id) n += h.carry.qty;
+  }
+  return n;
+}
+
+describe('QA2: comida en la mano y pescado crudo', () => {
+  it('[pilas] con una pila de comida en la mano come una sola ración y el resto vuelve al almacén', () => {
+    for (const [id, qty] of [['pescado_ahumado', 6], ['conserva', 4]] as const) {
+      const sim = quiet(setup());
+      runUntil(sim, at(1, 9.5));
+      const marina = npcById(sim, 'npc1');
+      sim.state.npcs = [marina];
+      marina.task = null;
+      marina.carry = { id, qty };
+      marina.needs.hunger = 35;
+      const before = foodTotal(sim);
+      const pile = foodTotal(sim, [id]);
+      let meals = 0;
+      let prev = marina.needs.hunger;
+      run(sim, 60, () => {
+        if (marina.needs.hunger > prev + 10) meals++;
+        prev = marina.needs.hunger;
+      });
+      expect(meals).toBe(1);
+      expect(before - foodTotal(sim)).toBe(1); // una ración, no la pila entera
+      expect(foodTotal(sim, [id])).toBeGreaterThanOrEqual(pile - 1);
+      expect(marina.carry?.qty ?? 0).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('[pilas] el pescado crudo que lleva en la mano no se lo come crudo: lo guarda (o lo asa) y nada se pierde', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9.5));
+    const marina = npcById(sim, 'npc1');
+    sim.state.npcs = [marina];
+    marina.task = null;
+    marina.carry = { id: 'pescado_crudo', qty: 3 };
+    marina.needs.hunger = 35;
+    let rawAtTable = false;
+    run(sim, 90, () => {
+      const d = marina.task?.data as { stage?: string } | undefined;
+      if (marina.task?.kind === 'comer' && d?.stage === 'mesa' && marina.carry?.id === 'pescado_crudo') rawAtTable = true;
+    });
+    expect(rawAtTable).toBe(false);
+    expect(foodTotal(sim, ['pescado_crudo', 'pescado_asado'])).toBeGreaterThanOrEqual(2);
+  });
+
+  it('[crudo] si al llegar ya no está la lata, no se conforma con el pescado crudo: va a por comida lista a otro almacén', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9.5));
+    const far = placeAt(sim, 'almacen', 0);
+    emptyFood(sim);
+    const near = storageModules(sim).find((m) => m.type === 'almacen' && m.id !== far.id)!;
+    addItem(near.inventory!, 'conserva', 1);
+    addItem(near.inventory!, 'pescado_crudo', 3);
+    addItem(far.inventory!, 'conserva', 10);
+    const marina = npcById(sim, 'npc1');
+    sim.state.npcs = [marina];
+    Object.assign(marina, { task: null });
+    marina.needs.hunger = 30;
+    let stole = false;
+    let took = '';
+    for (let m = 0; m < 240 && !took; m++) {
+      keepPlayer(sim);
+      sim.tick(0.5);
+      const d = marina.task?.data as { stage?: string; moduleId?: number; food?: string } | undefined;
+      if (!stole && marina.task?.kind === 'comer' && d?.stage === 'recoger' && marina.task.targetModuleId === near.id) {
+        expect(d.food).toBe('conserva'); // sabe a qué va
+        removeItem(near.inventory!, 'conserva', 1); // otro se la lleva antes de que llegue
+        stole = true;
+      }
+      if (marina.carry) took = marina.carry.id;
+    }
+    expect(stole).toBe(true);
+    expect(took).toBe('conserva');
+    expect(countItem(far.inventory!, 'conserva')).toBe(9);
+    expect(countItem(near.inventory!, 'pescado_crudo')).toBe(3);
+  });
+
+  it('[crudo] dos hambrientos y una sola lata cerca: cada uno va a por una ración libre, ninguno come crudo', () => {
+    const sim = quiet(setup());
+    runUntil(sim, at(1, 9.5));
+    const far = placeAt(sim, 'almacen', 0);
+    emptyFood(sim);
+    const near = storageModules(sim).find((m) => m.type === 'almacen' && m.id !== far.id)!;
+    addItem(near.inventory!, 'conserva', 1);
+    addItem(near.inventory!, 'pescado_crudo', 3);
+    addItem(far.inventory!, 'conserva', 10);
+    const pair = [npcById(sim, 'npc1'), npcById(sim, 'npc2')];
+    const goals: number[] = [];
+    for (const n of pair) {
+      n.task = null;
+      n.needs.hunger = 30;
+    }
+    let rawAtTable = false;
+    run(sim, 120, () => {
+      for (const n of pair) {
+        const d = n.task?.data as { stage?: string; food?: string } | undefined;
+        if (n.task?.kind === 'comer' && d?.stage === 'recoger' && d.food && goals.length < 2 && !goals.includes(n.task.targetModuleId ?? -1)) goals.push(n.task.targetModuleId ?? -1);
+        if (n.task?.kind === 'comer' && d?.stage === 'mesa' && n.carry?.id === 'pescado_crudo') rawAtTable = true;
+      }
+    });
+    expect(rawAtTable).toBe(false);
+    expect(goals.sort()).toEqual([near.id, far.id].sort()); // la lata cercana la reserva uno; el otro va al lejano
+    expect(countItem(near.inventory!, 'pescado_crudo')).toBe(3);
+  });
+});
+
+describe('QA2: generador, enfermería y camas', () => {
+  it('[generador] con bidones en el almacén no se apaga de noche: el radar sigue con energía', () => {
+    const sim = quiet(setup(1));
+    const g = placeAt(sim, 'generador', 0);
+    addItem(g.fuelInv!, 'combustible', 1);
+    const radar = placeAt(sim, 'radar', 2);
+    expect(sim.state.ship.modules.some((m) => m.type === 'bateria')).toBe(false);
+    addItem(mod(sim, 'almacen').inventory!, 'combustible', 20);
+    addItem(mod(sim, 'almacen').inventory!, 'madera', 40); // con madera de sobra, el generador prefiere los bidones
+    let total = 0;
+    let off = 0;
+    const loads = new Set<string>();
+    run(sim, 5 * MINUTES_PER_DAY, () => {
+      for (const sl of g.fuelInv!.slots) if (sl) loads.add(sl.id);
+      if (sim.state.time < at(2, 0)) return;
+      if (storageTotal(sim, 'combustible') <= 0) return;
+      total++;
+      if (!radar.powered) off++;
+    });
+    expect(total).toBeGreaterThan(3 * MINUTES_PER_DAY);
+    expect(off / total).toBeLessThan(0.05);
+    expect(loads.has('combustible')).toBe(true);
+    expect(storageTotal(sim, 'combustible')).toBeLessThan(20); // ha tirado de los bidones del almacén
+  });
+
+  it('[enfermería] la enfermería equipada (healMult) cura antes también a los habitantes', () => {
+    // Medida directa: salud ganada por hora en la camilla, nivel 1 frente a nivel 2.
+    const gain = (tier: number) => {
+      const sim = quiet(setup(7));
+      powerUp(sim);
+      const enf = placeAt(sim, 'enfermeria', 0);
+      enf.tier = tier;
+      const tomas = npcById(sim, 'npc2');
+      run(sim, 60);
+      tomas.injured = true;
+      tomas.needs.health = 30;
+      const samples: number[] = [];
+      for (let i = 0; i < 6 * 60; i++) {
+        keepPlayer(sim);
+        tomas.needs.hunger = 90;
+        tomas.needs.thirst = 90;
+        const h0 = tomas.needs.health;
+        sim.tick(1);
+        if (tomas.task?.kind === 'descansar' && tomas.activity === 'sleeping' && tomas.bed?.moduleId === enf.id && tomas.needs.health < 89) samples.push((tomas.needs.health - h0) * 60);
+      }
+      expect(samples.length).toBeGreaterThan(30);
+      return samples.reduce((a, b) => a + b, 0) / samples.length;
+    };
+    const t1 = gain(1);
+    const t2 = gain(2);
+    expect(t1).toBeCloseTo(npc.NPC_RATES.regenPerHour * 3 * 1.5, 0); // ×3 en la camilla, ×1,5 dormido
+    expect(t2 / t1).toBeCloseTo(moduleDef('enfermeria').upgrades![0]!.effects.healMult ?? 1.5, 1);
+  });
+
+  it('[camas] el confort del camarote mejorado repone más energía a quien duerme en él (como al jugador)', () => {
+    const rate = (tier: number) => {
+      const sim = quiet(setup(7));
+      // Un camarote nuevo (el de serie es del jugador): se lo asignan a un habitante.
+      const cam = placeAt(sim, 'camarote', 1);
+      cam.tier = tier;
+      run(sim, 40);
+      const n = sim.state.npcs.find((h) => h.bed?.moduleId === cam.id)!;
+      expect(n).toBeTruthy();
+      const rates: number[] = [];
+      for (let i = 0; i < MINUTES_PER_DAY; i++) {
+        keepPlayer(sim);
+        const e0 = n.needs.energy;
+        sim.tick(1);
+        if (n.activity === 'sleeping' && n.task?.kind === 'dormir' && n.bed?.moduleId === cam.id && n.needs.energy < 99 && n.needs.energy > e0) rates.push((n.needs.energy - e0) * 60);
+      }
+      return rates.reduce((a, b) => a + b, 0) / Math.max(1, rates.length);
+    };
+    const r1 = rate(1);
+    const r2 = rate(2);
+    expect(r1).toBeCloseTo(npc.NPC_RATES.sleepBedPerHour, 0);
+    expect(r2 - r1).toBeGreaterThan(1.5); // camarote acogedor: +2/h
+  });
+});
+
+describe('QA2: dar comida, textos y frases', () => {
+  it('[ahumado] dar pescado ahumado a un habitante con hambre: lo acepta (no es agua salada)', () => {
+    const sim = quiet(setup());
+    const st = sim.state;
+    const marina = npcById(sim, 'npc1');
+    st.player.inventory.slots[20] = { id: 'pescado_ahumado', qty: 3 };
+    marina.needs.hunger = 20;
+    const thirst = marina.needs.thirst;
+    const r = sim.giveItemToNpc(marina.id, 20);
+    expect(r.ok).toBe(true);
+    expect(r.msg).not.toMatch(/salada/);
+    expect(marina.needs.hunger).toBe(20 + ITEMS['pescado_ahumado']!.consume!.hunger!);
+    expect(marina.needs.thirst).toBe(thirst + ITEMS['pescado_ahumado']!.consume!.thirst!);
+    expect(st.player.inventory.slots[20]).toEqual({ id: 'pescado_ahumado', qty: 2 });
+  });
+
+  it('[radar] el mecánico nombra «el radar» (no «el radar y radio») al pedir piezas y al repararlo', () => {
+    const sim = quiet(setup());
+    powerUp(sim);
+    const radar = placeAt(sim, 'radar', 2);
+    radar.status = 'broken';
+    radar.condition = 20;
+    radar.brokenReason = 'Pruebas';
+    removeEverywhere(sim, 'pieza_mecanica');
+    const tomas = npcById(sim, 'npc2');
+    expect(tomas.role).toBe('mecanico');
+    const talk = sim.talkTo(tomas.id)!;
+    const all = [...talk.lines, ...sim.state.log.map((l) => l.text)].join(' | ');
+    expect(all).not.toMatch(/radar y radio/);
+    expect(talk.lines.some((l) => /arreglar el radar necesito/.test(l))).toBe(true);
+    const notes: string[] = [];
+    sim.bus.on('notify', (e) => notes.push(e.text));
+    addItem(mod(sim, 'almacen').inventory!, 'pieza_mecanica', 2);
+    runUntil(sim, at(1, 9));
+    run(sim, 300);
+    expect(radar.status).toBe('active');
+    expect(notes).toContain('Tomás ha reparado el radar');
+    expect([...notes, ...sim.state.log.map((l) => l.text)].some((t) => /radar y radio/.test(t))).toBe(false);
+  });
+
+  it('[despensa] con raciones en el almacén no dicen «la despensa está vacía» al salir a pescar de relleno', () => {
+    const sim = quiet(setup());
+    while (sim.state.npcs.length < 8) npc.spawnSurvivor(sim, { quiet: true, role: 'libre' });
+    for (const n of sim.state.npcs) {
+      n.role = 'libre';
+      n.needs = { hunger: 80, thirst: 80, energy: 80, mood: 60, health: 100 };
+    }
+    emptyFood(sim);
+    addItem(mod(sim, 'almacen').inventory!, 'conserva', 12); // menos de 3 por cabeza: hay que pescar
+    const said = new Set<string>();
+    runUntil(sim, at(1, 8));
+    run(sim, 6 * 60, () => {
+      for (const n of sim.state.npcs) if (n.say) said.add(n.say.text);
+      if (storageTotal(sim, 'conserva') < 10) addItem(mod(sim, 'almacen').inventory!, 'conserva', 2);
+    });
+    expect([...said].some((t) => /Queda poca comida|despensa anda justa|Mejor pescar ahora|muchas bocas/.test(t))).toBe(true);
+    expect([...said].some((t) => /La despensa está vacía|Si no hay comida|tripa vacía/.test(t))).toBe(false);
+  });
+
+  it('[frases] al comer cambian de frase y nunca repiten la última; el ahumado tiene varias', () => {
+    const sim = quiet(setup());
+    const marina = npcById(sim, 'npc1');
+    sim.state.npcs = [marina];
+    emptyFood(sim);
+    addItem(mod(sim, 'almacen').inventory!, 'pescado_ahumado', 60);
+    const lines: string[] = [];
+    let last: unknown = null;
+    run(sim, 8 * MINUTES_PER_DAY, () => {
+      marina.needs.thirst = 90;
+      // Cada bocadillo nuevo (otro objeto), aunque diga lo mismo que el anterior.
+      if (marina.say && marina.say !== last && /humo|ahumad|sed, pero|oro/i.test(marina.say.text)) lines.push(marina.say.text);
+      last = marina.say;
+    });
+    expect(lines.length).toBeGreaterThan(3);
+    expect(new Set(lines).size).toBeGreaterThan(1);
+    for (let i = 1; i < lines.length; i++) expect(lines[i]).not.toBe(lines[i - 1]);
+  });
+});
+
+describe('QA2: relaciones con vida propia', () => {
+  function salaPair(seed: number) {
+    const sim = quiet(setup(seed));
+    placeAt(sim, 'sala_comun', 1);
+    for (const n of sim.state.npcs) n.role = 'libre';
+    return { sim, marina: npcById(sim, 'npc1'), tomas: npcById(sim, 'npc2') };
+  }
+  const fed = (sim: Simulation) => {
+    for (const n of sim.state.npcs) {
+      n.needs.hunger = Math.max(n.needs.hunger, 60);
+      n.needs.thirst = Math.max(n.needs.thirst, 60);
+    }
+  };
+
+  it('[química] cada pareja tiene la suya: simétrica, fija, entre −1 y 1, y según el carácter', () => {
+    const sim = quiet(setup());
+    const crew: NpcState[] = [];
+    for (let i = 0; i < 16; i++) crew.push(npc.spawnSurvivor(sim, { quiet: true })!);
+    const avg = (a: string, b: string) => {
+      let sum = 0;
+      let n = 0;
+      for (let i = 0; i < crew.length; i++) {
+        for (let j = i + 1; j < crew.length; j++) {
+          const x = { ...crew[i]!, trait: a };
+          const y = { ...crew[j]!, trait: b };
+          const c = npc.npcChemistry(x, y);
+          expect(c).toBe(npc.npcChemistry(y, x));
+          expect(c).toBeGreaterThanOrEqual(-1);
+          expect(c).toBeLessThanOrEqual(1);
+          sum += c;
+          n++;
+        }
+      }
+      return sum / n;
+    };
+    expect(avg('grunon', 'hablador')).toBeLessThan(avg('hablador', 'hablador') - 0.6);
+    expect(avg('dormilon', 'madrugador')).toBeLessThan(avg('madrugador', 'trabajador') - 0.6);
+    expect(npc.npcChemistry(crew[0]!, crew[0]!)).toBe(0);
+  });
+
+  it('[sala] dos rivales que coinciden en la sala común siguen siendo rivales sin mediar (no se reconcilian solos)', () => {
+    const { sim, marina, tomas } = salaPair(9);
+    npc.adjustRelation(sim, marina, tomas, -45);
+    runUntil(sim, at(1, 8));
+    run(sim, 2 * MINUTES_PER_DAY, () => {
+      fed(sim);
+      // sin mediar: si discuten, la discusión sigue su curso
+    });
+    expect(npc.relationBetween(marina, tomas)).toBeLessThanOrEqual(npc.RIVAL_AT);
+  });
+
+  it('[sala] la sala común acerca, pero no dispara la afinidad: en una semana ninguna pareja pasa de 90', () => {
+    const { sim } = salaPair(5);
+    while (sim.state.npcs.length < 4) npc.spawnSurvivor(sim, { quiet: true, role: 'libre' });
+    for (const n of sim.state.npcs) n.trait = 'optimista'; // todos congenian: el caso más favorable
+    npc.assignBeds(sim);
+    runUntil(sim, at(1, 8));
+    let top = -100;
+    run(sim, 7 * MINUTES_PER_DAY, () => {
+      fed(sim);
+      const ns = sim.state.npcs;
+      for (let i = 0; i < ns.length; i++) for (let j = i + 1; j < ns.length; j++) top = Math.max(top, npc.relationBetween(ns[i]!, ns[j]!));
+    });
+    expect(top).toBeGreaterThan(npc.GOOD_AT); // se llevan bien…
+    expect(top).toBeLessThan(90); // …sin saturarse
+  }, 60_000);
+
+  it('[sala] una misma pareja suma en la sala como mucho una vez cada LOUNGE_PAIR_COOLDOWN', () => {
+    const { sim, marina, tomas } = salaPair(11);
+    tomas.trait = 'optimista';
+    const sala = mod(sim, 'sala_comun');
+    const sitBoth = () => {
+      for (const n of [marina, tomas]) {
+        n.activity = 'idle';
+        n.task = { kind: 'ocio', until: sim.state.time + 0.5, targetModuleId: sala.id, data: { phase: 'act', prio: 10, deadline: 1e12, job: 'sala' } };
+      }
+    };
+    sitBoth();
+    run(sim, 2);
+    const first = npc.relationBetween(marina, tomas);
+    expect(first).toBeGreaterThan(npc.LOUNGE_RELATION * 0.8);
+    for (let i = 0; i < 5; i++) {
+      sitBoth();
+      run(sim, 2);
+    }
+    expect(npc.relationBetween(marina, tomas)).toBeLessThanOrEqual(first); // (solo se enfría)
+    run(sim, npc.LOUNGE_PAIR_COOLDOWN);
+    const before = npc.relationBetween(marina, tomas);
+    sitBoth();
+    run(sim, 2);
+    expect(npc.relationBetween(marina, tomas)).toBeGreaterThan(before);
+  });
+
+  it('[roces] quien no congenia acaba con roces en la mesa: menos afinidad que una pareja que congenia', () => {
+    const sim = quiet(setup());
+    const crew: NpcState[] = [];
+    for (let i = 0; i < 10; i++) crew.push(npc.spawnSurvivor(sim, { quiet: true })!);
+    crew.forEach((n, i) => (n.trait = i % 2 ? 'grunon' : 'hablador'));
+    let worst: [NpcState, NpcState] | null = null;
+    for (let i = 0; i < crew.length; i++) for (let j = i + 1; j < crew.length; j++) if (crew[i]!.trait !== crew[j]!.trait && (!worst || npc.npcChemistry(crew[i]!, crew[j]!) < npc.npcChemistry(worst[0], worst[1]))) worst = [crew[i]!, crew[j]!];
+    const [a, b] = worst!;
+    expect(npc.npcChemistry(a, b)).toBeLessThan(-0.6);
+    const said: string[] = [];
+    for (let k = 0; k < 30; k++) {
+      const now = sim.state.time;
+      for (const [n, x] of [[a, 0], [b, 1.2]] as const) {
+        Object.assign(n.pos, { x, y: LEVEL_H, z: 4 });
+        n.carry = { id: 'conserva', qty: 1 };
+        n.activity = 'eating';
+        n.say = null;
+        n.task = { kind: 'comer', until: now + 0.5, data: { phase: 'act', prio: 45, deadline: 1e12, stage: 'mesa', seatKey: null } };
+      }
+      run(sim, 2);
+      for (const n of [a, b]) if (n.say) said.push(n.say.text);
+    }
+    expect(npc.relationBetween(a, b)).toBeLessThan(0);
+    expect(said.some((t) => /ruido al comer|la había apartado|primero|algo para los demás/.test(t))).toBe(true);
+  });
+
+  it('[fuego] apagar un fuego codo con codo une, también a dos rivales', () => {
+    const sim = quiet(setup());
+    const marina = npcById(sim, 'npc1');
+    const tomas = npcById(sim, 'npc2');
+    const k = mod(sim, 'cocina');
+    k.fire = 0;
+    npc.adjustRelation(sim, marina, tomas, -45);
+    for (const n of [marina, tomas]) {
+      n.activity = 'firefighting';
+      n.task = { kind: 'apagar', until: sim.state.time + 30, targetModuleId: k.id, data: { phase: 'act', prio: 100, deadline: 1e12, stage: 'sofocar' } };
+    }
+    run(sim, 1);
+    expect(npc.relationBetween(marina, tomas)).toBeCloseTo(-45 + npc.CRISIS_RELATION, 1);
+  });
+
+  it('[equilibrio] en una semana hay amistades y roces, se mueven con la convivencia y nadie se queda en 100', () => {
+    let friends = 0;
+    let low = 100;
+    let top = -100;
+    let changes = 0;
+    for (const seed of [1, 5, 6]) {
+      const sim = new Simulation(createNewGame(seed));
+      sim.state.weather.kind = 'despejado';
+      placeAt(sim, 'sala_comun', 1);
+      while (sim.state.npcs.length < 6) npc.spawnSurvivor(sim, { quiet: true });
+      npc.assignBeds(sim);
+      const label = new Map<string, string | null>();
+      run(sim, 7 * MINUTES_PER_DAY, () => {
+        const alm = mod(sim, 'almacen').inventory!;
+        if (countItem(alm, 'conserva') < 20) addItem(alm, 'conserva', 20);
+        if (countItem(alm, 'agua_potable') < 20) addItem(alm, 'agua_potable', 20);
+        if (sim.state.time % 60 !== 0) return;
+        const ns = sim.state.npcs;
+        for (let i = 0; i < ns.length; i++) {
+          for (let j = i + 1; j < ns.length; j++) {
+            const v = npc.relationBetween(ns[i]!, ns[j]!);
+            top = Math.max(top, v);
+            low = Math.min(low, v);
+            const key = `${ns[i]!.id}-${ns[j]!.id}`;
+            const l = npc.relationLabel(v, ns[j]!);
+            if (label.has(key) && label.get(key) !== l) changes++;
+            label.set(key, l);
+          }
+        }
+      });
+      const ns = sim.state.npcs;
+      for (let i = 0; i < ns.length; i++) for (let j = i + 1; j < ns.length; j++) if (npc.relationBetween(ns[i]!, ns[j]!) >= npc.FRIEND_AT) friends++;
+    }
+    expect(friends).toBeGreaterThan(0); // amistades…
+    expect(low).toBeLessThanOrEqual(npc.BAD_AT); // …y roces en algún momento
+    expect(top).toBeLessThan(99); // nadie se queda en el tope
+    expect(changes).toBeGreaterThan(20); // y se mueven
+  }, 120_000);
+});
+
+describe('QA2: sillas, recién llegados y picos de rutas', () => {
+  it('[silla] a la hora de comer nadie se dibuja en la silla de otro: quien no tiene silla come de pie', () => {
+    const sim = quiet(setup());
+    const st = sim.state;
+    while (st.npcs.length < 4) npc.spawnSurvivor(sim, { quiet: true });
+    // La comida, en la despensa de la cocina: quien se queda sin silla come de pie junto a ella, a
+    // poco más de un metro de una silla (antes se dibujaba sentado en ella, encima de otro).
+    emptyFood(sim);
+    addItem(mod(sim, 'cocina').inventory!, 'conserva', 12);
+    const seats = seatsOf(st);
+    let samples = 0;
+    let standing = 0;
+    runUntil(sim, at(1, 13.5));
+    for (const n of st.npcs) n.needs = { hunger: 60, thirst: 90, energy: 80, mood: 60, health: 100 }; // los cuatro a comer a las 14
+    run(sim, 3 * 60, () => {
+      const poses = st.npcs.map((n) => ({ n, p: decideNpcPose(n, st, 0, seats) }));
+      const eating = poses.filter(({ n }) => n.activity === 'eating' && n.task?.kind === 'comer');
+      for (const a of eating) {
+        samples++;
+        const seated = npc.isSeated(a.n);
+        if (!seated) {
+          // sin silla: de pie con el cuenco, donde está
+          expect(a.p.pose).toBe('stand');
+          expect(a.p.tool).toBe('cuenco');
+          expect(a.p.x).toBeCloseTo(a.n.pos.x, 5);
+          standing++;
+        } else expect(a.p.pose).toBe('eat');
+      }
+      for (let i = 0; i < poses.length; i++) {
+        for (let j = i + 1; j < poses.length; j++) {
+          const a = poses[i]!.p;
+          const b = poses[j]!.p;
+          if (a.pose === 'eat' && b.pose === 'eat') expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(0.3);
+        }
+      }
+    });
+    expect(samples).toBeGreaterThan(20);
+    expect(standing).toBeGreaterThan(0); // 4 comensales y 2 sillas
+  });
+
+  it('[silla] sin tarea (partida recién cargada) se sienta en la silla libre más cercana, nunca en una ocupada', () => {
+    const st = createNewGame(1);
+    const seats = seatsOf(st).filter((s) => s.kind === 'silla');
+    const [a, b] = st.npcs as [NpcState, NpcState];
+    const s0 = seats[0]!;
+    a.activity = 'eating';
+    a.pos = { x: s0.x, y: s0.y, z: s0.z };
+    a.task = { kind: 'comer', until: 1e9, data: { phase: 'act', prio: 45, deadline: 1e12, stage: 'mesa', seatKey: 'x', seated: true } };
+    b.activity = 'eating';
+    b.task = null;
+    b.pos = { x: s0.x + 0.4, y: s0.y, z: s0.z };
+    const pa = decideNpcPose(a, st, 0, seats);
+    expect(pa.pose).toBe('eat');
+    expect(pa.x).toBeCloseTo(s0.x, 5);
+    const pb = decideNpcPose(b, st, 0, seats);
+    expect(Math.hypot(pb.x - s0.x, pb.z - s0.z)).toBeGreaterThan(0.3); // la de Marina está ocupada
+  });
+
+  it('[llegada] los que suben a la vez no quedan apilados ni dicen la misma frase', () => {
+    const sim = quiet(setup());
+    const st = sim.state;
+    const from = { x: 18, y: 0, z: -6 };
+    const rafts = [0, 1, 2].map(() => npc.spawnSurvivor(sim, { pos: from, origin: 'balsa', quiet: true })!);
+    const port = [0, 1].map(() => npc.spawnSurvivor(sim, { origin: 'puerto', quiet: true })!);
+    for (const group of [rafts, port]) {
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const a = group[i]!;
+          const b = group[j]!;
+          expect(Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z)).toBeGreaterThanOrEqual(npc.PERSONAL_SPACE - 1e-6);
+          expect(a.say!.text).not.toBe(b.say!.text);
+          expect(npc.isOnReachableNav(sim, a.pos)).toBe(true);
+        }
+      }
+    }
+    // Los vecinos del puerto miran al jugador.
+    for (const n of port) {
+      const fx = -Math.sin(n.yaw);
+      const fz = -Math.cos(n.yaw);
+      const dx = st.player.pos.x - n.pos.x;
+      const dz = st.player.pos.z - n.pos.z;
+      if (Math.hypot(dx, dz) > 0.5) expect((fx * dx + fz * dz) / Math.hypot(dx, dz)).toBeGreaterThan(0.99);
+    }
+  });
+
+  it('[rutas] no se despiertan todos en el mismo minuto: cada uno tiene su hora (dentro de WAKE_SPREAD_MIN)', () => {
+    const sim = quiet(setup());
+    while (sim.state.npcs.length < 12) npc.spawnSurvivor(sim, { quiet: true });
+    const hours = sim.state.npcs.map((n) => npc.npcWakeHour(n));
+    for (const [i, n] of sim.state.npcs.entries()) {
+      const base = n.trait === 'madrugador' ? 5 : npc.DEFAULT_WAKE_HOUR;
+      expect(hours[i]).toBeGreaterThanOrEqual(base);
+      expect(hours[i]).toBeLessThan(base + npc.WAKE_SPREAD_MIN / 60);
+      expect(npc.npcWakeHour(n)).toBe(hours[i]); // fija
+    }
+    expect(new Set(hours.map((h) => Math.round(h * 60))).size).toBeGreaterThan(6);
+  });
+
+  it('[rutas] al amanecer, como mucho unas pocas búsquedas de ruta por paso (no todas a la vez)', () => {
+    const sim = quiet(setup());
+    while (sim.state.npcs.length < 16) npc.spawnSurvivor(sim, { quiet: true });
+    for (const n of sim.state.npcs) n.needs = { hunger: 80, thirst: 80, energy: 50, mood: 60, health: 100 };
+    runUntil(sim, at(2, 5.5));
+    const stats = npc.npcDebugStats(sim);
+    let worst = 0;
+    // Pasos de un fotograma (1/60 min) entre las 5:30 y las 7:00.
+    for (let i = 0; i < 90 * 60; i++) {
+      keepPlayer(sim);
+      const s0 = stats.pathSearches;
+      sim.tick(1 / 60);
+      worst = Math.max(worst, stats.pathSearches - s0);
+    }
+    expect(worst).toBeLessThanOrEqual(npc.PATH_SEARCHES_PER_TICK + 3);
+    expect(sim.state.npcs.filter((n) => n.activity === 'sleeping').length).toBeLessThan(4); // ya están en pie
+  });
+
+  it('[rutas] si todos deciden a la vez, el paso solo busca unas pocas rutas y los demás deciden en los siguientes', () => {
+    const sim = quiet(setup());
+    while (sim.state.npcs.length < 16) npc.spawnSurvivor(sim, { quiet: true });
+    runUntil(sim, at(1, 10));
+    for (const n of sim.state.npcs) {
+      n.task = null;
+      n.path = [];
+      n.needs = { hunger: 80, thirst: 80, energy: 80, mood: 60, health: 100 };
+    }
+    const stats = npc.npcDebugStats(sim);
+    const s0 = stats.pathSearches;
+    sim.tick(1 / 60);
+    expect(stats.pathSearches - s0).toBeLessThanOrEqual(npc.PATH_SEARCHES_PER_TICK + 3);
+    for (let i = 0; i < 30; i++) sim.tick(1 / 60);
+    expect(sim.state.npcs.every((n) => n.task)).toBe(true); // nadie se queda sin decidir
   });
 });

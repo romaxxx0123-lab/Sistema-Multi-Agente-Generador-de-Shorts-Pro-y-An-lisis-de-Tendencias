@@ -365,7 +365,7 @@ describe('red eléctrica', () => {
 /* ------------------------------------------------------------------ */
 
 describe('red de agua', () => {
-  it('el colector recoge su caudal (7 L/h) × lluvia a cielo abierto', () => {
+  it('el colector recoge su caudal (8 L/h) × lluvia a cielo abierto', () => {
     const { sim } = setup();
     // Los habitantes beben del depósito (SISTEMAS §11): fuera para medir solo el colector.
     sim.state.npcs = [];
@@ -377,7 +377,7 @@ describe('red de agua', () => {
       sim.tick(0.5);
     }
     const gen = moduleDef('colector').waterGen!;
-    expect(gen).toBe(7);
+    expect(gen).toBe(8);
     expect(u.waterL - w0).toBeGreaterThan(gen - 0.2);
     expect(u.waterL - w0).toBeLessThanOrEqual(gen + 0.0001);
     expect(u.water.inPerHour).toBeGreaterThan(gen - 1);
@@ -2196,9 +2196,9 @@ describe('mejoras: efectos en agua y energía', () => {
     const col = mod(sim, 'colector');
     upgrade(sim, col);
     expect(u.water.capacityL).toBe(340 + 35);
-    // Doble lona: casi el doble de lluvia (7 → 12 L/h con lluvia plena).
+    // Doble lona: la mitad más de lluvia (8 → 12 L/h con lluvia plena).
     const lona = moduleDef('colector').upgrades![0]!.effects.waterGen!;
-    expect(lona / moduleDef('colector').waterGen!).toBeCloseTo(12 / 7, 6);
+    expect(lona / moduleDef('colector').waterGen!).toBeCloseTo(1.5, 6);
     u.waterL = 100;
     for (let i = 0; i < 120; i++) {
       freeze(sim, 'lluvia');
@@ -2886,8 +2886,8 @@ describe('regresiones QA 2 (equilibrio)', () => {
     }
     expect(moduleDef('ahumadero').desc).not.toMatch(/aguanta/);
     // Las descripciones de agua y energía dicen lo que mide la mejora.
-    expect(up('colector').effects.waterGen! / moduleDef('colector').waterGen!).toBeCloseTo(12 / 7, 6);
-    expect(up('colector').desc).toMatch(/casi el doble/);
+    expect(up('colector').effects.waterGen! / moduleDef('colector').waterGen!).toBeCloseTo(1.5, 6);
+    expect(up('colector').desc).toMatch(/la mitad más/);
     expect(up('potabilizadora').effects.waterGen! / moduleDef('potabilizadora').waterGen!).toBeCloseTo(1.75, 6);
     expect(up('potabilizadora').desc).toMatch(/casi el doble/);
     expect(up('bateria').effects.batteryKWh! / moduleDef('bateria').batteryKWh!).toBeCloseTo(2, 6);
@@ -2897,7 +2897,7 @@ describe('regresiones QA 2 (equilibrio)', () => {
   });
 
   it('[valores] números de equilibrio de la ronda de pruebas 2', () => {
-    expect(moduleDef('colector').waterGen).toBe(7);
+    expect(moduleDef('colector').waterGen).toBe(8);
     expect(moduleDef('potabilizadora').waterGen).toBe(4);
     expect(moduleDef('panel_solar').powerGen).toBe(1.2);
     expect(moduleDef('bateria').batteryKWh).toBe(20);

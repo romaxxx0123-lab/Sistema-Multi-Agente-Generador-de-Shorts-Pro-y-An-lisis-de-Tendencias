@@ -23,7 +23,7 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
   caja: [
     { id: 'madera', min: 1, max: 3, chance: 0.6 },
     { id: 'tela', min: 1, max: 2, chance: 0.4 },
-    { id: 'cuerda', min: 1, max: 2, chance: 0.35 },
+    { id: 'cuerda', min: 1, max: 1, chance: 0.3 },
     { id: 'conserva', min: 1, max: 1, chance: 0.1 },
     { id: 'tornillos', min: 2, max: 5, chance: 0.3 },
     { id: 'semilla_hortaliza', min: 1, max: 2, chance: 0.15 },
@@ -36,8 +36,8 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
     { id: 'componentes', min: 1, max: 1, chance: 0.05 },
   ],
   red: [
-    { id: 'fibra', min: 1, max: 3, chance: 0.85 },
-    { id: 'cuerda', min: 1, max: 2, chance: 0.5 },
+    { id: 'fibra', min: 1, max: 2, chance: 0.85 },
+    { id: 'cuerda', min: 1, max: 1, chance: 0.4 },
     { id: 'pescado_crudo', min: 1, max: 2, chance: 0.45 },
     { id: 'plastico', min: 1, max: 1, chance: 0.3 },
   ],

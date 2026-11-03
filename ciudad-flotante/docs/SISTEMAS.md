@@ -125,7 +125,7 @@ van primero. Los textos describen acciones físicas, no menús.
 - **Baterías**: 20 kWh cada una; cargan con el excedente y descargan (≤ 10 kW por batería).
 - `satisfaction = min(1, (generación + descarga disponible) / demanda)`; `powered = satisfaction > 0,5`
   para cada consumidor activo y encendido. Las estaciones trabajan a velocidad × satisfaction.
-- **Agua**: capacidad = depósitos (120 L) + colectores (20 L). Entradas: colector 7 L/h × lluvia
+- **Agua**: capacidad = depósitos (120 L) + colectores (20 L). Entradas: colector 8 L/h × lluvia
   (solo a cielo abierto), potabilizadora 4 L/h × satisfaction. Pérdidas: fuga 6 L/h, depósito
   dañado (< 50) 1 L/h. Consumo de huertos/habitantes lo restan sus sistemas. Límite 0..capacidad.
   Un habitante bebe unos 0,18 L/h: una potabilizadora básica da para unas 15–20 personas con sus
@@ -165,6 +165,7 @@ van primero. Los textos describen acciones físicas, no menús.
 - `checkDemolishModule` / `demolish`: reembolso 100 % si está en obra, 50 % si no; contenido +
   reembolso a una caja en el centro del módulo; libera camas; despierta al jugador si dormía ahí.
 - Ampliación del casco: `HULL_EXPANSION` (plano `casco`, +2 celdas por proa, máx. 18). Coste base
+  (60 de madera, 16 placas y 24 de tornillería: el gran proyecto de madera de la etapa avanzada)
   × (1 + ampliaciones hechas); `cancelExpansion` devuelve lo pagado.
 - Al terminar o desmontar, jugador, habitantes y cajas mal situados pasan al punto transitable más
   cercano (nadie cae a la bodega al terminar una escalera).
@@ -184,6 +185,11 @@ van primero. Los textos describen acciones físicas, no menús.
 - Aparecen por delante de la proa (x ≈ proa + 60 m), a 3–26 m del costado, a razón de
   `región.debrisPerHour`; derivan hacia popa a `VISUAL_DRIFT × velocidad/6` (casi quietos si se
   está fondeado). Máx. 14. Botín tirado al aparecer (`DEBRIS_LOOT`). Se eliminan tras la popa.
+- Equilibrio (ronda de pruebas 2): de 3 a 5 restos/h según la región (templadas 5, cementerio 5,
+  sargazos/tormentas/faro 4,5, archipiélago 4, boreal 3,5, esperanza 3) y menos botín por pieza
+  (tablones 1–3 de madera, restos 2–3 de chatarra, plástico de 1 en 1, red 1–3 de fibra, bidón con
+  combustible el 40 %, barril el 8 %). La entrada media por hora baja un 30–40 % en madera, un
+  17–30 % en chatarra, un 35–50 % en plástico y fibra y casi un 60 % en combustible.
 - `collectDebris`: comprueba distancia generosa (≤ `HOOK_RANGE` + 6 m), da el botín (cajas si no
   cabe), estadística, tutorial. Las balsas con náufragos los suben a bordo.
 - `fishBiteDelay`: 8–22 s ÷ `región.fishMult` (÷2,5 con banco de peces).
@@ -364,7 +370,7 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 | Taller | ×1,6 velocidad, desgaste ×0,7 | — |
 | Banco | ×1,5 velocidad, 10 huecos | — |
 | Camarote / dormitorio / comedor / sala común | más confort | — |
-| Colector | 12 L/h con lluvia (7 el básico), 35 L | — |
+| Colector | 12 L/h con lluvia (8 el básico), 35 L | — |
 | Potabilizadora | 7 L/h (4 la básica), desgaste ×0,7 | — |
 | Batería / panel | 40 kWh (20) / 1,8 kW (1,2) | — |
 | Enfermería, motor, ahumadero, vivero, grúa | una mejora cada uno | — |

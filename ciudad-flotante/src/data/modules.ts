@@ -384,7 +384,7 @@ const defs: ModuleDef[] = [
     unlock: null,
     doors: [],
     props: [{ kind: 'colector', u: 2.0, v: 2.0, rot: 0, collider: [0.9, 0.9, 2.2], interact: 'colector' }],
-    waterGen: 7,
+    waterGen: 8,
     waterCapacity: 20,
     demolishable: true,
     buildable: true,
@@ -670,10 +670,12 @@ const defs: ModuleDef[] = [
 /* ------------------------------------------------------------------ */
 
 /*
- * Equilibrio (ronda de pruebas 2): el nivel 2 cuesta al menos lo que el módulo y tarda ~1,5 veces su
- * obra; el nivel 3 cuesta unas dos veces el 2 y pide un plano (almacén → casco, depósito → agua,
- * huerto → lámparas de cultivo) o componentes y piezas del taller (generador). Así las mejoras
- * llegan escalonadas con la exploración y no todas el primer día.
+ * Equilibrio (ronda de pruebas 2): el nivel 2 cuesta al menos lo que el módulo (en `value` de los
+ * materiales) y tarda al menos su obra, casi siempre ~1,5 veces; el nivel 3 cuesta el doble o más que
+ * el 2 y pide un plano (almacén → casco, depósito → agua, huerto → lámparas de cultivo) o componentes
+ * y piezas del taller (generador). Así las mejoras llegan escalonadas con la exploración y no todas el
+ * primer día. El camarote acogedor se paga con el almacén inicial: presenta la herramienta Mejorar.
+ * Lo comprueba tests/economy.test.ts («regresiones QA 2 (equilibrio)»).
  */
 const UPGRADES: Record<string, UpgradeDef[]> = {
   almacen: [
@@ -685,7 +687,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 3, name: 'Gran depósito', desc: 'Tanque presurizado con aislamiento: casi el triple que el básico.', cost: { placa_metal: 12, tornillos: 12, plastico: 10, componentes: 1 }, buildTime: 105, unlock: 'agua', effects: { waterCapacity: 340 } },
   ],
   colector: [
-    { tier: 2, name: 'Colector de doble lona', desc: 'Doble lona y un pequeño tanque: recoge casi el doble de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 12, waterCapacity: 35 } },
+    { tier: 2, name: 'Colector de doble lona', desc: 'Doble lona y un pequeño tanque: recoge la mitad más de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 12, waterCapacity: 35 } },
   ],
   potabilizadora: [
     { tier: 2, name: 'Potabilizadora con prefiltro', desc: 'Filtra casi el doble de agua por hora y se desgasta menos.', cost: { componentes: 3, placa_metal: 4, tornillos: 6, pieza_mecanica: 1 }, buildTime: 90, effects: { waterGen: 7, wearMult: 0.7 } },
@@ -757,7 +759,7 @@ export const HULL_EXPANSION = {
   name: 'Ampliar el casco',
   desc: 'Alarga el barco dos secciones por la proa: más cubierta y más bodega.',
   /** Coste base: se multiplica por (1 + ampliaciones ya hechas). */
-  cost: { madera: 40, placa_metal: 16, tornillos: 24 } as Record<ItemId, number>,
+  cost: { madera: 60, placa_metal: 16, tornillos: 24 } as Record<ItemId, number>,
   buildTime: 420,
   unlock: 'casco',
 };

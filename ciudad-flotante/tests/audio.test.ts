@@ -1206,10 +1206,18 @@ describe('Audio de punta a punta (WebAudio falso)', () => {
     r.ctx.bus.emit('worldEventStarted', { eventId: 1, type: 'llegada', title: 'Llegada a Puerto Esperanza' });
     r.ctx.bus.emit('notify', { text: '¡Puerto Esperanza!', kind: 'good' });
     r.ctx.bus.emit('sfx', { name: 'fanfarria' });
+    // El mercado del muelle abre en el mismo instante (evento 'mercante'): sin sirena encima de la música.
+    r.ctx.bus.emit('worldEventStarted', { eventId: 2, type: 'mercante', title: 'Mercado de Puerto Esperanza' });
     r.step(90);
     expect(r.played('llegada')).toBe(1);
     expect(r.played('fanfarria')).toBe(0);
     expect(r.played('aviso_bien')).toBe(0);
+    expect(r.played('sirena')).toBe(0);
+    // Un mercante que llega más tarde sí hace sonar su sirena.
+    r.step(150);
+    r.ctx.bus.emit('worldEventStarted', { eventId: 3, type: 'mercante', title: 'Mercante' });
+    r.step();
+    expect(r.played('sirena')).toBe(1);
     // Más tarde otra fanfarria (un plano nuevo) sí suena.
     r.ctx.bus.emit('unlocked', { key: 'radar', name: 'Radar' });
     r.step();

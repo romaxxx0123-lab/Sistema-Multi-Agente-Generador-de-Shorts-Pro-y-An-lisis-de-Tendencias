@@ -409,6 +409,8 @@ export class Audio {
   private onWorldEvent(type: string): void {
     const c = EVENT_CUES[type];
     if (!c) return;
+    // El mercado del muelle abre con la llegada: su sirena taparía el comienzo de la música.
+    if (type === 'mercante' && this.time - this.lastArrivalMusic < 5) return;
     this.lastEventCueAt = this.time;
     if (c[0] === 'trueno') this.thunder(c[1].distance ?? 700, (Math.random() * 2 - 1) * 0.6);
     else if (c[0] === 'llegada') this.arrivalMusic();
