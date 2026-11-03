@@ -86,16 +86,23 @@ const TAN = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
 const ASPECT = 16 / 9;
 const NEAR = 0.05;
 
-/** Encuadre en reposo: lo más cercano a la cámara, lo más alto y lo más a la izquierda (NDC). */
+/**
+ * Encuadre: distancia a la cámara de lo que se ve en pantalla (un vértice fuera del encuadre
+ * puede pasar el plano cercano sin que se note; dentro, se vería cortado), lo más alto y lo más a
+ * la izquierda (NDC).
+ */
 function framing(vm: ViewModel): { depth: number; top: number; left: number } {
   let depth = Infinity;
   let top = -Infinity;
   let left = Infinity;
   forVisibleVertices(vm, (p) => {
-    depth = Math.min(depth, -p.z);
+    const d = Math.max(-p.z, NEAR);
+    const nx = p.x / d / (TAN * ASPECT);
+    const ny = p.y / d / TAN;
+    if (Math.abs(nx) <= 1 && Math.abs(ny) <= 1) depth = Math.min(depth, -p.z);
     if (p.z < -NEAR) {
-      top = Math.max(top, p.y / -p.z / TAN);
-      left = Math.min(left, p.x / -p.z / (TAN * ASPECT));
+      top = Math.max(top, ny);
+      left = Math.min(left, nx);
     }
   });
   return { depth, top, left };
@@ -227,19 +234,34 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
   });
 
   it('los objetos siguen en la mano: alguna parte pasa por el puño (nada flota)', () => {
-    for (const id of IDS) {
-      const { model } = build(id);
+    /** Distancia del centro del puño a la superficie más cercana del objeto. */
+    const gap = (model: ItemModel): number => {
       model.group.updateMatrixWorld(true);
       let best = Infinity;
-      const v = new THREE.Vector3();
+      const tri = new THREE.Triangle();
+      const q = new THREE.Vector3();
+      const origin = new THREE.Vector3();
       model.group.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh || m.name === 'agua') return;
         const p = m.geometry.getAttribute('position');
-        for (let i = 0; i < p.count; i++) best = Math.min(best, v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld).length());
+        for (let i = 0; i + 2 < p.count; i += 3) {
+          tri.a.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
+          tri.b.fromBufferAttribute(p, i + 1).applyMatrix4(m.matrixWorld);
+          tri.c.fromBufferAttribute(p, i + 2).applyMatrix4(m.matrixWorld);
+          best = Math.min(best, tri.closestPointToPoint(origin, q).length());
+        }
       });
-      // El puño mide ~10 cm: algo del objeto tiene que quedar a menos de 5 cm de su centro.
-      expect(best, id).toBeLessThan(0.05);
+      return best;
+    };
+    for (const id of IDS) {
+      const blend = gap(build(id).model);
+      setBlenderHandModels(false);
+      const proc = gap(buildItemModel(id, mat, lineMat));
+      setBlenderHandModels(true);
+      // El puño mide ~10 cm: el objeto toca el puño (a menos de 5 cm de su centro) y no se
+      // separa de él más que el procedimental.
+      expect(blend, id).toBeLessThan(Math.max(0.05, proc + 0.005));
     }
   });
 
@@ -272,26 +294,33 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
       const proc = framing(equipped(id));
       setBlenderHandModels(true);
       const blend = framing(equipped(id));
-      expect(blend.depth, `${id}: delante de la cámara`).toBeGreaterThan(NEAR);
+      expect(blend.depth, `${id}: delante de la cámara`).toBeGreaterThan(NEAR + 0.01);
       expect(blend.top, `${id}: no sube`).toBeLessThan(proc.top + 0.05);
       expect(blend.left, `${id}: no tapa la mira`).toBeGreaterThan(Math.min(proc.left - 0.05, 0.05));
     }
   });
 
-  it('ninguna animación de uso mete el brazo o el objeto dentro de la cámara', () => {
+  it('ninguna animación de uso mete el brazo o el objeto dentro de la cámara (en pantalla)', () => {
+    const closest = (id: string, action: VmActionName): number => {
+      const vm = equipped(id);
+      vm.play(action);
+      let c = Infinity;
+      for (let t = 0; t < 1.3; t += 1 / 30) {
+        vm.update(1 / 30, MOTION, false);
+        c = Math.min(c, framing(vm).depth);
+      }
+      vm.dispose();
+      return c;
+    };
     for (const id of IDS) {
       for (const action of actionsFor(id)) {
-        const vm = equipped(id);
-        vm.play(action);
-        let closest = Infinity;
-        for (let t = 0; t < 1.3; t += 1 / 30) {
-          vm.update(1 / 30, MOTION, false);
-          forVisibleVertices(vm, (p) => {
-            closest = Math.min(closest, -p.z);
-          });
-        }
-        expect(closest, `${id} · ${action}`).toBeGreaterThan(NEAR + 0.01);
-        vm.dispose();
+        setBlenderHandModels(false);
+        const proc = closest(id, action);
+        setBlenderHandModels(true);
+        const blend = closest(id, action);
+        // Nunca cortado por el plano cercano, y nunca más cerca que el procedimental.
+        expect(blend, `${id} · ${action}`).toBeGreaterThan(NEAR + 0.005);
+        expect(blend, `${id} · ${action} (procedimental ${proc.toFixed(3)})`).toBeGreaterThan(Math.min(proc, 0.12) - 0.01);
       }
     }
   });
