@@ -225,71 +225,100 @@ def bancal():
 
 # ---------------------------------------------------------------- depósito
 
-def deposito():
+def deposito(tier=1):
     """
-    Depósito de agua (1,1 × 1,1 × 2,4; nivel 1): virola de chapa con costuras remachadas, cabeza
-    abombada con boca de hombre, escalerilla a +x, mirilla de nivel de latón al frente (anclajes
-    gaugeBottom/gaugeTop en x = 0, z = −1,075), grifo en (0,4, −1,19) y tubería curvada al techo.
+    Depósito de agua (1,1 × 1,1 × 2,4): virola de chapa con costuras remachadas, cabeza abombada
+    con boca de hombre, escalerilla a +x, mirilla de nivel de latón al frente (anclajes
+    gaugeBottom/gaugeTop en x = 0, z = −1,075 − forro), grifo en (0,4, −1,19 − forro) y tubería al
+    techo. Niveles de mejora (como el procedimental): 2 = segundo cuerpo soldado encima (2,85 m);
+    3 = además forro aislante claro con flejes, válvula de seguridad, manómetro y volante.
     """
     r = 1.02
-    h = 2.4
-    tank = '#8fa9b8'
+    h = 2.4 if tier == 1 else 2.85
+    out = 0.045 if tier >= 3 else 0.0
+    rr = r + out
+    tank = '#8fa9b8' if tier < 3 else '#d9dfe2'
     parts = []
     seg = 16
-    # zócalo de hierro con pernos
-    parts.append(glathe(0, 0, 0, [(0.0, 0.0), (r + 0.06, 0.0), (r + 0.06, 0.1), (r + 0.03, 0.18), (0.0, 0.18)], seg=seg, color=IRON))
+    # zócalo de hierro
+    parts.append(glathe(0, 0, 0, [(0.0, 0.0), (rr + 0.06, 0.0), (rr + 0.06, 0.1), (rr + 0.03, 0.18), (0.0, 0.18)], seg=seg, color=IRON))
     # virola y cabeza abombada (perfil de revolución)
-    prof = [(0.0, 0.17), (r, 0.17), (r, h - 0.37), (r * 0.97, h - 0.27), (r * 0.88, h - 0.18), (r * 0.7, h - 0.1), (r * 0.42, h - 0.06), (0.0, h - 0.05)]
+    prof = [(0.0, 0.17), (rr, 0.17), (rr, h - 0.37), (rr * 0.97, h - 0.27), (rr * 0.88, h - 0.18), (rr * 0.7, h - 0.1), (rr * 0.42, h - 0.06), (0.0, h - 0.05)]
     body = glathe(0, 0, 0, prof, seg=seg, color=tank)
     cf.paint(body, tank, lambda p: p.normal.z > 0.3, f=1.08)
     cf.jitter_colors(body, 0.035, 9)
     parts.append(body)
-    # costuras (aros salientes) con remaches
-    for y in (0.5, 1.1, 1.7):
-        parts.append(glathe(0, y - 0.035, 0, [(r + 0.012, 0.0), (r + 0.02, 0.035), (r + 0.012, 0.07)], seg=seg, color=STEEL_DARK))
-    for y in (0.5, 1.1, 1.7):
-        for k in range(14):
-            a = (k + 0.5) / 14 * math.pi * 2
-            rv = gbox(-0.014, y + 0.036, -0.014, 0.014, y + 0.064, 0.014, STEEL_DARK)
-            rv.rotation_euler = (0, 0, -a)
-            rv.location = B(math.cos(a) * (r + 0.012), 0, math.sin(a) * (r + 0.012))
-            parts.append(cf.bake_transform(rv))
-    # costura vertical remachada (detrás, a −x, donde no tapa la mirilla)
-    for k in range(8):
-        y = 0.28 + k * 0.22
-        parts.append(gbox(-r - 0.018, y - 0.014, 0.306, -r + 0.004, y + 0.014, 0.334, STEEL_DARK))
-    # boca de hombre atornillada en la cabeza y respiradero en cuello de cisne
+    if tier < 3:
+        # costuras (aros salientes) con remaches; en el nivel 2, la junta soldada de los dos cuerpos
+        seams = (0.5, 1.1, 1.7) if tier == 1 else (0.5, 1.1, 1.85, 2.3)
+        for y in seams:
+            parts.append(glathe(0, y - 0.035, 0, [(r + 0.012, 0.0), (r + 0.02, 0.035), (r + 0.012, 0.07)], seg=seg, color=STEEL_DARK))
+            nr = 14 if tier == 1 else 11
+            for k in range(nr):
+                a = (k + 0.5) / nr * math.pi * 2
+                rv = gbox(-0.014, y + 0.036, -0.014, 0.014, y + 0.064, 0.014, STEEL_DARK)
+                rv.rotation_euler = (0, 0, -a)
+                rv.location = B(math.cos(a) * (r + 0.012), 0, math.sin(a) * (r + 0.012))
+                parts.append(cf.bake_transform(rv))
+        if tier == 2:
+            parts.append(glathe(0, 1.81, 0, [(r + 0.005, 0.0), (r + 0.03, 0.02), (r + 0.03, 0.06), (r + 0.005, 0.08)], seg=seg, color='#5c6770'))
+        # costura vertical remachada (detrás, a −x, donde no tapa la mirilla)
+        for k in range(8 if tier == 1 else 10):
+            y = 0.28 + k * 0.22
+            parts.append(gbox(-r - 0.018, y - 0.014, 0.306, -r + 0.004, y + 0.014, 0.334, STEEL_DARK))
+    else:
+        # forro aislante: flejes metálicos, cúpula clara, válvula de seguridad y manómetro
+        for y in (0.5, 1.1, 1.7, 2.3):
+            parts.append(glathe(0, y - 0.025, 0, [(rr + 0.004, 0.0), (rr + 0.016, 0.01), (rr + 0.016, 0.04), (rr + 0.004, 0.05)], seg=seg, color=STEEL))
+            parts.append(gbox(-0.04, y - 0.035, -rr - 0.03, 0.04, y + 0.035, -rr + 0.01, STEEL_DARK, 0.006))
+        parts.append(gcyl(0.25, h - 0.1, 0.1, 0.04, 0.2, 8, RED))
+        parts.append(glathe(0.25, h + 0.06, 0.1, [(0.0, 0.0), (0.065, 0.0), (0.07, 0.025), (0.03, 0.06), (0.0, 0.07)], seg=8, color=RED))
+        mx, my, mz = -0.42, h - 0.75, -rr - 0.03
+        parts.append(gcylz(mx, my, mz - 0.012, mz + 0.04, 0.11, 12, BRASS))
+        parts.append(gcylz(mx, my, mz - 0.02, mz - 0.01, 0.09, 12, '#f3ead6'))
+        parts.append(between((mx, my, mz - 0.024), (mx + 0.06, my + 0.03, mz - 0.024), 0.006, 4, RED))
+        wx = rr + 0.07
+        parts.append(gcylx(rr - 0.01, wx, 0.45, 0.45, 0.025, 6, STEEL))
+        parts.append(cf.torus(0.12, 0.016, seg=12, tube_seg=4, at=B(wx, 0.45, 0.45), rot=(0, 90, 0), color=RED))
+        for k in range(3):
+            a = k / 3 * math.pi * 2
+            parts.append(between((wx, 0.45, 0.45), (wx, 0.45 + math.cos(a) * 0.12, 0.45 + math.sin(a) * 0.12), 0.01, 4, RED))
+    # boca de hombre atornillada en la cabeza y respiradero en cuello de cisne (sin pasar del techo)
     parts.append(gcyl(0, h - 0.08, 0, 0.27, 0.06, 12, STEEL_DARK))
     parts.append(gcyl(0, h - 0.02, 0, 0.22, 0.02, 12, '#6c7880'))
     for k in range(8):
         a = k / 8 * math.pi * 2
         parts.append(gcyl(math.cos(a) * 0.245, h - 0.02, math.sin(a) * 0.245, 0.018, 0.025, 4, CAST))
-    parts.append(gtube([(0.42, h - 0.18, -0.25), (0.42, h + 0.12, -0.25), (0.47, h + 0.2, -0.25), (0.55, h + 0.16, -0.25), (0.57, h + 0.08, -0.25)], 0.035, seg=6, color=STEEL))
-    # tubería de llenado: sale de la cabeza, curva y sube al techo (3 m), con su válvula de volante
-    pts = [(-0.45, h - 0.15, 0.3), (-0.45, h + 0.05, 0.3), (-0.47, h + 0.15, 0.32), (-0.52, h + 0.22, 0.36), (-0.55, h + 0.3, 0.38), (-0.55, 3.0, 0.38)]
-    parts.append(gtube(pts, 0.06, seg=8, color=STEEL))
-    parts.append(gcyl(-0.55, 2.82, 0.38, 0.085, 0.05, 10, STEEL_DARK))
+    vt = min(0.2, 2.97 - h)
+    parts.append(gtube([(0.42, h - 0.18, -0.25), (0.42, h + vt * 0.6, -0.25), (0.47, h + vt, -0.25), (0.55, h + vt * 0.8, -0.25), (0.57, h + vt * 0.4, -0.25)], 0.035, seg=6, color=STEEL))
+    # tubería de llenado: sale de la cabeza, curva y sube al techo (3 m); con sitio, válvula de volante
+    if h + 0.4 < 3.0:
+        pts = [(-0.45, h - 0.15, 0.3), (-0.45, h + 0.05, 0.3), (-0.47, h + 0.15, 0.32), (-0.52, h + 0.22, 0.36), (-0.55, h + 0.3, 0.38), (-0.55, 3.0, 0.38)]
+        parts.append(gtube(pts, 0.06, seg=8, color=STEEL))
+        parts.append(gcyl(-0.55, 2.82, 0.38, 0.085, 0.05, 10, STEEL_DARK))
+        vy = 2.62
+        parts.append(gcylx(-0.55 + 0.05, -0.55 + 0.17, vy, 0.38, 0.018, 6, STEEL))
+        parts.append(cf.torus(0.08, 0.012, seg=12, tube_seg=4, at=B(-0.55 + 0.17, vy, 0.38), rot=(0, 90, 0), color=RED))
+        for k in range(3):
+            a = k / 3 * math.pi * 2
+            parts.append(between((-0.55 + 0.17, vy, 0.38), (-0.55 + 0.17, vy + math.cos(a) * 0.08, 0.38 + math.sin(a) * 0.08), 0.008, 4, RED))
+        parts.append(gcyl(-0.55, vy - 0.07, 0.38, 0.09, 0.14, 10, RED))
+    else:
+        parts.append(gcyl(-0.45, h - 0.15, 0.3, 0.06, 3.0 - h + 0.15, 8, STEEL))
+        parts.append(gcyl(-0.45, 2.94, 0.3, 0.085, 0.06, 10, STEEL_DARK))
     parts.append(gcyl(-0.45, h - 0.12, 0.3, 0.09, 0.04, 10, STEEL_DARK))
-    vy = 2.62
-    parts.append(gcylx(-0.55 + 0.05, -0.55 + 0.17, vy, 0.38, 0.018, 6, STEEL))
-    wheel = cf.torus(0.08, 0.012, seg=12, tube_seg=4, at=B(-0.55 + 0.17, vy, 0.38), rot=(0, 90, 0), color=RED)
-    parts.append(wheel)
-    for k in range(3):
-        a = k / 3 * math.pi * 2
-        parts.append(between((-0.55 + 0.17, vy, 0.38), (-0.55 + 0.17, vy + math.cos(a) * 0.08, 0.38 + math.sin(a) * 0.08), 0.008, 4, RED))
-    parts.append(gcyl(-0.55, vy - 0.07, 0.38, 0.09, 0.14, 10, RED))
     # escalerilla a +x: largueros, peldaños redondos y patillas a la virola
-    lx = r + 0.07
+    lx = rr + 0.07
     for z in (-0.18, 0.18):
         parts.append(gbox(lx - 0.02, 0.18, z - 0.022, lx + 0.02, h - 0.2, z + 0.022, STEEL_DARK, 0.006))
-        for y in (0.5, 1.4, 2.05):
-            parts.append(gbox(r - 0.01, y - 0.02, z - 0.015, lx, y + 0.02, z + 0.015, STEEL_DARK))
+        for y in (0.5, 1.4, h - 0.35):
+            parts.append(gbox(rr - 0.01, y - 0.02, z - 0.015, lx, y + 0.02, z + 0.015, STEEL_DARK))
     y = 0.4
     while y < h - 0.3:
         parts.append(gcylz(lx, y + 0.015, -0.18, 0.18, 0.016, 6, STEEL))
         y += 0.3
-    # mirilla de nivel al frente: marco de latón con escala (el agua la dibuja props/dynamic)
-    gz = -r - 0.07
+    # mirilla de nivel al frente: marco de latón con escala (el agua la dibuja dynamic.ts)
+    gz = -r - 0.07 - out
     gtop = h - 0.4
     for x in (-0.08, 0.08):
         parts.append(gbox(x - 0.02, 0.3, gz - 0.03, x + 0.02, gtop, gz + 0.06, BRASS, 0.006))
@@ -298,21 +327,212 @@ def deposito():
     for k in range(1, 5):
         yk = 0.32 + k * ((gtop - 0.32) / 5)
         parts.append(gbox(0.1, yk, gz - 0.035, 0.15, yk + 0.012, gz, '#2b2d42'))
-    # grifo de latón con volante rojo (anclaje tap en la boca: (0,4, 0,34, −1,19))
-    parts.append(gcylz(0.4, 0.45, -r - 0.2, -r + 0.02, 0.04, 8, BRASS))
-    parts.append(gtube([(0.4, 0.45, -r - 0.18), (0.4, 0.4, -r - 0.18), (0.4, 0.36, -r - 0.17)], 0.03, seg=6, color=BRASS))
-    parts.append(gcyl(0.4, 0.49, -r - 0.11, 0.012, 0.06, 5, BRASS))
-    parts.append(cf.torus(0.045, 0.01, seg=10, tube_seg=3, at=B(0.4, 0.555, -r - 0.11), color=RED))
+    # grifo de latón con volante rojo (anclaje tap en la boca)
+    zt = -r - out
+    parts.append(gcylz(0.4, 0.45, zt - 0.2, zt + 0.02, 0.04, 8, BRASS))
+    parts.append(gtube([(0.4, 0.45, zt - 0.18), (0.4, 0.4, zt - 0.18), (0.4, 0.36, zt - 0.17)], 0.03, seg=6, color=BRASS))
+    parts.append(gcyl(0.4, 0.49, zt - 0.11, 0.012, 0.06, 5, BRASS))
+    parts.append(cf.torus(0.045, 0.01, seg=10, tube_seg=3, at=B(0.4, 0.555, zt - 0.11), color=RED))
     # placa con el nombre
     parts.append(gbox(-0.36, 1.19, gz + 0.01, -0.14, 1.37, gz + 0.04, '#f3ead6', 0.005))
     for x in (-0.345, -0.155):
         for yy in (1.205, 1.355):
             parts.append(gbox(x - 0.006, yy - 0.006, gz + 0.004, x + 0.006, yy + 0.006, gz + 0.012, BRASS))
-    return cf.model(parts, 'prop_deposito')
+    return cf.model(parts, 'prop_deposito' if tier == 1 else f'prop_deposito@{tier}')
+
+
+# ---------------------------------------------------------------- generador
+
+def generador():
+    """
+    Bancada del generador (1,1 × 0,8 × 1,4): chapa con pernos, dos vigas en I y tacos de goma.
+    El grupo electrógeno vibra, así que va aparte (`prop_generador_movil`).
+    """
+    hx, hz = 1.1, 0.8
+    parts = [gbox(-hx, 0, -hz, hx, 0.08, hz, IRON, 0.015, 1)]
+    cf.jitter_colors(parts[0], 0.04, 3)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            parts.append(gcyl(sx * (hx - 0.08), 0.08, sz * (hz - 0.08), 0.03, 0.025, 6, STEEL))
+    # vigas en I bajo el grupo y tacos de goma
+    for x in (-hx + 0.15, hx - 0.15):
+        parts.append(gbox(x - 0.08, 0.08, -hz + 0.05, x + 0.08, 0.1, hz - 0.05, CAST))
+        parts.append(gbox(x - 0.02, 0.1, -hz + 0.05, x + 0.02, 0.15, hz - 0.05, CAST))
+        parts.append(gbox(x - 0.08, 0.15, -hz + 0.05, x + 0.08, 0.17, hz - 0.05, CAST))
+        for z in (-0.35, 0.35):
+            parts.append(gcyl(x, 0.12, z, 0.05, 0.05, 8, '#1d1f22'))
+    return cf.model(parts, 'prop_generador')
+
+
+def generador_movil():
+    """
+    Grupo electrógeno (lo que vibra), en coordenadas del prop y subido PIECE_LIFT: bloque rojo con
+    culatas aleteadas y tapa de balancines, radiador con rejilla, alternador azul con aletas,
+    depósito de combustible redondeado con cinchas, escape con silencioso y cuadro de mando.
+    Mismas cotas que el procedimental (los detalles de las mejoras se apoyan en la culata, a 1,0 m).
+    """
+    L = PIECE_LIFT
+    hx, hz = 1.1, 0.8
+    red = '#c8553d'
+    parts = []
+
+    def up(ob):
+        ob.location.z += L
+        return cf.bake_transform(ob)
+    # bloque motor con cárter y bisel
+    blk = gbox(-hx + 0.25, 0.16, -0.45, 0.25, 0.85, 0.42, red, 0.03, 2)
+    cf.jitter_colors(blk, 0.03, 4)
+    parts.append(blk)
+    parts.append(gbox(-hx + 0.3, 0.16, -0.48, 0.2, 0.3, 0.45, '#9e3f2c', 0.02))
+    # culatas con aletas de refrigeración y tapa de balancines atornillada
+    for k in range(3):
+        x0 = -hx + 0.32 + k * 0.3
+        parts.append(gbox(x0, 0.85, -0.3, x0 + 0.23, 0.92, 0.3, '#a8462f', 0.01))
+        for f in range(3):
+            parts.append(gbox(x0 - 0.01, 0.93 + f * 0.025, -0.33, x0 + 0.24, 0.945 + f * 0.025, 0.33, '#b04a33'))
+    parts.append(gbox(-hx + 0.3, 1.0, -0.13, 0.2, 1.05, 0.13, STEEL_DARK, 0.012))
+    for k in range(5):
+        parts.append(gcyl(-hx + 0.38 + k * 0.2, 1.05, -0.1, 0.012, 0.012, 4, CAST))
+        parts.append(gcyl(-hx + 0.38 + k * 0.2, 1.05, 0.1, 0.012, 0.012, 4, CAST))
+    # radiador con marco, rejilla y tapón
+    parts.append(gbox(-hx + 0.05, 0.16, -0.5, -hx + 0.25, 1.0, 0.5, CAST, 0.015))
+    for k in range(7):
+        parts.append(gbox(-hx + 0.02, 0.24 + k * 0.1, -0.44, -hx + 0.05, 0.28 + k * 0.1, 0.44, STEEL))
+    parts.append(gcyl(-hx + 0.15, 1.0, 0.3, 0.035, 0.05, 8, BRASS))
+    # alternador con aletas y caja de bornes
+    alt = lathe_along((0.245, 0.55, 0), (0.995, 0.55, 0), [(0.0, 0.0), (0.3, 0.0), (0.36, 0.06), (0.38, 0.15), (0.38, 0.85), (0.34, 0.95), (0.22, 1.0), (0.0, 1.0)], seg=14, color='#457b9d')
+    parts.append(alt)
+    for k in range(5):
+        x = 0.36 + k * 0.12
+        parts.append(lathe_along((x, 0.55, 0), (x + 0.03, 0.55, 0), [(0.37, 0.0), (0.405, 0.2), (0.405, 0.8), (0.37, 1.0)], seg=14, color='#3d6d8b'))
+    parts.append(lathe_along((0.99, 0.55, 0), (1.05, 0.55, 0), [(0.0, 0.0), (0.2, 0.0), (0.2, 0.5), (0.12, 1.0), (0.0, 1.0)], seg=10, color=STEEL_DARK))
+    parts.append(gbox(0.5, 0.9, -0.12, 0.74, 1.04, 0.12, '#2b2d42', 0.01))
+    parts.append(gtube([(0.62, 1.0, 0.1), (0.62, 1.08, 0.2), (0.4, 1.08, 0.3), (0.2, 0.95, 0.38)], 0.018, seg=4, color='#1d1f22'))
+    # depósito de combustible redondeado con cinchas y tapón
+    tank = gbox(-hx + 0.4, 0.17, 0.46, 0.2, 0.62, hz - 0.06, '#e0a458', 0.07, 2)
+    parts.append(tank)
+    for x in (-hx + 0.6, 0.0):
+        parts.append(gbox(x - 0.025, 0.17, 0.44, x + 0.025, 0.635, hz - 0.04, CAST))
+    parts.append(gcyl(-0.1, 0.62, 0.6, 0.055, 0.05, 8, IRON))
+    parts.append(gcyl(-0.1, 0.67, 0.6, 0.065, 0.02, 8, '#bc4749'))
+    # escape: colector, codo, silencioso redondeado y salida con sombrerete
+    parts.append(gtube([(-0.55, 0.95, 0.32), (-0.55, 1.12, 0.32), (-0.55, 1.2, 0.2), (-0.55, 1.24, 0.15)], 0.055, seg=6, color=STEEL_DARK))
+    parts.append(lathe_along((-0.62, 1.32, 0.15), (-0.08, 1.32, 0.15), [(0.0, 0.0), (0.07, 0.0), (0.12, 0.08), (0.125, 0.2), (0.125, 0.8), (0.12, 0.92), (0.07, 1.0), (0.0, 1.0)], seg=10, color='#6c757d'))
+    for x in (-0.48, -0.22):
+        parts.append(lathe_along((x, 1.32, 0.15), (x + 0.03, 1.32, 0.15), [(0.12, 0.0), (0.135, 0.5), (0.12, 1.0)], seg=10, color=STEEL_DARK))
+    parts.append(gcyl(-0.12, 1.32, 0.15, 0.05, 0.2, 8, STEEL_DARK))
+    parts.append(between((-0.12, 1.52, 0.15 - 0.05), (-0.12, 1.555, 0.15 + 0.04), 0.045, 6, STEEL_DARK))
+    # cuadro de mando sobre su pie, con dos relojes, piloto y seta de parada
+    parts.append(gbox(0.3, 0.75, -hz + 0.05, 0.85, 1.12, -hz + 0.18, '#2b2d42', 0.015))
+    parts.append(gbox(0.52, 0.16, -hz + 0.1, 0.6, 0.75, -hz + 0.16, '#2b2d42'))
+    for x in (0.45, 0.6):
+        parts.append(gcylz(x, 0.95, -hz + 0.03, -hz + 0.05, 0.055, 10, STEEL))
+        parts.append(gcylz(x, 0.95, -hz + 0.026, -hz + 0.032, 0.045, 10, '#f3ead6'))
+    parts.append(gcylz(0.76, 0.86, -hz + 0.02, -hz + 0.05, 0.035, 8, RED))
+    return cf.model([up(o) for o in parts], 'prop_generador_movil')
+
+
+# ---------------------------------------------------------------- motor
+
+def motor():
+    """Bancada del motor (1,8 × 0,9 × 1,6): chapa, largueros en I con pernos y armario del cuadro."""
+    hx, hz = 1.8, 0.9
+    parts = [gbox(-hx, 0, -hz, hx, 0.16, hz, IRON, 0.02, 1)]
+    cf.jitter_colors(parts[0], 0.04, 5)
+    parts.append(gbox(-hx + 0.03, 0.16, -hz + 0.03, hx - 0.03, 0.18, hz - 0.03, CAST))
+    for z in (-hz + 0.15, hz - 0.15):
+        parts.append(gbox(-hx + 0.1, 0.18, z - 0.08, hx - 0.1, 0.2, z + 0.08, CAST))
+        parts.append(gbox(-hx + 0.1, 0.2, z - 0.02, hx - 0.1, 0.24, z + 0.02, CAST))
+        parts.append(gbox(-hx + 0.1, 0.24, z - 0.08, hx - 0.1, 0.26, z + 0.08, CAST))
+        for k in range(6):
+            parts.append(gcyl(-hx + 0.25 + k * 0.62, 0.26, z, 0.025, 0.02, 6, STEEL))
+    # armario del cuadro con puerta, bisagras, rejilla y asa (anclajes led y plaque en su frente)
+    parts.append(gbox(-hx + 0.05, 0.18, -hz + 0.02, -hx + 0.35, 1.2, -hz + 0.22, '#2b2d42', 0.012))
+    parts.append(gbox(-hx + 0.08, 0.24, -hz + 0.012, -hx + 0.32, 1.14, -hz + 0.03, '#353a4f', 0.006))
+    for y in (0.35, 1.0):
+        parts.append(gbox(-hx + 0.32, y, -hz + 0.008, -hx + 0.345, y + 0.07, -hz + 0.03, STEEL))
+    for k in range(4):
+        parts.append(gbox(-hx + 0.12, 0.8 + k * 0.035, -hz + 0.006, -hx + 0.28, 0.815 + k * 0.035, -hz + 0.012, '#1d1f22'))
+    parts.append(gbox(-hx + 0.1, 0.55, -hz - 0.01, -hx + 0.12, 0.7, -hz + 0.012, STEEL))
+    return cf.model(parts, 'prop_motor')
+
+
+def motor_movil():
+    """
+    Motor diésel marino (lo que vibra), en coordenadas del prop y subido PIECE_LIFT: bloque verde
+    con nervios, cuatro culatas con tapas rojas atornilladas, colector de escape oxidado con bridas,
+    bomba de inyección con sus tubos, filtros, polea y correa delante, volante con taladros y
+    acoplamiento al eje detrás. Mismas cotas que el procedimental.
+    """
+    L = PIECE_LIFT
+    hx = 1.8
+    body = '#4f6d5e'
+    rust = 'rust'
+    parts = []
+
+    def up(ob):
+        ob.location.z += L
+        return cf.bake_transform(ob)
+    blk = gbox(-hx + 0.4, 0.26, -0.55, hx - 0.5, 1.1, 0.55, body, 0.035, 2)
+    cf.jitter_colors(blk, 0.03, 8)
+    parts.append(blk)
+    # cárter y nervios laterales
+    parts.append(gbox(-hx + 0.45, 0.26, -0.5, hx - 0.55, 0.42, 0.5, '#3f5a4d', 0.02))
+    for k in range(5):
+        x = -hx + 0.62 + k * 0.6
+        for sz in (-1, 1):
+            parts.append(gbox(x - 0.025, 0.42, sz * 0.555 - 0.012, x + 0.025, 1.05, sz * 0.555 + 0.012, '#45604f'))
+    # culatas, tapas de balancines y tornillos
+    w = (2 * hx - 1.2) / 4
+    for k in range(4):
+        x = -hx + 0.55 + k * w
+        parts.append(gbox(x, 1.1, -0.38, x + w - 0.08, 1.32, 0.38, '#43604f', 0.02))
+        cover = gbox(x + 0.04, 1.32, -0.3, x + w - 0.12, 1.42, 0.3, '#c8553d', 0.03, 2)
+        parts.append(cover)
+        for dx, dz in ((0.09, -0.22), (w - 0.17, 0.22)):
+            parts.append(gcyl(x + dx, 1.42, dz, 0.016, 0.02, 4, CAST))
+        # tubo de inyección desde la bomba (lado −z)
+        parts.append(gtube([(x + w * 0.45, 0.82, -0.62), (x + w * 0.45, 1.0, -0.62), (x + w * 0.45, 1.2, -0.45), (x + w * 0.45, 1.26, -0.38)], 0.012, seg=4, color=STEEL))
+    # bomba de inyección y filtros
+    parts.append(gbox(-hx + 0.6, 0.6, -0.68, hx - 1.2, 0.85, -0.55, '#2b2f33', 0.015))
+    for x in (hx - 1.0, hx - 0.8):
+        parts.append(glathe(x, 0.42, -0.66, [(0.0, 0.0), (0.06, 0.0), (0.07, 0.03), (0.07, 0.24), (0.05, 0.27), (0.0, 0.28)], seg=8, color='#e9c46a'))
+    # tubería de combustible baja (como el procedimental)
+    parts.append(gcylx(-hx + 0.6, hx - 0.8, 0.5, -0.65, 0.04, 6, STEEL))
+    # colector de escape oxidado con bridas y codos
+    parts.append(lathe_along((-hx + 0.6, 0.95, 0.68), (hx - 0.6, 0.95, 0.68), [(0.0, 0.0), (0.08, 0.0), (0.095, 0.02), (0.095, 0.98), (0.08, 1.0), (0.0, 1.0)], seg=10, color=rust))
+    for k in range(4):
+        x = -hx + 0.7 + k * 0.6
+        parts.append(gtube([(x, 1.15, 0.38), (x, 1.12, 0.5), (x, 1.02, 0.6), (x, 0.97, 0.66)], 0.055, seg=6, color=rust))
+        parts.append(gbox(x - 0.09, 1.08, 0.5, x + 0.09, 1.2, 0.56, '#8a4a1a'))
+    parts.append(gtube([(hx - 0.6, 0.95, 0.68), (hx - 0.45, 0.98, 0.7), (hx - 0.42, 1.2, 0.7), (hx - 0.42, 1.55, 0.7)], 0.08, seg=8, color=rust))
+    # delante (−x): tapa de distribución, polea, correa y eje
+    parts.append(gbox(-hx + 0.3, 0.35, -0.42, -hx + 0.42, 1.05, 0.42, '#43604f', 0.02))
+    parts.append(lathe_along((-hx + 0.1, 0.75, 0), (-hx + 0.3, 0.75, 0), [(0.0, 0.0), (0.2, 0.0), (0.22, 0.2), (0.17, 0.5), (0.22, 0.8), (0.2, 1.0), (0.0, 1.0)], seg=12, color='#2b2f33'))
+    parts.append(lathe_along((-hx + 0.13, 0.98, 0.25), (-hx + 0.27, 0.98, 0.25), [(0.0, 0.0), (0.09, 0.0), (0.1, 0.5), (0.09, 1.0), (0.0, 1.0)], seg=10, color=STEEL_DARK))
+    parts.append(gtube([(-hx + 0.2, 0.97, 0.17), (-hx + 0.2, 0.76, 0.2), (-hx + 0.2, 0.55, 0.0), (-hx + 0.2, 0.75, -0.2), (-hx + 0.2, 1.05, 0.25), (-hx + 0.2, 0.97, 0.33)], 0.018, seg=4, color='#1d1f22'))
+    parts.append(gcylx(-hx - 0.15, -hx + 0.12, 0.75, 0, 0.09, 8, STEEL))
+    # detrás (+x): volante con taladros, cárter del volante y acoplamiento con pernos
+    parts.append(lathe_along((hx - 0.5, 0.75, 0), (hx - 0.38, 0.75, 0), [(0.0, 0.0), (0.5, 0.0), (0.5, 1.0), (0.0, 1.0)], seg=14, color='#3f5a4d'))
+    parts.append(lathe_along((hx - 0.38, 0.75, 0), (hx - 0.22, 0.75, 0), [(0.0, 0.0), (0.55, 0.0), (0.55, 0.15), (0.48, 0.3), (0.48, 0.7), (0.55, 0.85), (0.55, 1.0), (0.0, 1.0)], seg=16, color=STEEL_DARK))
+    for k in range(6):
+        a = k / 6 * math.pi * 2
+        parts.append(gcylx(hx - 0.225, hx - 0.215, 0.75 + math.sin(a) * 0.3, math.cos(a) * 0.3, 0.06, 5, '#1d1f22'))
+    parts.append(lathe_along((hx - 0.22, 0.75, 0), (hx + 0.05, 0.75, 0), [(0.0, 0.0), (0.12, 0.0), (0.12, 0.4), (0.18, 0.45), (0.18, 0.6), (0.12, 0.65), (0.12, 1.0), (0.0, 1.0)], seg=10, color=STEEL))
+    for k in range(6):
+        a = k / 6 * math.pi * 2
+        parts.append(gcylx(hx - 0.12, hx - 0.03, 0.75 + math.sin(a) * 0.15, math.cos(a) * 0.15, 0.018, 4, CAST))
+    return cf.model([up(o) for o in parts], 'prop_motor_movil')
 
 
 def build():
     timon()
     timon_rueda()
     bancal()
-    deposito()
+    deposito(1)
+    deposito(2)
+    deposito(3)
+    generador()
+    generador_movil()
+    motor()
+    motor_movil()

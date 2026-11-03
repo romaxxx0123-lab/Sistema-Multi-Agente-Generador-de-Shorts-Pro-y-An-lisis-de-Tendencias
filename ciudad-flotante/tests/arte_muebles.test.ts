@@ -98,13 +98,28 @@ describe('arte-muebles: modelos de Blender de los props', () => {
     }
   });
 
-  it('la rueda del timón es de Blender y gira sobre el mismo pivote (centrada en su cubo)', () => {
+  it('la rueda del timón y los cuerpos que vibran (generador, motor) son de Blender, en su sitio', () => {
     const { bl, pr } = both('timon');
     expect(bl.moving).not.toBe(pr.moving);
     bl.moving!.computeBoundingBox();
     const c = bl.moving!.boundingBox!.getCenter(new THREE.Vector3());
     expect(c.length()).toBeLessThan(0.03);
     expect(bl.moving!.boundingBox!.max.x).toBeCloseTo(0.62, 1);
+    for (const k of ['generador', 'motor'] as const) {
+      const m = both(k);
+      expect(hasModel(`prop_${k}_movil`), k).toBe(true);
+      expect(tris(m.bl.moving), k).toBeGreaterThan(tris(m.pr.moving));
+      m.bl.moving!.computeBoundingBox();
+      m.pr.moving!.computeBoundingBox();
+      // misma caja que el procedimental (±10 cm): no flota ni se hunde en la bancada
+      const a = m.bl.moving!.boundingBox!;
+      const b = m.pr.moving!.boundingBox!;
+      for (const ax of ['x', 'y', 'z'] as const) {
+        expect(Math.abs(a.min[ax] - b.min[ax]), `${k} min.${ax}`).toBeLessThan(0.16);
+        expect(Math.abs(a.max[ax] - b.max[ax]), `${k} max.${ax}`).toBeLessThan(0.16);
+      }
+      expect(a.min.y, k).toBeGreaterThan(0.1);
+    }
   });
 
   it('mantienen alturas de uso: colchones, mantas, asientos y encimeras', () => {
@@ -129,21 +144,34 @@ describe('arte-muebles: modelos de Blender de los props', () => {
   });
 
   it('cada nivel de mejora sigue viéndose distinto y conserva sus detalles sobre el modelo', () => {
+    const total = (m: PropModel): number => tris(m.solid) + tris(m.moving);
     for (const k of KINDS) {
       const { maxTier } = specOf(k);
       if (propTier(k, specOf(k).module, 3) === 1) continue;
       const one = both(k, 1);
       for (let t = 2; t <= maxTier; t++) {
         const cur = both(k, t);
+        expect(total(cur.bl), `${k} nivel ${t}`).not.toBe(total(one.bl));
         // con modelo base: los extras del nivel se añaden encima (misma diferencia que en el procedimental)
         if (hasModel(`prop_${k}@${t}`)) continue;
-        if (tris(cur.bl.solid) === tris(cur.pr.solid)) continue; // nivel que cambia la base: procedimental
-        expect(tris(cur.bl.solid) - tris(one.bl.solid), `${k} nivel ${t}`).toBe(tris(cur.pr.solid) - tris(one.pr.solid));
-        expect(tris(cur.bl.solid), `${k} nivel ${t}`).toBeGreaterThan(tris(one.bl.solid));
+        expect(total(cur.bl) - total(one.bl), `${k} nivel ${t}`).toBe(total(cur.pr) - total(one.pr));
+        expect(total(cur.bl), `${k} nivel ${t}`).toBeGreaterThan(total(one.bl));
       }
     }
-    // el depósito más alto (nivel 2) o forrado (3) cambia la base: sigue siendo procedimental
-    expect(both('deposito', 2).bl.solid.getAttribute('position').count).toBe(both('deposito', 2).pr.solid.getAttribute('position').count);
+    // el depósito más alto (nivel 2) o forrado (3) cambia la base: tiene su modelo de nivel, con la
+    // misma altura que el procedimental y los mismos anclajes (mirilla, grifo, placa)
+    for (const t of [2, 3]) {
+      const { bl, pr } = both('deposito', t);
+      expect(hasModel(`prop_deposito@${t}`)).toBe(true);
+      expect(tris(bl.solid)).not.toBe(tris(pr.solid));
+      bl.solid.computeBoundingBox();
+      pr.solid.computeBoundingBox();
+      expect(bl.solid.boundingBox!.max.y).toBeCloseTo(pr.solid.boundingBox!.max.y, 1);
+      for (const [a, v] of Object.entries(pr.anchors)) expect(bl.anchors[a]!.distanceTo(v), `deposito ${t} ${a}`).toBeLessThan(1e-9);
+      // la mirilla (cristal con el agua) cae dentro del marco de latón del modelo
+      const top = bl.anchors.gaugeTop!;
+      expect(topAt(bl.solid, 0.08, top.z + 0.02)!).toBeGreaterThan(top.y);
+    }
   });
 
   it('caben en su colisionador (con el margen del procedimental) y nada atraviesa el techo, en todos los niveles', () => {

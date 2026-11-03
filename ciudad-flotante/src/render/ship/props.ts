@@ -1043,7 +1043,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     }
   },
 
-  generador: ({ g, moving, anchors, tier }, d) => {
+  generador: ({ g, moving, anchors, tier, extras }, d) => {
     const { hx, hz } = d;
     // bancada (fija)
     g.box(-hx, 0, -hz, hx, 0.1, hz, IRON);
@@ -1076,6 +1076,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     anchors.exhaust = new THREE.Vector3(-0.12, 1.55, 0.15);
     anchors.led = new THREE.Vector3(0.7, 0.98, -hz + 0.04);
     anchors.plaque = new THREE.Vector3(-0.35, 0.55, -0.485);
+    extras();
     if (tier >= 2) {
       // Doble cilindro: segundo cilindro con aletas de refrigeración y su colector.
       for (const [x, z] of [[-hx + 0.55, -0.22], [-hx + 0.55, 0.2]] as const) {
@@ -1333,7 +1334,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     glow.sphere(-hx + 0.32, cy + 0.3, hz - 0.32, 0.04, '#ffffff');
   },
 
-  motor: ({ g, moving, anchors, tier }, d) => {
+  motor: ({ g, moving, anchors, tier, extras }, d) => {
     const { hx, hz } = d;
     g.box(-hx, 0, -hz, hx, 0.18, hz, IRON);
     for (const z of [-hz + 0.15, hz - 0.15]) g.box(-hx + 0.1, 0.18, z - 0.08, hx - 0.1, 0.26, z + 0.08, '#2b2f33');
@@ -1358,6 +1359,7 @@ const BUILDERS: Record<PropKind, Builder> = {
     g.box(-hx + 0.05, 0.18, -hz + 0.02, -hx + 0.35, 1.2, -hz + 0.22, '#2b2d42');
     anchors.led = new THREE.Vector3(-hx + 0.2, 1.05, -hz + 0.015);
     anchors.plaque = new THREE.Vector3(-hx + 0.2, 0.62, -hz + 0.005);
+    extras();
     if (tier >= 2) {
       // Hélice de paso variable: grupo hidráulico de mando del paso sobre el eje, con palanca.
       m.box(hx - 0.75, 1.1, -0.25, hx - 0.35, 1.45, 0.25, '#457b9d');
@@ -2034,8 +2036,8 @@ interface Built {
 }
 
 /**
- * Sustituye la geometría sólida (y la pieza móvil) del procedimental por la de Blender si existe
- * (ver la cabecera). Devuelve null si este prop y nivel siguen siendo procedimentales.
+ * Geometría sólida y pieza móvil de Blender para este prop y nivel (ver la cabecera); cada una es
+ * null si sigue siendo la procedimental.
  */
 function blenderGeometry(kind: PropKind, t: number, d: PropDims, built: Built): { solid: THREE.BufferGeometry | null; moving: THREE.BufferGeometry | null } {
   const res = { solid: null as THREE.BufferGeometry | null, moving: null as THREE.BufferGeometry | null };
