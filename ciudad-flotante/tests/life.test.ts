@@ -1917,7 +1917,7 @@ describe('QA: incendios, náufragos, naufragios y expediciones', () => {
     expect(npc.npcRoleName(ines, 'mecanico')).toBe('Mecánica');
     expect(npc.npcRoleName(ines, 'libre')).toBe('Sin puesto');
     for (const name of ['Marina', 'Lucía', 'Nora', 'Alma', 'Vera', 'Inés', 'Carla', 'Rocío', 'Julia', 'Sol', 'Olga', 'Aitana', 'Celia', 'Lola', 'Greta']) expect(npc.isFemaleNpc({ name }), name).toBe(true);
-    for (const name of ['Tomás', 'Iker', 'Bruno', 'Darío', 'Gael', 'Teo', 'Hugo', 'Elías', 'Mateo', 'Andrés', 'Simón', 'Ramiro', 'Joaquín', 'Fermín', 'Pablo']) expect(npc.isFemaleNpc({ name }), name).toBe(false);
+    for (const name of ['Tomás', 'Iker', 'Bruno', 'Darío', 'Gael', 'Teo', 'Hugo', 'Elías', 'Mateo', 'Andrés', 'Simón', 'Ramiro', 'Joaquín', 'Gonzalo', 'Fermín', 'Pablo']) expect(npc.isFemaleNpc({ name }), name).toBe(false);
     const sim = quiet(setup());
     const s = npc.spawnSurvivor(sim, { name: 'Inés', role: 'pescador' })!;
     const text = sim.state.log[sim.state.log.length - 1]!.text;
@@ -2460,7 +2460,7 @@ describe('historia: llegada a Puerto Esperanza', () => {
     expect(started).toContain('llegada');
     expect(lastHistory(sim, 'llegada')?.success).toBe(true);
     // Diario: la llegada y el epílogo.
-    expect(sim.state.log.some((l) => l.text.includes('Al amanecer aparece la luz verde'))).toBe(true);
+    expect(sim.state.log.some((l) => l.text.includes('Al amanecer, la luz verde deja de estar sola'))).toBe(true);
     expect(sim.state.log.some((l) => l.text.includes('Tu ciudad flotante ya no está sola'))).toBe(true);
     // Dos habitantes nuevos, descansados.
     expect(sim.state.npcs.length).toBe(crew + 2);

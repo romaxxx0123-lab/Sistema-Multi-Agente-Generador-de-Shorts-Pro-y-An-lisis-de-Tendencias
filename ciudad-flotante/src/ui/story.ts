@@ -4,7 +4,7 @@
  *  - `notebookView`: el Cuaderno del Diario (J). Índice de las siete hojas (las leídas con su título,
  *    las que faltan como «¿?» con la región donde suelen aparecer) y la hoja abierta sobre papel
  *    pautado con letra manuscrita; las que faltan, como un hueco con su pista. Arriba, el resumen
- *    de `storyStatus` y, con el rumbo revelado, «Rumbo de la capitana: elígelo en el timón».
+ *    de `storyStatus` y, con el rumbo revelado, «Rumbo de la capitana: fíjalo en el timón».
  *  - `PageReader`: al leer una hoja aparece una cuartilla junto al borde de la pantalla con el texto
  *    completo. No bloquea: el juego sigue, no suelta el ratón y se cierra sola cuando da tiempo a
  *    leerla (se detiene con el cursor encima). J la abre en el Cuaderno. Nunca tapa un panel: al
@@ -164,7 +164,7 @@ export function notebookView(env: UiEnv): VNode {
   // Con el rumbo revelado, el resumen se destaca (y dice dónde elegirlo); al llegar, se puede volver a ver la llegada.
   let summary: VNode;
   if (st.revealed && !st.arrived) {
-    summary = h('div', { class: 'nb-summary nb-course' }, gl('helm'), h('span', null, h('b', null, `${CAPTAIN_COURSE_LABEL}:`), ` elígelo en el timón al final de cualquier región para poner rumbo a ${st.finalRegionName}.`));
+    summary = h('div', { class: 'nb-summary nb-course' }, gl('helm'), h('span', null, h('b', null, `${CAPTAIN_COURSE_LABEL}:`), ` fíjalo en el timón cuando quieras para poner rumbo a ${st.finalRegionName}.`));
   } else if (st.arrived) {
     summary = h('div', { class: 'nb-summary nb-course arrived' }, gl('anchor'), h('span', null, st.summary), btn('Volver a ver la llegada', () => env.showArrival(), { small: true, glyph: 'flag' }));
   } else summary = h('div', { class: 'nb-summary' }, gl('quill'), h('span', null, st.summary));
@@ -293,8 +293,8 @@ export interface ArrivalStat {
 }
 
 /** Estadísticas de la travesía para la pantalla de llegada. */
-export function arrivalStats(sim: Simulation, sum: ArrivalSummary): ArrivalStat[] {
-  const s = sim.state.player.stats;
+export function arrivalStats(_sim: Simulation, sum: ArrivalSummary): ArrivalStat[] {
+  // Todo sale de la instantánea de la llegada (story.arrival), no de las cifras de ahora.
   const days = sum.daysAtSea;
   return [
     { glyph: 'sun', label: days === 1 ? 'Día de travesía' : 'Días de travesía', value: days < 1 ? 'Menos de uno' : String(days) },
@@ -302,9 +302,9 @@ export function arrivalStats(sim: Simulation, sum: ArrivalSummary): ArrivalStat[
     { glyph: 'page', label: 'Hojas del cuaderno', value: `${sum.pagesRead} de ${sum.pagesTotal}` },
     { glyph: 'people', label: sum.crew.length === 1 ? 'Habitante a bordo' : 'Habitantes a bordo', value: String(sum.crew.length) },
     { glyph: 'box', label: sum.modules === 1 ? 'Módulo en el barco' : 'Módulos en el barco', value: String(sum.modules) },
-    { glyph: 'waves', label: 'Restos rescatados', value: String(s.debrisCollected) },
-    { glyph: 'fish', label: 'Peces pescados', value: String(s.fishCaught) },
-    { glyph: 'hammer', label: 'Objetos fabricados', value: String(s.itemsCrafted) },
+    { glyph: 'waves', label: 'Restos rescatados', value: String(sum.debris) },
+    { glyph: 'fish', label: 'Peces pescados', value: String(sum.fish) },
+    { glyph: 'hammer', label: 'Objetos fabricados', value: String(sum.crafted) },
   ];
 }
 

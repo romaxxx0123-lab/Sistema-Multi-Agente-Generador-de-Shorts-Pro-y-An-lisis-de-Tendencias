@@ -545,7 +545,7 @@ export const NAME_GENDER: Readonly<Record<string, 'f' | 'm'>> = {
   Marina: 'f', Lucía: 'f', Nora: 'f', Alma: 'f', Vera: 'f', Inés: 'f', Carla: 'f', Rocío: 'f', Julia: 'f', Sol: 'f',
   Olga: 'f', Aitana: 'f', Celia: 'f', Lola: 'f', Greta: 'f',
   Tomás: 'm', Iker: 'm', Bruno: 'm', Darío: 'm', Gael: 'm', Teo: 'm', Hugo: 'm', Elías: 'm', Mateo: 'm', Andrés: 'm',
-  Simón: 'm', Ramiro: 'm', Joaquín: 'm', Fermín: 'm', Pablo: 'm',
+  Simón: 'm', Ramiro: 'm', Joaquín: 'm', Gonzalo: 'm', Fermín: 'm', Pablo: 'm',
 };
 
 /** ¿El habitante es mujer? (por su nombre; los nombres desconocidos terminados en -a cuentan como femeninos). */

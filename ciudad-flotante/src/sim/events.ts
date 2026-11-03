@@ -65,6 +65,7 @@ import { moduleDisplayName } from './moduleStats';
 import {
   adjustRelation,
   availableForExpedition,
+  BAD_AT,
   isFemaleNpc,
   npcAdj,
   onNpcEventEnded,
@@ -973,6 +974,8 @@ function plantedPlots(sim: Simulation): { m: ModuleInstance; plot: number }[] {
 
 /** Dos rivales discuten aunque su ánimo no sea tan malo (por debajo de esto). */
 export const RIVAL_ARGUE_MOOD = 65;
+/** Una pareja con roces (≤ BAD_AT) discute si alguno de los dos anda algo bajo de ánimo. */
+export const ROCES_ARGUE_MOOD = 55;
 /** El director saca discusiones con este peso extra si hay rivales a bordo. */
 export const RIVAL_ARGUE_FACTOR = 2.5;
 /** Afinidad que pierde una pareja al discutir, que recupera al mediar y que pierde si se enquista. */
@@ -995,11 +998,27 @@ export function rivalPairs(sim: Simulation): [NpcState, NpcState][] {
 
 /**
  * Quiénes discuten: primero dos rivales con el ánimo algo bajo (< `RIVAL_ARGUE_MOOD`), los más
- * enfrentados; si no, los dos más desanimados de a bordo (< 45).
+ * enfrentados; si no, la pareja con más roces (≤ `BAD_AT`) con el ánimo algo bajo
+ * (< `ROCES_ARGUE_MOOD`); si no, los dos más desanimados de a bordo (< 45).
  */
 function arguingPair(sim: Simulation): [NpcState, NpcState] | null {
   const rivals = rivalPairs(sim).find(([a, b]) => Math.min(a.needs.mood, b.needs.mood) < RIVAL_ARGUE_MOOD);
   if (rivals) return rivals;
+  const awake = presentNpcs(sim).filter((n) => n.activity !== 'sleeping');
+  let roces: [NpcState, NpcState] | null = null;
+  let worst = BAD_AT;
+  for (let i = 0; i < awake.length; i++) {
+    for (let j = i + 1; j < awake.length; j++) {
+      const a = awake[i]!;
+      const b = awake[j]!;
+      const rel = relationBetween(a, b);
+      if (rel <= worst && Math.min(a.needs.mood, b.needs.mood) < ROCES_ARGUE_MOOD) {
+        worst = rel;
+        roces = [a, b];
+      }
+    }
+  }
+  if (roces) return roces;
   const grumpy = presentNpcs(sim)
     .filter((n) => n.needs.mood < 45 && n.activity !== 'sleeping')
     .sort((a, b) => a.needs.mood - b.needs.mood);

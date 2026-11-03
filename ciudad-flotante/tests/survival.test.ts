@@ -2054,7 +2054,7 @@ describe('cuaderno del Albatros: leer hojas', () => {
     sim.state.story!.revealed = true;
     st = actions.storyStatus(sim);
     expect(st.remaining).toBe(0);
-    expect(st.summary).toBe('Conoces el rumbo a Puerto Esperanza: elígelo en el timón al final de cualquier región (el rumbo de la capitana).');
+    expect(st.summary).toBe('Conoces el rumbo a Puerto Esperanza: fíjalo en el timón cuando quieras (el rumbo de la capitana) y el barco pondrá proa hacia allí al salir de estas aguas.');
     sim.state.story!.arrived = true;
     expect(actions.storyStatus(sim).summary).toBe('Llegaste a Puerto Esperanza siguiendo el rumbo de la capitana Duarte. Hojas leídas: 1 de 7.');
   });
@@ -2129,7 +2129,7 @@ describe('rumbo de la capitana: Puerto Esperanza', () => {
     expect(voyage.captainCourseOpen(sim)).toBe(false);
   });
 
-  it('de noche, la entrada se avisa y la luz verde se buscará al amanecer', () => {
+  it('de noche, la entrada se avisa y el barco fondea en la bocana hasta el amanecer', () => {
     const { sim, notes } = setup();
     sim.state.story!.revealed = true;
     sim.chooseRoute('esperanza');
@@ -2138,7 +2138,8 @@ describe('rumbo de la capitana: Puerto Esperanza', () => {
     v.regionDistance = v.regionLength - 0.2;
     runVoyage(sim, 5);
     expect(v.regionId).toBe('esperanza');
-    expect(notes).toContainEqual({ text: 'Dejamos atrás Aguas Templadas siguiendo el rumbo de la capitana Duarte hacia Puerto Esperanza. Al amanecer buscaremos la luz verde.', kind: 'good' });
+    expect(notes).toContainEqual({ text: 'Dejamos atrás Aguas Templadas siguiendo el rumbo de la capitana Duarte hacia Puerto Esperanza. La luz verde ya brilla muy cerca: fondeamos en la bocana hasta que amanezca.', kind: 'good' });
+    expect(voyage.isAnchored(sim)).toBe(true);
     expect(voyage.ARRIVAL_DAYLIGHT).toEqual(ARRIVAL_HOURS);
   });
 

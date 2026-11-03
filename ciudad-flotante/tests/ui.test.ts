@@ -1009,7 +1009,7 @@ describe('c2-ui: relaciones, cuaderno y llegada', () => {
     expect(t).toContain(storyStatus(sim).pages[3]!.hint!);
     // Con el rumbo revelado, se destaca en el cuaderno.
     sim.state.story!.revealed = true;
-    expect(vtext(renderInventory(env))).toMatch(new RegExp(`${CAPTAIN_COURSE_LABEL}: elígelo en el timón`));
+    expect(vtext(renderInventory(env))).toMatch(new RegExp(`${CAPTAIN_COURSE_LABEL}: fíjalo en el timón`));
     // El diario de a bordo sigue siendo la vista por defecto.
     env.ps.diary = undefined;
     expect(vtext(renderInventory(env))).toContain('Situaciones en curso');

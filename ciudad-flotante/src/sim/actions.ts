@@ -316,7 +316,7 @@ export function storyState(sim: Simulation): StoryState {
  * siempre, no se pueden perder en una caja ni venderse, y el director de eventos sabe por
  * `story.pages` que no debe repetirlas. Una copia de una hoja ya leída también se archiva, sin
  * entrada nueva en el diario. Al llegar a `PAGES_TO_REVEAL` hojas se conoce el rumbo a Puerto
- * Esperanza (`story.revealed`), que el timón ofrecerá al final de cualquier región (voyage.ts).
+ * Esperanza (`story.revealed`), que se puede fijar en el timón en cualquier momento (voyage.ts).
  */
 function readDocument(sim: Simulation, slot: number, def: ItemDef): ActionResult {
   const page = pageByItem(def.id);
@@ -424,7 +424,7 @@ export function storyStatus(sim: Simulation): StoryStatus {
   const remaining = story.revealed ? 0 : Math.max(0, PAGES_TO_REVEAL - readList.length);
   let summary: string;
   if (story.arrived) summary = `Llegaste a ${finalName} siguiendo el rumbo de la capitana Duarte. Hojas leídas: ${readList.length} de ${STORY_PAGES.length}.`;
-  else if (story.revealed) summary = `Conoces el rumbo a ${finalName}: elígelo en el timón al final de cualquier región (el rumbo de la capitana).`;
+  else if (story.revealed) summary = `Conoces el rumbo a ${finalName}: fíjalo en el timón cuando quieras (el rumbo de la capitana) y el barco pondrá proa hacia allí al salir de estas aguas.`;
   else if (!readList.length) summary = `Aún no has leído ninguna hoja del cuaderno del Albatros. Con ${pageWord(PAGES_TO_REVEAL)} sabrás cómo llegar a ${finalName}.`;
   else summary = `Hojas leídas: ${readList.length} de ${STORY_PAGES.length}. Con ${pageWord(remaining)} más sabrás cómo llegar a ${finalName}.`;
   return {

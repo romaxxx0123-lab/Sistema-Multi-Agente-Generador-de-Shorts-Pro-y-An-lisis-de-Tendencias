@@ -416,17 +416,23 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
   costado a ≤ 30 m unos 28 min por pieza (25 recogiendo cable + 3 de enganche; también balsas de
   náufragos). Automatización.
 - **Radar y radio** (plano, cubierta superior): con energía, avistamientos antes y durante más tiempo,
-  aviso de tormenta 3 h antes y mensajes de radio de otros barcos en el diario.
+  aviso de tormenta 3 h antes y mensajes de radio de otros barcos en el diario (sin repetir frase en 3 días; los precios anunciados no caducan y los trae el próximo mercante, como mucho dos a la vez).
 
 ## 15. Hilo narrativo: el cuaderno del Albatros (GDD §13: misterios del mundo)
 
-- Siete páginas del cuaderno de la capitana Elena Duarte (`src/data/story.ts`). La primera está en la
-  mochila al empezar (la encontraste en la carta náutica). Las demás aparecen en cofres de naufragio,
-  estructuras, expediciones y mercantes, preferentemente en su región y en orden.
-- Leer una página (F o clic derecho) la guarda en el Cuaderno del Diario. Con cinco páginas se conoce
-  el rumbo a **Puerto Esperanza**, que aparece como opción en el timón al final de cualquier región.
-- Al llegar: celebración, pantalla de llegada con el epílogo y las estadísticas de la travesía, dos
-  habitantes nuevos y un gran mercado. Después se puede seguir navegando.
+- **Las páginas:** siete, del cuaderno de la capitana Elena Duarte (`src/data/story.ts`).
+  - La primera está en la mochila al empezar (la encontraste en la carta náutica).
+  - Las demás aparecen en cofres de naufragio, estructuras, expediciones, mercantes y cofres a la deriva, preferentemente en su región y en orden.
+  - Los cofres a la deriva solo salen de día y con el jugador despierto: aparecen más lejos por la proa, pegados al costado y con aviso.
+  - Tras aparecer una página, ninguna otra en 24 h. Si se pierde sin llegar a bordo (el cofre pasa de largo, el pecio queda atrás, el mercante se va sin venderla), no gasta ese enfriamiento ni reinicia la sequía.
+- **El rumbo:** leer una página (F o clic derecho) la guarda en el Cuaderno del Diario. Con cinco se conoce el rumbo a **Puerto Esperanza** (el rumbo de la capitana).
+  - Se puede fijar en el timón cuando se quiera, y además se ofrece al final de cualquier región.
+  - Si el jugador dormía al final de la región, el barco sigue en ella hasta que despierta y decide (media hora despierto, como mucho 14 h).
+  - Si se entra de noche o dormido, el barco fondea en la bocana y la llegada es al amanecer.
+- **La llegada** (con texto según la hora):
+  - Celebración, dos habitantes nuevos y un gran mercado.
+  - Pantalla de llegada con el epílogo y las estadísticas de la travesía, tomadas de la instantánea guardada al llegar (`story.arrival`).
+  - El barco cruza el fondeadero (unas 140 millas, cerca de un día) y después sigue navegando.
 
 ## 16. Relaciones entre habitantes (GDD §13)
 
@@ -451,7 +457,7 @@ Implementado en la simulación y probado. Las áreas de presentación deben cone
 - Diario: sección «Cuaderno del Albatros» con `storyStatus(sim)` de `src/sim/actions.ts`. Muestra `summary`; las hojas leídas como `Pág. N · «title»` con `text` (párrafos separados por `\n\n`); las que faltan como `Pág. N · ¿?` con `hint`. Con `revealed && !arrived`, destacar «Rumbo de la capitana: elígelo en el timón».
 - Timón: si `opt.captain`, mostrar la insignia `CAPTAIN_COURSE_LABEL` de `src/sim/voyage.ts`. Situar `'esperanza'` en CHART_POS y unirla a la región actual cuando `captainCourseOpen(sim)` sea cierto. Con `barometer().radar`, mostrar `baro.text` en el barómetro del timón y del HUD.
 - `widgets.ts`: añadir `'U'` a KEY_LETTERS (herramienta Mejorar).
-- Pantalla de final: abrirla con `bus.on('worldEventStarted')` cuando `e.type === 'llegada'`, o al pasar `state.story.arrived` a true. Se rellena con `sim.arrivalSummary()`: title, paragraphs[], epilogue, day, daysAtSea, miles, pagesRead/pagesTotal, crew[], newcomers[], modules y marketEventId. El botón «Ir al mercado» abre `{ kind: 'trade', eventId: marketEventId }` (un evento 'mercante' normal).
+- Pantalla de final: abrirla con `bus.on('worldEventStarted')` cuando `e.type === 'llegada'`, o al pasar `state.story.arrived` a true. Se rellena con `sim.arrivalSummary()`: title, paragraphs[], epilogue, day, daysAtSea, miles, pagesRead/pagesTotal, crew[], newcomers[], modules, debris, fish, crafted (estadísticas al llegar) y marketEventId. Todo sale de la instantánea de la llegada salvo marketEventId. El botón «Ir al mercado» abre `{ kind: 'trade', eventId: marketEventId }` (un evento 'mercante' normal).
 - Ficha del habitante: `sim.npcRelations(npcId)` devuelve `[{id, name, value, label}]`, de mejor a peor.
 - Panel de la grúa: `sim.gruaStatus(moduleId)` devuelve status (texto), phase, progress, etaMin, range, inRange y origin. La bandeja es `module.inventory`.
 - Vivero: `viveroStatus` (stations.ts) da el avance; el avance de las máquinas automáticas se guarda en `module.prodProgress` y `module.prodTarget`.
