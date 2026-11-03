@@ -472,7 +472,10 @@ Implementado en la simulación y probado. Las áreas de presentación deben cone
 - Grúa: `gruaTarget(sim, moduleId)` (debris.ts) devuelve `{debrisId, kind, pos:{x,z}, progress}` mientras engancha. Con `gruaStatus(...).phase === 'izando'` sube la carga; `origin` es la punta de la pluma.
 
 **Construcción (c2-build)**
-- La herramienta Mejorar va en la tecla U. Valida con `sim.checkUpgrade`. Un módulo en mejora sigue en uso, y el martillo sobre él ayuda a la obra (ya hecho en Interaction.ts).
+- La herramienta Mejorar va en la tecla U y valida con `sim.checkUpgrade`. Un módulo en mejora sigue en uso.
+- El martillo sobre un módulo en mejora ayuda a la obra (Interaction.ts):
+  - Con un mueble interactivo (cama, camilla, estación), se ayuda con clic del martillo sobre él, y la E conserva su uso.
+  - Sin ninguno (sala común, comedor), la propia sala es el objetivo (`scanFocus`, foco 'site', aviso «Mejora: …»), y también vale mantener E.
 
 **Audio (c2-audio)**
 - `'fuego_artificial'` (con x, y, z): cada estallido de los fuegos de la llegada, de 1 a 3 por segundo durante la celebración y la fiesta de 21 a 23 h. Silbido corto y estallido seco con chisporroteo, con retardo y atenuación por distancia como el trueno.
