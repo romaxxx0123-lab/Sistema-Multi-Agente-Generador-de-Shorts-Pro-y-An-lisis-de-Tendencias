@@ -403,9 +403,9 @@ export interface StoryState {
   /**
    * Enfriamiento de hojas (`events.cooldowns.pagina`) que había antes de colocar las de `placed`:
    * si se pierden sin llegar a bordo, se restaura (ni gastan el enfriamiento ni reinician la sequía).
-   * Si falta, no había ninguno.
+   * `null`: no había ninguno. Si falta, no hay nada que restaurar.
    */
-  pageCooldownBefore?: number;
+  pageCooldownBefore?: number | null;
   /**
    * Decisión del rumbo de la capitana en la región actual (se borra al cambiar de región): minutos
    * que el jugador ha pasado despierto con el rumbo en oferta (`awake`), minuto en que el barco

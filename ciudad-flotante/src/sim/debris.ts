@@ -20,11 +20,16 @@
  *   trabajo (÷ ritmo: mejora, energía y desgaste) lanza el gancho al resto más cercano de SU costado a
  *   ≤ `GRUA_RANGE` m (las balsas primero: sube a los náufragos a bordo) y lo iza: botín a su bandeja →
  *   almacenes → caja junto a ella. Con tormenta se recoge. `gruaTarget` / `gruaStatus` para la vista
- *   y la interfaz. Un cofre a la deriva puede traer una hoja del cuaderno de su región.
+ *   y la interfaz.
+ * - Un cofre a la deriva puede traer una hoja del cuaderno de su región, pero solo de día y con el
+ *   jugador despierto (`rollDriftPage`): aparece más lejos por la proa y más pegado al costado
+ *   (`PAGE_CHEST_AHEAD`, `PAGE_CHEST_SIDE`), con un aviso, para que dé tiempo a salir a por él. Si
+ *   aun así pasa de largo, la hoja no gasta el enfriamiento (events.ts, `settlePlacedPages`).
  *
  * Todo el azar sale de `sim.rng`.
  */
 import { clamp } from '../core/math';
+import { ITEMS } from '../data/items';
 import { DEBRIS_LOOT } from '../data/loot';
 import { REGIONS, START_REGION, type RegionDef } from '../data/regions';
 import { CELL, HOOK_RANGE, RAIL_USE_RANGE, SHIP_ORIGIN_X, VISUAL_DRIFT } from './constants';
@@ -36,7 +41,7 @@ import type { ActionResult, Simulation } from './Simulation';
 import { stationDropPoint } from './stations';
 import { markTutorial } from './tutorial';
 import type { Debris, DebrisKind, ItemId, ItemStack, ModuleInstance, NpcState, Vec2, Vec3 } from './types';
-import { onDebrisCollected, onDebrisLost, onFishCaught, isFishBankActive, rollStoryPage } from './events';
+import { onDebrisCollected, onDebrisLost, onFishCaught, isFishBankActive, rollDriftPage } from './events';
 import { spawnSurvivor } from './npc';
 import { clearWarn, gruaWorkRate, isGruaReady, warnOnce } from './utilities';
 
@@ -52,6 +57,10 @@ export const MAX_DEBRIS_TOTAL = 32;
 export const DEBRIS_SPAWN_AHEAD: readonly [number, number] = [52, 68];
 /** Distancia al costado a la que aparecen (m, desde el borde del casco). */
 export const DEBRIS_SIDE: readonly [number, number] = [3, 26];
+/** Un cofre a la deriva con una hoja del cuaderno aparece más lejos por la proa (m)… */
+export const PAGE_CHEST_AHEAD: readonly [number, number] = [95, 115];
+/** …y más pegado al costado (m desde el borde): pasa al alcance del gancho desde la borda. */
+export const PAGE_CHEST_SIDE: readonly [number, number] = [4, 10];
 /** Se eliminan al quedar esta distancia por detrás de la popa (m). */
 export const DEBRIS_REMOVE_BEHIND = 40;
 /** Corriente marina (m/min) que arrastra los restos hacia popa aunque el barco esté fondeado. */
@@ -232,20 +241,50 @@ export function spawnAmbientDebris(sim: Simulation): Debris | null {
   if (isAnchored(sim)) {
     const z = side * (b.halfW + sim.rng.range(ANCHORED_SIDE[0], ANCHORED_SIDE[1]));
     const x = sim.rng.range(b.sternX + 2, b.bowX + 30);
-    return spawnDebris(sim, kind, { x, z }, { ...ambientLoot(sim, kind), lateral: -side * sim.rng.range(ANCHORED_INFLOW[0], ANCHORED_INFLOW[1]) });
+    const loot = ambientLoot(sim, kind);
+    const d = spawnDebris(sim, kind, { x, z }, { ...loot, lateral: -side * sim.rng.range(ANCHORED_INFLOW[0], ANCHORED_INFLOW[1]) });
+    if (hasStoryPage(d)) announcePageChest(sim, side);
+    return d;
   }
-  const z = side * (b.halfW + sim.rng.range(DEBRIS_SIDE[0], DEBRIS_SIDE[1]));
-  const x = b.bowX + sim.rng.range(DEBRIS_SPAWN_AHEAD[0], DEBRIS_SPAWN_AHEAD[1]);
-  return spawnDebris(sim, kind, { x, z }, ambientLoot(sim, kind));
+  // Mismas tiradas de azar con hoja o sin ella: el cofre con hoja solo cambia de sitio.
+  const off = sim.rng.range(DEBRIS_SIDE[0], DEBRIS_SIDE[1]);
+  const ahead = sim.rng.range(DEBRIS_SPAWN_AHEAD[0], DEBRIS_SPAWN_AHEAD[1]);
+  const loot = ambientLoot(sim, kind);
+  const page = !!loot.loot?.some((l) => isStoryPageItem(l.id));
+  // Un cofre con hoja aparece más lejos por la proa y más pegado al costado: se ve venir, hay tiempo
+  // de salir a la borda y pasa al alcance del gancho (de la borda y de la grúa de ese costado).
+  const u = (off - DEBRIS_SIDE[0]) / (DEBRIS_SIDE[1] - DEBRIS_SIDE[0]);
+  const v = (ahead - DEBRIS_SPAWN_AHEAD[0]) / (DEBRIS_SPAWN_AHEAD[1] - DEBRIS_SPAWN_AHEAD[0]);
+  const z = side * (b.halfW + (page ? PAGE_CHEST_SIDE[0] + u * (PAGE_CHEST_SIDE[1] - PAGE_CHEST_SIDE[0]) : off));
+  const x = b.bowX + (page ? PAGE_CHEST_AHEAD[0] + v * (PAGE_CHEST_AHEAD[1] - PAGE_CHEST_AHEAD[0]) : ahead);
+  const d = spawnDebris(sim, kind, { x, z }, loot);
+  if (page) announcePageChest(sim, side);
+  return d;
+}
+
+/** ¿Es una hoja del cuaderno del Albatros? */
+function isStoryPageItem(id: ItemId): boolean {
+  return ITEMS[id]?.category === 'documento';
+}
+
+function hasStoryPage(d: Debris): boolean {
+  return d.loot.some((l) => isStoryPageItem(l.id));
+}
+
+/** Aviso al aparecer un cofre con hoja (solo aparecen con el jugador despierto y de día). */
+function announcePageChest(sim: Simulation, side: number): void {
+  const where = side < 0 ? 'babor' : 'estribor';
+  sim.log(`Por la proa, a ${where}, flota a la deriva un cofre metálico bien cerrado, como los que dejó la capitana Duarte: ¡échale el gancho desde la borda cuando pase!`, 'good');
 }
 
 /**
  * Botín de un resto que aparece solo: un cofre a la deriva puede guardar una hoja del cuaderno del
- * Albatros si a esta región le queda alguna (ver `rollStoryPage`).
+ * Albatros si a esta región le queda alguna y el jugador puede verlo pasar (`rollDriftPage`: de día
+ * y despierto; nunca de noche ni mientras duerme).
  */
 function ambientLoot(sim: Simulation, kind: DebrisKind): SpawnDebrisOptions {
   if (kind !== 'cofre') return {};
-  const page = rollStoryPage(sim, 'deriva', true);
+  const page = rollDriftPage(sim);
   const loot = rollLoot(sim, kind);
   if (page) loot.unshift({ id: page.item, qty: 1 });
   return { loot };

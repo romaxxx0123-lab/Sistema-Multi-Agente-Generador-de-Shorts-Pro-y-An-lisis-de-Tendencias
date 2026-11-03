@@ -1,9 +1,13 @@
 import type { NpcRole } from '../sim/types';
 
+/**
+ * Nombres de los habitantes. Ninguno coincide con los del cuaderno del Albatros (data/story.ts):
+ * Joaquín, que muere de frío en la pág. 5, no puede subir a bordo como vecino (en su hueco, Gonzalo).
+ */
 export const NPC_NAMES = [
   'Marina', 'Tomás', 'Lucía', 'Iker', 'Nora', 'Bruno', 'Alma', 'Darío', 'Vera', 'Gael',
   'Inés', 'Teo', 'Carla', 'Hugo', 'Rocío', 'Elías', 'Julia', 'Mateo', 'Sol', 'Andrés',
-  'Olga', 'Simón', 'Aitana', 'Ramiro', 'Celia', 'Joaquín', 'Lola', 'Fermín', 'Greta', 'Pablo',
+  'Olga', 'Simón', 'Aitana', 'Ramiro', 'Celia', 'Gonzalo', 'Lola', 'Fermín', 'Greta', 'Pablo',
 ];
 
 export interface TraitDef {

@@ -283,6 +283,37 @@ function grantFirstPage(s: GameState): void {
   if (s.log.length > 120) s.log.splice(0, s.log.length - 120);
 }
 
+/**
+ * Campos opcionales del hilo narrativo: hojas en juego y enfriamiento anterior (events.ts), decisión
+ * del rumbo de la capitana en la región (voyage.ts) e instantánea de la llegada. Lo que no sea válido
+ * se quita (significa lo mismo que en una partida que no lo tuviera); nunca se inventa una instantánea
+ * para una partida que llegó antes de que existiera.
+ */
+function sanitizeStoryExtras(story: Obj): void {
+  if ('placed' in story) {
+    const list = Array.isArray(story['placed']) ? (story['placed'] as unknown[]) : [];
+    const ok = [...new Set(list.filter((n): n is number => Number.isInteger(n) && (n as number) >= 2 && (n as number) <= STORY_PAGES.length))];
+    if (ok.length) story['placed'] = ok;
+    else delete story['placed'];
+  }
+  if ('pageCooldownBefore' in story && story['pageCooldownBefore'] !== null && !isNum(story['pageCooldownBefore'])) delete story['pageCooldownBefore'];
+  if (!('placed' in story)) delete story['pageCooldownBefore'];
+  if ('course' in story) {
+    const c = story['course'];
+    if (!isObj(c) || !isNum(c['awake']) || (c['awake'] as number) < 0) delete story['course'];
+    else {
+      if ('holdAt' in c && !isNum(c['holdAt'])) delete c['holdAt'];
+      if ('told' in c && typeof c['told'] !== 'boolean') delete c['told'];
+    }
+  }
+  if ('arrival' in story) {
+    const a = story['arrival'];
+    const names = (x: unknown): boolean => Array.isArray(x) && x.every((n) => typeof n === 'string');
+    const nums = ['at', 'miles', 'modules', 'pagesRead', 'debris', 'fish', 'crafted'];
+    if (!isObj(a) || !story['arrived'] || !nums.every((k) => isNum(a[k])) || !names(a['crew']) || !names(a['newcomers'])) delete story['arrival'];
+  }
+}
+
 /** Valida y completa un estado leído de un guardado. */
 export function restoreState(raw: unknown): GameState {
   if (!isObj(raw)) throw new SaveError('corrupt', 'La partida guardada está dañada: no contiene un estado de juego');
@@ -395,6 +426,11 @@ export function restoreState(raw: unknown): GameState {
   const kinds = ['despejado', 'nublado', 'lluvia', 'tormenta', 'niebla'];
   if (!kinds.includes(s.weather.kind)) s.weather.kind = 'despejado';
   if (!kinds.includes(s.weather.next) || (s.weather.kind === 'tormenta' && s.weather.next === 'tormenta')) s.weather.next = 'nublado';
+  // Opcionales (transición de temperatura entre regiones, aviso del barómetro, giro del viento): si
+  // no son válidos se quitan y el clima los reconstruye como en una partida antigua.
+  const wx = s.weather as unknown as Obj;
+  for (const k of ['baseTemp', 'stormLead', 'windTarget']) if (k in wx && !isNum(wx[k])) delete wx[k];
+  if ('stormWarned' in wx && typeof wx['stormWarned'] !== 'boolean') delete wx['stormWarned'];
 
   // --- Eventos.
   s.events.active = (s.events.active as unknown[])
@@ -411,6 +447,7 @@ export function restoreState(raw: unknown): GameState {
   const story = s.story!;
   story.pages = [...new Set(story.pages.filter((n): n is number => Number.isInteger(n) && n >= 1 && n <= STORY_PAGES.length))].sort((a, b) => a - b);
   if (story.arrived || story.pages.length >= PAGES_TO_REVEAL) story.revealed = true;
+  sanitizeStoryExtras(story as unknown as Obj);
 
   // --- Listas simples.
   s.unlocks = s.unlocks.filter((u) => typeof u === 'string');

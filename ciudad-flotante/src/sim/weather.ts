@@ -19,8 +19,12 @@
  * del radar con `RADAR_STORM_LEAD` minutos (3 h) de antelación: el aviso llega entonces y la
  * lectura del barómetro dice cuánto falta.
  *
- * Estado transitorio (no se guarda): aviso del barómetro ya dado, antelación del aviso, rumbo
- * objetivo del viento y base de temperatura suavizada. Se reconstruye al cargar.
+ * El aviso del barómetro ya dado, su antelación, el rumbo hacia el que gira el viento y la base de
+ * temperatura suavizada (la transición entre regiones dura un par de horas) se guardan en el estado
+ * (`weather.stormWarned`, `stormLead`, `windTarget`, `baseTemp`, campos opcionales): guardar y cargar
+ * a mitad de la transición no hace saltar la temperatura ni repite el aviso. Una partida que no los
+ * tenga los reconstruye (la base, con la de la región actual). Solo la región observada en el último
+ * tick vive fuera del estado.
  */
 import { approach, clamp, wrapAngle } from '../core/math';
 import { REGIONS, START_REGION, type RegionDef } from '../data/regions';
@@ -96,16 +100,8 @@ const WIND_TURN_RATE_STORM = 0.03;
 /* ------------------------------------------------------------------ */
 
 interface WeatherMemo {
-  /** Ya se avisó de la tormenta que viene. */
-  warned: boolean;
-  /** Minutos de antelación con los que avisar de la próxima tormenta. */
-  lead: number;
-  /** Dirección hacia la que gira el viento. */
-  windTarget: number;
   /** Región observada en el último tick (para reconsiderar el pronóstico al cambiar). */
   region: string | null;
-  /** Temperatura base suavizada (°C). */
-  baseTemp: number | null;
 }
 
 const memos = new WeakMap<Simulation, WeatherMemo>();
@@ -113,17 +109,21 @@ const memos = new WeakMap<Simulation, WeatherMemo>();
 function memoOf(sim: Simulation): WeatherMemo {
   let m = memos.get(sim);
   if (!m) {
-    const w = sim.state.weather;
-    m = {
-      warned: false,
-      lead: (BAROMETER_LEAD[0] + BAROMETER_LEAD[1]) / 2,
-      windTarget: Number.isFinite(w.windDir) ? w.windDir : 0,
-      region: null,
-      baseTemp: null,
-    };
+    m = { region: null };
     memos.set(sim, m);
   }
   return m;
+}
+
+/** Antelación del aviso del barómetro guardada (o la media, si falta). */
+function stormLead(w: WeatherState): number {
+  return typeof w.stormLead === 'number' && Number.isFinite(w.stormLead) ? w.stormLead : (BAROMETER_LEAD[0] + BAROMETER_LEAD[1]) / 2;
+}
+
+/** Rumbo hacia el que gira el viento (el actual, si falta). */
+function windTarget(w: WeatherState): number {
+  if (typeof w.windTarget === 'number' && Number.isFinite(w.windTarget)) return w.windTarget;
+  return Number.isFinite(w.windDir) ? w.windDir : 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,17 +184,16 @@ function transitionMessage(prev: WeatherKind, next: WeatherKind, collectors = tr
 /** Empieza el clima `kind`: duración nueva, pronóstico del siguiente y aviso. */
 function beginWeather(sim: Simulation, kind: WeatherKind, carry: number): void {
   const w = sim.state.weather;
-  const memo = memoOf(sim);
   const prev = w.kind;
   w.kind = kind;
   w.remaining = rollDuration(sim, kind) + carry;
   w.next = chooseNextWeather(sim, kind);
   w.blend = prev === kind ? w.blend : 0;
-  memo.warned = false;
-  memo.lead = sim.rng.range(BAROMETER_LEAD[0], BAROMETER_LEAD[1]);
+  w.stormWarned = false;
+  w.stormLead = sim.rng.range(BAROMETER_LEAD[0], BAROMETER_LEAD[1]);
   // El viento rola un poco (mucho más con tormenta).
   const swing = kind === 'tormenta' ? 1.5 : 0.8;
-  memo.windTarget = wrapAngle(w.windDir + sim.rng.range(-swing, swing));
+  w.windTarget = wrapAngle(w.windDir + sim.rng.range(-swing, swing));
   const collectors = sim.state.ship.modules.some((m) => m.type === 'colector' && m.status === 'active');
   const msg = transitionMessage(prev, kind, collectors);
   if (msg) {
@@ -222,7 +221,7 @@ export function tickWeather(sim: Simulation, dt: number): void {
   // Cambio de región: el pronóstico se recalcula con los pesos nuevos
   // (salvo una tormenta ya anunciada por el barómetro, que llega igualmente).
   if (memo.region !== region.id) {
-    if (memo.region !== null && !(w.next === 'tormenta' && memo.warned)) w.next = chooseNextWeather(sim, w.kind, region.id);
+    if (memo.region !== null && !(w.next === 'tormenta' && w.stormWarned === true)) w.next = chooseNextWeather(sim, w.kind, region.id);
     memo.region = region.id;
   }
 
@@ -232,10 +231,11 @@ export function tickWeather(sim: Simulation, dt: number): void {
   while (w.remaining <= 0 && guard++ < 8) beginWeather(sim, w.next, w.remaining);
 
   // Barómetro: aviso único 60–90 min antes de una tormenta (3 h antes con el radar en marcha).
-  if (!memo.warned && w.next === 'tormenta' && w.kind !== 'tormenta') {
+  if (w.stormWarned !== true && w.next === 'tormenta' && w.kind !== 'tormenta') {
     const radar = isRadarActive(sim);
-    if (w.remaining <= (radar ? Math.max(RADAR_STORM_LEAD, memo.lead) : memo.lead)) {
-      memo.warned = true;
+    const lead = stormLead(w);
+    if (w.remaining <= (radar ? Math.max(RADAR_STORM_LEAD, lead) : lead)) {
+      w.stormWarned = true;
       if (radar) {
         sim.log(`El radar detecta un frente de tormenta y el barómetro empieza a caer: llegará en ${etaText(w.remaining)}. Prepara el barco y busca refugio`, 'warn');
       } else {
@@ -257,12 +257,13 @@ export function tickWeather(sim: Simulation, dt: number): void {
   // Dirección del viento: gira despacio hacia el objetivo.
   if (!Number.isFinite(w.windDir)) w.windDir = 0;
   const rate = (w.kind === 'tormenta' ? WIND_TURN_RATE_STORM : WIND_TURN_RATE) * dt;
-  const diff = wrapAngle(memo.windTarget - w.windDir);
+  const diff = wrapAngle(windTarget(w) - w.windDir);
   w.windDir = wrapAngle(w.windDir + clamp(diff, -rate, rate));
 
-  // Temperatura del aire.
-  memo.baseTemp = memo.baseTemp === null || !Number.isFinite(memo.baseTemp) ? region.baseTemp : approach(memo.baseTemp, region.baseTemp, BASE_TEMP_RATE * dt);
-  w.temperature = airTemperature(memo.baseTemp, st.time, w.rain, w.wind);
+  // Temperatura del aire (la base se acerca a la de la región; guardada para que cargar no dé saltos).
+  const base = w.baseTemp;
+  w.baseTemp = typeof base !== 'number' || !Number.isFinite(base) ? region.baseTemp : approach(base, region.baseTemp, BASE_TEMP_RATE * dt);
+  w.temperature = airTemperature(w.baseTemp, st.time, w.rain, w.wind);
 
   // Relámpagos.
   w.lightning = Math.max(0, (Number.isFinite(w.lightning) ? w.lightning : 0) - dt);

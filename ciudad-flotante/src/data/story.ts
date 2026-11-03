@@ -4,7 +4,8 @@
  * La capitana Elena Duarte zarpó hace treinta años en el Albatros, la primera ciudad flotante,
  * en busca de Puerto Esperanza: un fondeadero legendario donde se reúnen los barcos-hogar.
  * Dejó copias de su cuaderno en botellas y cofres a lo largo de la ruta. Reunir las páginas
- * revela el rumbo a Puerto Esperanza (región final). El juego continúa después del final.
+ * revela el rumbo a Puerto Esperanza (región final). El juego continúa después del final: el barco
+ * cruza el fondeadero (unas 140 millas, cerca de un día) y sigue navegando.
  */
 
 export interface StoryPage {
@@ -91,16 +92,42 @@ export const PAGES_TO_REVEAL = 5;
 /** Región final que se desbloquea con el cuaderno. */
 export const FINAL_REGION = 'esperanza';
 
+/** Segundo párrafo de la llegada (el mismo a cualquier hora). */
+const ARRIVAL_WELCOME =
+  'Alguien grita el nombre de tu barco como si lo hubiera estado esperando. En el muelle principal, una placa de madera: «Albatros — llegamos».';
+
+/** Lo que se ve del puerto a pleno día (la luz verde ya se veía desde lejos: aquí asoma todo lo demás). */
+const PORT_VIEW =
+  'bajo la torre de la luz verde, el horizonte se llena de barcos: decenas de barcos-hogar amarrados unos a otros, pasarelas, huertos colgantes y gente que saluda desde las bordas.';
+
 export const STORY_TEXTS = {
   revealed:
-    'Con las páginas del cuaderno de Elena Duarte sabes cómo llegar a Puerto Esperanza: al final de esta región aparecerá ese rumbo en el timón.',
+    'Con las páginas del cuaderno de Elena Duarte sabes cómo llegar a Puerto Esperanza: fija en el timón el rumbo de la capitana cuando quieras y el barco pondrá proa hacia allí al salir de estas aguas.',
   arrivalTitle: 'Puerto Esperanza',
+  /** Texto de la llegada al amanecer (la más habitual: de noche se espera en la bocana). Ver `arrivalText`. */
   arrival:
-    'Al amanecer aparece la luz verde. Después, decenas de luces más: barcos-hogar amarrados unos a otros, pasarelas, huertos colgantes, gente que saluda desde las bordas.\n\n' +
-    'Alguien grita el nombre de tu barco como si lo hubiera estado esperando. En el muelle principal, una placa de madera: «Albatros — llegamos».',
+    'Al amanecer, la luz verde deja de estar sola: con la claridad aparecen decenas de barcos-hogar amarrados unos a otros, pasarelas, huertos colgantes y gente que saluda desde las bordas.\n\n' +
+    ARRIVAL_WELCOME,
   epilogue:
-    'Tu ciudad flotante ya no está sola. Puedes quedarte un tiempo, comerciar y conocer a otros, o seguir navegando: el mar todavía tiene mucho que traer.',
+    'Tu ciudad flotante ya no está sola. Mientras crucéis el fondeadero podréis comerciar en el muelle y conocer a otros; después tocará seguir navegando: el mar todavía tiene mucho que traer.',
 };
+
+/**
+ * Texto de la llegada a Puerto Esperanza según la hora a la que ocurre (párrafos separados por
+ * \n\n). La llegada es siempre de día (de 6 a 20 h): al amanecer, a media mañana, a mediodía, por
+ * la tarde o al caer la tarde, cuando se encienden las luces del puerto.
+ */
+export function arrivalText(hour: number): string {
+  let first: string;
+  if (hour < 9) return STORY_TEXTS.arrival;
+  if (hour < 12) first = `A media mañana, ${PORT_VIEW}`;
+  else if (hour < 15) first = `Con el sol en lo alto, ${PORT_VIEW}`;
+  else if (hour < 18) first = `Por la tarde, ${PORT_VIEW}`;
+  else
+    first =
+      'Al caer la tarde, bajo la torre de la luz verde se encienden decenas de luces más: barcos-hogar amarrados unos a otros, pasarelas, huertos colgantes y gente que saluda desde las bordas.';
+  return `${first}\n\n${ARRIVAL_WELCOME}`;
+}
 
 export function pageByItem(item: string): StoryPage | undefined {
   return STORY_PAGES.find((p) => p.item === item);

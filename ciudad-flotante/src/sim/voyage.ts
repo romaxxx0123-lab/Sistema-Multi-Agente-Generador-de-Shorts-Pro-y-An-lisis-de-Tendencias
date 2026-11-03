@@ -14,12 +14,17 @@
  *   se ofrece volver a una región vecina más tranquila), y el piloto busca las aguas más
  *   tranquilas. Después, sin rumbo fijado, el barco sigue la corriente (la primera salida).
  * - Rumbo de la capitana (hilo narrativo, data/story.ts): con el rumbo a Puerto Esperanza ya
- *   revelado (`story.revealed`) y sin haber llegado, al final de cualquier región se ofrece además
- *   `FINAL_REGION` (`RouteOption.captain`). El piloto automático nunca lo elige por su cuenta: la
- *   travesía final la decide el jugador en el timón. Al entrar, voyage solo anota la entrada (sin
- *   repetir los textos de la llegada): el evento 'llegada' de events.ts la celebra en cuanto es de
- *   día y el jugador está despierto. Después de llegar ya no se ofrece (salvo si una región la
- *   tuviera en su `next`).
+ *   revelado (`story.revealed`) y sin haber llegado, se puede fijar en el timón en cualquier momento
+ *   y al final de cualquier región se ofrece además `FINAL_REGION` (`RouteOption.captain`). El piloto
+ *   automático nunca lo elige por su cuenta: la travesía final la decide el jugador en el timón. Por
+ *   eso la elección no se pierde: si nadie ha fijado rumbo y el jugador no ha tenido
+ *   `CAPTAIN_DECIDE_MIN` minutos despierto con el rumbo en oferta (p. ej. dormía al final de la
+ *   región), el barco sigue en la región actual hasta que despierta y decide (como mucho
+ *   `CAPTAIN_HOLD_MAX_MIN`; `story.course`). Al entrar en el puerto, voyage solo anota la entrada
+ *   (sin repetir los textos de la llegada): el evento 'llegada' de events.ts la celebra en cuanto es
+ *   de día y el jugador está despierto. Si se entra de noche o con el jugador dormido, el barco
+ *   fondea en la bocana (`HARBOR_WAIT_REASON`) y entra al amanecer, cuando el jugador despierta.
+ *   Después de llegar ya no se ofrece (salvo si una región la tuviera en su `next`).
  * - Fondeo: al pasar `anchoredUntil` se levan anclas.
  * - Avistamientos (los crea events.ts): derivan hacia popa y desaparecen al caducar.
  * - Motores: la bonificación de cada motor es la de su nivel de mejora (`moduleStat` 'speedBonus').
@@ -56,6 +61,16 @@ export const CAPTAIN_COURSE_LABEL = 'Rumbo de la capitana';
  * puede celebrarse nada más entrar (coincide con `ARRIVAL_HOURS` de events.ts; lo comprueba un test).
  */
 export const ARRIVAL_DAYLIGHT: readonly [number, number] = [6, 20];
+/**
+ * Con el rumbo de la capitana en oferta y sin rumbo fijado, el barco no sale de la región hasta que
+ * el jugador haya tenido estos minutos despierto para decidir (la ventana normal, de 10 millas, ya
+ * los da a cualquier velocidad: solo se nota si dormía).
+ */
+export const CAPTAIN_DECIDE_MIN = 30;
+/** Como mucho se espera esto (min) al final de la región; después decide el piloto. */
+export const CAPTAIN_HOLD_MAX_MIN = 14 * 60;
+/** Motivo del fondeo en la bocana de Puerto Esperanza (de noche o con el jugador dormido). */
+export const HARBOR_WAIT_REASON = 'esperar al amanecer en la bocana de Puerto Esperanza';
 
 const fail = (msg: string): ActionResult => ({ ok: false, msg });
 
@@ -272,6 +287,76 @@ export function weighAnchor(sim: Simulation, quiet = false): void {
 }
 
 /* ------------------------------------------------------------------ */
+/* Rumbo de la capitana y bocana de Puerto Esperanza                   */
+/* ------------------------------------------------------------------ */
+
+/** ¿Es de día para ver la luz verde (`ARRIVAL_DAYLIGHT`)? */
+function isArrivalDaylight(time: number): boolean {
+  const h = hourOf(time);
+  return h >= ARRIVAL_DAYLIGHT[0] && h < ARRIVAL_DAYLIGHT[1];
+}
+
+/**
+ * ¿Debe el barco esperar fondeado en la bocana de Puerto Esperanza? Recién entrados siguiendo el
+ * rumbo de la capitana y aún sin llegada (que exige día y al jugador despierto): de noche, o con el
+ * jugador dormido, no se navega por el puerto iluminado sin que nadie lo vea.
+ */
+export function harborWaiting(sim: Simulation): boolean {
+  const st = sim.state;
+  const story = st.story;
+  if (!story || !story.revealed || story.arrived || st.voyage.regionId !== FINAL_REGION) return false;
+  return !isArrivalDaylight(st.time) || !!st.player.sleeping;
+}
+
+/** Fondea (o sigue fondeado) en la bocana un rato más, sin entrada propia en el diario. */
+function holdAtHarborMouth(sim: Simulation): void {
+  const v = sim.state.voyage;
+  v.anchoredUntil = Math.max(v.anchoredUntil ?? 0, sim.state.time + 30);
+  v.anchorReason = HARBOR_WAIT_REASON;
+}
+
+/** Mientras haya que esperar en la bocana, el barco sigue fondeado; después leva anclas en silencio. */
+function tickHarborWait(sim: Simulation): void {
+  const v = sim.state.voyage;
+  if (harborWaiting(sim)) holdAtHarborMouth(sim);
+  else if (v.anchorReason === HARBOR_WAIT_REASON && v.anchoredUntil !== null) weighAnchor(sim, true); // la llegada lo cuenta
+}
+
+/** ¿El rumbo de la capitana está en oferta ahora, sin que nadie haya fijado rumbo? */
+function captainPending(sim: Simulation, region: RegionDef): boolean {
+  const v = sim.state.voyage;
+  return !v.chosenNext && captainCourseOpen(sim, region) && (v.nextChoices ?? []).includes(FINAL_REGION);
+}
+
+/**
+ * Al final de la región, con el rumbo de la capitana en oferta y sin rumbo fijado: ¿espera el barco
+ * a que el jugador decida? Solo si aún no ha tenido `CAPTAIN_DECIDE_MIN` minutos despierto para
+ * elegirlo (p. ej. dormía) y como mucho `CAPTAIN_HOLD_MAX_MIN`. Al despertar se le avisa una vez.
+ */
+function captainHold(sim: Simulation, region: RegionDef): boolean {
+  const st = sim.state;
+  const story = st.story;
+  if (!story || !st.player.alive || !captainPending(sim, region)) return false;
+  const c = (story.course ??= { awake: 0 });
+  if (c.awake >= CAPTAIN_DECIDE_MIN) return false;
+  if (c.holdAt === undefined) c.holdAt = st.time;
+  if (st.time - c.holdAt >= CAPTAIN_HOLD_MAX_MIN) return false;
+  if (!st.player.sleeping && !c.told) {
+    // Desde el aviso, otros `CAPTAIN_DECIDE_MIN` minutos para decidir.
+    c.told = true;
+    c.awake = 0;
+    const others = (st.voyage.nextChoices ?? []).filter((id) => id !== FINAL_REGION);
+    const auto = autopilotTarget(sim, st.voyage.nextChoices ?? []);
+    const alt = others.length ? ` Si no, en un rato el piloto seguirá hacia ${regionWithArticle(auto)}.` : '';
+    sim.log(
+      `Hemos llegado al final de ${regionWithArticle(region.id)} sin rumbo fijado: seguimos en estas aguas para que decidas en el timón si tomamos el rumbo de la capitana hacia ${regionWithArticle(FINAL_REGION)}.${alt}`,
+      'info',
+    );
+  }
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
 /* Tick                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -288,15 +373,21 @@ function enterRegion(sim: Simulation, id: string, overflow: number): void {
   v.route.push(r.id);
   v.nextChoices = null;
   v.chosenNext = null;
+  if (st.story) delete st.story.course;
   if (captainCourse) {
     // Solo se anota la entrada: la llegada (textos de story.ts, vecinos, mercado) es el evento
-    // 'llegada' de events.ts, que salta en cuanto es de día y el jugador está despierto. De noche
-    // se avisa también aquí para que no parezca que no ha pasado nada.
-    const h = hourOf(st.time);
-    const daylight = h >= ARRIVAL_DAYLIGHT[0] && h < ARRIVAL_DAYLIGHT[1];
-    const waiting = !daylight || !!st.player.sleeping;
-    const tail = daylight ? '' : ' Al amanecer buscaremos la luz verde.';
+    // 'llegada' de events.ts, que salta en cuanto es de día y el jugador está despierto. De noche (o
+    // con el jugador dormido) el barco fondea en la bocana hasta entonces (`tickHarborWait`) y se
+    // avisa aquí para que no parezca que no ha pasado nada.
+    const waiting = harborWaiting(sim);
+    const night = !isArrivalDaylight(st.time);
+    const tail = !waiting
+      ? ''
+      : night
+        ? ' La luz verde ya brilla muy cerca: fondeamos en la bocana hasta que amanezca.'
+        : ' La luz verde ya brilla muy cerca: fondeamos en la bocana hasta que despiertes.';
     sim.log(`Dejamos atrás ${regionWithArticle(prev.id)} siguiendo el rumbo de la capitana Duarte hacia ${regionWithArticle(r.id)}.${tail}`, 'good', waiting && !st.player.sleeping);
+    if (waiting) holdAtHarborMouth(sim);
     return;
   }
   const via = chose ? '' : dangerGated(sim) ? ' (sin rumbo fijado, el piloto busca aguas tranquilas)' : ' (sin rumbo fijado, seguimos la corriente)';
@@ -314,7 +405,8 @@ export function tickVoyage(sim: Simulation, dt: number): void {
   if (!Number.isFinite(v.regionDistance)) v.regionDistance = 0;
   if (!Number.isFinite(v.speed)) v.speed = 0;
 
-  // Fondeo cumplido: levar anclas.
+  // Bocana de Puerto Esperanza (de noche o con el jugador dormido) y fondeo cumplido: levar anclas.
+  tickHarborWait(sim);
   if (v.anchoredUntil !== null && st.time >= v.anchoredUntil) weighAnchor(sim);
 
   // Velocidad (gradual) y distancia.
@@ -345,11 +437,21 @@ export function tickVoyage(sim: Simulation, dt: number): void {
     }
   }
 
-  // Cambio de región.
+  // Rumbo de la capitana en oferta: minutos que el jugador ha tenido despierto para decidir.
+  if (st.story && captainPending(sim, region) && st.player.alive && !st.player.sleeping) {
+    const c = (st.story.course ??= { awake: 0 });
+    c.awake = (Number.isFinite(c.awake) ? c.awake : 0) + dt;
+  }
+
+  // Cambio de región (salvo si el barco espera a que el jugador decida el rumbo de la capitana).
   if (v.regionDistance >= v.regionLength) {
-    const choices = v.nextChoices && v.nextChoices.length ? v.nextChoices : nextRegions(sim, region);
-    const target = v.chosenNext && REGIONS[v.chosenNext] ? v.chosenNext : autopilotTarget(sim, choices);
-    enterRegion(sim, target, v.regionDistance - v.regionLength);
+    if (captainHold(sim, region)) {
+      v.regionDistance = v.regionLength;
+    } else {
+      const choices = v.nextChoices && v.nextChoices.length ? v.nextChoices : nextRegions(sim, region);
+      const target = v.chosenNext && REGIONS[v.chosenNext] ? v.chosenNext : autopilotTarget(sim, choices);
+      enterRegion(sim, target, v.regionDistance - v.regionLength);
+    }
   }
 
   // Avistamientos: derivan hacia popa y desaparecen al caducar.
