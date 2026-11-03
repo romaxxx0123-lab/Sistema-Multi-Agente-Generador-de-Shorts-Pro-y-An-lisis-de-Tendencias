@@ -34,7 +34,10 @@ import './panels.css';
 import './menus.css';
 import './story.css';
 
-/** Segundos de celebración que se ven (despierto, sin pausa y al aire libre o en el puente) antes de abrir la pantalla de llegada. */
+/**
+ * Segundos de celebración que se ven (despierto, sin pausa y al aire libre o en el puente) antes de
+ * abrir la pantalla de llegada.
+ */
 export const ARRIVAL_SCREEN_DELAY = 7;
 /**
  * Si el jugador sigue a cubierto tanto tiempo (s, despierto y sin pausa), la pantalla de llegada se
@@ -97,10 +100,11 @@ export interface ArrivalWait {
 
 /**
  * Cuenta atrás de la pantalla de llegada. Solo corre mientras el jugador ve la celebración: despierto,
- * sin pausa y al aire libre (o en el puente, o en el modo construcción, con la cámara fuera del barco); ver `seesCelebration`. Si la llegada
- * lo pilla a cubierto (al despertar en el camarote, que es frecuente al entrar de noche), espera a que
- * salga (con un aviso), para que la pantalla no se abra sobre una pared y se vean los fuegos; como
- * mucho `ARRIVAL_INDOOR_MAX` s. `nudge`: hay que dar el aviso ahora.
+ * sin pausa y al aire libre o en el puente (`seesCelebration`), o en el modo construcción, con la
+ * cámara fuera del barco. Si la llegada lo pilla a cubierto (al despertar en el camarote, que es
+ * frecuente al entrar de noche), espera a que salga (con un aviso) para que vea los fuegos con sus
+ * ojos; como mucho `ARRIVAL_INDOOR_MAX` s. Al abrirse, la pantalla va sobre el plano de cortesía
+ * (`arrivalShot`), nunca sobre una pared. `nudge`: hay que dar el aviso ahora.
  */
 export function arrivalCountdown(w: ArrivalWait, dt: number, o: { running: boolean; outdoors: boolean }): ArrivalWait & { nudge: boolean } {
   const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
@@ -443,7 +447,7 @@ export class UI {
     this.menus.update(dtReal);
     this.tip.update(dtReal);
     if (ctx.mode === 'menu') this.menuCamera(dtReal);
-    else if (ctx.mode === 'play' && this.menus.screen === 'arrival') this.arrivalCamera(dtReal);
+    else if (ctx.mode === 'play' && this.menus.screen?.startsWith('arrival')) this.arrivalCamera(dtReal);
     else this.arrivalShotTime = 0;
   }
 

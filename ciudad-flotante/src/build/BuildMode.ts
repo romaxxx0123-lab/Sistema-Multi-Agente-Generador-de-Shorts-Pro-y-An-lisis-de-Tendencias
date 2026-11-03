@@ -152,6 +152,11 @@ export class BuildMode {
   private hoverUpgrade: UpgradePreview | null = null;
   /** Módulo cuya ficha de la lista de mejoras está bajo el puntero. */
   private upgradeCardHover: number | null = null;
+  /**
+   * Módulos de la lista de mejoras tal y como se pintó por última vez (en orden): el atajo 1-9 elige
+   * la ficha que se ve con ese número, aunque la lista se reordene antes del siguiente repintado.
+   */
+  private upgradeOrder: number[] = [];
 
   /* --- Presentación --- */
   private ghost: GhostView | null = null;
@@ -979,13 +984,13 @@ export class BuildMode {
    * número). Sin ficha con ese número, solo el sonido de error.
    */
   private pickUpgradeCard(index: number): void {
-    const list = upgradeList(this.ctx.sim);
-    const u = list[index];
-    if (!u) {
+    const shown = this.upgradeOrder.length ? this.upgradeOrder : upgradeList(this.ctx.sim).map((u) => u.id);
+    const id = shown[index];
+    if (id === undefined || !this.ctx.sim.state.ship.modules.some((m) => m.id === id)) {
       this.ctx.bus.emit('sfx', { name: 'ui_error' });
       return;
     }
-    this.requestUpgrade(u.id, true);
+    this.requestUpgrade(id, true);
   }
 
   /** Clic con la herramienta Mejorar sobre un módulo del barco. */
@@ -1140,6 +1145,8 @@ export class BuildMode {
     const cards = paletteModules(this.category).map((d) => cardInfo(sim, d, have));
     // La ficha de ampliación solo está en "Estructura": fuera de ella no hay vista previa.
     if (this.category !== 'estructura') this.expansionHover = false;
+    const upgrades = this.upgrading ? upgradeList(sim, have) : null;
+    this.upgradeOrder = upgrades ? upgrades.map((u) => u.id) : [];
     hud.renderPalette(
       {
         category: this.category,
@@ -1148,7 +1155,7 @@ export class BuildMode {
         upgrade: this.upgrading,
         cards,
         expansion: this.category === 'estructura' && !this.upgrading ? expansionInfo(sim, have) : null,
-        upgrades: this.upgrading ? upgradeList(sim, have) : null,
+        upgrades,
       },
       !!this.selected,
     );

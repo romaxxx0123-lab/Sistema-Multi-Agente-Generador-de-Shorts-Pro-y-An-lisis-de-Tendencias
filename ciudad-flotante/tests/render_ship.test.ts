@@ -788,13 +788,25 @@ describe('reconstrucción por niveles (QA P4)', () => {
     expect(frames).toBeGreaterThan(2);
     expect(view.pendingLevels).toBe(0);
     expect(view.stats.stagedFrames).toBeGreaterThan(0);
+    // las fusiones de los grupos que cambian también se adelantan
+    expect(view.stats.prebakes).toBeGreaterThan(0);
     // todos los niveles cambiados aparecen en el mismo frame (sin un frame sin techo)
     expect(view.stats.lastRebuildLevels).toBe(view.stats.levelRebuilds - lr);
     expect(view.stats.lastRebuildLevels).toBeGreaterThanOrEqual(2);
+    // y el resultado es idéntico a construir el barco de cero
     const fresh = newView();
     fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
-    for (let l = 0; l <= layout.levels; l++) expect(vertexCount(levelSolid(root, l))).toBe(vertexCount(levelSolid(fresh.root, l)));
+    for (let l = 0; l <= layout.levels; l++)
+      for (const kind of ['solido', 'muebles'] as const) {
+        const a = levelGroups(root, l, kind);
+        const b = levelGroups(fresh.root, l, kind);
+        expect(a.map((m) => m.name)).toEqual(b.map((m) => m.name));
+        a.forEach((m, i) => {
+          expect(sumAttr(m, 'position'), m.name).toBeCloseTo(sumAttr(b[i]!, 'position'), 1);
+          expect(sumAttr(m, 'color'), m.name).toBeCloseTo(sumAttr(b[i]!, 'color'), 1);
+        });
+      }
   });
 
   it('la obra terminada sigue a la vista hasta el mismo frame en que aparece lo construido', () => {

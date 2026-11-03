@@ -112,6 +112,15 @@ interface BakedGroup {
   tris: number;
 }
 
+/** Geometría ya fusionada de un grupo, preparada antes de mostrarla (aún sin malla). */
+interface Prebaked {
+  /** Estructura: columnas de las que sale. Muebles: firma del grupo. */
+  chunks: StructCache[];
+  key: string;
+  baked: Baked;
+  ids: Map<number, number>;
+}
+
 /** Lo que va en un grupo de muebles al rehacer un nivel. */
 interface FurnPlan {
   index: number;
@@ -207,6 +216,8 @@ export class ShipView {
   private plannedStruct = new Map<number, string[]>();
   /** Columnas de estructura ya construidas para los niveles pendientes (aún sin mostrar). */
   private staged = new Map<number, Map<number, StructCache>>();
+  /** Grupos de estructura y de muebles ya fusionados para los niveles pendientes (aún sin mostrar). */
+  private prebaked = new Map<number, { solid: Map<number, Prebaked>; furn: Map<number, Prebaked> }>();
   /** Reconstruir todo de una vez (partida nueva, carga, casco nuevo). */
   private forceFull = true;
   private upgrades = new Map<number, UpgradeSiteEntry>();
@@ -249,6 +260,12 @@ export class ShipView {
   private modelIds = new WeakMap<PropModel, number>();
   private modelSeq = 0;
   private bakedVertices = 0;
+  /** Coste medio (ms) de construir una columna de estructura y de fusionar un grupo, para el presupuesto. */
+  private unitMs = { chunk: 2, bake: 1 };
+  /** Este frame ya ha calculado las firmas (planLevels): no se adelanta trabajo hasta el siguiente. */
+  private plannedNow = false;
+  /** El frame anterior se saltó por eso (nunca dos seguidos: si el barco cambiara en cada frame). */
+  private skippedLast = false;
   private pickGeo = new THREE.BoxGeometry(1, 1, 1);
   private pickMat = new THREE.MeshBasicMaterial({ visible: false });
   /** Sustituye opciones de vista (pruebas y depuración: p. ej. `{ cutaway: false }`). */
@@ -264,10 +281,11 @@ export class ShipView {
    * rehacer algún nivel; `levelRebuilds` = niveles rehechos en total; `lastRebuildMs` y
    * `lastRebuildLevels` = coste y niveles del último frame que sustituyó niveles; `structRebuilds`,
    * `solidBakes`, `furnitureBakes` y `siteBuilds` = columnas de estructura, grupos de estructura y
-   * de muebles fusionados, y obras construidas; `stagedFrames` = frames dedicados a adelantar
-   * columnas; `lastBakedVertices` = vértices fusionados en el último cambio.
+   * de muebles fusionados (`prebakes`: los fusionados por adelantado), y obras construidas;
+   * `stagedFrames` = frames dedicados a adelantar trabajo; `lastBakedVertices` = vértices
+   * fusionados para el último cambio.
    */
-  readonly stats = { rebuilds: 0, levelRebuilds: 0, lastRebuildLevels: 0, structRebuilds: 0, solidBakes: 0, furnitureBakes: 0, siteBuilds: 0, stagedFrames: 0, lastBakedVertices: 0, lastStructMs: 0, tintPasses: 0, hullRebuilds: 0, lastRebuildMs: 0, staticMeshes: 0, triangles: 0 };
+  readonly stats = { rebuilds: 0, levelRebuilds: 0, lastRebuildLevels: 0, structRebuilds: 0, solidBakes: 0, furnitureBakes: 0, prebakes: 0, siteBuilds: 0, stagedFrames: 0, lastBakedVertices: 0, lastStructMs: 0, tintPasses: 0, hullRebuilds: 0, lastRebuildMs: 0, staticMeshes: 0, triangles: 0 };
 
   constructor(readonly root: THREE.Group) {
     this.group.name = 'barco';
@@ -344,9 +362,11 @@ export class ShipView {
       if (tier !== 1) tiers += `${m.id}t${tier},`;
     }
     const structKey = `${state.ship.revision}|${layout.revision}|${tiers}`;
+    this.plannedNow = false;
     if (structKey !== this.structKey) {
       this.planLevels(state, layout);
       this.structKey = structKey;
+      this.plannedNow = true;
     }
     if (this.planned.size) this.flushLevels(state, layout);
     // En los frames tranquilos se adelantan los modelos de las mejoras en obras (uno por frame):
@@ -638,6 +658,7 @@ export class ShipView {
       for (const c of st.values()) disposeChunk(c);
       this.staged.delete(l);
     }
+    for (const l of [...this.prebaked.keys()]) if (!this.planned.has(l)) this.clearPrebaked(l);
     if (this.planned.size) this.stats.rebuilds++;
   }
 
@@ -647,9 +668,18 @@ export class ShipView {
    */
   private flushLevels(state: GameState, layout: ShipLayout): void {
     const t0 = now();
+    const instant = this.forceFull || this.rebuildBudgetMs === Infinity;
+    // El frame del cambio ya carga con la simulación que lo produce y con el cálculo de firmas: el
+    // trabajo adelantado empieza en el siguiente.
+    if (!instant && this.plannedNow && !this.skippedLast) {
+      this.skippedLast = true;
+      this.stats.stagedFrames++;
+      return;
+    }
+    this.skippedLast = false;
     const modules = new Map(state.ship.modules.map((m) => [m.id, m]));
     const levels = [...this.planned.keys()].sort((a, b) => a - b);
-    const deadline = this.forceFull ? Infinity : t0 + this.rebuildBudgetMs;
+    const deadline = instant ? Infinity : t0 + this.rebuildBudgetMs;
     const frame = { built: 0 };
     for (const l of levels) {
       if (this.stageStructure(l, this.plannedStruct.get(l) ?? this.structSignatures(l, state, layout, modules), state, layout, modules, deadline, frame)) continue;
@@ -675,31 +705,79 @@ export class ShipView {
   }
 
   /**
-   * Construye (sin tocar la escena) las columnas de estructura que le faltan al nivel `l` mientras
-   * quede presupuesto en el frame; devuelve si ya están todas. El nivel de los techos, una sola
-   * columna que además pone la chimenea y el radar en la escena, se construye al sustituirlo.
+   * Prepara (sin tocar la escena) lo que le falta al nivel `l` mientras quede presupuesto en el
+   * frame: primero sus columnas de estructura nuevas y después la fusión de los grupos de estructura
+   * y de muebles que cambian. Devuelve si ya está todo. El nivel de los techos, una sola columna que
+   * además pone la chimenea y el radar en la escena, se construye al sustituirlo.
    */
   private stageStructure(l: number, keys: string[], state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>, deadline: number, frame: { built: number }): boolean {
     if (l === layout.levels) return true;
-    const prev = this.levelBuilds[l]?.struct ?? [];
+    // ¿No cabe otra unidad de trabajo en el presupuesto? (siempre se hace al menos una por frame)
+    const out = (unit: number): boolean => frame.built > 0 && now() + unit > deadline;
+    /** Cronometra una unidad y actualiza su coste medio. */
+    const timed = <T>(kind: 'chunk' | 'bake', fn: () => T): T => {
+      const t = now();
+      const r = fn();
+      this.unitMs[kind] += (now() - t - this.unitMs[kind]) * 0.3;
+      frame.built++;
+      return r;
+    };
+    const build = this.levelBuilds[l];
+    const prev = build?.struct ?? [];
     let st = this.staged.get(l);
     if (!st) this.staged.set(l, (st = new Map()));
+    const chunks: StructCache[] = [];
     for (let c = 0; c < keys.length; c++) {
       const key = keys[c]!;
-      if (prev[c]?.key === key || st.get(c)?.key === key) continue;
-      if (frame.built > 0 && now() > deadline) return false;
-      const old = st.get(c);
-      if (old) disposeChunk(old);
-      st.set(c, this.buildStructChunk(l, c, key, state, layout, modules));
-      frame.built++;
+      let chunk = prev[c]?.key === key ? prev[c]! : st.get(c)?.key === key ? st.get(c)! : null;
+      if (!chunk) {
+        if (out(this.unitMs.chunk)) return false;
+        const old = st.get(c);
+        if (old) disposeChunk(old);
+        st.set(c, (chunk = timed('chunk', () => this.buildStructChunk(l, c, key, state, layout, modules))));
+      }
+      chunks.push(chunk);
+    }
+    let pre = this.prebaked.get(l);
+    if (!pre) this.prebaked.set(l, (pre = { solid: new Map(), furn: new Map() }));
+    for (const [g, group] of groupChunks(chunks)) {
+      const cur = build?.solid.get(g);
+      if (cur && sameChunks(cur.chunks, group)) continue;
+      const ready = pre.solid.get(g);
+      if (ready && sameChunks(ready.chunks, group)) continue;
+      if (out(this.unitMs.bake)) return false;
+      ready?.baked.geo?.dispose();
+      pre.solid.set(g, { chunks: group, key: '', ...timed('bake', () => bakeSolid(group)) });
+      this.stats.prebakes++;
+    }
+    const modelOf = this.modelGetter(modules);
+    for (const plan of this.furniturePlans(l, state, layout, modelOf).groups.values()) {
+      const key = plan.sig.join('|');
+      if (build?.furn.get(plan.index)?.key === key) continue;
+      const ready = pre.furn.get(plan.index);
+      if (ready?.key === key) continue;
+      if (out(this.unitMs.bake)) return false;
+      ready?.baked.geo?.dispose();
+      pre.furn.set(plan.index, { chunks: [], key, baked: timed('bake', () => this.bakeFurniture(plan, layout, modelOf)), ids: plan.ids });
+      this.stats.prebakes++;
     }
     return true;
   }
 
-  /** Libera las columnas adelantadas que no se han llegado a mostrar. */
+  /** Libera lo preparado por adelantado para un nivel (o para todos) que no se ha llegado a usar. */
+  private clearPrebaked(l?: number): void {
+    for (const [k, pre] of this.prebaked) {
+      if (l !== undefined && k !== l) continue;
+      for (const e of [...pre.solid.values(), ...pre.furn.values()]) e.baked.geo?.dispose();
+      this.prebaked.delete(k);
+    }
+  }
+
+  /** Libera las columnas y fusiones adelantadas que no se han llegado a mostrar. */
   private clearStaged(): void {
     for (const st of this.staged.values()) for (const c of st.values()) disposeChunk(c);
     this.staged.clear();
+    this.clearPrebaked();
   }
 
   /**
@@ -842,37 +920,12 @@ export class ShipView {
       if (newStruct) for (const o of old.structObjs) if (o !== this.radar) disposeObject(o);
     }
 
-    // Props del nivel: piezas colocadas por grupo de columnas y objetos proxy (reutilizados si no cambian).
-    const models = new Map<PropInstance, PropModel>();
-    const modelOf = (p: PropInstance): PropModel => {
-      let mm = models.get(p);
-      if (!mm) {
-        const mod = modules.get(p.moduleId);
-        mm = propModel(p.kind, localDims(p), mod ? moduleTier(mod) : 1, p.moduleType);
-        models.set(p, mm);
-      }
-      return mm;
-    };
-    const groups = new Map<number, FurnPlan>();
-    const groupAt = (x: number): FurnPlan => {
-      const g = Math.floor(chunkOfX(layout.length, x) / GROUP_COLS);
-      let e = groups.get(g);
-      if (!e) groups.set(g, (e = { index: g, parts: [], sig: [], ids: new Map(), decor: [] }));
-      return e;
-    };
-    // el cristal interior y las lámparas de la estructura van en la misma malla que los de los props
-    const glassParts: BakePart[] = struct.map((c) => ({ geo: c.glassIn }));
-    const glowParts: BakePart[] = struct.map((c) => ({ geo: c.lamps }));
+    // Objetos de los props (con sus partes animadas): se reutilizan si no cambian.
+    const modelOf = this.modelGetter(modules);
     const seen = new Set<string>();
     for (const p of layout.props) {
       if (propLevel(p, layout) !== l) continue;
       const model = modelOf(p);
-      const fg = groupAt(p.x);
-      fg.parts.push({ geo: model.solid, yaw: p.yaw, x: p.x, y: p.y, z: p.z, tag: p.moduleId });
-      fg.sig.push(`${p.key}@${p.moduleId}@${this.modelId(model)}@${p.x},${p.y},${p.z},${p.yaw}`);
-      fg.ids.set(p.moduleId, 1);
-      if (model.glass) glassParts.push({ geo: model.glass, yaw: p.yaw, x: p.x, y: p.y, z: p.z });
-      if (model.glow) glowParts.push({ geo: model.glow, yaw: p.yaw, x: p.x, y: p.y, z: p.z });
       seen.add(p.key);
       const prev = this.props.get(p.key);
       if (prev && prev.level === l && prev.model === model && samePlacement(prev.inst, p)) {
@@ -908,27 +961,10 @@ export class ShipView {
       this.props.delete(k);
     }
 
-    // Detalles del nivel de mejora a escala de módulo (placa de latón, altillo del almacén), en el
-    // grupo de su módulo; su firma recoge todo lo que leen (módulo, sus muebles y las puertas).
-    let doorSig: string | null = null;
-    for (const m of state.ship.modules) {
-      if (m.level !== l || m.status === 'construction' || moduleTier(m) < 2) continue;
-      const cells = moduleCells(m).filter((c) => c.level === m.level);
-      let cx = 0;
-      for (const c of cells) cx += cellMin(c.x, c.z, layout.width).x + CELL / 2;
-      const fg = groupAt(cells.length ? cx / cells.length : 0);
-      doorSig ??= layout.doors.filter((d) => d.level === l).map((d) => `${d.axis}${d.x},${d.z},${d.width},${d.moduleId ?? ''}`).join(';');
-      let sig = `t${m.id}:${m.type}:${moduleTier(m)}:${m.level},${m.x},${m.z},${m.rot}:`;
-      for (const p of layout.props) if (p.moduleId === m.id) sig += `${p.key}@${this.modelId(modelOf(p))}@${p.x},${p.y},${p.z},${p.yaw},${p.hx},${p.hz},${p.height},${p.interact ?? ''};`;
-      fg.sig.push(`${sig}|${doorSig}`);
-      fg.decor.push(m);
-      fg.ids.set(m.id, 1);
-    }
-
     // Mallas fusionadas por material: estructura (reutilizada si no ha cambiado) y muebles.
-    const mk = (baked: Baked, mat: THREE.Material, shadow: boolean, name: string, into: THREE.Object3D[] | null): THREE.Mesh | null => {
-      if (!baked.geo) return null;
-      const mesh = new THREE.Mesh(baked.geo, mat);
+    const mk = (geo: THREE.BufferGeometry | null, mat: THREE.Material, shadow: boolean, name: string, into: THREE.Object3D[] | null): THREE.Mesh | null => {
+      if (!geo) return null;
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.name = name;
       mesh.castShadow = shadow;
       mesh.receiveShadow = shadow;
@@ -947,48 +983,45 @@ export class ShipView {
       mesh && tags ? { mesh, base: (mesh.geometry.getAttribute('color').array as Float32Array).slice(), tags, tints: ids } : null;
     const tinted: TintMesh[] = [];
     const fresh: TintMesh[] = [];
+    const pre = this.prebaked.get(l);
+    /** Malla nueva de un grupo (de lo fusionado por adelantado, si lo hay). */
+    const place = (made: { baked: Baked; ids: Map<number, number> }, name: string, key: string, chunks: StructCache[]): BakedGroup => {
+      const mesh = mk(made.baked.geo, this.mats.solid, true, name, null);
+      const tint = tintable(mesh, made.baked.tags, made.ids);
+      if (tint) fresh.push(tint);
+      this.bakedVertices += made.baked.vertices;
+      return { key, chunks, mesh, tint, tris: made.baked.vertices / 3 };
+    };
 
     // Estructura: el sólido por grupos de columnas (solo se fusionan de nuevo los grupos con alguna
     // columna nueva); el cristal exterior y los faroles, pocas piezas, enteros si cambia alguna.
     const solid = new Map<number, BakedGroup>();
     const beforeSolid = old?.solid ?? new Map<number, BakedGroup>();
-    const chunkGroups = new Map<number, StructCache[]>();
-    struct.forEach((c, i) => {
-      const g = Math.floor(i / GROUP_COLS);
-      let a = chunkGroups.get(g);
-      if (!a) chunkGroups.set(g, (a = []));
-      a.push(c);
-    });
-    for (const [g, chunks] of chunkGroups) {
+    for (const [g, chunks] of groupChunks(struct)) {
       const prev = beforeSolid.get(g);
-      if (prev && prev.chunks.length === chunks.length && prev.chunks.every((c, i) => c === chunks[i])) {
+      if (prev && sameChunks(prev.chunks, chunks)) {
         solid.set(g, prev);
         if (prev.tint) tinted.push(prev.tint);
         continue;
       }
-      const baked = bakeParts(
-        chunks.map((c) => ({ geo: c.solid, tags: c.tags })),
-        true,
-      );
-      const ids = new Map<number, number>();
-      for (const c of chunks) for (const id of c.tagIds) ids.set(id, 1);
-      const mesh = mk(baked, this.mats.solid, true, `nivel-${l}-solido-${g}`, null);
-      const tint = tintable(mesh, baked.tags, ids);
-      if (tint) fresh.push(tint);
-      solid.set(g, { key: '', chunks, mesh, tint, tris: baked.vertices / 3 });
+      const ready = pre?.solid.get(g);
+      const made = ready && sameChunks(ready.chunks, chunks) ? ready : bakeSolid(chunks);
+      pre?.solid.delete(g);
+      if (made !== ready) ready?.baked.geo?.dispose();
+      solid.set(g, place(made, `nivel-${l}-solido-${g}`, '', chunks));
       this.stats.solidBakes++;
-      this.bakedVertices += baked.vertices;
     }
     for (const [g, prev] of beforeSolid) if (solid.get(g) !== prev && prev.mesh) disposeObject(prev.mesh);
     let structObjs: THREE.Object3D[];
     if (newStruct) {
       structObjs = [];
-      mk(bakeParts(struct.map((c) => ({ geo: c.glassOut }))), this.mats.glassOut, false, `nivel-${l}-cristal-ext`, structObjs);
-      mk(bakeParts(struct.map((c) => ({ geo: c.lanterns }))), this.mats.lantern, false, `nivel-${l}-faroles`, structObjs);
+      mk(bakeParts(struct.map((c) => ({ geo: c.glassOut }))).geo, this.mats.glassOut, false, `nivel-${l}-cristal-ext`, structObjs);
+      mk(bakeParts(struct.map((c) => ({ geo: c.lanterns }))).geo, this.mats.lantern, false, `nivel-${l}-faroles`, structObjs);
       if (l === layout.levels && this.radar) structObjs.push(this.radar);
     } else structObjs = old!.structObjs;
 
     // Muebles por grupos: los que no han cambiado se conservan tal cual (malla y tinte).
+    const { groups, glass, glow } = this.furniturePlans(l, state, layout, modelOf);
     const furn = new Map<number, BakedGroup>();
     const before = old?.furn ?? new Map<number, BakedGroup>();
     for (const plan of groups.values()) {
@@ -999,30 +1032,19 @@ export class ShipView {
         if (prev.tint) tinted.push(prev.tint);
         continue;
       }
-      if (plan.decor.length) {
-        const decor = this.decorPool;
-        decor.clear();
-        for (const m of plan.decor) {
-          decor.tag = m.id;
-          tierPlaque(decor, m, layout, layout.props, modelOf);
-          storeLoft(decor, m, layout, layout.props);
-        }
-        // las placas y el altillo van delante de los muebles en la malla fusionada
-        if (!decor.isEmpty()) plan.parts.unshift({ geo: decor.build(false), tags: decor.tags() });
-      }
-      const baked = bakeParts(plan.parts, true);
-      const mesh = mk(baked, this.mats.solid, true, `nivel-${l}-muebles-${plan.index}`, null);
-      const tint = tintable(mesh, baked.tags, plan.ids);
-      if (tint) fresh.push(tint);
-      furn.set(plan.index, { key: gk, chunks: [], mesh, tint, tris: baked.vertices / 3 });
+      const ready = pre?.furn.get(plan.index);
+      const made = ready?.key === gk ? ready : { baked: this.bakeFurniture(plan, layout, modelOf), ids: plan.ids };
+      pre?.furn.delete(plan.index);
+      if (made !== ready) ready?.baked.geo?.dispose();
+      furn.set(plan.index, place(made, `nivel-${l}-muebles-${plan.index}`, gk, []));
       this.stats.furnitureBakes++;
-      this.bakedVertices += baked.vertices;
     }
     for (const [g, prev] of before) if (furn.get(g) !== prev && prev.mesh) disposeObject(prev.mesh);
-    // cristal interior y lámparas (estructura y props): pocas piezas, se rehacen siempre
+    this.clearPrebaked(l);
+    // cristal interior y lámparas (estructura y props, en la misma malla): pocas piezas, siempre
     const propObjs: THREE.Object3D[] = [];
-    mk(bakeParts(glassParts), this.mats.glassIn, false, `nivel-${l}-cristal-int`, propObjs);
-    mk(bakeParts(glowParts), this.mats.lamp, false, `nivel-${l}-lamparas`, propObjs);
+    mk(bakeParts([...struct.map((c) => ({ geo: c.glassIn })), ...glass]).geo, this.mats.glassIn, false, `nivel-${l}-cristal-int`, propObjs);
+    mk(bakeParts([...struct.map((c) => ({ geo: c.lamps })), ...glow]).geo, this.mats.lamp, false, `nivel-${l}-lamparas`, propObjs);
 
     let [structTris, structMeshes] = count(structObjs);
     for (const f of solid.values()) {
@@ -1040,6 +1062,85 @@ export class ShipView {
     const build: LevelBuild = { key, lights: struct.flatMap((c) => c.lights), struct, structObjs, solid, propObjs, furn, structTris, structMeshes, propTris, propMeshes, tinted };
     this.levelBuilds[l] = build;
     for (const t of fresh) this.applyTints(modules, t);
+  }
+
+  /** Modelo de cada prop con el nivel de mejora de su módulo (memorizado mientras dure la llamada). */
+  private modelGetter(modules: Map<number, ModuleInstance>): (p: PropInstance) => PropModel {
+    const models = new Map<PropInstance, PropModel>();
+    return (p) => {
+      let mm = models.get(p);
+      if (!mm) {
+        const mod = modules.get(p.moduleId);
+        mm = propModel(p.kind, localDims(p), mod ? moduleTier(mod) : 1, p.moduleType);
+        models.set(p, mm);
+      }
+      return mm;
+    };
+  }
+
+  /**
+   * Muebles de un nivel por grupos de columnas: piezas colocadas, firma (modelo y colocación de
+   * cada prop; de los módulos mejorados, todo lo que leen su placa de latón y su altillo) y módulos
+   * mejorados de cada grupo; y el cristal y las luces de los props.
+   */
+  private furniturePlans(l: number, state: GameState, layout: ShipLayout, modelOf: (p: PropInstance) => PropModel): { groups: Map<number, FurnPlan>; glass: BakePart[]; glow: BakePart[] } {
+    const groups = new Map<number, FurnPlan>();
+    const groupAt = (x: number): FurnPlan => {
+      const g = Math.floor(chunkOfX(layout.length, x) / GROUP_COLS);
+      let e = groups.get(g);
+      if (!e) groups.set(g, (e = { index: g, parts: [], sig: [], ids: new Map(), decor: [] }));
+      return e;
+    };
+    const glass: BakePart[] = [];
+    const glow: BakePart[] = [];
+    for (const p of layout.props) {
+      if (propLevel(p, layout) !== l) continue;
+      const model = modelOf(p);
+      const fg = groupAt(p.x);
+      fg.parts.push({ geo: model.solid, yaw: p.yaw, x: p.x, y: p.y, z: p.z, tag: p.moduleId });
+      fg.sig.push(`${p.key}@${p.moduleId}@${this.modelId(model)}@${p.x},${p.y},${p.z},${p.yaw}`);
+      fg.ids.set(p.moduleId, 1);
+      if (model.glass) glass.push({ geo: model.glass, yaw: p.yaw, x: p.x, y: p.y, z: p.z });
+      if (model.glow) glow.push({ geo: model.glow, yaw: p.yaw, x: p.x, y: p.y, z: p.z });
+    }
+    // Detalles del nivel de mejora a escala de módulo (placa de latón, altillo del almacén), en el
+    // grupo de su módulo; su firma recoge todo lo que leen (módulo, sus muebles y las puertas).
+    let doorSig: string | null = null;
+    for (const m of state.ship.modules) {
+      if (m.level !== l || m.status === 'construction' || moduleTier(m) < 2) continue;
+      const cells = moduleCells(m).filter((c) => c.level === m.level);
+      let cx = 0;
+      for (const c of cells) cx += cellMin(c.x, c.z, layout.width).x + CELL / 2;
+      const fg = groupAt(cells.length ? cx / cells.length : 0);
+      doorSig ??= layout.doors.filter((d) => d.level === l).map((d) => `${d.axis}${d.x},${d.z},${d.width},${d.moduleId ?? ''}`).join(';');
+      let sig = `t${m.id}:${m.type}:${moduleTier(m)}:${m.level},${m.x},${m.z},${m.rot}:`;
+      for (const p of layout.props) if (p.moduleId === m.id) sig += `${p.key}@${this.modelId(modelOf(p))}@${p.x},${p.y},${p.z},${p.yaw},${p.hx},${p.hz},${p.height},${p.interact ?? ''};`;
+      fg.sig.push(`${sig}|${doorSig}`);
+      fg.decor.push(m);
+      fg.ids.set(m.id, 1);
+    }
+    return { groups, glass, glow };
+  }
+
+  /** Fusiona un grupo de muebles: placas y altillos de sus módulos mejorados delante, y sus props. */
+  private bakeFurniture(plan: FurnPlan, layout: ShipLayout, modelOf: (p: PropInstance) => PropModel): Baked {
+    const parts = plan.parts;
+    if (plan.decor.length) {
+      const decor = this.decorPool;
+      decor.clear();
+      for (const m of plan.decor) {
+        decor.tag = m.id;
+        tierPlaque(decor, m, layout, layout.props, modelOf);
+        storeLoft(decor, m, layout, layout.props);
+      }
+      if (!decor.isEmpty()) {
+        const dg = decor.build(false);
+        const baked = bakeParts([{ geo: dg, tags: decor.tags() }, ...parts], true);
+        dg.dispose();
+        return baked;
+      }
+    }
+    return bakeParts(parts, true);
   }
 
   /** Número estable de cada modelo de prop (firma de los grupos de muebles). */
@@ -1391,6 +1492,33 @@ function cornerBrackets(size: THREE.Vector3): THREE.BufferGeometry {
         g.box(x - t, y - t, Math.min(z, z - sz * lz), x + t, y + t, Math.max(z, z - sz * lz), '#ffffff');
       }
   return g.build();
+}
+
+/** Columnas de estructura por grupo de `GROUP_COLS` (en el orden de las columnas). */
+function groupChunks(chunks: StructCache[]): Map<number, StructCache[]> {
+  const out = new Map<number, StructCache[]>();
+  chunks.forEach((c, i) => {
+    const g = Math.floor(i / GROUP_COLS);
+    let a = out.get(g);
+    if (!a) out.set(g, (a = []));
+    a.push(c);
+  });
+  return out;
+}
+
+function sameChunks(a: StructCache[], b: StructCache[]): boolean {
+  return a.length === b.length && a.every((c, i) => c === b[i]);
+}
+
+/** Sólido de un grupo de columnas de estructura, con el módulo de cada vértice. */
+function bakeSolid(chunks: StructCache[]): { baked: Baked; ids: Map<number, number> } {
+  const baked = bakeParts(
+    chunks.map((c) => ({ geo: c.solid, tags: c.tags })),
+    true,
+  );
+  const ids = new Map<number, number>();
+  for (const c of chunks) for (const id of c.tagIds) ids.set(id, 1);
+  return { baked, ids };
 }
 
 /** Libera la geometría de una columna de estructura. */
