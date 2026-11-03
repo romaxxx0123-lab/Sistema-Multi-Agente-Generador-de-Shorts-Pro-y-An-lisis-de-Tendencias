@@ -31,6 +31,12 @@ export class NavGrid {
   private readonly hw: number;
   /** Colisionadores agrupados por celda gruesa (con margen) para acelerar `blocked`. */
   private readonly buckets = new Map<number, AABB[]>();
+  /**
+   * Memoria de trabajo de `findPath`, reutilizada entre búsquedas (se crea en la primera): coste
+   * desde el origen, de dónde se llegó y marcas de época de «visto» y «cerrado». Con la época no
+   * hay que limpiar nada al empezar otra búsqueda.
+   */
+  private search: { g: Float64Array; came: Int32Array; seen: Uint32Array; closed: Uint32Array; epoch: number } | null = null;
 
   /**
    * @param radius radio del agente para inflar paredes y muebles (0,3 habitantes; usa ≥ 0,32
@@ -250,56 +256,90 @@ export class NavGrid {
     const start = this.gid(a.level, a.i, a.j);
     const goal = this.gid(b.level, b.i, b.j);
     if (start === goal) return [this.worldOf(b)];
-    const g = new Map<number, number>([[start, 0]]);
-    const came = new Map<number, number>();
-    const heap = new MinHeap();
-    const hfun = (p: NavPoint) => {
-      const di = Math.abs(p.i - b.i);
-      const dj = Math.abs(p.j - b.j);
-      return (Math.max(di, dj) + 0.414 * Math.min(di, dj)) * NAV_RES + Math.abs(p.level - b.level) * 4;
+    // Memoria de trabajo reutilizada (arrays tipados y una época por búsqueda: sin Map ni Set ni
+    // objetos por vecino). Mismo orden de exploración y mismas prioridades que antes: misma ruta.
+    const total = this.levels * this.nx * this.nz;
+    let sc = this.search;
+    if (!sc || sc.g.length !== total || sc.epoch >= 0xfffffffe) {
+      sc = this.search = { g: new Float64Array(total), came: new Int32Array(total), seen: new Uint32Array(total), closed: new Uint32Array(total), epoch: 0 };
+    }
+    const ep = ++sc.epoch;
+    const { g, came, seen, closed } = sc;
+    const nx = this.nx;
+    const nz = this.nz;
+    const bi = b.i;
+    const bj = b.j;
+    const bl = b.level;
+    const hOf = (level: number, i: number, j: number): number => {
+      const di = Math.abs(i - bi);
+      const dj = Math.abs(j - bj);
+      return (Math.max(di, dj) + 0.414 * Math.min(di, dj)) * NAV_RES + Math.abs(level - bl) * 4;
     };
-    heap.push(start, hfun(a));
-    const closed = new Set<number>();
+    const heap = new MinHeap();
+    g[start] = 0;
+    seen[start] = ep;
+    heap.push(start, hOf(a.level, a.i, a.j));
     let expanded = 0;
+    let reached = false;
     while (heap.size > 0) {
       const cur = heap.pop()!;
-      if (cur === goal) break;
-      if (closed.has(cur)) continue;
-      closed.add(cur);
+      if (cur === goal) {
+        reached = true;
+        break;
+      }
+      if (closed[cur] === ep) continue;
+      closed[cur] = ep;
       if (++expanded > maxExpanded) return null;
-      const p = this.fromGid(cur);
-      const gc = g.get(cur)!;
-      const visit = (n: number, cost: number) => {
-        if (closed.has(n)) return;
-        const ng = gc + cost;
-        const old = g.get(n);
-        if (old === undefined || ng < old) {
-          g.set(n, ng);
-          came.set(n, cur);
-          heap.push(n, ng + hfun(this.fromGid(n)));
-        }
-      };
+      const pj = cur % nz;
+      const rest = (cur - pj) / nz;
+      const pi = rest % nx;
+      const pl = (rest - pi) / nx;
+      const gc = g[cur]!;
+      const walk = this.walk[pl]!;
+      const height = this.height[pl]!;
+      const h0 = height[pi * nz + pj]!;
       for (let di = -1; di <= 1; di++) {
         for (let dj = -1; dj <= 1; dj++) {
           if (!di && !dj) continue;
-          const ni = p.i + di;
-          const nj = p.j + dj;
-          if (!this.isWalk(p.level, ni, nj)) continue;
-          if (di && dj && (!this.isWalk(p.level, p.i + di, p.j) || !this.isWalk(p.level, p.i, p.j + dj))) continue;
-          const dh = Math.abs(this.height[p.level]![ni * this.nz + nj]! - this.height[p.level]![p.i * this.nz + p.j]!);
-          if (dh > 0.6) continue;
-          visit(this.gid(p.level, ni, nj), (di && dj ? 1.414 : 1) * NAV_RES);
+          const ni = pi + di;
+          const nj = pj + dj;
+          if (ni < 0 || nj < 0 || ni >= nx || nj >= nz || walk[ni * nz + nj] !== 1) continue;
+          if (di && dj && (walk[(pi + di) * nz + pj] !== 1 || walk[pi * nz + pj + dj] !== 1)) continue;
+          if (Math.abs(height[ni * nz + nj]! - h0) > 0.6) continue;
+          const n = (pl * nx + ni) * nz + nj;
+          if (closed[n] === ep) continue;
+          const ng = gc + (di && dj ? 1.414 : 1) * NAV_RES;
+          if (seen[n] !== ep || ng < g[n]!) {
+            seen[n] = ep;
+            g[n] = ng;
+            came[n] = cur;
+            heap.push(n, ng + hOf(pl, ni, nj));
+          }
         }
       }
-      for (const n of this.links.get(cur) ?? []) visit(n, NAV_RES);
+      const links = this.links.get(cur);
+      if (links) {
+        for (const n of links) {
+          if (closed[n] === ep) continue;
+          const ng = gc + NAV_RES;
+          if (seen[n] !== ep || ng < g[n]!) {
+            seen[n] = ep;
+            g[n] = ng;
+            came[n] = cur;
+            const q = this.fromGid(n);
+            heap.push(n, ng + hOf(q.level, q.i, q.j));
+          }
+        }
+      }
     }
-    if (!came.has(goal)) return null;
+    // (Como antes: si se agota la cola sin sacar el destino, vale haberlo alcanzado.)
+    if (!reached && seen[goal] !== ep) return null;
     const raw: NavPoint[] = [];
-    let c: number | undefined = goal;
-    while (c !== undefined) {
+    let c = goal;
+    for (;;) {
       raw.push(this.fromGid(c));
       if (c === start) break;
-      c = came.get(c);
+      c = came[c]!;
     }
     raw.reverse();
     // Suavizado: saltar nodos mientras haya línea de visión en el mismo nivel.

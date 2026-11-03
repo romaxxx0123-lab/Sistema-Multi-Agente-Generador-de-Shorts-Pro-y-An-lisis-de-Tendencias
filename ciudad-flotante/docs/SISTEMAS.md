@@ -111,20 +111,25 @@ van primero. Los textos describen acciones físicas, no menús.
 
 ## 6. Energía y agua (`utilities.ts`) — sim-economy
 
-- **Generador**: si está encendido, activo y hay demanda o batería por llenar, quema combustible
-  de su ranura (`fuelBurn` minutos; madera 40, bidón 360). Produce 5 kW (×0,7 si condición < 50).
-- **Panel solar**: 1,6 kW × luz diurna × (1 − 0,65·nubes) × factor de condición.
+- **Generador**: si está encendido y activo, quema combustible de su ranura (`fuelBurn` minutos;
+  madera 40, bidón 360) cuando hay un déficit que las baterías no pueden cubrir o cuando estas bajan
+  del 30 % (`GEN_RESTART_FRACTION`); entonces las llena del todo a plena potencia y para. Así las
+  baterías guardan el sol del día para la noche y un generador más potente pasa menos horas en
+  marcha. Produce 5 kW (×0,7 si condición < 50).
+- **Panel solar**: 1,2 kW × luz diurna × (1 − 0,65·nubes) × factor de condición.
 - La enfermería solo consume 0,3 kW con alguien en una camilla. Una batería averiada conserva su
   carga pero no carga ni descarga hasta repararla.
-- **Demanda**: taller (1,5 kW, solo con cola), potabilizadora (2 kW, si el agua no está llena),
+- **Demanda**: taller (1,5 kW, solo con cola; sin electricidad trabaja a mano, ver §7), potabilizadora (2 kW, si el agua no está llena),
   enfermería (0,3 kW), motor (4 kW, encendido y navegando), huerto interior con lámparas
   (0,15 kW por parcela creciendo, requiere `invernadero`).
-- **Baterías**: 25 kWh cada una; cargan con el excedente y descargan (≤ 10 kW por batería).
+- **Baterías**: 20 kWh cada una; cargan con el excedente y descargan (≤ 10 kW por batería).
 - `satisfaction = min(1, (generación + descarga disponible) / demanda)`; `powered = satisfaction > 0,5`
   para cada consumidor activo y encendido. Las estaciones trabajan a velocidad × satisfaction.
-- **Agua**: capacidad = depósitos (120 L) + colectores (20 L). Entradas: colector 10 L/h × lluvia
-  (solo a cielo abierto), potabilizadora 18 L/h × satisfaction. Pérdidas: fuga 6 L/h, depósito
-  dañado (< 50) 1 L/h. (Valores actuales: potabilizadora 10 L/h.) Consumo de huertos/habitantes lo restan sus sistemas. Límite 0..capacidad.
+- **Agua**: capacidad = depósitos (120 L) + colectores (20 L). Entradas: colector 7 L/h × lluvia
+  (solo a cielo abierto), potabilizadora 4 L/h × satisfaction. Pérdidas: fuga 6 L/h, depósito
+  dañado (< 50) 1 L/h. Consumo de huertos/habitantes lo restan sus sistemas. Límite 0..capacidad.
+  Un habitante bebe unos 0,18 L/h: una potabilizadora básica da para unas 15–20 personas con sus
+  huertos; con más tripulación hace falta la mejora (7 L/h), otra potabilizadora o lluvia.
 - `togglePower` enciende/apaga generadores y consumidores.
 
 ## 7. Estaciones y cultivos (`stations.ts`) — sim-economy
@@ -132,7 +137,9 @@ van primero. Los textos describen acciones físicas, no menús.
 - Estación por tipo: `banco_trabajo`→banco, `taller`→taller, `cocina`→cocina; `null`→mano.
 - Pago de ingredientes: **inventario del jugador y luego almacenes y bandejas** (`payInventories`).
 - `queueCraft`: consume al encolar, máximo 8 trabajos. La cocina avisa si no hay combustible.
-- `tickStations`: el primer trabajo avanza `dt × velocidad` (banco siempre; taller con energía;
+- `tickStations`: el primer trabajo avanza `dt × velocidad` (banco siempre; taller con energía a
+  velocidad × satisfacción y, sin ella, a mano al 25 % (`WORKSHOP_HAND_SPEED`, aviso informativo una
+  sola vez): el plano del día 1 sirve desde que se construye y el generador lo hace ir 4 veces más rápido;
   cocina quemando combustible de su ranura). Al terminar, los productos van a la bandeja de la
   estación → si no caben, al almacén → si no, a una caja. Aviso "Pescado asado listo en la cocina".
 - `cancelCraft` devuelve los ingredientes al jugador.
@@ -163,7 +170,8 @@ van primero. Los textos describen acciones físicas, no menús.
   cercano (nadie cae a la bodega al terminar una escalera).
 - `checkDemolishModule` también informa del agua y la carga que se perderían (`losses`). Obra
   especial `ship.expansion`; `helpBuild(-1, …)` ayuda en ella.
-- Desgaste: máquinas funcionando pierden 1 de condición cada 8 h según su carga; a 0 → averiadas ("Desgaste").
+- Desgaste: máquinas funcionando pierden 1 de condición cada 5 h según su carga; a 0 → averiadas ("Desgaste").
+  Piden repuestos tras unas 25 h de funcionamiento: un gasto continuo de piezas y kits.
 - Si falta el repuesto, el motivo dice dónde conseguirlo. La pieza mecánica también se improvisa en el
   banco de trabajo (más cara), así que una avería nunca bloquea su propia reparación.
 - `repairInfo` / `repair`: máquinas (`def.machine`) → llave inglesa + pieza mecánica; estructuras →
@@ -348,15 +356,26 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 
 | Módulo | Nivel 2 | Nivel 3 |
 |---|---|---|
-| Almacén | 32 huecos | 48 huecos |
-| Depósito | 220 L | 340 L |
-| Generador | 8 kW, combustible ×1,3 | 11 kW, ×1,6 |
-| Huerto | agua ×0,6, crecimiento ×1,2 | crecimiento ×1,5 |
+| Almacén | 32 huecos | 48 huecos (Plano: Ampliación del casco) |
+| Depósito | 220 L | 340 L (Plano: Potabilizadora) |
+| Generador | 8 kW, combustible ×1,3 | 11 kW, ×1,6 (4 piezas y 5 componentes) |
+| Huerto | agua ×0,6, crecimiento ×1,2 | crecimiento ×1,5 (Plano: Lámparas de cultivo) |
 | Cocina | ×1,5 velocidad y leña, 18 huecos | — |
 | Taller | ×1,6 velocidad, desgaste ×0,7 | — |
 | Banco | ×1,5 velocidad, 10 huecos | — |
 | Camarote / dormitorio / comedor / sala común | más confort | — |
-| Colector, potabilizadora, batería, panel, enfermería, motor, ahumadero, vivero, grúa | una mejora cada uno | — |
+| Colector | 12 L/h con lluvia (7 el básico), 35 L | — |
+| Potabilizadora | 7 L/h (4 la básica), desgaste ×0,7 | — |
+| Batería / panel | 40 kWh (20) / 1,8 kW (1,2) | — |
+| Enfermería, motor, ahumadero, vivero, grúa | una mejora cada uno | — |
+
+- Costes (ronda de pruebas 2): el nivel 2 cuesta al menos lo que el módulo (en valor de materiales) y
+  tarda al menos su obra; el nivel 3, al menos 1,5 veces el nivel 2 y pide un plano o piezas del
+  taller. Así las mejoras llegan escalonadas con la exploración. El camarote acogedor (4 de tela y 10
+  de madera) se paga con lo del almacén inicial, para presentar la herramienta el primer día.
+- Confort: el del dormitorio con taquillas (3) no pasa del de una cama básica, así que no da más
+  descanso, solo ánimo; el comedor no añade sillas; la estufa de la sala común es de adorno (no
+  calienta: `warmthEnvironment` solo cuenta la cocina encendida).
 
 - Precisiones de las mejoras (§13): la obra de mejora se pausa mientras el módulo arde. Cancelarla devuelve el 100 % al jugador (si no cabe, en una caja a sus pies). Al desmontar se recupera el 50 % de las mejoras terminadas y el 100 % de la que esté en obras. Los habitantes ayudan en las mejoras igual que en las obras.
 - Energía (§6): `fuelMinutes` da los minutos de funcionamiento según la eficiencia (`runOnFuel`). La grúa consume 0,4 kW y el radar 0,3 kW mientras estén encendidos y operativos (`isGruaReady`, `gruaWorkRate`, `isRadarActive`).
@@ -369,10 +388,14 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 - **Sala común** (vivienda): confort 4; los habitantes pasan allí su ocio y mejora su ánimo y su
   relación.
 - **Ahumadero** (cubierta, cielo abierto): receta «Ahumar pescado» (3 crudos + 1 madera → 3 ahumados
-  en 90 min). El pescado ahumado alimenta bien y no hay que cocinarlo.
+  en 60 min; 37,5 con el tiro doble). El ahumado da 34 de hambre (el asado, 30) y −2 de sed, no hay
+  que cocinarlo, se apila de 20 en 20 y trabaja solo, sin fogón que vigilar ni leña de la cocina. A
+  cambio gasta más leña por pescado (0,33 frente a 0,2) y no cuenta como comida caliente. No hay
+  caducidad de la comida: ningún texto promete que «aguanta».
 - **Vivero de peces** (plano de acuicultura): con energía produce pescado en su bandeja cada 150 min.
 - **Grúa de rescate** (plano, junto a la borda): con energía rescata sola el resto más cercano de su
-  costado a ≤ 30 m cada 25 min (también balsas de náufragos). Automatización.
+  costado a ≤ 30 m unos 28 min por pieza (25 recogiendo cable + 3 de enganche; también balsas de
+  náufragos). Automatización.
 - **Radar y radio** (plano, cubierta superior): con energía, avistamientos antes y durante más tiempo,
   aviso de tormenta 3 h antes y mensajes de radio de otros barcos en el diario.
 

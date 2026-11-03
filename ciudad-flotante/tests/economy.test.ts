@@ -11,7 +11,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CROPS } from '../src/data/crops';
 import { ITEMS } from '../src/data/items';
+import { DEBRIS_LOOT } from '../src/data/loot';
 import { HULL_EXPANSION, moduleDef } from '../src/data/modules';
+import { REGIONS } from '../src/data/regions';
 import { RECIPES, recipesFor } from '../src/data/recipes';
 import { MINUTES_PER_DAY, SHIP_MAX_LENGTH, SHIP_START_LENGTH } from '../src/sim/constants';
 import * as construction from '../src/sim/construction';
@@ -225,21 +227,44 @@ describe('red eléctrica', () => {
     expect(texts(notes, /sin combustible/)).toHaveLength(0);
   });
 
-  it('el generador no arranca si las baterías están casi llenas y no hay déficit', () => {
+  it('el generador no arranca mientras las baterías puedan cubrir la demanda; por debajo del 30 %, las llena', () => {
     const { sim } = setup();
-    sim.state.unlocks.push('energia');
+    sim.state.unlocks.push('energia', 'agua');
     give(sim, MATERIALS);
     const gen = build(sim, 'generador', 0, 1, 0);
     build(sim, 'bateria', 0, 2, 0);
-    addItem(gen.fuelInv!, 'madera', 5);
-    sim.state.utilities.batteryKWh = 24; // 96 % > 90 %
+    const u = sim.state.utilities;
+    const cap = moduleDef('bateria').batteryKWh!;
+    expect(utilities.GEN_RESTART_FRACTION).toBe(0.3);
+    addItem(gen.fuelInv!, 'madera', 10);
+    u.batteryKWh = cap * 0.5; // sin demanda y por encima del umbral: no arranca
     run(sim, 30);
     expect(gen.powered).toBe(false);
-    expect(countItem(gen.fuelInv, 'madera')).toBe(5);
-    sim.state.utilities.batteryKWh = 10; // por debajo del 90 %: arranca y carga hasta llenar
-    run(sim, 30);
+    expect(countItem(gen.fuelInv, 'madera')).toBe(10);
+    // Con demanda (potabilizadora, 2 kW) la cubren las baterías: el generador sigue parado.
+    build(sim, 'potabilizadora', 0, 3, 0);
+    const drain = () => {
+      u.waterL = 0;
+    };
+    u.batteryKWh = cap * 0.5;
+    run(sim, 60, drain, 5);
+    expect(gen.powered).toBe(false);
+    expect(u.power.satisfaction).toBe(1);
+    expect(u.batteryKWh).toBeCloseTo(cap * 0.5 - 2, 1);
+    // Por debajo del 30 %: arranca y carga hasta llenarlas del todo; luego vuelve a parar.
+    u.batteryKWh = cap * 0.25;
+    run(sim, 5, drain, 5);
     expect(gen.powered).toBe(true);
-    expect(sim.state.utilities.batteryKWh).toBeGreaterThan(10);
+    let t = 0;
+    while (gen.powered && t < 8 * 60) {
+      run(sim, 5, drain, 5);
+      t += 5;
+    }
+    // 15 kWh a 3 kW netos: unas 5 h en marcha, hasta llenarlas; entonces para.
+    expect(t).toBeGreaterThan(4 * 60);
+    expect(t).toBeLessThan(6 * 60);
+    expect(gen.powered).toBe(false);
+    expect(u.batteryKWh).toBeGreaterThan(cap - 0.2);
   });
 
   it('el panel solar produce según la luz y las nubes, y nada de noche', () => {
@@ -340,7 +365,7 @@ describe('red eléctrica', () => {
 /* ------------------------------------------------------------------ */
 
 describe('red de agua', () => {
-  it('el colector recoge su caudal (6 L/h) × lluvia a cielo abierto', () => {
+  it('el colector recoge su caudal (7 L/h) × lluvia a cielo abierto', () => {
     const { sim } = setup();
     // Los habitantes beben del depósito (SISTEMAS §11): fuera para medir solo el colector.
     sim.state.npcs = [];
@@ -352,7 +377,7 @@ describe('red de agua', () => {
       sim.tick(0.5);
     }
     const gen = moduleDef('colector').waterGen!;
-    expect(gen).toBe(6);
+    expect(gen).toBe(7);
     expect(u.waterL - w0).toBeGreaterThan(gen - 0.2);
     expect(u.waterL - w0).toBeLessThanOrEqual(gen + 0.0001);
     expect(u.water.inPerHour).toBeGreaterThan(gen - 1);
@@ -2128,12 +2153,12 @@ describe('mejoras de instalaciones', () => {
     give(sim, MATERIALS);
     const cam = build(sim, 'camarote', 1, 6, 3);
     expect(sim.startUpgrade(cam.id).ok).toBe(true);
-    expect(sim.checkDemolishModule(cam.id).refund).toEqual({ madera: 4 + 10, tela: 1 + 5 });
+    expect(sim.checkDemolishModule(cam.id).refund).toEqual({ madera: 4 + 10, tela: 1 + 4 });
     const r = sim.demolish(cam.id);
     expect(r.ok, r.msg).toBe(true);
     const crate = sim.state.crates.find((c) => c.label === 'Restos: Camarote')!;
     expect(countItem(crate.inventory, 'madera')).toBe(14);
-    expect(countItem(crate.inventory, 'tela')).toBe(6);
+    expect(countItem(crate.inventory, 'tela')).toBe(5);
   });
 
   it('textos de mejora con concordancia («Cocina mejorada», «Sala común mejorada»)', () => {
@@ -2171,9 +2196,9 @@ describe('mejoras: efectos en agua y energía', () => {
     const col = mod(sim, 'colector');
     upgrade(sim, col);
     expect(u.water.capacityL).toBe(340 + 35);
-    // Doble lona: dos tercios más de lluvia (6 → 10 L/h con lluvia plena).
+    // Doble lona: casi el doble de lluvia (7 → 12 L/h con lluvia plena).
     const lona = moduleDef('colector').upgrades![0]!.effects.waterGen!;
-    expect(lona / moduleDef('colector').waterGen!).toBeCloseTo(10 / 6, 6);
+    expect(lona / moduleDef('colector').waterGen!).toBeCloseTo(12 / 7, 6);
     u.waterL = 100;
     for (let i = 0; i < 120; i++) {
       freeze(sim, 'lluvia');
@@ -2671,9 +2696,9 @@ describe('ronda 2: integridad', () => {
 /* Regresiones de la ronda de pruebas 2 (equilibrio)                   */
 /* ------------------------------------------------------------------ */
 
-/** Unidades totales de un coste (para comparar niveles). */
-function units(cost: Record<string, number>): number {
-  return Object.values(cost).reduce((a, n) => a + n, 0);
+/** Valor de un coste (`ItemDef.value` × cantidad), para comparar niveles con materiales distintos. */
+function worth(cost: Record<string, number>): number {
+  return Object.entries(cost).reduce((a, [id, n]) => a + (ITEMS[id]?.value ?? 1) * n, 0);
 }
 
 describe('regresiones QA 2 (equilibrio)', () => {
@@ -2684,13 +2709,13 @@ describe('regresiones QA 2 (equilibrio)', () => {
       const ups = def.upgrades ?? [];
       expect(ups.length, id).toBeGreaterThan(0);
       const t2 = ups.find((u) => u.tier === 2)!;
-      // El nivel 2 cuesta al menos lo que el módulo y tarda al menos lo mismo que su obra.
-      expect(units(t2.cost), id).toBeGreaterThanOrEqual(units(def.cost));
+      // El nivel 2 cuesta al menos lo que el módulo (en valor de los materiales) y tarda al menos lo mismo que su obra.
+      expect(worth(t2.cost), id).toBeGreaterThanOrEqual(worth(def.cost));
       expect(t2.buildTime, id).toBeGreaterThanOrEqual(def.buildTime);
       const t3 = ups.find((u) => u.tier === 3);
       if (!t3) continue;
       tier3.push(id);
-      expect(units(t3.cost), id).toBeGreaterThanOrEqual(1.5 * units(t2.cost));
+      expect(worth(t3.cost), id).toBeGreaterThanOrEqual(1.5 * worth(t2.cost));
       expect(t3.buildTime, id).toBeGreaterThanOrEqual(1.5 * t2.buildTime);
       // Un plano (exploración) o piezas que solo da el taller.
       const gated = !!t3.unlock || (t3.cost['componentes'] ?? 0) + (t3.cost['pieza_mecanica'] ?? 0) >= 6;
@@ -2861,8 +2886,8 @@ describe('regresiones QA 2 (equilibrio)', () => {
     }
     expect(moduleDef('ahumadero').desc).not.toMatch(/aguanta/);
     // Las descripciones de agua y energía dicen lo que mide la mejora.
-    expect(up('colector').effects.waterGen! / moduleDef('colector').waterGen!).toBeCloseTo(5 / 3, 6);
-    expect(up('colector').desc).toMatch(/dos tercios más/);
+    expect(up('colector').effects.waterGen! / moduleDef('colector').waterGen!).toBeCloseTo(12 / 7, 6);
+    expect(up('colector').desc).toMatch(/casi el doble/);
     expect(up('potabilizadora').effects.waterGen! / moduleDef('potabilizadora').waterGen!).toBeCloseTo(1.75, 6);
     expect(up('potabilizadora').desc).toMatch(/casi el doble/);
     expect(up('bateria').effects.batteryKWh! / moduleDef('bateria').batteryKWh!).toBeCloseTo(2, 6);
@@ -2872,12 +2897,39 @@ describe('regresiones QA 2 (equilibrio)', () => {
   });
 
   it('[valores] números de equilibrio de la ronda de pruebas 2', () => {
-    expect(moduleDef('colector').waterGen).toBe(6);
+    expect(moduleDef('colector').waterGen).toBe(7);
     expect(moduleDef('potabilizadora').waterGen).toBe(4);
     expect(moduleDef('panel_solar').powerGen).toBe(1.2);
     expect(moduleDef('bateria').batteryKWh).toBe(20);
     expect(construction.WEAR_HOURS_PER_POINT).toBe(5);
     expect(stations.WORKSHOP_HAND_SPEED).toBe(0.25);
     expect(ITEMS['pescado_ahumado']!.consume).toMatchObject({ hunger: 34, thirst: -2 });
+  });
+
+  it('[mejoras] la primera mejora (camarote acogedor) se paga con el almacén inicial; el almacén ya pide recoger restos', () => {
+    const { sim } = setup();
+    // Presenta la herramienta Mejorar el primer día sin regalar el resto de mejoras.
+    expect(sim.checkUpgrade(mod(sim, 'camarote').id)).toMatchObject({ ok: true, toTier: 2, name: 'Camarote acogedor' });
+    expect(sim.checkUpgrade(mod(sim, 'almacen').id)).toMatchObject({ ok: false, toTier: 2, missing: { tornillos: 8, placa_metal: 2 } });
+    expect(sim.checkUpgrade(mod(sim, 'cocina').id).ok).toBe(false);
+  });
+
+  it('[entrada] los restos dan menos por hora en todas las regiones (madera, chatarra, plástico, fibra y combustible)', () => {
+    // Botín medio por hora = restos/h × Σ (peso del tipo × probabilidad × cantidad media).
+    const perHour = (regionId: string, item: string): number => {
+      const r = REGIONS[regionId]!;
+      const weights = Object.entries(r.debrisWeights) as [keyof typeof DEBRIS_LOOT, number][];
+      const total = weights.reduce((a, [, w]) => a + w, 0);
+      let n = 0;
+      for (const [kind, w] of weights) for (const e of DEBRIS_LOOT[kind] ?? []) if (e.id === item) n += r.debrisPerHour * (w / total) * e.chance * ((e.min + e.max) / 2);
+      return n;
+    };
+    // Antes de la ronda de pruebas 2: hasta 6,4 de madera/h (templadas), 6,35 de chatarra
+    // (cementerio), 2,8 de plástico, 4,5 de fibra (sargazos) y 1 bidón/h; un 30–60 % menos ahora.
+    const caps: Record<string, number> = { madera: 4.6, chatarra: 4.5, plastico: 1.5, fibra: 2.6, combustible: 0.45 };
+    for (const id of Object.keys(REGIONS)) for (const [item, cap] of Object.entries(caps)) expect(perHour(id, item), `${id} ${item}`).toBeLessThanOrEqual(cap);
+    // Los tablones siguen siendo la madera de cada día y la chatarra no falta al empezar.
+    expect(perHour('templadas', 'madera')).toBeGreaterThan(4);
+    expect(perHour('templadas', 'chatarra')).toBeGreaterThan(2);
   });
 });

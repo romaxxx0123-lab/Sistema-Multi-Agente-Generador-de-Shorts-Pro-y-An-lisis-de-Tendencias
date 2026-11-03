@@ -7,7 +7,9 @@
  *     no está llena, enfermería con alguien en una camilla, motor navegando, lámparas de cultivo de
  *     huertos interiores).
  *  3. Generación: paneles solares (luz × nubes × condición) y generadores, que queman combustible
- *     de su ranura solo cuando hay déficit o batería por llenar (con histéresis para no parpadear).
+ *     de su ranura solo cuando hay un déficit que las baterías no pueden cubrir o cuando estas bajan
+ *     de `GEN_RESTART_FRACTION`; entonces las llenan del todo a plena potencia (histéresis: pocos
+ *     arranques, y el sol del día que guardan las baterías se aprovecha de noche).
  *  4. Baterías: cargan con el excedente y cubren el déficit (≤ 10 kW por batería operativa). Una
  *     batería averiada o ardiendo conserva su carga (cuenta para la capacidad) pero no carga ni
  *     entrega energía hasta repararla.
@@ -62,8 +64,12 @@ export const GROW_LAMP_KW = 0.15;
 export const LEAK_L_PER_HOUR = 6;
 /** Pérdida de un depósito dañado (condición < 50) sin fuga declarada (L/h). */
 export const DAMAGED_TANK_L_PER_HOUR = 1;
-/** Fracción de batería por debajo de la cual un generador parado arranca para recargarla. */
-const GEN_RESTART_FRACTION = 0.9;
+/**
+ * Fracción de batería por debajo de la cual un generador parado arranca para recargarla. Mientras
+ * quede más, las baterías cubren el déficit solas (QA 2: antes el generador arrancaba con cualquier
+ * déficit y las mantenía al 90 %, así que ni guardaban el sol para la noche ni ahorraban combustible).
+ */
+export const GEN_RESTART_FRACTION = 0.3;
 /** Constante de tiempo (min) del suavizado de entradas/salidas de agua. */
 const WATER_SMOOTH_MIN = 15;
 /** Agua (L) por debajo de la cual el depósito se considera vacío para los avisos. */
@@ -577,11 +583,13 @@ export function tickUtilities(sim: Simulation, dt: number): void {
     if (hasFuel(g)) potential += kw;
     const wasRunning = g.powered;
     const deficit = generation < demand - 1e-6;
+    // Un déficit que las baterías pueden pagar no arranca el generador (se recargan al bajar del umbral).
+    const batteriesCover = cap.batteries > 0 && u.batteryKWh > 0.05 && demand - generation <= maxBatteryKW + 1e-9;
     const wantsCharge =
       cap.batteries > 0 &&
       generation < demand + maxBatteryKW - 1e-6 &&
       (wasRunning ? batteryRoom > 0.01 : u.batteryKWh < cap.batteryKWh * GEN_RESTART_FRACTION);
-    if (!deficit && !wantsCharge) {
+    if ((!deficit || batteriesCover) && !wantsCharge) {
       g.powered = false;
       continue;
     }

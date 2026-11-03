@@ -384,7 +384,7 @@ const defs: ModuleDef[] = [
     unlock: null,
     doors: [],
     props: [{ kind: 'colector', u: 2.0, v: 2.0, rot: 0, collider: [0.9, 0.9, 2.2], interact: 'colector' }],
-    waterGen: 6,
+    waterGen: 7,
     waterCapacity: 20,
     demolishable: true,
     buildable: true,
@@ -685,7 +685,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 3, name: 'Gran depósito', desc: 'Tanque presurizado con aislamiento: casi el triple que el básico.', cost: { placa_metal: 12, tornillos: 12, plastico: 10, componentes: 1 }, buildTime: 105, unlock: 'agua', effects: { waterCapacity: 340 } },
   ],
   colector: [
-    { tier: 2, name: 'Colector de doble lona', desc: 'Doble lona y un pequeño tanque: recoge dos tercios más de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 10, waterCapacity: 35 } },
+    { tier: 2, name: 'Colector de doble lona', desc: 'Doble lona y un pequeño tanque: recoge casi el doble de lluvia.', cost: { tela: 6, cuerda: 4, madera: 6 }, buildTime: 40, effects: { waterGen: 12, waterCapacity: 35 } },
   ],
   potabilizadora: [
     { tier: 2, name: 'Potabilizadora con prefiltro', desc: 'Filtra casi el doble de agua por hora y se desgasta menos.', cost: { componentes: 3, placa_metal: 4, tornillos: 6, pieza_mecanica: 1 }, buildTime: 90, effects: { waterGen: 7, wearMult: 0.7 } },
@@ -714,7 +714,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 3, name: 'Huerto abonado', desc: 'Tierra nueva con compost de algas: crece mucho más rápido.', cost: { madera: 20, plastico: 8, placa_metal: 4, fibra: 20 }, buildTime: 90, unlock: 'invernadero', effects: { waterUseMult: 0.6, growthMult: 1.5 } },
   ],
   camarote: [
-    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 5, madera: 10 }, buildTime: 45, effects: { comfort: 5 } },
+    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 4, madera: 10 }, buildTime: 45, effects: { comfort: 5 } },
   ],
   dormitorio: [
     { tier: 2, name: 'Dormitorio con taquillas', desc: 'Taquillas y cortinas: cada cual con su rincón. Quien duerme aquí está de mejor ánimo.', cost: { tela: 8, madera: 14 }, buildTime: 70, effects: { comfort: 3 } },
@@ -732,13 +732,13 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 2, name: 'Ahumadero de tiro doble', desc: 'Dos cámaras de humo: ahúma más rápido con la misma leña.', cost: { madera: 12, placa_metal: 3, tornillos: 6 }, buildTime: 60, effects: { workSpeed: 1.6 } },
   ],
   vivero: [
-    { tier: 2, name: 'Vivero con aireadores', desc: 'Burbujeadores y sombra: los peces crecen antes.', cost: { componentes: 3, plastico: 8, tornillos: 6 }, buildTime: 90, effects: { workSpeed: 1.6 } },
+    { tier: 2, name: 'Vivero con aireadores', desc: 'Burbujeadores y sombra: los peces crecen antes.', cost: { componentes: 3, plastico: 8, tornillos: 6, placa_metal: 2 }, buildTime: 90, effects: { workSpeed: 1.6 } },
   ],
   grua: [
-    { tier: 2, name: 'Grúa de pluma larga', desc: 'Más alcance y un torno más rápido.', cost: { placa_metal: 6, pieza_mecanica: 3, cuerda: 6 }, buildTime: 120, effects: { workSpeed: 1.6 } },
+    { tier: 2, name: 'Grúa de pluma larga', desc: 'Más alcance y un torno más rápido.', cost: { placa_metal: 6, pieza_mecanica: 3, cuerda: 6, componentes: 2 }, buildTime: 120, effects: { workSpeed: 1.6 } },
   ],
   motor: [
-    { tier: 2, name: 'Motor con hélice de paso variable', desc: 'Más velocidad con la misma energía.', cost: { pieza_mecanica: 6, componentes: 6 }, buildTime: 180, effects: { speedBonus: 5 } },
+    { tier: 2, name: 'Motor con hélice de paso variable', desc: 'Más velocidad con la misma energía.', cost: { pieza_mecanica: 6, componentes: 6, placa_metal: 6 }, buildTime: 180, effects: { speedBonus: 5 } },
   ],
 };
 for (const d of defs) if (UPGRADES[d.id]) d.upgrades = UPGRADES[d.id];

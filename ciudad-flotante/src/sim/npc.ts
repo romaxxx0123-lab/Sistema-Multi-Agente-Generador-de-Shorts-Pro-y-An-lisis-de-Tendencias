@@ -107,6 +107,13 @@ export const WORK_FROM = 8;
 export const WORK_TO = 20;
 export const NIGHT_FROM = 22;
 export const DEFAULT_WAKE_HOUR = 6;
+/**
+ * Cada habitante se despierta con un desfase propio de 0 a estos minutos (fijo, sin azar): no se
+ * levanta toda la tripulación en el mismo instante (ni busca ruta a la vez).
+ */
+export const WAKE_SPREAD_MIN = 25;
+/** Búsquedas de ruta por paso a partir de las que las decisiones que no corren prisa esperan al siguiente. */
+export const PATH_SEARCHES_PER_TICK = 4;
 /** Minutos que dura un bocadillo de texto. */
 export const SAY_MINUTES = 6;
 /** Enfriamiento de las quejas de cada habitante (min). */
@@ -124,6 +131,8 @@ export const NPC_BUCKET_EXTINGUISH = 20;
 export const FIRE_REACH = 3;
 /** Comer en la mesa (min). */
 export const EAT_MINUTES = 20;
+/** Probabilidad de que comente lo que come. */
+export const EAT_TALK_CHANCE = 0.35;
 export const DRINK_MINUTES = 2;
 /** Sed que quita un litro de agua. */
 export const DRINK_THIRST = 40;
@@ -341,16 +350,17 @@ const LINES = {
     fuego: ['¡Me quemo!', '¡Ay, las manos!'],
     heridas: ['Me duele muchísimo…', 'Necesito ayuda…'],
   } as Record<string, string[]>,
+  /** Al comer (o al aceptar comida del jugador), según lo que come. */
   eat: {
-    guiso: '¡Qué guiso más rico!',
-    sopa: 'Una sopa caliente, qué lujo.',
-    pescado_asado: 'Pescado a la brasa, como en casa.',
-    conserva: 'Lata otra vez… en fin.',
-    fruta: '¡Qué fruta más dulce!',
-    hortaliza: 'Verdura cruda… algo es algo.',
-    pescado_crudo: 'Crudo… no es lo ideal.',
-    pescado_ahumado: 'Ahumado y salado, como en los puertos de antes.',
-  } as Record<string, string>,
+    guiso: ['¡Qué guiso más rico!', 'Este guiso resucita a un muerto.', 'Un guiso así no se come todos los días.', '¿Queda más guiso?'],
+    sopa: ['Una sopa caliente, qué lujo.', 'Nada como una sopa para entrar en calor.', 'Esta sopa sabe a hogar.', 'Calentita, como debe ser.'],
+    pescado_asado: ['Pescado a la brasa, como en casa.', 'Recién asado, así da gusto.', 'Qué bien huele este pescado.', 'Con un poco de limón sería perfecto.'],
+    conserva: ['Lata otra vez… en fin.', 'Las latas no fallan, pero cansan.', 'Al menos llena la tripa.', 'Echo de menos algo recién hecho.'],
+    fruta: ['¡Qué fruta más dulce!', 'Fruta fresca en alta mar, quién lo diría.', 'Esto sí que es un capricho.'],
+    hortaliza: ['Verdura cruda… algo es algo.', 'Cruje, por lo menos.', 'Mejor cocinada, pero bueno.'],
+    pescado_crudo: ['Crudo… no es lo ideal.', 'Espero no arrepentirme de esto.', 'Sin fuego no hay otra.'],
+    pescado_ahumado: ['Ahumado y salado, como en los puertos de antes.', 'El ahumadero vale su peso en oro.', 'Me va a dar sed, pero qué rico.', 'Este punto de humo está perfecto.'],
+  } as Record<string, string[]>,
   /** Con un amigo ({nombre}). */
   friendChat: ['¡Contigo da gusto charlar, {nombre}!', '{nombre}, eres de lo mejor de este barco.', '¿Te acuerdas, {nombre}, de aquella tormenta?', '¡Ja, ja! {nombre}, no cambies nunca.'],
   /** Una charla que acaba mal. */
@@ -403,6 +413,8 @@ interface NpcMemo {
   greetAt: number;
   chatterAt: number;
   lastMealAt: number;
+  /** Lo último que dijo al comer (para no repetirlo). */
+  lastEatLine: string;
   progressAt: number;
   progressDist: number;
   /** Puntos de ruta que quedaban en la última medición (al consumir uno se reinicia la medida). */
@@ -497,6 +509,7 @@ function memoOf(sim: Simulation, npc: NpcState): NpcMemo {
       greetAt: -Infinity,
       chatterAt: t + sim.rng.range(10, 60),
       lastMealAt: t - 120,
+      lastEatLine: '',
       progressAt: t,
       progressDist: Infinity,
       progressLeft: -1,
@@ -813,9 +826,14 @@ function hashPick<T>(arr: readonly T[], key: string): T {
   return arr[Math.abs(h) % arr.length]!;
 }
 
+/** Hora a la que se despierta este habitante (la de su rasgo más su desfase, `WAKE_SPREAD_MIN`). */
+export function npcWakeHour(npc: Pick<NpcState, 'id' | 'trait'>): number {
+  const base = TRAITS[npc.trait]?.wakeHour ?? DEFAULT_WAKE_HOUR;
+  return base + Math.floor(hashUnit(`despertar:${npc.id}`) * WAKE_SPREAD_MIN) / 60;
+}
+
 function isNightFor(npc: NpcState, hour: number): boolean {
-  const wake = traitOf(npc).wakeHour ?? DEFAULT_WAKE_HOUR;
-  return hour >= NIGHT_FROM || hour < wake;
+  return hour >= NIGHT_FROM || hour < npcWakeHour(npc);
 }
 
 function isWorkHour(hour: number): boolean {
@@ -2201,8 +2219,14 @@ function finishEating(sim: Simulation, npc: NpcState): void {
       shareRelation(sim, npc, o, MEAL_RELATION, MEAL_RELATION_CAP, LINES.mealFriction);
     }
   }
-  const line = LINES.eat[c.id];
-  if (line && sim.rng.chance(0.6)) say(sim, npc, line);
+  // A veces comenta lo que come (sin repetir lo último que dijo comiendo).
+  const lines = LINES.eat[c.id];
+  if (lines?.length && sim.rng.chance(EAT_TALK_CHANCE)) {
+    const fresh = lines.filter((l) => l !== mem.lastEatLine);
+    const line = sim.rng.pick(fresh.length ? fresh : lines);
+    mem.lastEatLine = line;
+    say(sim, npc, line);
+  }
   if (c.id === 'pescado_crudo' && !npc.sick && sim.rng.chance(RAW_FISH_SICK)) {
     if (!startEvent(sim, 'enfermedad', { npcId: npc.id, cause: 'comió pescado crudo', scripted: true })) npc.sick = true;
   }
@@ -4310,6 +4334,8 @@ export function tickNpcs(sim: Simulation, dt: number): void {
     assignBeds(sim);
     lm.bedsAt = now;
   }
+  // Presupuesto de búsquedas de ruta del paso (ver «Decisión»).
+  const searches0 = lm.stats.pathSearches;
   for (const npc of [...st.npcs]) {
     if (!st.npcs.includes(npc)) continue;
     // De expedición: no se simula a bordo (salvo red de seguridad si nadie le trae de vuelta).
@@ -4344,8 +4370,10 @@ export function tickNpcs(sim: Simulation, dt: number): void {
       if (td(npc).phase === 'go') tickGo(sim, npc, dt);
       else tickAct(sim, npc, dt);
     }
-    // Decisión.
-    if (!npc.task || (now >= mem.nextDecideAt && npc.activity !== 'sleeping' && npc.task.kind !== 'partir')) {
+    // Decisión. Si en este paso ya se han buscado muchas rutas (todos deciden a la vez: al acabar una
+    // tormenta, a la hora de comer…), espera al siguiente paso; las emergencias no esperan (arriba).
+    const busy = lm.stats.pathSearches - searches0 >= PATH_SEARCHES_PER_TICK;
+    if (!busy && (!npc.task || (now >= mem.nextDecideAt && npc.activity !== 'sleeping' && npc.task.kind !== 'partir'))) {
       mem.nextDecideAt = now + DECIDE_EVERY + sim.rng.range(0, 3);
       const plan = decide(sim, npc);
       if (plan && (!npc.task || (!samePlan(plan, npc) && plan.prio > td(npc).prio + 4))) {
@@ -4738,7 +4766,12 @@ export function giveItem(sim: Simulation, npcId: string, slot: number): ActionRe
     const mem = memoOf(sim, npc);
     mem.lastMealAt = st.time;
     if (COOKED_FOOD.has(s.id)) mem.ateCookedAt = st.time;
-    say(sim, npc, LINES.eat[def.id] ?? '¡Gracias!');
+    const thanks = LINES.eat[def.id];
+    if (thanks?.length) {
+      const fresh = thanks.filter((l) => l !== mem.lastEatLine);
+      mem.lastEatLine = hashPick(fresh.length ? fresh : thanks, `${npc.id}:${st.time}`);
+      say(sim, npc, mem.lastEatLine);
+    } else say(sim, npc, '¡Gracias!');
     if (s.id === 'pescado_crudo' && !npc.sick && sim.rng.chance(RAW_FISH_SICK)) {
       if (!startEvent(sim, 'enfermedad', { npcId: npc.id, cause: 'comió pescado crudo', scripted: true })) npc.sick = true;
     }
