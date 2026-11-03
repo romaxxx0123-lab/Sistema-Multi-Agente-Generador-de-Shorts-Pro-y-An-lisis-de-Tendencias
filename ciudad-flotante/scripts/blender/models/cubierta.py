@@ -48,7 +48,7 @@ IRON = 'metalDark'
 WHITE = '#f3ead6'
 CREAM = 'wallOuter'
 RED = 'hullStripe'
-MINIO = '#b4532e'
+MINIO = '#a34e2f'
 GRIME = '#1c2830'
 
 
@@ -89,7 +89,7 @@ def mesh_from(name, verts, faces):
 
 # ---------------------------------------------------------------- calcomanías de óxido
 
-def drip_decal(columns, top, name, seed, k_top=0.5, k_tip=0.14, steps=4):
+def drip_decal(columns, top, name, seed, k_top=0.5, k_tip=0.14, steps=4, shrink=0.0):
     """
     Chorreón plano en el plano y = 0 (cara hacia +Y): columnas [(x0, x1, largo)] que bajan desde z = top
     y acaban en punta (gotas de distinto largo). Se pinta por bandas de altura: más óxido arriba (k_top)
@@ -106,10 +106,10 @@ def drip_decal(columns, top, name, seed, k_top=0.5, k_tip=0.14, steps=4):
         for k in range(n + 1):
             z = top - k * dz
             t = k / (n + 1)
-            shrink = (x1 - x0) * 0.18 * t
-            jit = (r.random() - 0.5) * 0.015
-            verts.append((x0 + shrink + jit, 0.0, z))
-            verts.append((x1 - shrink + jit, 0.0, z))
+            # la columna solo se estrecha por debajo de la vecina más corta (las columnas no dejan rendijas entre sí)
+            sh = (x1 - x0) * shrink * t if k > 0 else 0.0
+            verts.append((x0 + sh, 0.0, z))
+            verts.append((x1 - sh, 0.0, z))
         for k in range(n):
             a = base + 2 * k
             faces.append((a, a + 2, a + 3, a + 1))
@@ -147,13 +147,13 @@ def scupper(width=0.26):
 def imbornal(v):
     specs = [
         # (columnas [(x0, x1, largo)], semilla)
-        ([(-0.15, -0.06, 0.62), (-0.06, 0.03, 1.0), (0.03, 0.1, 0.78), (0.1, 0.16, 0.42)], 11),
-        ([(-0.2, -0.11, 0.9), (-0.11, -0.02, 1.38), (-0.02, 0.07, 1.12), (0.07, 0.14, 1.3), (0.14, 0.21, 0.66)], 12),
-        ([(-0.13, -0.03, 0.58), (-0.03, 0.06, 0.72), (0.06, 0.14, 0.4)], 13),
+        ([(-0.17, -0.1, 0.34), (-0.1, -0.03, 0.66), (-0.03, 0.05, 1.0), (0.05, 0.11, 0.74), (0.11, 0.17, 0.3)], 11),
+        ([(-0.21, -0.14, 0.42), (-0.14, -0.06, 0.95), (-0.06, 0.02, 1.38), (0.02, 0.09, 0.8), (0.09, 0.15, 1.12), (0.15, 0.21, 0.36)], 12),
+        ([(-0.15, -0.07, 0.3), (-0.07, 0.02, 0.72), (0.02, 0.09, 0.5), (0.09, 0.15, 0.22)], 13),
     ][v]
     cols, seed = specs
     top = max(c[2] for c in cols) + 0.02
-    streak = drip_decal(cols, top - 0.13, f'chorreon_{v}', seed, k_top=0.55, k_tip=0.16)
+    streak = drip_decal(cols, top - 0.13, f'chorreon_{v}', seed, k_top=0.44, k_tip=0.12)
     parts = [streak]
     for p in scupper():
         p.location.z += top
@@ -162,32 +162,26 @@ def imbornal(v):
 
 
 def costura(v):
-    """Costura horizontal de planchas: línea de óxido con goterones cortos hacia abajo."""
+    """Costura horizontal de planchas: una línea fina de óxido con unos pocos goterones hacia abajo
+    (una sola calcomanía: las gotas son columnas más largas de la misma línea, sin caras solapadas)."""
     width = [1.7, 2.3][v]
     r = cf.rng(30 + v)
+    n_drips = 3 + v
+    drip_at = sorted(-width / 2 + (i + 0.25 + r.random() * 0.5) * width / n_drips for i in range(n_drips))
     cols = []
     x = -width / 2
-    while x < width / 2 - 0.05:
-        w = 0.07 + r.random() * 0.12
-        # casi toda la costura rezuma poco; de vez en cuando, un goterón largo
-        long = r.random() < 0.22
-        length = (0.2 + r.random() * 0.28) if long else (0.035 + r.random() * 0.07)
-        cols.append((x, min(width / 2, x + w), length))
+    while x < width / 2 - 0.02:
+        near = [d for d in drip_at if x <= d < x + 0.2]
+        if near:
+            w = 0.05 + r.random() * 0.05
+            cols.append((x, x + w, 0.14 + r.random() * 0.4))
+        else:
+            w = min(0.2, width / 2 - x)
+            cols.append((x, x + w, 0.03 + r.random() * 0.015))
         x += w
-    top = max(c[2] for c in cols) + 0.03
-    ob = drip_decal(cols, top, f'costura_{v}', 40 + v, k_top=0.42, k_tip=0.12, steps=3)
-    # el cordón de la costura (algo más oscuro, una tira fina encima de los goterones)
-    seam = mesh_from('cordon', [(-width / 2 - 0.04, 0.0, top), (width / 2 + 0.04, 0.0, top), (width / 2 + 0.04, 0.0, top + 0.035), (-width / 2 - 0.04, 0.0, top + 0.035)], [(0, 1, 2, 3)])
-    bm = bmesh.new()
-    bm.from_mesh(seam.data)
-    for f in bm.faces:
-        f.normal_update()
-        if f.normal.y < 0:
-            f.normal_flip()
-    bm.to_mesh(seam.data)
-    bm.free()
-    paint_rgba(seam, mixc(HULL, GRIME, 0.45))
-    return cf.model([ob, seam], f'costura_{v}')
+    top = 0.6
+    ob = drip_decal(cols, top, f'costura_{v}', 40 + v, k_top=0.36, k_tip=0.1, steps=3)
+    return cf.model([ob], f'costura_{v}')
 
 
 def parche(v):

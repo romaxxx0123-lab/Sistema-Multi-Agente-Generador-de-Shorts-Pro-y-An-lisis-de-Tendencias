@@ -59,6 +59,8 @@ export const POSTE_BRAZO = 0.42;
 export const DECAL_OFF = 0.008;
 /** Altura de la boca de los imbornales (justo por encima de la cubierta, en la regala). */
 const SCUPPER_Y = DECK_Y + 0.12;
+/** Altura de las costuras de planchas (entre los ojos de buey y la cubierta). */
+const SEAM_Y = DECK_Y - 0.1;
 /** Franja azul del casco donde pueden ir las calcomanías (entre la línea blanca y el filete de la regala). */
 export const NAVY_Y0 = 1.42;
 export const NAVY_Y1 = DECK_Y + BULWARK_H - 0.13;
@@ -81,26 +83,45 @@ function modelTop(name: string): number | null {
 /* Plan: qué va dónde                                                   */
 /* ================================================================== */
 
-/** Lo que el casco procedural ya tiene en los costados (ship/hull.ts): intervalos de x reservados. */
-function hullReserved(length: number): { all: [number, number][]; high: [number, number][] } {
+/** Rectángulo ocupado en un costado (x a lo largo del casco, y de altura). */
+interface SideRect {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/**
+ * Lo que el casco procedural ya tiene en los costados (ship/hull.ts, mismas fórmulas): ojos de buey
+ * con su chorreón, neumáticos, aros salvavidas, pescantes del bote, rótulo y las curvas de proa y popa.
+ */
+export function hullReserved(length: number): SideRect[] {
   const x0 = bowStartX(length);
   const xs = sternX();
   const boatX = (-SHIP_ORIGIN_X + x0) / 2 + 1.5;
   const nameW = Math.min(6.2, Math.max(3.5, length * CELL * 0.16));
-  const all: [number, number][] = [
-    [-Infinity, xs + 0.7],
-    [x0 - 0.9 - nameW - 0.25, Infinity],
+  const top = DECK_Y + BULWARK_H;
+  const r: SideRect[] = [
+    { x0: -Infinity, x1: xs + 0.7, y0: -Infinity, y1: Infinity },
+    { x0: x0 - 0.9 - nameW - 0.25, x1: Infinity, y0: -Infinity, y1: Infinity },
   ];
-  // neumáticos (de la regala a la flotación)
-  for (const fx of [-SHIP_ORIGIN_X + 8, x0 - 14, x0 - 8]) if (fx >= -SHIP_ORIGIN_X + 2 && fx <= x0 - 1) all.push([fx - 0.6, fx + 0.6]);
-  // aros salvavidas y pescantes del bote (en lo alto del costado)
-  const high: [number, number][] = [];
-  for (const rx of [-SHIP_ORIGIN_X + 3.2, boatX - 5.5, x0 - 3.5]) high.push([rx - 0.6, rx + 0.6]);
-  for (const dx of [-1.7, 1.7]) high.push([boatX + dx - 0.4, boatX + dx + 0.4]);
-  return { all, high };
+  for (let cx = 0; cx < length; cx++) {
+    const x = -SHIP_ORIGIN_X + (cx + 0.5) * CELL;
+    r.push({ x0: x - 0.36, x1: x + 0.36, y0: 1.0, y1: 2.4 });
+  }
+  for (const fx of [-SHIP_ORIGIN_X + 8, x0 - 14, x0 - 8]) if (fx >= -SHIP_ORIGIN_X + 2 && fx <= x0 - 1) r.push({ x0: fx - 0.5, x1: fx + 0.5, y0: 1.2, y1: top });
+  for (const rx of [-SHIP_ORIGIN_X + 3.2, boatX - 5.5, x0 - 3.5]) r.push({ x0: rx - 0.45, x1: rx + 0.45, y0: top - 0.9, y1: top });
+  for (const dx of [-1.7, 1.7]) r.push({ x0: boatX + dx - 0.25, x1: boatX + dx + 0.25, y0: top - 0.75, y1: top });
+  return r;
 }
 
-const hits = (iv: [number, number][], a: number, b: number): boolean => iv.some(([l, h]) => b > l && a < h);
+const overlaps = (a: SideRect, b: SideRect, gap: number): boolean => a.x0 < b.x1 + gap && b.x0 < a.x1 + gap && a.y0 < b.y1 + gap && b.y0 < a.y1 + gap;
+
+/** Media anchura y altura de un modelo (con valores por defecto si no está cargado). */
+function modelSize(name: string, half: number, h: number): { half: number; h: number } {
+  const b = modelGeometry(name)?.boundingBox;
+  return b ? { half: Math.max(-b.min.x, b.max.x), h: b.max.y } : { half, h };
+}
 
 /** Piezas de los costados, el espejo de popa y el castillo de proa (capa 'casco'). */
 function planHull(layout: ShipLayout, out: OutfitItem[]): void {
@@ -110,46 +131,52 @@ function planHull(layout: ShipLayout, out: OutfitItem[]): void {
   const hw = hullHalfWidth(width);
   const top = DECK_Y + BULWARK_H;
   const boatX = (-SHIP_ORIGIN_X + x0) / 2 + 1.5;
-  const { all, high } = hullReserved(length);
-  const ok = (x: number, half: number, tall: boolean): boolean => !hits(all, x - half, x + half) && !(tall && hits(high, x - half, x + half));
   const bounds: number[] = [];
   for (let k = 1; k < length; k++) bounds.push(-SHIP_ORIGIN_X + k * CELL);
 
   for (const s of [-1, 1]) {
     const z = s * (hw + DECAL_OFF);
     const yaw = yawToward(0, s);
-    const free = bounds.filter((x) => ok(x, 0.35, true));
-    // escalerilla de gato: babor a proa del bote, estribor a popa (cuelga de la regala, abajo hasta la flotación)
+    const taken = hullReserved(length);
+    /** Coloca una pieza si su rectángulo no pisa nada (las calcomanías nunca se solapan). */
+    const put = (model: string, x: number, y: number, size: { half: number; h: number }, gap: number, zz = z): boolean => {
+      const rect = { x0: x - size.half, x1: x + size.half, y0: y, y1: y + size.h };
+      if (rect.y0 < 1.0 || taken.some((t) => overlaps(t, rect, gap))) return false;
+      taken.push(rect);
+      out.push({ model, x, y, z: zz, yaw, layer: 'casco', r: size.half });
+      return true;
+    };
+    // escalerilla de gato: babor a proa del bote, estribor a popa (cuelga de la regala hasta la flotación)
     const target = s < 0 ? boatX + 6.5 : boatX - 9.5;
-    const ladderX = [...free].sort((a, b) => Math.abs(a - target) - Math.abs(b - target) || a - b)[0];
-    const used = new Set<number>();
-    if (ladderX !== undefined) {
-      used.add(ladderX);
-      out.push({ model: 'escalerilla', x: ladderX, y: top - ESC_H, z: s * hw, yaw, layer: 'casco', r: 0.5 });
-    }
+    const esc = modelSize('escalerilla', 0.46, ESC_H + 0.1);
+    for (const x of [...bounds].sort((a, b) => Math.abs(a - target) - Math.abs(b - target) || a - b)) if (put('escalerilla', x, top - ESC_H, esc, 0.3, s * hw)) break;
     // parches soldados (más en un casco ampliado), bajos, entre ojos de buey
-    const rest = free.filter((x) => !used.has(x)).sort((a, b) => hash01(a, s, 21) - hash01(b, s, 21));
-    const patches = 1 + Math.floor(Math.max(0, length - 10) / 4);
-    for (const x of rest.slice(0, patches)) {
-      used.add(x);
-      out.push({ model: `parche_${hash01(x, s, 23) < 0.6 ? 0 : 1}`, x: x + (hash01(x, s, 24) - 0.5) * 0.4, y: 1.62, z, yaw, layer: 'casco', r: 0.5 });
+    let patches = 1 + Math.floor(Math.max(0, length - 10) / 4);
+    for (const x of [...bounds].sort((a, b) => hash01(a, s, 21) - hash01(b, s, 21))) {
+      if (patches <= 0) break;
+      const model = `parche_${hash01(x, s, 23) < 0.6 ? 0 : 1}`;
+      if (put(model, x + (hash01(x, s, 24) - 0.5) * 0.4, 1.62, modelSize(model, 0.5, 0.95), 0.25)) patches--;
     }
-    // imbornales con su chorreón en el resto de juntas de celda
-    for (const x of bounds) {
-      if (used.has(x) || !ok(x, 0.25, true) || hash01(x, s, 25) > 0.8) continue;
+    // costuras de planchas que rezuman, justo bajo la cubierta (encima de los ojos de buey)
+    let seams = Math.max(1, Math.round(length / 5));
+    for (let i = 0; i < length && seams > 0; i++) {
+      const cx = [...Array(length).keys()].sort((a, b) => hash01(a, s, 31) - hash01(b, s, 31))[i]!;
+      const x = -SHIP_ORIGIN_X + (cx + 0.5) * CELL + (hash01(cx, s, 33) - 0.5) * 0.6;
+      const model = `costura_${hash01(cx, s, 32) < 0.5 ? 0 : 1}`;
+      const size = modelSize(model, 1.1, 0.6);
+      if (put(model, x, SEAM_Y - size.h, size, 0.04)) seams--;
+    }
+    // imbornales con su chorreón: en las juntas de celda y, más espaciados, entre ojos de buey
+    const spots: { x: number; p: number }[] = [];
+    for (const b of bounds) {
+      spots.push({ x: b, p: 0.9 });
+      spots.push({ x: b + 1.05, p: 0.45 }, { x: b - 1.05, p: 0.45 });
+    }
+    for (const { x, p } of spots) {
+      if (hash01(x, s, 25) > p) continue;
       const v = Math.floor(hash01(x, s, 26) * 3);
-      const h = modelTop(`imbornal_${v}`) ?? 1;
-      out.push({ model: `imbornal_${v}`, x: x + (hash01(x, s, 27) - 0.5) * 0.5, y: SCUPPER_Y - h, z, yaw, layer: 'casco', r: 0.25 });
-    }
-    // costuras de planchas que rezuman, a media altura entre los ojos de buey y la cubierta
-    const centers: number[] = [];
-    for (let cx = 0; cx < length; cx++) centers.push(-SHIP_ORIGIN_X + (cx + 0.5) * CELL);
-    const seams = centers.filter((x) => ok(x, 1.2, true)).sort((a, b) => hash01(a, s, 31) - hash01(b, s, 31));
-    const nSeams = Math.max(1, Math.round(length / 5));
-    for (const x of seams.slice(0, nSeams)) {
-      const v = hash01(x, s, 32) < 0.5 ? 0 : 1;
-      const h = modelTop(`costura_${v}`) ?? 0.5;
-      out.push({ model: `costura_${v}`, x: x + (hash01(x, s, 33) - 0.5) * 0.6, y: 2.98 - h, z, yaw, layer: 'casco', r: 1.1 });
+      const size = modelSize(`imbornal_${v}`, 0.22, 1.0);
+      put(`imbornal_${v}`, x + (hash01(x, s, 27) - 0.5) * 0.4, SCUPPER_Y - size.h, size, 0.35);
     }
   }
 
