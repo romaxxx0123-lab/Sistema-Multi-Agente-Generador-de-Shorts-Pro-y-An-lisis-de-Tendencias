@@ -726,7 +726,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 2, name: 'Enfermería equipada', desc: 'Instrumental y medicinas ordenadas: se cura antes.', cost: { componentes: 3, tela: 6, plastico: 4 }, buildTime: 90, effects: { healMult: 1.5 } },
   ],
   sala_comun: [
-    { tier: 2, name: 'Sala común con estufa', desc: 'Cojines, mantas y una vieja estufa de hierro: el rincón más acogedor del barco para pasar el rato.', cost: { madera: 12, placa_metal: 4, chatarra: 4, tela: 6 }, buildTime: 70, effects: { comfort: 6 } },
+    { tier: 2, name: 'Sala común con estufa', desc: 'Cojines, mantas y una vieja estufa de hierro, ya solo de adorno: el rincón más acogedor del barco para pasar el rato.', cost: { madera: 12, placa_metal: 4, chatarra: 4, tela: 6 }, buildTime: 70, effects: { comfort: 6 } },
   ],
   ahumadero: [
     { tier: 2, name: 'Ahumadero de tiro doble', desc: 'Dos cámaras de humo: ahúma más rápido con la misma leña.', cost: { madera: 12, placa_metal: 3, tornillos: 6 }, buildTime: 60, effects: { workSpeed: 1.6 } },

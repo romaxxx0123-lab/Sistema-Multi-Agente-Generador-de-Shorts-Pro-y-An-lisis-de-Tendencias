@@ -11,17 +11,17 @@ export interface LootEntry {
 /** Botín de cada tipo de resto flotante. */
 export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
   tablones: [
-    { id: 'madera', min: 2, max: 3, chance: 1 },
+    { id: 'madera', min: 1, max: 2, chance: 1 },
     { id: 'cuerda', min: 1, max: 1, chance: 0.15 },
   ],
   barril: [
     { id: 'conserva', min: 1, max: 1, chance: 0.2 },
     { id: 'agua_potable', min: 1, max: 2, chance: 0.5 },
-    { id: 'combustible', min: 1, max: 1, chance: 0.1 },
+    { id: 'combustible', min: 1, max: 1, chance: 0.05 },
     { id: 'plastico', min: 1, max: 1, chance: 0.4 },
   ],
   caja: [
-    { id: 'madera', min: 1, max: 3, chance: 0.7 },
+    { id: 'madera', min: 1, max: 2, chance: 0.6 },
     { id: 'tela', min: 1, max: 2, chance: 0.4 },
     { id: 'cuerda', min: 1, max: 2, chance: 0.35 },
     { id: 'conserva', min: 1, max: 1, chance: 0.1 },
@@ -42,7 +42,7 @@ export const DEBRIS_LOOT: Record<DebrisKind, LootEntry[]> = {
     { id: 'plastico', min: 1, max: 1, chance: 0.3 },
   ],
   bidon: [
-    { id: 'combustible', min: 1, max: 1, chance: 0.5 },
+    { id: 'combustible', min: 1, max: 1, chance: 0.3 },
     { id: 'plastico', min: 1, max: 1, chance: 0.5 },
   ],
   cofre: [

@@ -1,7 +1,8 @@
 /**
  * [AGENTE audio] Prueba de síntesis en el navegador con `OfflineAudioContext`: renderiza cada
  * receta del catálogo y varias escenas de ambiente (calma, tormenta fuera y dentro, bodega con
- * lluvia, gaviotas, máquinas y fuego) por el mismo grafo de mezcla del juego, y mide pico y RMS.
+ * lluvia, gaviotas, máquinas y fuego, grúa, vivero y radar, sala común y ahumadero, Puerto
+ * Esperanza de día y la fiesta con fuegos) por el mismo grafo de mezcla del juego, y mide pico y RMS.
  *
  * Criterios: ninguna muestra no finita, señal audible (no silenciosa) y sin saturar (pico < 0 dBFS
  * antes de cualquier recorte del navegador). Se lanza con `__game.cmd.audioTest()`.
@@ -90,6 +91,9 @@ const VARIANTS: { name: string; label: string; opts: SfxOpts }[] = [
   { name: 'trueno', label: 'trueno (lejano)', opts: { distance: 800 } },
   { name: 'campana', label: 'campana (alarma)', opts: { count: 6 } },
   { name: 'golpe_ola', label: 'golpe_ola (temporal)', opts: { intensity: 1.3 } },
+  { name: 'fuego_artificial', label: 'fuego_artificial (cercano)', opts: { distance: 60 } },
+  { name: 'fuego_artificial', label: 'fuego_artificial (lejano)', opts: { distance: 700 } },
+  { name: 'campana_puerto', label: 'campana_puerto (cinco)', opts: { count: 5 } },
 ];
 
 async function renderRecipe(Ctor: OfflineCtor, bank: NoiseBank, name: string, opts: SfxOpts, label: string): Promise<SelfTestRow> {
@@ -111,8 +115,8 @@ interface Scene {
   seconds: number;
   input: AmbientInput;
   emitters?: [EmitterKind, Partial<EmitterMix>][];
-  /** Efectos a la vez (prueba de saturación de la mezcla completa). */
-  burst?: [string, SfxOpts][];
+  /** Efectos (prueba de saturación de la mezcla completa); el tercer valor, retardo extra (s). */
+  burst?: [string, SfxOpts, number?][];
   /** Pico mínimo exigido (escenas tranquilas). */
   minPeak?: number;
 }
@@ -164,6 +168,60 @@ const SCENES: Scene[] = [
       ['averia', {}],
     ],
   },
+  {
+    name: 'grúa izando junto al vivero y el radar',
+    seconds: 4,
+    input: { waveHeight: 0.6, wind: 0.3, rain: 0, speed: 6, storm: false, env: OUT, gulls: 0 },
+    emitters: [
+      ['grua', { gain: 1, intensity: 1, pan: -0.3 }],
+      ['vivero', { gain: 0.8, intensity: 0.75, pan: 0.4 }],
+      ['radar', { gain: 0.6, pan: 0.1 }],
+    ],
+    burst: [
+      ['grua_saca', {}],
+      ['grua_lanzar', {}, 1.5],
+      ['radar_contacto', {}, 2],
+    ],
+  },
+  {
+    name: 'sala común con estufa, ahumadero cerca',
+    seconds: 4,
+    input: { waveHeight: 0.6, wind: 0.3, rain: 0.3, speed: 6, storm: false, env: { exposure: 0.17, roof: 1, kind: 'habitacion' }, gulls: 0 },
+    emitters: [
+      ['sala', { gain: 1, intensity: 1 }],
+      ['fogon', { gain: 0.55, pan: -0.5 }],
+      ['ahumadero', { gain: 0.5, cutoff: 1300, pan: 0.6 }],
+    ],
+    burst: [
+      ['cartas', {}],
+      ['radio', {}, 0.6],
+    ],
+  },
+  {
+    name: 'Puerto Esperanza de día (muelle, campanas, gaviotas)',
+    seconds: 6,
+    input: { waveHeight: 0.5, wind: 0.25, rain: 0, speed: 0, storm: false, env: OUT, gulls: 1, port: 1, crowd: 0.8 },
+    burst: [
+      ['campana_puerto', { count: 3 }],
+      ['campana_boya', {}, 1.2],
+      ['gaviota', {}, 0.4],
+    ],
+  },
+  {
+    name: 'llegada: música, fuegos artificiales y fiesta en el muelle',
+    seconds: 10,
+    input: { waveHeight: 0.5, wind: 0.25, rain: 0, speed: 0, storm: false, env: OUT, gulls: 0.5, port: 1, crowd: 1 },
+    burst: [
+      ['llegada', {}],
+      ['fuego_artificial', { distance: 120 }, 0.3],
+      ['fuego_artificial', { distance: 260 }, 0.7],
+      ['fuego_artificial', { distance: 90 }, 1.1],
+      ['fuego_artificial', { distance: 400 }, 1.5],
+      ['fuego_artificial', { distance: 150 }, 1.8],
+      ['fuego_artificial', { distance: 70 }, 2.2],
+      ['campana_puerto', { count: 4 }, 3],
+    ],
+  },
 ];
 
 async function renderScene(Ctor: OfflineCtor, bank: NoiseBank, sc: Scene): Promise<SelfTestRow> {
@@ -186,7 +244,7 @@ async function renderScene(Ctor: OfflineCtor, bank: NoiseBank, sc: Scene): Promi
     pool.cleanup();
   };
   step(0.05);
-  for (const [name, opts] of sc.burst ?? []) pool.play(name, SFX[name]!, opts, { gain: SFX[name]!.gain, delay: SETTLE + 0.5 });
+  for (const [name, opts, extra] of sc.burst ?? []) pool.play(name, SFX[name]!, opts, { gain: SFX[name]!.gain, delay: SETTLE + 0.5 + (extra ?? 0) });
   const dt = 0.05;
   for (let t = dt; t < sc.seconds - dt; t += dt) {
     void ctx.suspend(t).then(() => {

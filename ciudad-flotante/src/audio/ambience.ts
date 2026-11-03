@@ -1,12 +1,14 @@
 /**
  * [AGENTE audio] Ambiente continuo: mar (fondo, rompiente con oleaje lento, agua junto al casco
  * y retumbo en la bodega), viento con ráfagas y silbido, lluvia (siseo, gotas, aguacero y
- * tamborileo en el techo) y fuentes del barco (generador, motor, potabilizadora, torno, fogón,
- * incendios) espacializadas.
+ * tamborileo en el techo), el muelle de Puerto Esperanza y fuentes del barco (generador, motor,
+ * potabilizadora, torno, fogón, incendios, grúa, radar, vivero, ahumadero y sala común)
+ * espacializadas.
  *
  * Las capas se crean una vez y sus fuentes se arrancan solo cuando suenan: una capa en silencio
  * más de unos segundos para su fuente (no gasta CPU). También programa los sonidos puntuales del
- * ambiente (crujidos, golpes de ola, gaviotas) a ritmo aleatorio.
+ * ambiente (crujidos, golpes de ola, gaviotas, campanas del puerto y de las boyas) a ritmo
+ * aleatorio.
  */
 import { clamp, lerp } from '../core/math';
 import { EMITTER_REF, type AmbientMix, type EmitterKind } from './mix';
@@ -26,12 +28,46 @@ export const LAYER_GAIN = {
   rainRoar: 0.24,
   roofWash: 0.2,
   roofDrops: 0.19,
+  portCrowd: 0.1,
 } as const;
 
 export type LayerName = keyof typeof LAYER_GAIN;
 
 /** Ganancia de referencia de cada fuente del barco. */
-export const EMITTER_GAIN: Record<EmitterKind, number> = { generador: 0.26, motor: 0.14, bomba: 0.24, torno: 0.77, fogon: 0.54, incendio: 0.72 };
+export const EMITTER_GAIN: Record<EmitterKind, number> = {
+  generador: 0.26,
+  motor: 0.14,
+  bomba: 0.24,
+  torno: 0.77,
+  fogon: 0.54,
+  incendio: 0.72,
+  grua: 0.34,
+  radar: 0.26,
+  vivero: 0.21,
+  ahumadero: 0.8,
+  sala: 0.32,
+};
+
+/** Curvas de pulso para un `WaveShaper` tras un diente de sierra (clics y pings periódicos). */
+const PULSE_CURVES = new Map<number, Float32Array<ArrayBuffer>>();
+
+/**
+ * Envolvente de un pulso por periodo: un diente de sierra (−1..1) se convierte en un ataque
+ * muy corto y una caída exponencial (`decay` = cuántas veces cae a 1/e en un periodo).
+ */
+export function pulseCurve(decay: number): Float32Array<ArrayBuffer> {
+  let c = PULSE_CURVES.get(decay);
+  if (c) return c;
+  const n = 1025;
+  c = new Float32Array(n);
+  const atk = 0.012;
+  for (let i = 0; i < n; i++) {
+    const u = i / (n - 1);
+    c[i] = u < atk ? u / atk : Math.exp(-(u - atk) * decay);
+  }
+  PULSE_CURVES.set(decay, c);
+  return c;
+}
 
 const SILENT = 0.0005;
 const STOP_AFTER = 2.5;
@@ -182,6 +218,10 @@ class EmitterVoice {
   private nodes: AudioScheduledSourceNode[] = [];
   private aux: AudioNode[] = [];
   private lfo: OscillatorNode | null = null;
+  /** Parámetros que se reajustan con la intensidad (tono del motor y ritmo del trinquete de la grúa). */
+  private tune: { p: AudioParam; base: number; kind: 'pitch' | 'rate' }[] = [];
+  /** Segunda capa de voces de la sala común (solo con mucha gente). */
+  private density: GainNode | null = null;
   private quietFor = 0;
   private wobble = new SmoothNoise();
 
@@ -265,6 +305,31 @@ class EmitterVoice {
     return g;
   }
 
+  /**
+   * Ganancia que late en pulsos periódicos (clic o ping con caída exponencial) a `rate` Hz:
+   * diente de sierra → `WaveShaper` con la envolvente → `gain`. Devuelve el nodo y el oscilador.
+   */
+  private pulses(rate: number, decay: number, dest: AudioNode, now: number): { node: GainNode; osc: OscillatorNode } {
+    const g = this.ctx.createGain();
+    g.gain.value = 0;
+    g.connect(dest);
+    const saw = this.ctx.createOscillator();
+    saw.type = 'sawtooth';
+    saw.frequency.value = rate;
+    const shaper = this.ctx.createWaveShaper();
+    shaper.curve = pulseCurve(decay);
+    saw.connect(shaper);
+    shaper.connect(g.gain);
+    saw.start(now);
+    this.nodes.push(saw);
+    this.aux.push(g, shaper);
+    return { node: g, osc: saw };
+  }
+
+  private tuned(p: AudioParam, base: number, kind: 'pitch' | 'rate'): void {
+    this.tune.push({ p, base, kind });
+  }
+
   private build(now: number): void {
     const out = this.out;
     switch (this.kind) {
@@ -312,6 +377,61 @@ class EmitterVoice {
         this.loopSrc(this.bank.brown, 1, this.filter('lowpass', 700, this.gainNode(0.8, out)), now);
         break;
       }
+      case 'grua': {
+        // Grúa eléctrica: motor con reductora (zumbido y quejido de engranajes), trinquete del
+        // torno y el cable tenso. El tono y el ritmo cambian con la fase (ver `update`).
+        const lp = this.filter('lowpass', 1500, out, 0.8);
+        this.tuned(this.osc('sawtooth', 92, lp, now, 0.32).frequency, 92, 'pitch');
+        this.tuned(this.osc('sine', 184, lp, now, 0.22).frequency, 184, 'pitch');
+        this.tuned(this.osc('sine', 690, this.filter('bandpass', 700, out, 6), now, 0.05).frequency, 690, 'pitch');
+        const ratchet = this.pulses(10, 28, out, now);
+        this.tuned(ratchet.osc.frequency, 10, 'rate');
+        this.loopSrc(this.bank.white, 1, this.filter('bandpass', 3000, this.gainNode(0.35, ratchet.node), 2.5), now);
+        this.loopSrc(this.bank.pink, 0.8, this.filter('bandpass', 380, this.gainNode(0.25, out), 1.2), now);
+        break;
+      }
+      case 'radar': {
+        // Antena que gira (un motor pequeño que va y viene con cada vuelta), la electrónica,
+        // un ping suave en cada barrido y la estática de la radio a la escucha.
+        const hum = this.filter('lowpass', 600, out, 0.7);
+        this.osc('sine', 120, hum, now, 0.12);
+        this.osc('triangle', 240, hum, now, 0.04);
+        const turn = this.am(0.42, 0.7, 0.3, out, now);
+        this.loopSrc(this.bank.pink, 1.6, this.filter('bandpass', 1400, this.gainNode(0.12, turn), 2), now);
+        const ping = this.pulses(0.42, 9, this.filter('lowpass', 4000, out), now);
+        this.osc('sine', 1320, ping.node, now, 0.16);
+        this.osc('sine', 2640, ping.node, now, 0.02);
+        this.loopSrc(this.bank.crackle, 2.2, this.filter('bandpass', 2800, this.gainNode(0.05, out), 0.7), now);
+        break;
+      }
+      case 'vivero': {
+        // Aireadores burbujeando, la bomba pequeña y el agua que circula por los tanques.
+        this.loopSrc(this.bank.bubbles, 1, this.filter('highpass', 220, this.gainNode(0.75, out)), now);
+        this.loopSrc(this.bank.bubbles, 0.72, this.filter('bandpass', 700, this.gainNode(0.35, out), 0.8), now);
+        const pump = this.filter('lowpass', 380, out, 0.8);
+        this.osc('sine', 100, pump, now, 0.08);
+        this.osc('triangle', 200, pump, now, 0.03);
+        this.loopSrc(this.bank.pink, 1, this.filter('bandpass', 1300, this.gainNode(0.12, out), 0.9), now);
+        break;
+      }
+      case 'ahumadero': {
+        // Brasas que chisporrotean y respiran bajo el pescado, la grasa que chisporrotea al
+        // gotear y el humo que sale por el tiro.
+        const breathe = this.am(0.23, 0.75, 0.25, out, now);
+        this.loopSrc(this.bank.crackle, 0.62, this.filter('lowpass', 2600, this.gainNode(0.55, breathe)), now);
+        this.loopSrc(this.bank.pink, 1, this.filter('lowpass', 300, this.gainNode(0.4, breathe)), now);
+        this.loopSrc(this.bank.crackle, 1.9, this.filter('highpass', 3800, this.gainNode(0.12, out)), now);
+        this.loopSrc(this.bank.pink, 0.8, this.filter('bandpass', 1700, this.gainNode(0.07, out), 0.6), now);
+        break;
+      }
+      case 'sala': {
+        // Conversación cálida (sin agudos); con mucha gente, una segunda tanda de voces.
+        const room = this.filter('lowpass', 2600, out, 0.5);
+        this.loopSrc(this.bank.murmur, 1, this.gainNode(1, room), now);
+        this.density = this.gainNode(0, room);
+        this.loopSrc(this.bank.murmur, 0.9, this.filter('bandpass', 500, this.density, 0.5), now);
+        break;
+      }
     }
   }
 
@@ -340,6 +460,14 @@ class EmitterVoice {
         const w = this.wobble.step(dt, m!.rough ? 2.5 : 0.4);
         this.lfo.frequency.setTargetAtTime(10.5 * (m!.rough ? lerp(0.6, 1.3, w) : lerp(0.95, 1.05, w)), now, 0.1);
       }
+      if (this.tune.length) {
+        // Grúa: izando (con carga) el motor baja de tono y el trinquete va despacio; lanzando el
+        // gancho el torno corre en rueda libre; recogiendo cable, el ritmo normal.
+        const [pitch, rate] = gruaTuning(m!.intensity);
+        const w = m!.rough ? lerp(0.9, 1.1, this.wobble.step(dt, 1.5)) : 1;
+        for (const t of this.tune) t.p.setTargetAtTime(t.base * (t.kind === 'pitch' ? pitch * w : rate), now, 0.3);
+      }
+      if (this.density) this.density.gain.setTargetAtTime(clamp((m!.intensity - 0.6) * 1.2, 0, 0.35), now, 0.5);
     } else if (this.running) {
       this.out.gain.setTargetAtTime(0, now, 0.25);
       this.quietFor += dt;
@@ -360,6 +488,8 @@ class EmitterVoice {
     this.nodes = [];
     this.aux = [];
     this.lfo = null;
+    this.tune = [];
+    this.density = null;
     this.quietFor = 0;
   }
 
@@ -371,13 +501,20 @@ class EmitterVoice {
   }
 }
 
+/** Multiplicadores [tono del motor, ritmo del trinquete] de la grúa según su intensidad (`GRUA_LEVEL`). */
+export function gruaTuning(intensity: number): [number, number] {
+  if (intensity >= 0.9) return [0.82, 0.7];
+  if (intensity >= 0.6) return [1.25, 1.7];
+  return [1, 1.1];
+}
+
 /* ------------------------------------------------------------------ */
 /* Ambiente                                                            */
 /* ------------------------------------------------------------------ */
 
 /** Sonido puntual del ambiente que `Audio` debe reproducir. */
 export interface AmbientShot {
-  name: 'crujido' | 'golpe_ola' | 'gaviota';
+  name: 'crujido' | 'golpe_ola' | 'gaviota' | 'campana_puerto' | 'campana_boya';
   pan: number;
   gain: number;
   intensity: number;
@@ -392,7 +529,7 @@ export class Ambience {
   private gust = new SmoothNoise();
   private gust2 = new SmoothNoise();
   private flicker = new SmoothNoise();
-  private timers = { crujido: 4 + Math.random() * 6, golpe_ola: 2 + Math.random() * 4, gaviota: 3 + Math.random() * 5 };
+  private timers = { crujido: 4 + Math.random() * 6, golpe_ola: 2 + Math.random() * 4, gaviota: 3 + Math.random() * 5, campana_puerto: 6 + Math.random() * 10, campana_boya: 3 + Math.random() * 8 };
   /** Último valor del oleaje (0..1), útil para depurar. */
   swell = 0.5;
 
@@ -420,6 +557,8 @@ export class Ambience {
       rainRoar: L(bank.pink, [{ type: 'lowpass', freq: 1600 }], ext, 1.1),
       roofWash: L(bank.pink, [{ type: 'lowpass', freq: 1500 }], amb, 0.8),
       roofDrops: L(bank.drops, [{ type: 'lowpass', freq: 2000 }], amb, 0.55),
+      // Gente en el muelle del puerto: lejos, sin agudos.
+      portCrowd: L(bank.murmur, [{ type: 'bandpass', freq: 650, q: 0.35 }, { type: 'lowpass', freq: 1700 }], ext, 0.93),
     };
   }
 
@@ -483,6 +622,9 @@ export class Ambience {
     lp.roofDrops.set(LAYER_GAIN.roofDrops * mix.roofRain, now, 0.3, dt);
     lp.roofDrops.freq(0, mix.roofCutoff * 1.4, now, 0.3);
 
+    // Puerto.
+    lp.portCrowd.set(LAYER_GAIN.portCrowd * mix.portCrowd, now, 0.8, dt);
+
     // Fuentes del barco.
     for (const kind of Object.keys(EMITTER_REF) as EmitterKind[]) {
       const m = emitters.get(kind) ?? null;
@@ -518,6 +660,21 @@ export class Ambience {
         shots.push({ name: 'gaviota', pan: rand(-0.85, 0.85), gain: lerp(1, 0.35, far), intensity: far });
       }
     } else t.gaviota = Math.max(t.gaviota, 2);
+    // Campanas del puerto (un repique de vez en cuando) y de las boyas de la bocana.
+    if (mix.harborBellRate > 1e-4) {
+      t.campana_puerto -= dt;
+      if (t.campana_puerto <= 0) {
+        t.campana_puerto = Math.max(25, expo(mix.harborBellRate));
+        shots.push({ name: 'campana_puerto', pan: rand(-0.6, 0.6), gain: rand(0.6, 1), intensity: 0 });
+      }
+    } else t.campana_puerto = Math.max(t.campana_puerto, 8);
+    if (mix.buoyBellRate > 1e-4) {
+      t.campana_boya -= dt;
+      if (t.campana_boya <= 0) {
+        t.campana_boya = Math.max(6, expo(mix.buoyBellRate));
+        shots.push({ name: 'campana_boya', pan: Math.random() < 0.5 ? rand(-0.9, -0.3) : rand(0.3, 0.9), gain: rand(0.4, 1), intensity: 0 });
+      }
+    } else t.campana_boya = Math.max(t.campana_boya, 4);
     return shots;
   }
 

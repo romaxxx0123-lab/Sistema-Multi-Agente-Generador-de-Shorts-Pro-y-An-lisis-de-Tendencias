@@ -1,7 +1,8 @@
 /**
  * [AGENTE audio] Catálogo de efectos procedurales: una receta por nombre del bus 'sfx'
- * (más avisos, fanfarria, campanas y los sonidos puntuales del ambiente: truenos, gaviotas,
- * crujidos, golpes de ola).
+ * (más avisos, fanfarria, música de la llegada, campanas, radio y radar, grúa, fuegos
+ * artificiales y los sonidos puntuales del ambiente: truenos, gaviotas, crujidos, golpes de ola,
+ * campanas del puerto y de las boyas, naipes en la sala común).
  *
  * Cada receta programa nodos en un `Synth` y devuelve el instante absoluto en que termina.
  * `SFX[name]` añade la mezcla (bus, ganancia, distancia de referencia y máxima, separación
@@ -9,7 +10,7 @@
  */
 import { clamp } from '../core/math';
 import type { Surface } from './mix';
-import { bell, brass, clink, knock, marimba, midi, noise, partials, rr, rustle, sample, splash, tick, tone, vary, type Synth } from './synth';
+import { bell, brass, clink, filters, knock, marimba, midi, noise, pad, partials, reed, rr, rustle, sample, splash, tick, tone, vary, type Synth } from './synth';
 
 export interface SfxOpts {
   /** Material bajo los pies (pasos). */
@@ -17,7 +18,7 @@ export interface SfxOpts {
   /** 0..1 lluvia sobre la cubierta (pisadas mojadas). */
   wet?: number;
   run?: boolean;
-  /** Distancia en metros (truenos). */
+  /** Distancia en metros (truenos, fuegos artificiales). */
   distance?: number;
   /** Repeticiones (campanadas, llamadas de gaviota). */
   count?: number;
@@ -833,6 +834,277 @@ function expedicion(s: Synth): number {
   return max(knock(s, { freq: 140, gain: 0.4, decay: 0.12 }), knock(s, { at: 0.18, freq: 115, gain: 0.3, decay: 0.12 }), campana({ ...s, t: s.t + 0.35 }, { count: 1 }));
 }
 
+/* Ronda de contenido 2: mejoras, cuaderno, grúa, radio y radar, puerto ----- */
+
+function mejoraTerminada(s: Synth): number {
+  // Los últimos martillazos de la obra y un arpegio que sube un escalón más que el de una obra.
+  const ends = [martillo(s), martillo({ ...s, t: s.t + 0.17 }), knock(s, { at: 0.3, freq: 200, gain: 0.35, decay: 0.08 })];
+  [N.C5, N.E5, N.G5, N.C6, N.E6].forEach((f, i) => ends.push(marimba(s, { at: 0.42 + i * 0.07, freq: f, gain: 0.18, decay: i === 4 ? 1 : 0.5 })));
+  ends.push(tone(s, { at: 0.75, freq: N.G6, attack: 0.05, hold: 0.2, decay: 0.8, gain: 0.03, vibrato: [6, 8] }));
+  return max(...ends);
+}
+
+function pagina(s: Synth): number {
+  return max(
+    // Se levanta la hoja, pasa por el aire y cae sobre el cuaderno.
+    rustle(s, { dur: 0.22, freq: 2600, gain: 0.3, paper: true }),
+    noise(s, { at: 0.12, color: 'pink', attack: 0.05, decay: 0.16, gain: 0.22, filter: [{ type: 'bandpass', freq: 700, freqTo: 2400, sweep: 0.18, q: 1.1 }] }),
+    rustle(s, { at: 0.26, dur: 0.16, freq: 3600, gain: 0.22, paper: true }),
+    knock(s, { at: 0.34, freq: 520, gain: 0.06, decay: 0.03, bright: 2 }),
+    // Un recuerdo de la capitana: dos notas suaves y graves.
+    marimba(s, { at: 0.45, freq: N.A4, gain: 0.07, decay: 0.7 }),
+    marimba(s, { at: 0.62, freq: N.E5, gain: 0.06, decay: 0.9 }),
+  );
+}
+
+/**
+ * Cohete de fuegos artificiales: silbido de subida, estallido seco y chisporroteo de las
+ * estrellas. Como el trueno, llega con retardo (`distance` / 343 m/s) y lejos pierde los agudos.
+ */
+function fuegoArtificial(s: Synth, o: SfxOpts): number {
+  const d = clamp(o.distance ?? 220, 10, 1500);
+  const delay = Math.min(3, d / 343);
+  const air = clamp(1 - (d - 60) / 700, 0, 1);
+  const cutoff = 900 + 7000 * air * air;
+  const ends: number[] = [];
+  if (s.rand() < 0.7) {
+    const wl = rr(s, 0.35, 0.6);
+    const at = Math.max(0, delay - wl - 0.04);
+    const f0 = rr(s, 1500, 2100);
+    ends.push(tone(s, { at, freq: f0, freqTo: f0 * rr(s, 1.5, 1.9), glide: wl, attack: 0.03, hold: wl * 0.6, decay: wl * 0.4, gain: 0.08 * (0.4 + 0.6 * air), vibrato: [rr(s, 18, 30), f0 * 0.03], filter: [{ type: 'lowpass', freq: cutoff }] }));
+    ends.push(noise(s, { at, color: 'white', attack: wl * 0.5, decay: wl * 0.6, gain: 0.05 * (0.3 + 0.7 * air), filter: [{ type: 'bandpass', freq: 3500, q: 1.2 }, { type: 'lowpass', freq: cutoff }] }));
+  }
+  const boom = 0.7 + 0.3 * s.rand();
+  ends.push(tone(s, { at: delay, freq: rr(s, 70, 95), freqTo: 32, glide: 0.25, attack: 0.002, decay: 0.45 + 0.4 * (1 - air), gain: 0.55 * boom }));
+  ends.push(noise(s, { at: delay, color: 'pink', attack: 0.002, decay: 0.18 + 0.5 * (1 - air), gain: 0.6 * boom, filter: [{ type: 'lowpass', freq: cutoff * 0.6, freqTo: 300, sweep: 0.4 }] }));
+  ends.push(noise(s, { at: delay, color: 'white', attack: 0.001, decay: 0.05, gain: 0.35 * air * boom, filter: [{ type: 'highpass', freq: 1500 }, { type: 'lowpass', freq: cutoff }] }));
+  // Eco contra el agua y los muelles.
+  ends.push(noise(s, { at: delay + rr(s, 0.25, 0.5), color: 'brown', attack: 0.04, decay: 0.8, gain: 0.25 * boom, filter: [{ type: 'lowpass', freq: 380 }] }));
+  if (s.rand() < 0.6) {
+    const len = rr(s, 0.7, 1.4);
+    ends.push(noise(s, { at: delay + rr(s, 0.15, 0.3), buffer: s.bank.crackle, rate: rr(s, 1.6, 2.4), attack: 0.08, hold: len * 0.4, decay: len * 0.6, gain: 0.35 * (0.35 + 0.65 * air), filter: [{ type: 'highpass', freq: 1800 }, { type: 'lowpass', freq: cutoff }] }));
+  }
+  return max(...ends);
+}
+
+/** Melodía de la llegada a Puerto Esperanza: [nota MIDI, corcheas], en 6/8 y sol mayor. */
+const ARRIVAL_TUNE: readonly (readonly [number, number])[] = [
+  [74, 2], [71, 1], [67, 2], [71, 1],
+  [74, 1], [76, 1], [74, 1], [71, 3],
+  [72, 2], [76, 1], [79, 2], [76, 1],
+  [74, 1], [72, 1], [71, 1], [69, 3],
+  [71, 2], [74, 1], [79, 2], [78, 1],
+  [76, 1], [78, 1], [81, 1], [79, 6],
+];
+/** Un acorde por medio compás: Sol Sol | Sol Mim | Do Do | Re Re | Sol Re | Re Sol (final largo). */
+const ARRIVAL_CHORDS: readonly (readonly number[])[] = [
+  [55, 59, 62], [55, 59, 62],
+  [55, 59, 62], [52, 55, 59],
+  [48, 52, 55], [48, 52, 55],
+  [50, 54, 57], [50, 54, 57],
+  [55, 59, 62], [50, 54, 57],
+  [50, 54, 57], [55, 59, 62],
+];
+/** Duración de la corchea de la llegada (s). */
+const ARRIVAL_EIGHTH = 0.2;
+
+/** Música breve de la llegada: acordeón marinero, cuerdas, bajo y las campanas del puerto. */
+function llegada(s: Synth): number {
+  const u = ARRIVAL_EIGHTH;
+  const ends: number[] = [];
+  let t = 0.05;
+  for (const [n, len] of ARRIVAL_TUNE) {
+    ends.push(reed(s, { at: t, freq: midi(n), dur: len * u * 0.92, gain: 0.07 }));
+    t += len * u;
+  }
+  ARRIVAL_CHORDS.forEach((ch, i) => {
+    const at = 0.05 + i * 3 * u;
+    const last = i === ARRIVAL_CHORDS.length - 1;
+    ends.push(pad(s, { at, freqs: ch.map(midi), dur: last ? 2 : 3 * u, gain: 0.05, cutoff: 1400 }));
+    // Bajo: fundamental en la parte fuerte y quinta en la débil.
+    ends.push(tone(s, { at, type: 'triangle', freq: midi(ch[0]! - 12), attack: 0.01, hold: last ? 0.8 : 0.12, decay: last ? 1.2 : 0.3, gain: 0.16 }));
+    if (!last) ends.push(tone(s, { at: at + 2 * u, type: 'triangle', freq: midi(ch[2]! - 12), attack: 0.01, hold: 0.05, decay: 0.2, gain: 0.09 }));
+  });
+  ends.push(bell(s, { at: t - 1, freq: 392, gain: 0.07, length: 1.6 }));
+  ends.push(bell(s, { at: t - 0.4, freq: 588, gain: 0.05, length: 1.4 }));
+  [N.G5, N.B5, midi(86), N.G6].forEach((f, i) => ends.push(marimba(s, { at: t - 1.15 + i * 0.08, freq: f, gain: 0.05, decay: 0.8 })));
+  return max(...ends);
+}
+
+/** Voz lejana por el altavoz: frases de sílabas con formantes, con pausas, hasta `len` s. */
+function radioVoice(s: Synth, at: number, len: number, dest: AudioNode): number {
+  const pitch = rr(s, 110, 200);
+  let t = at;
+  let end = s.t + at;
+  while (t < at + len - 0.2) {
+    const n = 3 + Math.floor(s.rand() * 6);
+    for (let i = 0; i < n && t < at + len - 0.1; i++) {
+      const dur = rr(s, 0.07, 0.14);
+      const [f1, f2] = VOWELS[Math.floor(s.rand() * VOWELS.length)]!;
+      const t0 = s.t + t;
+      const p0 = pitch * vary(s, 0.08);
+      const osc = s.ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(p0, t0);
+      osc.frequency.linearRampToValueAtTime(p0 * (i === n - 1 ? 0.82 : vary(s, 0.08)), t0 + dur);
+      const env = s.ctx.createGain();
+      env.gain.setValueAtTime(0, t0);
+      env.gain.linearRampToValueAtTime(1, t0 + 0.012);
+      env.gain.setValueAtTime(1, t0 + dur * 0.6);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      env.connect(dest);
+      for (const [f, q, g] of [
+        [f1, 5, 1],
+        [f2, 7, 0.55],
+      ] as const) {
+        const bp = s.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = f * vary(s, 0.05);
+        bp.Q.value = q;
+        const gg = s.ctx.createGain();
+        gg.gain.value = g;
+        osc.connect(bp);
+        bp.connect(gg);
+        gg.connect(env);
+      }
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+      end = Math.max(end, t0 + dur + 0.03);
+      t += dur + rr(s, 0.015, 0.05);
+    }
+    t += rr(s, 0.18, 0.4);
+  }
+  return end;
+}
+
+/** Mensaje de radio: se abre el silenciador, estática con una voz lejana que va y viene, pitido de cambio. */
+function radio(s: Synth): number {
+  const dur = rr(s, 2.2, 3);
+  const ends: number[] = [];
+  // Banda de teléfono y desvanecimiento de la señal.
+  const fade = s.ctx.createGain();
+  fade.gain.value = 0.75;
+  fade.connect(s.out);
+  const lfo = s.ctx.createOscillator();
+  lfo.frequency.value = rr(s, 3, 6);
+  const depth = s.ctx.createGain();
+  depth.gain.value = 0.25;
+  lfo.connect(depth);
+  depth.connect(fade.gain);
+  const band = filters(s, fade, [
+    { type: 'highpass', freq: 420 },
+    { type: 'lowpass', freq: 2700 },
+  ]);
+  ends.push(noise(s, { color: 'white', attack: 0.004, decay: 0.12, gain: 0.35, filter: [{ type: 'bandpass', freq: 2600, q: 0.6 }] }));
+  ends.push(noise(s, { at: 0.05, color: 'white', attack: 0.06, hold: dur, decay: 0.15, gain: 0.07, filter: [{ type: 'bandpass', freq: 2200, q: 0.5 }] }));
+  ends.push(noise(s, { at: 0.05, buffer: s.bank.crackle, rate: 2.2, attack: 0.05, hold: dur, decay: 0.15, gain: 0.12, filter: [{ type: 'highpass', freq: 1500 }] }));
+  ends.push(radioVoice(s, 0.25, dur - 0.2, band));
+  const tc = 0.05 + dur + 0.1;
+  ends.push(noise(s, { at: tc, color: 'white', attack: 0.003, decay: 0.09, gain: 0.3, filter: [{ type: 'bandpass', freq: 2400, q: 0.6 }] }));
+  ends.push(tone(s, { at: tc + 0.05, type: 'square', freq: 1250, attack: 0.003, hold: 0.06, decay: 0.03, gain: 0.03, filter: [{ type: 'lowpass', freq: 2500 }] }));
+  const end = max(...ends);
+  lfo.start(s.t);
+  lfo.stop(end);
+  return end;
+}
+
+/** Contacto en el radar: dos pings con eco y un doble pitido de la consola. */
+function radarContacto(s: Synth): number {
+  const ends: number[] = [];
+  for (const [at, g] of [
+    [0, 1],
+    [0.42, 0.8],
+  ] as const) {
+    ends.push(tone(s, { at, freq: 1320, attack: 0.004, decay: 0.45, gain: 0.22 * g }));
+    ends.push(tone(s, { at, freq: 2640, attack: 0.003, decay: 0.12, gain: 0.04 * g }));
+    ends.push(tone(s, { at: at + 0.16, freq: 1320, attack: 0.01, decay: 0.3, gain: 0.06 * g }));
+  }
+  for (const at of [0.9, 1.02]) ends.push(tone(s, { at, type: 'square', freq: 1760, attack: 0.003, hold: 0.05, decay: 0.03, gain: 0.025, filter: [{ type: 'lowpass', freq: 3000 }] }));
+  return max(...ends);
+}
+
+/** La grúa lanza el gancho: golpe de la pluma y el torno soltando cable en rueda libre. */
+function gruaLanzar(s: Synth): number {
+  const ends: number[] = [clink(s, { freq: rr(s, 380, 460), gain: 0.25, decay: 0.3 }), knock(s, { freq: 160, gain: 0.3, decay: 0.08 })];
+  let t = 0.05;
+  for (let i = 0; i < 16; i++) {
+    ends.push(tick(s, { at: t, freq: rr(s, 2300, 2900), gain: 0.16, decay: 0.008 }));
+    t += 0.06 - i * 0.0025;
+  }
+  ends.push(noise(s, { at: 0.05, color: 'pink', attack: 0.1, decay: 0.5, gain: 0.18, filter: [{ type: 'bandpass', freq: 600, freqTo: 1600, sweep: 0.5, q: 1.5 }] }));
+  return max(...ends);
+}
+
+/** La grúa saca un resto del agua: chapoteo, chorreo, goteo y el cable tenso. */
+function gruaSaca(s: Synth): number {
+  const c = s.bank.creaks[Math.floor(s.rand() * s.bank.creaks.length)]!;
+  return max(
+    splash(s, { size: 0.9, gain: 0.45 }),
+    noise(s, { at: 0.1, color: 'pink', attack: 0.08, hold: 0.4, decay: 0.6, gain: 0.25, filter: [{ type: 'lowpass', freq: 1300 }, { type: 'highpass', freq: 250 }] }),
+    noise(s, { at: 0.25, buffer: s.bank.drops, rate: 1.1, attack: 0.1, hold: 0.6, decay: 1, gain: 0.3 }),
+    sample(s, c, { at: 0.05, rate: rr(s, 1.3, 1.7), gain: 0.18, maxDur: 0.5 }),
+    clink(s, { at: 0.5, freq: rr(s, 320, 400), gain: 0.12, decay: 0.25 }),
+  );
+}
+
+/** Repique lejano de las dos campanas del puerto. */
+function campanaPuerto(s: Synth, o: SfxOpts): number {
+  const n = clamp(o.count ?? 3 + Math.floor(s.rand() * 3), 1, 8);
+  const lp = s.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = rr(s, 1800, 2600);
+  lp.Q.value = 0.4;
+  lp.connect(s.out);
+  const base = rr(s, 196, 247);
+  let end = s.t;
+  let t = 0;
+  for (let i = 0; i < n; i++) {
+    end = Math.max(end, bell(s, { at: t, freq: i % 2 === 0 ? base : base * 0.84, gain: 0.2, length: 2.4, dest: lp }));
+    t += rr(s, 1.25, 1.45);
+  }
+  return end;
+}
+
+/** Campana de una boya que se mece con el oleaje: uno a tres golpes irregulares. */
+function campanaBoya(s: Synth): number {
+  const n = 1 + Math.floor(s.rand() * 3);
+  const lp = s.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4200;
+  lp.connect(s.out);
+  const f = rr(s, 640, 760);
+  let end = s.t;
+  let t = 0;
+  for (let i = 0; i < n; i++) {
+    end = Math.max(end, bell(s, { at: t, freq: f * vary(s, 0.01), gain: 0.12 * rr(s, 0.6, 1), length: 0.9, dest: lp }));
+    t += rr(s, 0.5, 1.1);
+  }
+  return end;
+}
+
+/** Naipes en la mesa de juegos: barajar, echar una o dos cartas o un «¡paso!» con los nudillos. */
+function cartas(s: Synth): number {
+  const ends: number[] = [];
+  if (s.rand() < 0.3) {
+    let t = 0;
+    const n = 14 + Math.floor(s.rand() * 10);
+    for (let i = 0; i < n; i++) {
+      ends.push(noise(s, { at: t, color: 'white', attack: 0.001, decay: 0.012, gain: rr(s, 0.12, 0.22), filter: [{ type: 'bandpass', freq: rr(s, 2600, 4200), q: 1.4 }] }));
+      t += rr(s, 0.018, 0.03);
+    }
+    ends.push(knock(s, { at: t + 0.05, freq: 420, gain: 0.12, decay: 0.03, bright: 3 }));
+    return max(...ends);
+  }
+  const cards = s.rand() < 0.4 ? 2 : 1;
+  for (let i = 0; i < cards; i++) {
+    const at = i * rr(s, 0.25, 0.45);
+    ends.push(noise(s, { at, color: 'pink', attack: 0.006, decay: 0.05, gain: 0.3, filter: [{ type: 'bandpass', freq: rr(s, 1400, 2000), q: 0.9 }] }));
+    ends.push(noise(s, { at, color: 'white', attack: 0.002, decay: 0.02, gain: 0.15, filter: [{ type: 'highpass', freq: 3000 }] }));
+  }
+  if (s.rand() < 0.25) ends.push(knock(s, { at: 0.5, freq: 260, gain: 0.25, decay: 0.06 }), knock(s, { at: 0.62, freq: 250, gain: 0.2, decay: 0.06 }));
+  return max(...ends);
+}
+
 /* ------------------------------------------------------------------ */
 /* Catálogo                                                            */
 /* ------------------------------------------------------------------ */
@@ -909,11 +1181,21 @@ export const SFX: Record<string, SfxDef> = {
   comercio: def({ play: comercio, gain: 0.6, gap: 0.3 }),
   expedicion_vuelve: def({ play: expedicion, gain: 0.27, gap: 1, global: true, priority: 2 }),
   muerte: def({ play: muerte, gain: 0.53, gap: 2, global: true, priority: 3 }),
+  mejora_terminada: def({ play: mejoraTerminada, gain: 0.38, gap: 0.5, global: true, priority: 2 }),
+  pagina: def({ play: pagina, gain: 0.9, gap: 0.3 }),
+  grua_lanzar: def({ play: gruaLanzar, gain: 0.35, gap: 0.5, ref: 5, max: 45 }),
+  grua_saca: def({ play: gruaSaca, gain: 0.5, gap: 0.5, ref: 6, max: 55, bus: 'ext' }),
+  radio: def({ play: radio, gain: 0.42, gap: 2, ref: 6, max: 70, priority: 2 }),
+  radar_contacto: def({ play: radarContacto, gain: 0.45, gap: 1, ref: 6, max: 70, priority: 2 }),
+  fuego_artificial: def({ play: fuegoArtificial, gain: 0.5, gap: 0.06, ref: 80, max: 1500, bus: 'ext', priority: 0 }),
+  cartas: def({ play: cartas, gain: 0.8, gap: 0.4, ref: 2, max: 14, priority: 0 }),
   // Ambiente puntual
   gaviota: def({ play: gaviota, gain: 0.1, gap: 0.5, bus: 'ext', global: true, priority: 0 }),
   crujido: def({ play: crujido, gain: 0.13, gap: 0.8, bus: 'amb', global: true, priority: 0 }),
   golpe_ola: def({ play: golpeOla, gain: 0.3, gap: 0.3, bus: 'ext', global: true, priority: 0 }),
   burbujas: def({ play: burbujas, gain: 0.7, gap: 0.5, bus: 'ext', global: true }),
+  campana_puerto: def({ play: campanaPuerto, gain: 0.2, gap: 5, bus: 'ext', global: true, priority: 0 }),
+  campana_boya: def({ play: campanaBoya, gain: 0.25, gap: 2, bus: 'ext', global: true, priority: 0 }),
   // Interfaz, avisos y música
   ui_clic: def({ ...UI, play: uiClic, gain: 0.14 }),
   ui_abrir: def({ ...UI, play: uiAbrir, gain: 0.21, gap: 0.08 }),
@@ -927,6 +1209,7 @@ export const SFX: Record<string, SfxDef> = {
   tutorial: def({ ...UI, play: tutorial, gain: 0.32, gap: 0.5 }),
   objeto: def({ ...UI, play: objeto, gain: 0.25, gap: 0.12, priority: 1 }),
   fanfarria: def({ ...UI, play: fanfarria, gain: 0.5, gap: 1, priority: 3 }),
+  llegada: def({ ...UI, play: llegada, gain: 0.65, gap: 20, priority: 3 }),
   campana: def({ ...UI, play: campana, gain: 0.24, gap: 1, priority: 2 }),
   sirena: def({ ...UI, play: sirena, gain: 0.43, gap: 3, priority: 2, bus: 'ext' }),
   descubrimiento: def({ ...UI, play: descubrimiento, gain: 0.42, gap: 1, priority: 2 }),
@@ -963,6 +1246,11 @@ export const SFX_ALIASES: Record<string, string> = {
   abrir: 'ui_abrir',
   cerrar: 'ui_cerrar',
   error: 'ui_error',
+  mejora: 'mejora_terminada',
+  leer: 'pagina',
+  hoja: 'pagina',
+  fuegos: 'fuego_artificial',
+  cohete: 'fuego_artificial',
 };
 
 /** Nombre canónico del catálogo (alias, prefijos conocidos o el genérico). */

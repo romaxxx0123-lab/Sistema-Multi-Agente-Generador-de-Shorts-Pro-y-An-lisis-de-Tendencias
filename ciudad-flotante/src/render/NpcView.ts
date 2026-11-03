@@ -6,7 +6,8 @@
  * real entre frames:
  *  - caminar (balanceo según la velocidad medida; cojea si está herido), cargando si lleva algo;
  *  - dormir tumbado en SU cama (npc.bed → cama/litera con dos alturas/camilla) con manta y "Zzz";
- *  - comer sentado en la silla más cercana (o de pie con un cuenco);
+ *  - comer sentado en la silla que le ha dado la simulación (`task.data.seated`), o de pie con un
+ *    cuenco si se quedó sin silla: nunca en la silla de otro;
  *  - en la sala común: sentado en el sofá (leyendo un libro si `task.data.read`) o jugando a
  *    las cartas en la mesa de juegos (`task.data.anim === 'jugar'`): en el taburete de su puesto
  *    mirando a la mesa, o de pie con las cartas si su puesto no tiene taburete;
@@ -62,11 +63,59 @@ const LINE_MAT = new THREE.LineBasicMaterial({ color: '#e8e3c9', transparent: tr
 const BOBBER_GEO = new THREE.SphereGeometry(0.07, 6, 4);
 const BOBBER_MAT = new THREE.MeshLambertMaterial({ color: '#e63946' });
 
-/** Decide la pose de un habitante (lógica pura, testeable). */
-export function decideNpcPose(n: NpcState, state: GameState, speed: number, seats: Seat[], stools: Seat[] = []): NpcPoseInfo {
+/** Posición de un habitante sentado (para no sentar a otro encima). */
+export interface SeatOccupant {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** Distancia (m) a la que un asiento cuenta como ocupado por quien está sentado en él. */
+const SEAT_TAKEN_RANGE = 0.25;
+
+/** Asientos de `seats` donde ya hay alguien sentado (que no sea `selfId`). */
+function seatTaken(s: Seat, occupied: readonly SeatOccupant[], selfId: string): boolean {
+  return occupied.some((o) => o.id !== selfId && Math.hypot(o.x - s.x, o.z - s.z) < SEAT_TAKEN_RANGE && Math.abs(o.y - s.y) < 1);
+}
+
+/**
+ * El asiento donde colocar a un habitante parado: si la simulación lo ha sentado (`task.data.seated`),
+ * el que tiene debajo; sin tarea (una partida recién cargada o una prueba), el libre más cercano a
+ * menos de `reach`; con una tarea que no lo ha sentado (sin silla libre), ninguno.
+ */
+function seatFor(n: NpcState, seats: Seat[], reach: number, occupied: readonly SeatOccupant[]): Seat | null {
+  const seated = (n.task?.data as { seated?: boolean } | undefined)?.seated === true;
+  if (n.task && !seated) return null;
+  let best: Seat | null = null;
+  let bd = seated ? 0.3 : reach;
+  for (const s of seats) {
+    const d = Math.hypot(s.x - n.pos.x, s.z - n.pos.z);
+    if (d < bd && Math.abs(s.y - n.pos.y) < 1 && (seated || !seatTaken(s, occupied, n.id))) {
+      bd = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/** Habitantes sentados ahora mismo (la simulación los ha colocado en su asiento). */
+export function seatedNpcs(state: GameState): SeatOccupant[] {
+  const out: SeatOccupant[] = [];
+  for (const o of state.npcs) {
+    if ((o.task?.data as { seated?: boolean } | undefined)?.seated === true) out.push({ id: o.id, x: o.pos.x, y: o.pos.y, z: o.pos.z });
+  }
+  return out;
+}
+
+/**
+ * Decide la pose de un habitante (lógica pura, testeable). `occupied`: quién está sentado y dónde
+ * (`seatedNpcs`), para no sentar a nadie en la silla de otro.
+ */
+export function decideNpcPose(n: NpcState, state: GameState, speed: number, seats: Seat[], stools: Seat[] = [], occupied: readonly SeatOccupant[] = seatedNpcs(state)): NpcPoseInfo {
   const base: NpcPoseInfo = { pose: 'stand', tool: null, carry: !!n.carry, limp: n.injured || n.needs.health < 35, x: n.pos.x, y: n.pos.y, z: n.pos.z, yaw: n.yaw, snap: false, blanket: null };
   const act = n.activity;
-  const data = n.task?.data as { anim?: string; faceYaw?: number; read?: boolean } | undefined;
+  const data = n.task?.data as { anim?: string; faceYaw?: number; read?: boolean; seated?: boolean } | undefined;
   if (act === 'sleeping') {
     const bed = n.bed ? bedPose(state.ship, n.bed.moduleId, n.bed.index) : null;
     if (bed && Math.hypot(bed.x - n.pos.x, bed.z - n.pos.z) < 3 && Math.abs(bed.y - n.pos.y) < 2.4) {
@@ -76,16 +125,10 @@ export function decideNpcPose(n: NpcState, state: GameState, speed: number, seat
   }
   const moving = speed > 0.25;
   if (act === 'eating' && !moving) {
-    let best: Seat | null = null;
-    let bd = 1.3;
-    for (const s of seats) {
-      const d = Math.hypot(s.x - n.pos.x, s.z - n.pos.z);
-      if (d < bd && Math.abs(s.y - n.pos.y) < 1) {
-        bd = d;
-        best = s;
-      }
-    }
+    // Sentado en su silla (la que le reservó la simulación); sin silla, de pie con el cuenco.
+    const best = seatFor(n, seats, 1.3, occupied);
     if (best) return { ...base, pose: 'eat', tool: 'cuenco', x: best.x, y: best.y, z: best.z, yaw: best.yaw, snap: true, carry: false };
+    if (data?.seated) return { ...base, pose: 'eat', tool: 'cuenco', snap: true, carry: false };
     return { ...base, pose: 'stand', tool: 'cuenco', carry: false };
   }
   if (moving) return { ...base, pose: 'walk' };
@@ -99,12 +142,11 @@ export function decideNpcPose(n: NpcState, state: GameState, speed: number, seat
     return { ...base, pose: 'cardsStand', tool: 'cartas', yaw: data.faceYaw ?? n.yaw, carry: false };
   }
   if (act === 'idle') {
-    // si se para junto a una silla o en una plaza del sofá, se sienta (a leer, si lleva libro)
-    for (const s of seats) {
-      if (Math.hypot(s.x - n.pos.x, s.z - n.pos.z) < 0.6 && Math.abs(s.y - n.pos.y) < 1) {
-        const read = data?.read === true;
-        return { ...base, pose: read ? 'read' : 'sit', tool: read ? 'libro' : null, x: s.x, y: s.y, z: s.z, yaw: s.yaw, snap: true, carry: false };
-      }
+    // sentado en una silla o en una plaza del sofá (a leer, si lleva libro), nunca encima de otro
+    const s = seatFor(n, seats, 0.6, occupied);
+    if (s) {
+      const read = data?.read === true;
+      return { ...base, pose: read ? 'read' : 'sit', tool: read ? 'libro' : null, x: s.x, y: s.y, z: s.z, yaw: s.yaw, snap: true, carry: false };
     }
   }
   switch (act) {
@@ -214,6 +256,7 @@ export class NpcView {
       if (camera instanceof THREE.PerspectiveCamera) fov = camera.fov;
     } else _cam.set(state.player.pos.x, state.player.pos.y + 1.6, state.player.pos.z);
     const alive = new Set<string>();
+    const occupied = seatedNpcs(state);
     for (const n of state.npcs) {
       alive.add(n.id);
       let e = this.entries.get(n.id);
@@ -246,7 +289,7 @@ export class NpcView {
       const level = levelOfY(n.pos.y);
       const visible = n.activity !== 'away' && (hideAboveLevel === null || level <= hideAboveLevel);
       e.container.visible = visible;
-      const info = decideNpcPose(n, state, e.speed, this.seats, this.stools);
+      const info = decideNpcPose(n, state, e.speed, this.seats, this.stools, occupied);
       e.container.position.set(info.x, info.y, info.z);
       if (info.snap) e.yaw = info.yaw;
       else e.yaw += wrapAngle(info.yaw - e.yaw) * Math.min(1, dt * 8);

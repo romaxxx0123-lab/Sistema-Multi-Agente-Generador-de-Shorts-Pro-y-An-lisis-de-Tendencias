@@ -4,6 +4,11 @@
  *
  * - Escucha el bus: 'sfx' (con posición en coordenadas del barco), 'toolUsed', 'itemGained',
  *   'notify', 'unlocked', 'tutorialStep', 'newDay', 'worldEventStarted', 'playerDied', 'simReplaced'.
+ * - Ronda de contenido 2: los avisos «Radio: …» suenan por el altavoz de la radio y los contactos
+ *   del radar con un ping (`notifyCue`); la llegada a Puerto Esperanza (`story.arrived`) toca su
+ *   música; los fuegos artificiales llegan con retardo según la distancia; la grúa lanza el gancho
+ *   y saca los restos del agua; en la sala común se oyen los naipes; y el puerto tiene campanas,
+ *   boyas, gaviotas y gente en el muelle (`portPresence`).
  * - El contexto de audio solo se crea tras un gesto del usuario (`unlock` o el primer clic/tecla);
  *   sin WebAudio todo es un no-op silencioso.
  * - Mezcla: el oyente es el jugador (posición y orientación); los sonidos se atenúan con la
@@ -21,8 +26,9 @@ import type { NotifyKind } from '../core/EventBus';
 import { clamp, lerp } from '../core/math';
 import { registerDebug } from '../game/debug';
 import type { GameContext } from '../game/context';
-import { cellAtPoint, levelOfY, type ShipLayout } from '../sim/ship';
-import type { GameState } from '../sim/types';
+import { cellAtPoint, levelOfY, moduleCenter, type ShipLayout } from '../sim/ship';
+import { GRUA_LIFT_MIN } from '../sim/debris';
+import type { GameState, ModuleInstance } from '../sim/types';
 import { AudioEngine, audioContextCtor, hasUserActivation } from './engine';
 import type { AmbientShot, EmitterMix } from './ambience';
 import {
@@ -37,8 +43,11 @@ import {
   exteriorGain,
   gullPresence,
   listenerEnv,
+  loungeInfo,
+  notifyCue,
   occlusion,
   panFor,
+  portPresence,
   toolFallback,
   topNotify,
   type EmitterKind,
@@ -61,10 +70,34 @@ const EVENT_CUES: Record<string, [string, SfxOpts]> = {
   naufragos: ['descubrimiento', {}],
   banco_peces: ['burbujas', {}],
   incendio: ['campana', { count: 6 }],
+  llegada: ['llegada', {}],
 };
 
 /** Señales narrativas que ya dicen "algo bueno ha pasado" (silencian el tono de los avisos info/bien). */
-const CUE_NAMES = new Set(['fanfarria', 'tutorial', 'campana', 'obra_terminada', 'descubrimiento', 'expedicion_vuelve', 'muerte', 'desmayo', 'rescate', 'sirena']);
+const CUE_NAMES = new Set([
+  'fanfarria',
+  'tutorial',
+  'campana',
+  'obra_terminada',
+  'mejora_terminada',
+  'descubrimiento',
+  'expedicion_vuelve',
+  'muerte',
+  'desmayo',
+  'rescate',
+  'sirena',
+  'llegada',
+  'radio',
+  'radar_contacto',
+]);
+
+/** Velocidad del sonido (m/s): retardo de truenos y fuegos artificiales. */
+export const SOUND_SPEED = 343;
+/** La música de la llegada no se repite antes de este tiempo (s reales). */
+const ARRIVAL_MUSIC_GAP = 30;
+
+/** Grúa con sus campos de avance guardados (debris.ts). */
+type CraneModule = ModuleInstance & { prodProgress?: number; prodTarget?: number | null };
 
 const AMBIENT_STEP = 0.05;
 const EMITTER_STEP = 0.1;
@@ -119,6 +152,13 @@ export class Audio {
   /** Seguimiento de habitantes: posición anterior, zancada acumulada y último bocadillo oído. */
   private crewTrack = new Map<string, { x: number; z: number; stride: number; say: string | null }>();
   private beatTimer = 0;
+  /** Seguimiento de cada grúa: resto enganchado y su última posición (chapoteo al sacarlo). */
+  private craneTrack = new Map<number, { target: number | null; x: number; z: number }>();
+  /** Próximo golpe de naipes en cada sala común (s). */
+  private cardTimers = new Map<number, number>();
+  /** `story.arrived` en el frame anterior (la música suena al pasar a true, no al cargar). */
+  private prevArrived = false;
+  private lastArrivalMusic = -Infinity;
 
   constructor(private readonly ctx: GameContext) {
     this.volume = clamp(Number.isFinite(ctx.settings?.volume) ? ctx.settings.volume : 0.7, 0, 1);
@@ -127,7 +167,10 @@ export class Audio {
     bus.on('sfx', (e) => this.guard(() => this.onSfx(e.name, e.x, e.y, e.z)));
     bus.on('toolUsed', (e) => this.pendingTools.push({ tool: e.tool, phase: e.phase }));
     bus.on('itemGained', () => this.pendingGains++);
-    bus.on('notify', (e) => this.pendingNotify.push(e.kind));
+    bus.on('notify', (e) => {
+      this.pendingNotify.push(e.kind);
+      this.guard(() => this.onNotifyText(e.text));
+    });
     bus.on('unlocked', () => this.guard(() => this.cue('fanfarria')));
     bus.on('tutorialStep', () => this.guard(() => this.cue('tutorial')));
     bus.on('newDay', () =>
@@ -145,6 +188,7 @@ export class Audio {
       if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => this.onVisibility());
     }
     if (!audioContextCtor()) this.disabled = true;
+    this.prevArrived = !!this.safeState()?.story?.arrived;
     this.registerDebug();
   }
 
@@ -187,6 +231,11 @@ export class Audio {
     const eng = this.engine;
     if (eng && !eng.ready) this.guard(() => this.prepare(eng));
     else if (eng && eng.running) this.guard(() => this.tick(eng, dt));
+    // La llegada a Puerto Esperanza se sigue siempre (aunque el audio no esté listo) para no
+    // tocar la música al cargar una partida en la que ya se llegó.
+    const arrived = !!this.safeState()?.story?.arrived;
+    if (arrived && !this.prevArrived) this.guard(() => this.arrivalMusic());
+    this.prevArrived = arrived;
     this.frameSfx.clear();
     this.pendingTools.length = 0;
     this.pendingNotify.length = 0;
@@ -291,6 +340,8 @@ export class Audio {
       this.thunder(d, hasPos ? panFor(l, x!, z!) * 0.7 : 0);
       return;
     }
+    // La música de la llegada ya celebra: la fanfarria del mismo momento sobra.
+    if (name === 'fanfarria' && this.time - this.lastArrivalMusic < 3) return;
     const opts: SfxOpts = {};
     if (name === 'paso') {
       const st = this.ctx.sim.state;
@@ -299,7 +350,45 @@ export class Audio {
       opts.run = !!this.ctx.player?.running;
     }
     const pos = hasPos ? { x: x!, y: Number.isFinite(y) ? y! : this.listener.y + 1, z: z! } : undefined;
-    this.playAt(name, opts, pos);
+    if (name === 'fuego_artificial') {
+      // Como el trueno: la receta retrasa el estallido según la distancia (y lo oscurece).
+      const l = this.listener;
+      opts.distance = pos ? Math.hypot(pos.x - l.x, pos.y - (l.y + 1.6), pos.z - l.z) : 250;
+    }
+    if (this.playAt(name, opts, pos) && CUE_NAMES.has(name)) this.lastCueAt = this.time;
+  }
+
+  /** Avisos de radio (por el altavoz del radar) y contactos del radar (ping). */
+  private onNotifyText(text: string): void {
+    const cue = notifyCue(text);
+    if (!cue) return;
+    this.frameSfx.add(cue);
+    if (!this.live()) return;
+    if (this.playAt(cue, {}, this.radarPos() ?? undefined)) this.lastCueAt = this.time;
+  }
+
+  /** Altavoz de la radio: la antena del radar que funciona (o cualquiera); null sin radar. */
+  private radarPos(): { x: number; y: number; z: number } | null {
+    const st = this.safeState();
+    if (!st) return null;
+    const radars = st.ship.modules.filter((m) => m.type === 'radar' && m.status === 'active');
+    const m = radars.find((r) => r.on && r.powered && r.fire <= 0) ?? radars[0];
+    if (!m) return null;
+    const p = this.safeLayout()?.props.find((pp) => pp.moduleId === m.id && pp.kind === 'radar');
+    if (p) return { x: p.x, y: p.y + 1.2, z: p.z };
+    const c = moduleCenter(m, st.ship.width);
+    return { x: c.x, y: c.y + 1.2, z: c.z };
+  }
+
+  /** Música de la llegada a Puerto Esperanza (una vez; la fanfarria del mismo momento se calla). */
+  private arrivalMusic(): void {
+    if (this.time - this.lastArrivalMusic < ARRIVAL_MUSIC_GAP) return;
+    this.frameSfx.add('llegada');
+    if (!this.live()) return;
+    this.lastArrivalMusic = this.time;
+    this.lastCueAt = this.time;
+    this.lastEventCueAt = this.time;
+    this.playAt('llegada', {});
   }
 
   private thunder(distance: number, pan: number): void {
@@ -322,12 +411,16 @@ export class Audio {
     if (!c) return;
     this.lastEventCueAt = this.time;
     if (c[0] === 'trueno') this.thunder(c[1].distance ?? 700, (Math.random() * 2 - 1) * 0.6);
+    else if (c[0] === 'llegada') this.arrivalMusic();
     else this.cue(c[0], c[1]);
   }
 
   private onSimReplaced(): void {
     if (this.engine?.ready) this.engine.voices.stopAll();
     this.crewTrack.clear();
+    this.craneTrack.clear();
+    this.cardTimers.clear();
+    this.prevArrived = !!this.safeState()?.story?.arrived;
     this.ambFade = 0;
     this.prevLightning = this.safeState()?.weather.lightning ?? 0;
     this.emitterMix.clear();
@@ -340,7 +433,7 @@ export class Audio {
    * Reproduce un efecto del catálogo con mezcla, distancia, panorama y oclusión.
    * @param pos posición en coordenadas del barco (sin ella, sonido "en la cabeza").
    */
-  private playAt(name: string, opts: SfxOpts, pos?: { x: number; y: number; z: number }, extra: { gainMul?: number; pan?: number; cutoff?: number } = {}): boolean {
+  private playAt(name: string, opts: SfxOpts, pos?: { x: number; y: number; z: number }, extra: { gainMul?: number; pan?: number; cutoff?: number; delay?: number } = {}): boolean {
     const eng = this.live();
     const def = SFX[name];
     if (!eng || !def) return false;
@@ -370,7 +463,7 @@ export class Audio {
       // La oclusión ya incluye el filtro de "exterior oído desde dentro".
       if (bus === 'ext') bus = 'sfx';
     }
-    const end = eng.play(name, opts, { gain, pan, cutoff, bus });
+    const end = eng.play(name, opts, { gain, pan, cutoff, bus, delay: extra.delay });
     if (end === null) return false;
     this.lastPlayed.set(key, this.time);
     return true;
@@ -386,6 +479,10 @@ export class Audio {
         break;
       case 'gaviota':
         this.playAt('gaviota', {}, undefined, { gainMul: s.gain, pan: s.pan, cutoff: lerp(9000, 2800, s.intensity) });
+        break;
+      case 'campana_puerto':
+      case 'campana_boya':
+        this.playAt(s.name, {}, undefined, { gainMul: s.gain, pan: s.pan });
         break;
     }
   }
@@ -430,8 +527,13 @@ export class Audio {
 
     this.emAcc += dt;
     if (this.emAcc >= EMITTER_STEP) {
+      const step = this.emAcc;
       this.emAcc = 0;
       this.updateEmitters(st, layout, mode === 'build');
+      // Los sonidos puntuales de las máquinas y la sala no suenan dormido (el tiempo va ×14) ni en pausa.
+      const active = !this.ctx.paused && !dead && !sleeping && mode !== 'menu';
+      this.cranes(st, layout, active);
+      if (active) this.lounges(st, layout, step);
     }
 
     this.ambAcc += dt;
@@ -447,6 +549,7 @@ export class Audio {
         gulls: gullPresence(st),
         windDir: w.windDir,
         yaw: this.listener.yaw,
+        ...portPresence(st, this.celebrating()),
       });
       const shots = eng.ambience.update(this.ambAcc, mix, this.emitterMix, !this.ctx.paused && !dead);
       this.ambAcc = 0;
@@ -503,6 +606,73 @@ export class Audio {
       t.say = say;
     }
     for (const id of [...this.crewTrack.keys()]) if (!seen.has(id)) this.crewTrack.delete(id);
+  }
+
+  /** ¿Hay fuegos o farolillos en el cielo? (fiesta del puerto: más gente en el muelle). */
+  private celebrating(): boolean {
+    try {
+      return !!(this.ctx.renderer as { celebrating?: boolean } | undefined)?.celebrating;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Grúas: al lanzar el gancho suena el torno en la pluma y el gancho cae al agua junto al resto;
+   * al sacarlo (el resto desaparece y la grúa empieza a izar), chapoteo y chorreo donde estaba.
+   */
+  private cranes(st: GameState, layout: ShipLayout | null, audible: boolean): void {
+    const seen = new Set<number>();
+    for (const m of st.ship.modules) {
+      if (m.type !== 'grua') continue;
+      seen.add(m.id);
+      const c = m as CraneModule;
+      const target = typeof c.prodTarget === 'number' ? c.prodTarget : null;
+      const d = target !== null ? st.debris.find((x) => x.id === target) : undefined;
+      let t = this.craneTrack.get(m.id);
+      if (!t) {
+        t = { target, x: d?.pos.x ?? 0, z: d?.pos.z ?? 0 };
+        this.craneTrack.set(m.id, t);
+        continue;
+      }
+      if (audible && target !== null && target !== t.target) {
+        const prop = layout?.props.find((pp) => pp.moduleId === m.id && pp.kind === 'grua');
+        const tip = prop ? { x: prop.x, y: prop.y + Math.max(2, prop.height * 0.9), z: prop.z } : { ...moduleCenter(m, st.ship.width), y: moduleCenter(m, st.ship.width).y + 2.5 };
+        this.playAt('grua_lanzar', {}, tip);
+        if (d && Number.isFinite(d.pos.x) && Number.isFinite(d.pos.z)) this.playAt('chapoteo_corcho', {}, { x: d.pos.x, y: 0.5, z: d.pos.z }, { delay: 0.9 });
+      }
+      if (audible && t.target !== null && target === null) {
+        const w = Number.isFinite(c.prodProgress) ? c.prodProgress! : Infinity;
+        const gone = !st.debris.some((x) => x.id === t!.target);
+        if (gone && w < GRUA_LIFT_MIN) this.playAt('grua_saca', {}, { x: t.x, y: 0.5, z: t.z });
+      }
+      if (d && Number.isFinite(d.pos.x) && Number.isFinite(d.pos.z)) {
+        t.x = d.pos.x;
+        t.z = d.pos.z;
+      }
+      t.target = target;
+    }
+    for (const id of [...this.craneTrack.keys()]) if (!seen.has(id)) this.craneTrack.delete(id);
+  }
+
+  /** Naipes en la mesa de juegos de cada sala común con al menos dos jugando (cerca del oyente). */
+  private lounges(st: GameState, layout: ShipLayout | null, dt: number): void {
+    const l = this.listener;
+    const seen = new Set<number>();
+    for (const r of loungeInfo(st, layout)) {
+      seen.add(r.moduleId);
+      const table = r.table;
+      if (r.players < 2 || !table || Math.hypot(table.x - l.x, table.y - l.y, table.z - l.z) > 16) {
+        this.cardTimers.set(r.moduleId, 1 + Math.random() * 2);
+        continue;
+      }
+      const left = (this.cardTimers.get(r.moduleId) ?? 1) - dt;
+      if (left <= 0) {
+        this.playAt('cartas', {}, table);
+        this.cardTimers.set(r.moduleId, 2.5 + Math.random() * 4.5);
+      } else this.cardTimers.set(r.moduleId, left);
+    }
+    for (const id of [...this.cardTimers.keys()]) if (!seen.has(id)) this.cardTimers.delete(id);
   }
 
   /** Latido cuando la salud es crítica (más rápido y fuerte cuanto peor). */

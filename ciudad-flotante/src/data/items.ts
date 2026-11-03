@@ -93,13 +93,13 @@ const defs: ItemDef[] = [
   // Ropa
   { id: 'abrigo', name: 'Abrigo de lona', desc: 'Protege del frío y la lluvia en cubierta. Se equipa desde el inventario.', category: 'ropa', stack: 1, color: '#3a5a40', warmthProtection: 0.6, value: 8 },
   // Planos
-  { id: 'plano_taller', name: 'Plano: Taller mecánico', desc: 'Permite construir el taller: piezas mecánicas y componentes.', category: 'plano', stack: 1, color: '#219ebc', unlocks: 'taller', value: 15 },
+  { id: 'plano_taller', name: 'Plano: Taller mecánico', desc: 'Permite construir el taller: piezas mecánicas y componentes, a mano hasta que haya electricidad.', category: 'plano', stack: 1, color: '#219ebc', unlocks: 'taller', value: 15 },
   { id: 'plano_energia', name: 'Plano: Energía', desc: 'Permite construir generadores y baterías.', category: 'plano', stack: 1, color: '#ffb703', unlocks: 'energia', value: 15 },
-  { id: 'plano_agua', name: 'Plano: Potabilizadora', desc: 'Permite construir una potabilizadora eléctrica de agua de mar.', category: 'plano', stack: 1, color: '#4cc9f0', unlocks: 'agua', value: 15 },
+  { id: 'plano_agua', name: 'Plano: Potabilizadora', desc: 'Permite construir una potabilizadora eléctrica de agua de mar y el gran depósito (nivel 3).', category: 'plano', stack: 1, color: '#4cc9f0', unlocks: 'agua', value: 15 },
   { id: 'plano_solar', name: 'Plano: Paneles solares', desc: 'Permite fabricar células solares y montar paneles.', category: 'plano', stack: 1, color: '#fb8500', unlocks: 'solar', value: 20 },
   { id: 'plano_enfermeria', name: 'Plano: Enfermería', desc: 'Permite construir una enfermería para curar más rápido.', category: 'plano', stack: 1, color: '#e63946', unlocks: 'enfermeria', value: 15 },
-  { id: 'plano_casco', name: 'Plano: Ampliación del casco', desc: 'Permite alargar el casco por la proa para ganar espacio.', category: 'plano', stack: 1, color: '#023047', unlocks: 'casco', value: 25 },
-  { id: 'plano_invernadero', name: 'Plano: Lámparas de cultivo', desc: 'Permite instalar huertos en interiores con luz eléctrica.', category: 'plano', stack: 1, color: '#80b918', unlocks: 'invernadero', value: 15 },
+  { id: 'plano_casco', name: 'Plano: Ampliación del casco', desc: 'Permite alargar el casco por la proa para ganar espacio y reforzar los almacenes (nivel 3).', category: 'plano', stack: 1, color: '#023047', unlocks: 'casco', value: 25 },
+  { id: 'plano_invernadero', name: 'Plano: Lámparas de cultivo', desc: 'Permite instalar huertos en interiores con luz eléctrica y abonar los huertos (nivel 3).', category: 'plano', stack: 1, color: '#80b918', unlocks: 'invernadero', value: 15 },
   { id: 'plano_acuicultura', name: 'Plano: Vivero de peces', desc: 'Permite construir tanques donde criar peces a bordo.', category: 'plano', stack: 1, color: '#2a9d8f', unlocks: 'acuicultura', value: 18 },
   { id: 'plano_grua', name: 'Plano: Grúa de rescate', desc: 'Una grúa eléctrica que pesca restos flotantes por sí sola.', category: 'plano', stack: 1, color: '#f4a261', unlocks: 'grua', value: 22 },
   { id: 'plano_radar', name: 'Plano: Radar y radio', desc: 'Ve más lejos: avistamientos con antelación y avisos de tormenta tempranos.', category: 'plano', stack: 1, color: '#8ecae6', unlocks: 'radar', value: 20 },

@@ -198,6 +198,8 @@ export const LOUNGE_RELATION_CAP = 40;
 export const LOUNGE_PAIR_COOLDOWN = 8 * 60;
 /** Roce de la convivencia: compartir mesa o sala con quien no congenia (o de mal humor). */
 export const DAILY_FRICTION = -3;
+/** Apagar un fuego codo con codo une, también a quien se lleva mal. */
+export const CRISIS_RELATION = 6;
 /** Juntos: mismo nivel y a menos de esta distancia (m), los dos despiertos. */
 export const TOGETHER_RANGE = 8;
 /** Ánimo por tener cerca a un amigo (o a varios) y por tener cerca a un rival. */
@@ -328,7 +330,10 @@ const LINES = {
   rescued: ['¡Gracias por sacarme del agua!', 'Creí que no lo contaba…', '¡Tierra firme! Bueno, casi.'],
   raftAlert: ['¡Náufragos por {lado}! ¡Una balsa!', '¡Mirad a {lado}! ¡Hay gente en esa balsa!', '¡Una balsa por {lado}! ¡Que alguien coja el gancho!'],
   raftEscaping: ['¡Que se nos escapa la balsa!', '¡No podemos dejarlos ahí! ¡Voy yo!'],
+  /** A pescar con la despensa vacía (y hambre). */
   hungryFish: ['Si no hay comida, habrá que pescarla.', 'Con la tripa vacía no se piensa: a por peces.', 'La despensa está vacía… voy a echar la caña.'],
+  /** A pescar de relleno: queda comida, pero poca para tantos. */
+  lowFoodFish: ['Queda poca comida para tantos: voy a pescar un rato.', 'La despensa anda justa; unos peces no le vendrán mal.', 'Mejor pescar ahora que lamentarlo luego.', 'Voy a echar la caña, que somos muchas bocas.'],
   grave: {
     hambre: ['Me fallan las fuerzas…', 'No… no aguanto más sin comer…'],
     sed: ['Agua… por favor…', 'Tengo la boca como el esparto…'],
@@ -703,7 +708,7 @@ const TRAIT_CHEMISTRY: Readonly<Record<string, number>> = {
 };
 const SAME_TRAIT_CHEMISTRY = 0.15;
 /** Lo personal que no depende del carácter: ±la mitad de esto por pareja. */
-const PERSONAL_CHEMISTRY = 0.9;
+const PERSONAL_CHEMISTRY = 1.2;
 
 /** Número determinista en [0, 1) a partir de un texto (no gasta azar). */
 function hashUnit(key: string): number {
@@ -746,9 +751,9 @@ function chatOutcome(sim: Simulation, a: NpcState, b: NpcState): number {
   const chem = npcChemistry(a, b);
   const rel = relationBetween(a, b);
   const low = Math.min(a.needs.mood, b.needs.mood);
-  let friction = 0.06 + (low < 35 ? 0.3 : low < 50 ? 0.08 : 0);
-  if (a.trait === 'grunon' || b.trait === 'grunon') friction += 0.12;
-  friction += Math.max(0, -chem) * 0.4 - Math.max(0, chem) * 0.05;
+  let friction = 0.05 + (low < 35 ? 0.3 : low < 50 ? 0.08 : 0);
+  if (a.trait === 'grunon' || b.trait === 'grunon') friction += 0.1;
+  friction += Math.max(0, -chem) * 0.7 - Math.max(0, chem) * 0.05;
   if (rel <= BAD_AT) friction += 0.2;
   if (sim.rng.chance(clamp(friction, 0.02, 0.85))) return CHAT_FRICTION * (1 + Math.max(0, -chem));
   const good = (CHAT_RELATION + (a.trait === 'hablador' || b.trait === 'hablador' ? CHAT_TALKER_BONUS : 0)) * (1 + 0.6 * chem);
@@ -764,15 +769,17 @@ function shareRelation(sim: Simulation, a: NpcState, b: NpcState, delta: number,
   const rel = relationBetween(a, b);
   const chem = npcChemistry(a, b);
   const low = Math.min(a.needs.mood, b.needs.mood);
-  const friction = Math.max(0, -chem - 0.1) * 0.3 + (low < 35 ? 0.1 : 0) + (rel <= BAD_AT ? 0.15 : 0);
+  const friction = Math.max(0, -chem - 0.1) * 0.55 + (low < 35 ? 0.1 : 0) + (rel <= BAD_AT ? 0.15 : 0);
   if (friction > 0 && sim.rng.chance(friction)) {
     nudgeRelation(sim, a, b, DAILY_FRICTION);
     if (!a.say || a.say.until <= sim.state.time) sayFrom(sim, a, lines);
     return DAILY_FRICTION;
   }
   if (rel <= BAD_AT) return 0;
-  nudgeRelation(sim, a, b, delta, cap);
-  return delta;
+  // Quien no congenia se acerca menos.
+  const gain = delta * (1 + Math.min(0, chem));
+  nudgeRelation(sim, a, b, gain, cap);
+  return gain;
 }
 
 function td(npc: NpcState): TaskData {
@@ -3013,7 +3020,7 @@ function workPlan(sim: Simulation, npc: NpcState): Plan | null {
     if (f) {
       // De relleno: cede ante una obra nueva o una tarea de su puesto (si la despensa no está vacía).
       if (!needsFishing(sim, 1)) f.prio = PRIO.relleno;
-      if (sim.rng.chance(0.5)) f.say = sim.rng.pick(LINES.hungryFish);
+      if (sim.rng.chance(0.5)) f.say = sim.rng.pick(fishingLines(sim, npc));
       return f;
     }
   }
@@ -3035,8 +3042,16 @@ function survivalFishPlan(sim: Simulation, npc: NpcState, prio: number): Plan | 
   if (!p) return null;
   p.prio = prio;
   p.duration = Math.min(p.duration ?? 60, 60);
-  if (sim.rng.chance(0.6)) p.say = sim.rng.pick(LINES.hungryFish);
+  if (sim.rng.chance(0.6)) p.say = sim.rng.pick(fishingLines(sim, npc));
   return p;
+}
+
+/**
+ * Lo que dice al salir a pescar para comer: «la despensa está vacía» solo si de verdad no queda nada
+ * que comer a bordo (y tiene hambre); si queda algo, pero poco para tantos, que pesca de relleno.
+ */
+function fishingLines(sim: Simulation, npc: NpcState): readonly string[] {
+  return npc.needs.hunger < 40 && !foodAboard(sim) ? LINES.hungryFish : LINES.lowFoodFish;
 }
 
 /* ---- Ocio ---- */
@@ -3116,7 +3131,7 @@ function chatPartner(sim: Simulation, npc: NpcState): NpcState | null {
     if (rel <= BAD_AT && Math.min(npc.needs.mood, n.needs.mood) < 60) continue;
     const d = dist2(n.pos, npc.pos);
     if (d >= 25) continue;
-    const score = d - rel / 8 - npcChemistry(npc, n) * 4;
+    const score = d - rel / 8 - npcChemistry(npc, n) * 3;
     if (score < bestScore) {
       bestScore = score;
       best = n;
@@ -3243,12 +3258,23 @@ function fireStep(sim: Simulation, npc: NpcState, m: ModuleInstance, stage: stri
     }
   }
   if (!(m.fire > 0)) {
+    bondAfterFire(sim, npc, m);
     if (sim.rng.chance(0.5)) sayFrom(sim, npc, LINES.fireOut);
     finishTask(sim, npc);
     return;
   }
   const next = firePlan(sim, npc, m);
   if (!next || !startPlan(sim, npc, next)) abortTask(sim, npc, `apagar:${m.id}`, 5);
+}
+
+/**
+ * El fuego está apagado: quien lo ha apagado se lleva mejor con quien seguía a su lado con los cubos
+ * (`CRISIS_RELATION`, una vez por pareja: el primero que termina hace el balance).
+ */
+function bondAfterFire(sim: Simulation, npc: NpcState, m: ModuleInstance): void {
+  for (const o of sim.state.npcs) {
+    if (o !== npc && isPresent(o) && o.task?.kind === 'apagar' && o.task.targetModuleId === m.id) nudgeRelation(sim, npc, o, CRISIS_RELATION);
+  }
 }
 
 /** Emergencias que se adelantan a la tarea en curso. */
@@ -3609,6 +3635,7 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
     case 'apagar': {
       const m = findModule(sim, t.targetModuleId ?? -1);
       if (!m || !(m.fire > 0)) {
+        if (m) bondAfterFire(sim, npc, m);
         if (m && sim.rng.chance(0.5)) sayFrom(sim, npc, LINES.fireOut);
         finishTask(sim, npc);
         return;
@@ -4248,13 +4275,20 @@ export function spawnSurvivor(sim: Simulation, opts: SurvivorOptions = {}): NpcS
   const near = opts.pos ? railSpotNear(sim, opts.pos.x, Math.sign(opts.pos.z) || undefined, 3.2) : null;
   const pos = near?.pos ?? snapReachable(sim, opts.pos ?? sim.collision.safeSpawn(), 6) ?? sim.collision.safeSpawn();
   const npc = makeNpc(`npc${sim.nextId()}`, name, role, trait, { ...pos }, sim.rng.int(0, 9999), sim.day);
+  // Los que suben a la vez (los náufragos de una balsa, los vecinos del puerto) no quedan unos encima
+  // de otros: cada uno, en el hueco libre más cercano (`PERSONAL_SPACE`).
+  npc.pos = { ...freeSpotNear(sim, npc, npc.pos) };
   npc.yaw = near ? near.yaw + Math.PI : sim.rng.range(-Math.PI, Math.PI);
-  // Un náufrago llega agotado; un vecino del puerto, descansado y con ganas.
+  // Un náufrago llega agotado; un vecino del puerto, descansado y con ganas (y mirando al jugador).
   const fromPort = opts.origin === 'puerto';
+  if (fromPort) npc.yaw = yawTo(npc.pos, st.player.pos);
   npc.needs = fromPort ? { hunger: 85, thirst: 85, energy: 85, mood: 75, health: 100 } : { hunger: 35, thirst: 25, energy: 40, mood: 55, health: 70 };
   st.npcs.push(npc);
   assignBeds(sim);
-  say(sim, npc, sim.rng.pick(fromPort ? LINES.newcomer : LINES.rescued), 8);
+  // El saludo, distinto del que acaba de decir quien ha subido con él.
+  const lines = fromPort ? LINES.newcomer : LINES.rescued;
+  const fresh = lines.filter((l) => !st.npcs.some((o) => o !== npc && o.say && o.say.until > st.time && o.say.text === l));
+  say(sim, npc, sim.rng.pick(fresh.length ? fresh : lines), 8);
   memoOf(sim, npc).nextDecideAt = st.time + 3;
   if (!opts.quiet) sim.log(survivorJoinText([npc]), 'good');
   return npc;
