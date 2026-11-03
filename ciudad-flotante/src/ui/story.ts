@@ -177,7 +177,8 @@ export function notebookView(env: UiEnv): VNode {
       'div',
       { class: 'nb-body' },
       h('div', { class: 'nb-side scroll' }, index),
-      h('div', { class: 'nb-desk scroll' }, info.read ? pageSheet(info, st.total) : missingSheet(info, st.total), nav),
+      // La hoja se desplaza dentro de su hueco; Anterior/Siguiente quedan siempre a la vista debajo.
+      h('div', { class: 'nb-desk' }, h('div', { class: 'nb-sheet scroll' }, info.read ? pageSheet(info, st.total) : missingSheet(info, st.total)), nav),
     ),
   );
 }

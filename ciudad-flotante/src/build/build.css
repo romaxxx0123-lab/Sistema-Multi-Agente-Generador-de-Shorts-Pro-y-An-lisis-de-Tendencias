@@ -832,6 +832,11 @@
 
 .bm-uphelp .bm-card-foot .kbd {
   font-size: 10px;
+  white-space: nowrap;
+}
+
+.bm-key .kbd {
+  white-space: nowrap;
 }
 
 .bm-info.wide {

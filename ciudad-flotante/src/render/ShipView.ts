@@ -10,7 +10,7 @@
  *  - casco procedural con proa, popa, regala, castillo, palo, pluma, botes, anclas, ojos de buey;
  *  - estructura del layout: losas, paredes con ventanas, puertas, barandillas, escaleras,
  *    lámparas, forro y cuadernas de la bodega;
- *  - todos los props, fusionados con la estructura POR MATERIAL Y NIVEL (mergeGeometries)
+ *  - todos los props, fusionados con la estructura POR MATERIAL Y NIVEL (ship/bake.ts)
  *    para tener muy pocas llamadas de dibujo, con los detalles de su nivel de mejora;
  *  - placas de latón con el nivel (II, III) y el altillo del almacén mejorado (ship/tiers.ts).
  * Elementos dinámicos (cada frame): fuego del fogón, plantas, nivel de agua, máquinas que
@@ -33,6 +33,7 @@ import { moduleTier } from '../sim/moduleStats';
 import { cellMin, getCell, levelOfY, levelY, moduleCells, type CellKind, type PropInstance, type ShipLayout } from '../sim/ship';
 import { daylight } from '../sim/time';
 import type { GameState, ModuleInstance } from '../sim/types';
+import { bakeParts, type BakePart, type Baked } from './ship/bake';
 import { createDynamic, radarActive, type DynContext, type PropDynamic } from './ship/dynamic';
 import { Flag, nameTexture } from './ship/decor';
 import { FireView } from './ship/fire';
@@ -144,8 +145,6 @@ const LANTERN_COLOR = new THREE.Color('#ffb35c');
 const FLOOD_COLOR = new THREE.Color('#fff1d6');
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
-const _m4 = new THREE.Matrix4();
-const _box = new THREE.Box3();
 
 /** Multiplicador de color de un módulo según su estado (dañado → más oscuro). */
 export function moduleTint(m: ModuleInstance | undefined): number {
@@ -725,12 +724,14 @@ export class ShipView {
     const ts = now();
     const { chunks: struct, changed: structChanged } = this.levelStructure(l, this.plannedStruct.get(l) ?? this.structSignatures(l, state, layout, modules), state, layout, modules);
     this.stats.lastStructMs = now() - ts;
+    const newStruct = !old || structChanged || !old.structObjs.length;
     if (old) {
       for (const o of old.propObjs) disposeObject(o);
-      if (structChanged || !old.structObjs.length) for (const o of old.structObjs) if (o !== this.radar) disposeObject(o);
+      if (newStruct) for (const o of old.structObjs) if (o !== this.radar) disposeObject(o);
     }
 
-    // Props del nivel: geometrías transformadas y objetos proxy (reutilizados si no cambian).
+    // Props del nivel: piezas colocadas (se fusionan sin copias intermedias, ship/bake.ts) y objetos
+    // proxy (reutilizados si no cambian).
     const models = new Map<PropInstance, PropModel>();
     const modelOf = (p: PropInstance): PropModel => {
       let mm = models.get(p);
@@ -741,21 +742,19 @@ export class ShipView {
       }
       return mm;
     };
-    const pg = { solid: [] as THREE.BufferGeometry[], glass: [] as THREE.BufferGeometry[], glow: [] as THREE.BufferGeometry[] };
-    const propTags: [number, number][] = [];
-    const propBox = new THREE.Box3();
+    const solidParts: BakePart[] = [];
+    // el cristal interior y las lámparas de la estructura van en la misma malla que los de los props
+    const glassParts: BakePart[] = struct.map((c) => ({ geo: c.glassIn }));
+    const glowParts: BakePart[] = struct.map((c) => ({ geo: c.lamps }));
+    const furnitureIds = new Map<number, number>();
     const seen = new Set<string>();
     for (const p of layout.props) {
       if (propLevel(p, layout) !== l) continue;
       const model = modelOf(p);
-      _m4.makeRotationY(p.yaw).setPosition(p.x, p.y, p.z);
-      const sg = model.solid.clone().applyMatrix4(_m4);
-      pg.solid.push(sg);
-      if (!model.solid.boundingBox) model.solid.computeBoundingBox();
-      propBox.union(_box.copy(model.solid.boundingBox!).applyMatrix4(_m4));
-      propTags.push([p.moduleId, sg.getAttribute('position').count]);
-      if (model.glass) pg.glass.push(model.glass.clone().applyMatrix4(_m4));
-      if (model.glow) pg.glow.push(model.glow.clone().applyMatrix4(_m4));
+      solidParts.push({ geo: model.solid, yaw: p.yaw, x: p.x, y: p.y, z: p.z, tag: p.moduleId });
+      furnitureIds.set(p.moduleId, 1);
+      if (model.glass) glassParts.push({ geo: model.glass, yaw: p.yaw, x: p.x, y: p.y, z: p.z });
+      if (model.glow) glowParts.push({ geo: model.glow, yaw: p.yaw, x: p.x, y: p.y, z: p.z });
       seen.add(p.key);
       const prev = this.props.get(p.key);
       if (prev && prev.level === l && prev.model === model && samePlacement(prev.inst, p)) {
@@ -799,33 +798,15 @@ export class ShipView {
       decor.tag = m.id;
       tierPlaque(decor, m, layout, layout.props, modelOf);
       storeLoft(decor, m, layout, layout.props);
+      furnitureIds.set(m.id, 1);
     }
-    const decorGeo = decor.build(false);
-
-    const decorCount = decorGeo.getAttribute('position')?.count ?? 0;
-    if (decorCount) {
-      decorGeo.computeBoundingBox();
-      propBox.union(decorGeo.boundingBox!);
-    }
+    // las placas y el altillo van delante de los muebles en la malla fusionada
+    if (!decor.isEmpty()) solidParts.unshift({ geo: decor.build(false), tags: decor.tags() });
 
     // Mallas fusionadas por material: estructura (reutilizada si no ha cambiado) y muebles.
-    const keep = new Set<THREE.BufferGeometry>(struct.flatMap((c) => [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]));
-    const mk = (parts: THREE.BufferGeometry[], mat: THREE.Material, shadow: boolean, name: string, into: THREE.Object3D[], box: THREE.Box3 | null): THREE.Mesh | null => {
-      const valid = parts.filter((g) => (g.getAttribute('position')?.count ?? 0) > 0);
-      let geo: THREE.BufferGeometry | null = null;
-      if (valid.length === 1 && !keep.has(valid[0]!)) geo = valid[0]!;
-      else if (valid.length) geo = mergeGeometries(valid, false);
-      for (const g of parts) if (g !== geo && !keep.has(g)) g.dispose();
-      if (!geo) return null;
-      // Caja y esfera envolventes a partir de las de las piezas (sin recorrer los vértices otra vez).
-      const bb = box ?? new THREE.Box3();
-      if (!box) for (const g of valid) if (g.boundingBox) bb.union(g.boundingBox);
-      if (bb.isEmpty()) geo.computeBoundingSphere();
-      else {
-        geo.boundingBox = bb.clone();
-        geo.boundingSphere = bb.getBoundingSphere(new THREE.Sphere());
-      }
-      const mesh = new THREE.Mesh(geo, mat);
+    const mk = (baked: Baked, mat: THREE.Material, shadow: boolean, name: string, into: THREE.Object3D[]): THREE.Mesh | null => {
+      if (!baked.geo) return null;
+      const mesh = new THREE.Mesh(baked.geo, mat);
       mesh.name = name;
       mesh.castShadow = shadow;
       mesh.receiveShadow = shadow;
@@ -840,61 +821,38 @@ export class ShipView {
       return [tris, objs.filter((o) => o !== this.radar).length];
     };
     const tinted: TintMesh[] = [];
-    /** Prepara el tinte de daños de una malla sólida (etiquetas en el mismo orden que la fusión). */
-    const tintable = (mesh: THREE.Mesh | null, fill: (tags: Int32Array, ids: Map<number, number>) => void, prev?: TintMesh): void => {
-      if (!mesh) return;
-      if (prev && prev.mesh === mesh) {
-        tinted.push(prev);
-        return;
-      }
-      const n = mesh.geometry.getAttribute('position').count;
-      const tags = new Int32Array(n).fill(-1);
-      const ids = new Map<number, number>();
-      fill(tags, ids);
-      const t: TintMesh = { mesh, base: (mesh.geometry.getAttribute('color').array as Float32Array).slice(), tags, tints: ids };
-      tinted.push(t);
+    /** Tinte de daños de una malla sólida: sus colores sin oscurecer y el módulo de cada vértice. */
+    const tintable = (mesh: THREE.Mesh | null, tags: Int32Array | null, ids: Map<number, number>): void => {
+      if (!mesh || !tags) return;
+      tinted.push({ mesh, base: (mesh.geometry.getAttribute('color').array as Float32Array).slice(), tags, tints: ids });
     };
 
     // Estructura
     let structObjs: THREE.Object3D[];
-    if (!old || structChanged || !old.structObjs.length) {
+    if (newStruct) {
       structObjs = [];
-      mk(struct.map((c) => c.solid), this.mats.solid, true, `nivel-${l}-solido`, structObjs, null);
-      mk(struct.map((c) => c.glassOut), this.mats.glassOut, false, `nivel-${l}-cristal-ext`, structObjs, null);
-      mk(struct.map((c) => c.lanterns), this.mats.lantern, false, `nivel-${l}-faroles`, structObjs, null);
+      const solid = bakeParts(
+        struct.map((c) => ({ geo: c.solid, tags: c.tags })),
+        true,
+      );
+      const ids = new Map<number, number>();
+      for (const c of struct) for (const id of c.tagIds) ids.set(id, 1);
+      tintable(mk(solid, this.mats.solid, true, `nivel-${l}-solido`, structObjs), solid.tags, ids);
+      mk(bakeParts(struct.map((c) => ({ geo: c.glassOut }))), this.mats.glassOut, false, `nivel-${l}-cristal-ext`, structObjs);
+      mk(bakeParts(struct.map((c) => ({ geo: c.lanterns }))), this.mats.lantern, false, `nivel-${l}-faroles`, structObjs);
       if (l === layout.levels && this.radar) structObjs.push(this.radar);
-    } else structObjs = old.structObjs;
-    const structSolid = (structObjs.find((o) => o.name === `nivel-${l}-solido`) as THREE.Mesh | undefined) ?? null;
-    tintable(
-      structSolid,
-      (tags, ids) => {
-        let o = 0;
-        for (const c of struct) {
-          const sc = c.solid.getAttribute('position')?.count ?? 0;
-          if (sc) tags.set(c.tags.subarray(0, sc), o);
-          o += sc;
-          for (const id of c.tagIds) ids.set(id, 1);
-        }
-      },
-      old?.tinted.find((t) => t.mesh === structSolid),
-    );
+    } else {
+      structObjs = old!.structObjs;
+      const prev = old!.tinted.find((t) => t.mesh.name === `nivel-${l}-solido`);
+      if (prev) tinted.push(prev);
+    }
 
     // Muebles: props, placas y altillo, cristal y luces de los props (con los de la estructura)
     const propObjs: THREE.Object3D[] = [];
-    const furniture = mk([decorGeo, ...pg.solid], this.mats.solid, true, `nivel-${l}-muebles`, propObjs, propBox.isEmpty() ? null : propBox);
-    tintable(furniture, (tags, ids) => {
-      let o = 0;
-      if (decorCount) tags.set(decor.tags().subarray(0, decorCount), o);
-      o += decorCount;
-      for (const [id, n] of propTags) {
-        if (n) tags.fill(id, o, o + n);
-        o += n;
-        ids.set(id, 1);
-      }
-      for (const m of state.ship.modules) if (m.level === l && m.status !== 'construction' && moduleTier(m) > 1) ids.set(m.id, 1);
-    });
-    mk([...struct.map((c) => c.glassIn), ...pg.glass], this.mats.glassIn, false, `nivel-${l}-cristal-int`, propObjs, null);
-    mk([...struct.map((c) => c.lamps), ...pg.glow], this.mats.lamp, false, `nivel-${l}-lamparas`, propObjs, null);
+    const furniture = bakeParts(solidParts, true);
+    tintable(mk(furniture, this.mats.solid, true, `nivel-${l}-muebles`, propObjs), furniture.tags, furnitureIds);
+    mk(bakeParts(glassParts), this.mats.glassIn, false, `nivel-${l}-cristal-int`, propObjs);
+    mk(bakeParts(glowParts), this.mats.lamp, false, `nivel-${l}-lamparas`, propObjs);
 
     const [structTris, structMeshes] = count(structObjs);
     const [propTris, propMeshes] = count(propObjs);

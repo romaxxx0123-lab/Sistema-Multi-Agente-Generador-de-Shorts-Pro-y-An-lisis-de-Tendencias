@@ -6,7 +6,24 @@
 import { REGIONS } from '../../data/regions';
 import { FINAL_REGION } from '../../data/story';
 import { eventStatusText } from '../../sim/events';
-import { CAPTAIN_COURSE_LABEL, captainCourseOpen, currentRegion, gatedRoutes, hoursToRegionEnd, isAnchored, milesToRegionEnd, routeOptions } from '../../sim/voyage';
+import { minuteOfDay } from '../../sim/time';
+import {
+  ARRIVAL_DAYLIGHT,
+  autopilotTarget,
+  CAPTAIN_COURSE_LABEL,
+  CAPTAIN_DECIDE_MIN,
+  CAPTAIN_HOLD_MAX_MIN,
+  captainCourseOpen,
+  currentRegion,
+  gatedRoutes,
+  harborWaiting,
+  hoursToRegionEnd,
+  isAnchored,
+  milesToRegionEnd,
+  regionName,
+  regionWithArticle,
+  routeOptions,
+} from '../../sim/voyage';
 import { barometer, weatherName } from '../../sim/weather';
 import type { ActiveEvent } from '../../sim/types';
 import type { UiEnv } from '../env';
@@ -26,6 +43,76 @@ const DANGER_COLOR = ['#8ac66b', '#8ac66b', '#c9d36a', '#f2c14e', '#f4a261', '#e
 export function finalRegionOnChart(sim: UiEnv['ctx']['sim']): boolean {
   const story = sim.state.story;
   return !!story && (story.revealed || story.arrived || sim.state.voyage.route.includes(FINAL_REGION));
+}
+
+/** Aviso del timón sobre la situación del viaje que las cifras no explican. */
+export interface HelmNotice {
+  id: 'bocana' | 'puerto' | 'decision';
+  glyph: string;
+  tone: 'info' | 'good' | 'warn';
+  text: string;
+}
+
+/** «en unas 3 horas» / «en 50 min» (sin «unas 50 min»: minuto es masculino). */
+function inAbout(minutes: number): string {
+  const m = Math.max(1, Math.round(minutes));
+  if (m >= 90) return `en unas ${Math.round(m / 60)} horas`;
+  return `en ${duration(m)}`;
+}
+
+/**
+ * Situaciones del viaje que el timón explica con palabras (ver voyage.ts):
+ *  - fondeados en la bocana de Puerto Esperanza, de noche o con el jugador dormido, hasta el amanecer;
+ *  - tras la llegada, cruzando el fondeadero del puerto, con las horas que faltan para salir;
+ *  - al final de la región con el rumbo de la capitana en oferta: el barco espera la decisión
+ *    (`story.course.holdAt`) y, si no se decide, el piloto sigue por su cuenta.
+ */
+export function helmNotices(sim: UiEnv['ctx']['sim']): HelmNotice[] {
+  const st = sim.state;
+  const v = st.voyage;
+  const story = st.story;
+  const out: HelmNotice[] = [];
+  const port = regionName(FINAL_REGION);
+  if (harborWaiting(sim)) {
+    const dawn = ARRIVAL_DAYLIGHT[0] * 60;
+    const night = minuteOfDay(st.time) < dawn || minuteOfDay(st.time) >= ARRIVAL_DAYLIGHT[1] * 60;
+    const wait = (dawn - minuteOfDay(st.time) + 1440) % 1440;
+    out.push({
+      id: 'bocana',
+      glyph: 'anchor',
+      tone: 'good',
+      text: night
+        ? `Fondeados en la bocana de ${port}: entraremos al amanecer, a las ${ARRIVAL_DAYLIGHT[0]}:00 (${inAbout(wait).replace(/^en /, 'dentro de ')}).`
+        : `Fondeados en la bocana de ${port}: entraremos en cuanto despiertes.`,
+    });
+  } else if (story?.arrived && v.regionId === FINAL_REGION) {
+    const hrs = hoursToRegionEnd(sim);
+    out.push({
+      id: 'puerto',
+      glyph: 'anchor',
+      tone: 'good',
+      text: hrs === null ? `Cruzamos el fondeadero de ${port}: seguiremos en cuanto levemos anclas.` : `Cruzamos el fondeadero de ${port}: saldremos a mar abierto ${inAbout(hrs * 60)}.`,
+    });
+  }
+  const c = story?.course;
+  const choices = v.nextChoices ?? [];
+  if (c && c.holdAt !== undefined && !v.chosenNext && choices.includes(FINAL_REGION) && v.regionDistance >= v.regionLength - 1e-6) {
+    const left = Math.min(CAPTAIN_DECIDE_MIN - (Number.isFinite(c.awake) ? c.awake : 0), CAPTAIN_HOLD_MAX_MIN - (st.time - c.holdAt));
+    const others = choices.filter((id) => id !== FINAL_REGION);
+    const auto = autopilotTarget(sim, choices);
+    const tail = others.length ? ` Si no eliges, ${inAbout(left)} el piloto seguirá hacia ${regionWithArticle(auto)}.` : '';
+    out.push({
+      id: 'decision',
+      glyph: 'quill',
+      tone: 'warn',
+      text: `El barco espera tu decisión al final de ${regionWithArticle(v.regionId)}: ¿tomamos el ${CAPTAIN_COURSE_LABEL.toLowerCase()} hacia ${port}?${tail}`,
+    });
+  }
+  return out;
+}
+
+function noticeNode(n: HelmNotice): VNode {
+  return h('div', { key: n.id, class: cx('note', 'helm-notice', n.tone !== 'info' && n.tone) }, gl(n.glyph), h('span', null, n.text));
 }
 
 /** Carta náutica en SVG. */
@@ -157,6 +244,9 @@ export function renderHelm(env: UiEnv): PanelView {
   const mustChoose = !!v.nextChoices && !v.chosenNext;
   const decisions = st.events.active.filter((e) => e.choices.length > 0);
   const merchant = st.events.active.find((e) => e.type === 'mercante');
+  const notices = helmNotices(sim);
+  const portNote = notices.find((n) => n.id === 'bocana' || n.id === 'puerto');
+  const decisionNote = notices.find((n) => n.id === 'decision');
 
   const regionCard = section(
     null,
@@ -164,6 +254,8 @@ export function renderHelm(env: UiEnv): PanelView {
       'div',
       { class: 'region-card' },
       h('div', { class: 'rc-top' }, h('div', null, h('div', { class: 'faint small' }, 'Navegamos por'), h('div', { class: 'rc-region' }, region.name)), chip(dangerText(region.danger), region.danger >= 4 ? 'danger' : region.danger >= 3 ? 'warn' : 'good', 'alert')),
+      // Bocana o travesía del puerto: arriba, a la vista sin desplazar la columna.
+      portNote ? noticeNode(portNote) : null,
       h('p', { class: 'muted small' }, region.desc),
       h('div', { class: 'rc-prog' }, bar(prog, 'var(--sea)'), h('span', null, `${num(v.regionDistance, 0)} / ${v.regionLength} mi`)),
       h(
@@ -174,7 +266,8 @@ export function renderHelm(env: UiEnv): PanelView {
         h('div', { class: 'hs' }, gl('clock'), h('b', null, hrs === null ? '—' : duration(hrs * 60)), h('span', null, 'a este ritmo')),
         h('div', { class: 'hs' }, gl('ship'), h('b', null, num(v.distance, 0)), h('span', null, 'mi en total')),
       ),
-      anchored ? h('div', { class: 'note' }, gl('anchor'), `Fondeados${v.anchorReason ? `: ${v.anchorReason}` : ''}. Levamos anclas en ${duration((v.anchoredUntil ?? st.time) - st.time)}.`) : null,
+      // En la bocana, el fondeo se renueva hasta el amanecer: su nota dice cuándo se entra, no una cuenta atrás que no baja.
+      anchored && portNote?.id !== 'bocana' ? h('div', { class: 'note' }, gl('anchor'), `Fondeados${v.anchorReason ? `: ${v.anchorReason}` : ''}. Levamos anclas en ${duration((v.anchoredUntil ?? st.time) - st.time)}.`) : null,
       h(
         'div',
         { class: cx('note', 'baro-note', baro.trend === 'baja' && baro.next === 'tormenta' && 'warn') },
@@ -187,6 +280,7 @@ export function renderHelm(env: UiEnv): PanelView {
 
   const routes = section(
     h('span', { class: 'sec-row' }, h('span', null, gl('compass'), 'Rumbo'), mustChoose ? chip('¡Elige rumbo!', 'warn', 'alert') : v.chosenNext ? chip(`Rumbo a ${REGIONS[v.chosenNext]?.name ?? v.chosenNext}`, 'good', 'check') : null),
+    decisionNote ? noticeNode(decisionNote) : null,
     h(
       'div',
       { class: 'routes' },

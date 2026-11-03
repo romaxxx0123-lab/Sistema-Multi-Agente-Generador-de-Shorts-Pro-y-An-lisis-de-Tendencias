@@ -22,7 +22,7 @@ import type { ActionResult, InvRef } from '../../sim/Simulation';
 import type { Inventory, ItemId } from '../../sim/types';
 import type { UiEnv } from '../env';
 import { itemName, qtyName } from '../fmt';
-import { h, type VInput, type VNode } from '../vdom';
+import { cx, h, type VInput, type VNode } from '../vdom';
 import { btn, gl, grid, kbd } from '../widgets';
 
 /* ------------------------------------------------------------------ */
@@ -232,6 +232,7 @@ export interface TransferOpts {
   /** Contenedor principal (almacén, caja, despensa, bandeja…). */
   ref: InvRef;
   title: VInput;
+  /** Columnas con pocos huecos; con muchos, la rejilla se ensancha sola (`containerGrid`). */
   cols: number;
   /** Botón "Guardar todo" (no en bandejas de salida). */
   canStore?: boolean;
@@ -255,12 +256,35 @@ export function moveSlotOpts(env: UiEnv, from: InvRef, i: number, to: InvRef, ve
   };
 }
 
+/** Filas de la rejilla de un contenedor que se ven sin desplazar (con ranuras normales o compactas). */
+export const CONTAINER_ROWS = 4;
+export const CONTAINER_ROWS_DENSE = 6;
+/** Columnas que caben junto a tu inventario: 6 con ranuras normales, 8 con compactas. */
+export const CONTAINER_COLS_MAX = 6;
+export const CONTAINER_COLS_DENSE = 8;
+
+/**
+ * Columnas y tamaño de ranura de la rejilla de un contenedor según sus huecos, para que se vea
+ * entero sin desplazar: hasta 4 filas con las columnas de siempre (`baseCols`); si no caben,
+ * más columnas (hasta 6) y, con más huecos (el almacén mejorado: 32 o 48), ranuras compactas en 8
+ * columnas, que aprovechan el ancho del panel. Solo un contenedor enorme (una caja con los restos
+ * de varios almacenes) necesita desplazarse.
+ */
+export function containerGrid(slots: number, baseCols: number): { cols: number; dense: boolean } {
+  const n = Math.max(0, Math.floor(slots));
+  const base = Math.max(1, Math.floor(baseCols));
+  if (Math.ceil(n / base) <= CONTAINER_ROWS) return { cols: base, dense: false };
+  if (n <= CONTAINER_COLS_MAX * CONTAINER_ROWS) return { cols: Math.max(base, Math.ceil(n / CONTAINER_ROWS)), dense: false };
+  return { cols: CONTAINER_COLS_DENSE, dense: true };
+}
+
 export function transferView(env: UiEnv, o: TransferOpts): VNode {
   const sim = env.ctx.sim;
   const player = { kind: 'player' as const };
   const pinv = sim.state.player.inventory;
   const cinv = sim.inventoryOf(o.ref);
   const used = cinv ? cinv.slots.filter((s) => !!s).length : 0;
+  const layout = containerGrid(cinv?.slots.length ?? 0, o.cols);
   return h(
     'div',
     { class: 'xfer' },
@@ -286,7 +310,7 @@ export function transferView(env: UiEnv, o: TransferOpts): VNode {
       'div',
       { class: 'xfer-col' },
       h('div', { class: 'grid-label' }, o.title, cinv ? h('span', { class: 'faint' }, `${used}/${cinv.slots.length}`) : null),
-      cinv ? h('div', { class: 'xfer-scroll scroll' }, grid(env, o.ref, o.cols, (i) => moveSlotOpts(env, o.ref, i, player, 'coger'))) : null,
+      cinv ? h('div', { class: cx('xfer-scroll', 'scroll', layout.dense && 'dense') }, grid(env, o.ref, layout.cols, (i) => moveSlotOpts(env, o.ref, i, player, 'coger'))) : null,
       h('div', { class: 'xfer-actions' }, btn('Tomar todo', () => takeAllFrom(env, o.ref), { small: true, glyph: 'back', disabled: used === 0, title: 'Herramientas, comida y bebida van a la barra rápida; lo demás, a la mochila' })),
       o.extra ?? null,
       o.note ? h('div', { class: 'xfer-note faint' }, o.note) : null,

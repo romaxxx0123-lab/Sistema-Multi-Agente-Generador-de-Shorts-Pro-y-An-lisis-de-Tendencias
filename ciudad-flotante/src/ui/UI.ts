@@ -16,6 +16,7 @@ import type { NotifyKind } from '../core/EventBus';
 import type { GameContext } from '../game/context';
 import type { PanelRequest, PromptInfo } from '../game/types';
 import { CELL, SHIP_ORIGIN_X } from '../sim/constants';
+import { cellAtPoint } from '../sim/ship';
 import type { ActionResult, InvRef } from '../sim/Simulation';
 import { registerDebug } from '../game/debug';
 import { dismissTutorial, resumeTutorial } from '../sim/tutorial';
@@ -33,8 +34,40 @@ import './panels.css';
 import './menus.css';
 import './story.css';
 
-/** Segundos de celebración que se ven antes de abrir la pantalla de llegada. */
-const ARRIVAL_SCREEN_DELAY = 7;
+/** Segundos de celebración que se ven (despierto, sin pausa y al aire libre) antes de abrir la pantalla de llegada. */
+export const ARRIVAL_SCREEN_DELAY = 7;
+/**
+ * Si el jugador sigue a cubierto tanto tiempo (s, despierto y sin pausa), la pantalla de llegada se
+ * abre igualmente: la fiesta de la llegada (unos 80 s) ya casi ha pasado y el resumen no debe perderse.
+ */
+export const ARRIVAL_INDOOR_MAX = 60;
+/** Aviso para salir a cubierta cuando la llegada pilla al jugador a cubierto (p. ej. al despertar). */
+export const ARRIVAL_NUDGE = '¡Puerto Esperanza! Sal a cubierta a ver la fiesta de la llegada';
+
+/** Espera de la pantalla de llegada (ver `arrivalCountdown`). */
+export interface ArrivalWait {
+  /** Segundos a la vista de la celebración que faltan. */
+  delay: number;
+  /** Segundos que lleva a cubierto desde la llegada. */
+  indoor: number;
+  /** Ya se le avisó de que salga a cubierta. */
+  nudged: boolean;
+}
+
+/**
+ * Cuenta atrás de la pantalla de llegada. Solo corre mientras el jugador ve la celebración: despierto,
+ * sin pausa y al aire libre (o en el modo construcción, con la cámara fuera del barco). Si la llegada
+ * lo pilla a cubierto (al despertar en el camarote, que es frecuente al entrar de noche), espera a que
+ * salga (con un aviso), para que la pantalla no se abra sobre una pared y se vean los fuegos; como
+ * mucho `ARRIVAL_INDOOR_MAX` s. `nudge`: hay que dar el aviso ahora.
+ */
+export function arrivalCountdown(w: ArrivalWait, dt: number, o: { running: boolean; outdoors: boolean }): ArrivalWait & { nudge: boolean } {
+  const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+  if (!o.running) return { ...w, nudge: false };
+  if (o.outdoors) return { delay: Math.max(0, w.delay - step), indoor: w.indoor, nudged: w.nudged, nudge: false };
+  const indoor = w.indoor + step;
+  return { delay: indoor >= ARRIVAL_INDOOR_MAX ? 0 : w.delay, indoor, nudged: true, nudge: !w.nudged };
+}
 
 /** Intervalo de repintado de los paneles (s). */
 const PANEL_REFRESH = 0.15;
@@ -73,10 +106,10 @@ export class UI {
   /** La llegada acaba de ocurrir: la pantalla se abre en cuanto se pueda (con los recién llegados). */
   private arrivalPending = false;
   /**
-   * Segundos reales que faltan para abrirla: la pantalla pausa la partida, así que antes se deja
-   * ver la primera andanada de fuegos y farolillos de la celebración.
+   * Espera de la pantalla de llegada: la pantalla pausa la partida, así que antes se deja ver la
+   * primera andanada de fuegos y farolillos de la celebración, desde fuera (`arrivalCountdown`).
    */
-  private arrivalDelay = 0;
+  private arrivalWait: ArrivalWait = { delay: 0, indoor: 0, nudged: false };
 
   constructor(
     container: HTMLElement,
@@ -303,8 +336,15 @@ export class UI {
   }
 
   private queueArrival(): void {
-    if (!this.arrivalPending) this.arrivalDelay = ARRIVAL_SCREEN_DELAY;
+    if (!this.arrivalPending) this.arrivalWait = { delay: ARRIVAL_SCREEN_DELAY, indoor: 0, nudged: false };
     this.arrivalPending = true;
+  }
+
+  /** ¿Está el jugador a cubierto (en una habitación o en la bodega), sin ver el cielo? */
+  private playerIndoors(): boolean {
+    const sim = this.ctx.sim;
+    const p = sim.state.player.pos;
+    return !!cellAtPoint(sim.layout, p.x, p.y, p.z)?.indoor;
   }
 
   /** Lector de hojas y llegada: comprueba cada frame lo que ha cambiado en `state.story`. */
@@ -330,7 +370,7 @@ export class UI {
     const arrived = !!story?.arrived;
     if (arrived && !this.seenArrived) this.queueArrival();
     this.seenArrived = arrived;
-    if (this.arrivalPending && this.arrivalDelay <= 0 && !this.menuOpen && (ctx.mode === 'play' || ctx.mode === 'build') && ctx.sim.state.player.alive && !ctx.sim.state.player.sleeping) {
+    if (this.arrivalPending && this.arrivalWait.delay <= 0 && !this.menuOpen && (ctx.mode === 'play' || ctx.mode === 'build') && ctx.sim.state.player.alive && !ctx.sim.state.player.sleeping) {
       this.arrivalPending = false;
       this.showArrival();
     }
@@ -352,8 +392,14 @@ export class UI {
       this.panelTimer += dtReal;
       if (this.panelTimer >= PANEL_REFRESH) this.renderPanelNow();
     }
-    // La espera solo corre mientras se juega (despierto y sin pausa), que es cuando se ve la fiesta.
-    if (this.arrivalDelay > 0 && !ctx.paused && !ctx.sim.state.player.sleeping) this.arrivalDelay = Math.max(0, this.arrivalDelay - dtReal);
+    // La espera solo corre mientras se ve la fiesta: despierto, sin pausa y al aire libre.
+    if (this.arrivalPending && this.arrivalWait.delay > 0) {
+      const p = ctx.sim.state.player;
+      const running = !ctx.paused && !this.menuOpen && p.alive && !p.sleeping && (ctx.mode === 'play' || ctx.mode === 'build');
+      const r = arrivalCountdown(this.arrivalWait, dtReal, { running, outdoors: ctx.mode === 'build' || !this.playerIndoors() });
+      this.arrivalWait = { delay: r.delay, indoor: r.indoor, nudged: r.nudged };
+      if (r.nudge) this.toast(ARRIVAL_NUDGE, 'good');
+    }
     this.watchStory();
     // La pantalla de llegada se ve sola, sobre la celebración: sin HUD ni avisos encima.
     this.hud.update(dtReal, { panelOpen: this.panelOpen, menuOpen: this.menuOpen, quiet: this.menus.screen === 'arrival' });

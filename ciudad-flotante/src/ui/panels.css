@@ -2512,6 +2512,32 @@ body.ui-dragging * {
   padding: 2px 4px 4px 2px;
 }
 
+/* Contenedores grandes (almacén mejorado): ranuras compactas en 8 columnas y 6 filas a la vista. */
+.xfer-scroll.dense {
+  max-height: 318px;
+}
+
+.xfer-scroll.dense .slot-grid {
+  grid-template-columns: repeat(var(--cols, 8), 46px);
+  gap: 5px;
+}
+
+.xfer-scroll.dense .inv-slot {
+  width: 46px;
+  height: 46px;
+}
+
+.xfer-scroll.dense .inv-slot .ico {
+  width: 35px;
+  height: 35px;
+}
+
+.xfer-scroll.dense .inv-slot .qty {
+  right: 3px;
+  bottom: 1px;
+  font-size: 11px;
+}
+
 .xfer-actions {
   display: flex;
   flex-wrap: wrap;

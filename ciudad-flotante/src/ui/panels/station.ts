@@ -210,7 +210,7 @@ export function upgradeLine(env: UiEnv, m: ModuleInstance): VNode | null {
         'div',
         { class: 'tier-main' },
         meter([gl('upgrade'), `Mejorando a «${cs.name}»`], `${Math.floor(cs.progress * 100)} % · parada`, cs.progress, 'var(--danger)'),
-        h('div', { class: 'danger small' }, gl('fire'), 'Obra parada mientras arde: apaga el fuego con el cubo y seguirá donde se quedó.'),
+        h('div', { class: 'danger small' }, gl('fire'), ' Obra parada mientras arde: apaga el fuego con el cubo y seguirá donde se quedó.'),
       ),
     );
   }

@@ -38,7 +38,7 @@ import type { UiEnv } from '../src/ui/env';
 import { MAX_TOASTS, pushToast, toastShape, type ToastEntry } from '../src/ui/hud';
 import { wieldFromSlot } from '../src/ui/panels/inventory';
 import { addFuel, demolishLossNote, FUEL_BATCH, stationTutorial } from '../src/ui/panels/station';
-import { clickMode, modeQty, playerSlotFor, quickMove, storeAll, takeAllFrom } from '../src/ui/panels/transfer';
+import { clickMode, containerGrid, modeQty, playerSlotFor, quickMove, storeAll, takeAllFrom } from '../src/ui/panels/transfer';
 import { HOTBAR_SLOTS } from '../src/sim/constants';
 import type { InvRef } from '../src/sim/Simulation';
 import { STORY_PAGES } from '../src/data/story';
@@ -50,9 +50,9 @@ import type { ModuleInstance } from '../src/sim/types';
 import { CAPTAIN_COURSE_LABEL } from '../src/sim/voyage';
 import { SIGHTING_GLYPH } from '../src/ui/icons';
 import { Menus } from '../src/ui/menus';
-import { panelViewKey } from '../src/ui/UI';
+import { ARRIVAL_INDOOR_MAX, ARRIVAL_SCREEN_DELAY, arrivalCountdown, panelViewKey, type ArrivalWait } from '../src/ui/UI';
 import { CATEGORY_NAMES, moduleSubtitle, radioMessages, upgradeEffectsText } from '../src/ui/model';
-import { finalRegionOnChart, renderHelm } from '../src/ui/panels/helm';
+import { finalRegionOnChart, helmNotices, renderHelm } from '../src/ui/panels/helm';
 import { renderInventory } from '../src/ui/panels/inventory';
 import { relationTone, renderNpc } from '../src/ui/panels/npc';
 import { gruaObjective, renderStation, upgradeLine } from '../src/ui/panels/station';
@@ -1252,5 +1252,163 @@ describe('c2-ui: lector de hojas y menús (con un mini-DOM)', () => {
     } finally {
       gh.HTMLElement = savedHE;
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Ronda de pruebas 2 (fix-ui)                                          */
+/* ------------------------------------------------------------------ */
+
+describe('fix-ui: mejora parada, confort, almacén grande, cuaderno, llegada y timón', () => {
+  it('panel de una estación con la mejora parada por el fuego: sin cuenta atrás, sin «sigue funcionando» ni el martillo', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const alm = mod(sim, 'almacen');
+    for (const [id, qty] of Object.entries(sim.checkUpgrade(alm.id).cost)) addItem(sim.state.player.inventory, id, qty);
+    expect(sim.startUpgrade(alm.id).ok).toBe(true);
+    alm.upgrade!.progress = 0.08;
+    let line = vtext(upgradeLine(env, alm));
+    expect(line).toMatch(/8 % · ≈ \d+ min/);
+    expect(line).toContain('Sigue funcionando');
+    alm.fire = 40;
+    line = vtext(upgradeLine(env, alm));
+    expect(line).toContain('8 % · parada');
+    expect(line).toContain('Obra parada mientras arde: apaga el fuego con el cubo');
+    expect(line).not.toMatch(/≈|Sigue funcionando|martillo/);
+    const t = vtext(renderStation(env, alm.id));
+    expect(t).toContain('Mejora parada · 8 %');
+    expect(t).not.toContain('Mejorando · 8 %');
+    expect(moduleIssues(sim).some((i) => i.module === alm && i.text === 'Mejora a nivel 2 parada mientras arde · 8 %')).toBe(true);
+    // Averiado (sin fuego): la obra sigue, pero no «sigue funcionando».
+    alm.fire = 0;
+    alm.status = 'broken';
+    line = vtext(upgradeLine(env, alm));
+    expect(line).not.toContain('Sigue funcionando');
+    expect(line).toContain('La obra sigue aunque no funcione hasta repararlo');
+  });
+
+  it('el confort de un dormitorio no promete más descanso; el de un camarote acogedor sí, con su número', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const titleOf = (m: ModuleInstance): string => {
+      const div = findByClass(renderStation(env, m.id), 'faint').find((n) => /^Confort:/.test(vtext(n)));
+      return String(div?.props?.['title'] ?? '');
+    };
+    const dorm = placeModule(sim, 'dormitorio', 1);
+    dorm.tier = 2;
+    expect(titleOf(dorm)).toMatch(/ánimo/);
+    expect(titleOf(dorm)).not.toMatch(/descans|energía/);
+    const cam = mod(sim, 'camarote');
+    cam.tier = 2;
+    expect(titleOf(cam)).toMatch(/sus camas dan \+2 de energía por hora durmiendo/);
+  });
+
+  it('la rejilla de un almacén se ensancha con sus huecos: el reforzado (48) se ve entero', () => {
+    expect(containerGrid(20, 5)).toEqual({ cols: 5, dense: false });
+    expect(containerGrid(12, 4)).toEqual({ cols: 4, dense: false });
+    // Despensa mejorada (18): una columna más y cuatro filas.
+    expect(containerGrid(18, 4)).toEqual({ cols: 5, dense: false });
+    expect(containerGrid(24, 5)).toEqual({ cols: 6, dense: false });
+    // Almacén con altillo (32) y reforzado (48): ranuras compactas en 8 columnas (4 y 6 filas).
+    expect(containerGrid(32, 5)).toEqual({ cols: 8, dense: true });
+    expect(containerGrid(48, 5)).toEqual({ cols: 8, dense: true });
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    const alm = mod(sim, 'almacen');
+    alm.tier = 3;
+    alm.inventory!.slots.length = 48;
+    for (let i = 0; i < 48; i++) alm.inventory!.slots[i] ??= null;
+    const view = renderStation(env, alm.id)!;
+    const box = findByClass(view, 'xfer-scroll')[0]!;
+    expect(String(box.props?.['class'])).toContain('dense');
+    const grid = findByClass(box, 'slot-grid')[0]!;
+    expect(String(grid.props?.['style'])).toBe('--cols:8');
+  });
+
+  it('cuaderno: Anterior/Siguiente van fuera de la hoja que se desplaza (siempre a la vista)', () => {
+    const sim = newSim();
+    const { env } = fakeEnv(sim);
+    env.ps.tab = 'diario';
+    env.ps.diary = 'cuaderno';
+    const view = renderInventory(env);
+    const desk = findByClass(view, 'nb-desk')[0]!;
+    expect(String(desk.props?.['class'])).not.toContain('scroll');
+    const kids = desk.children as VNode[];
+    expect(String(kids[0]!.props?.['class'])).toContain('nb-sheet');
+    expect(String(kids[0]!.props?.['class'])).toContain('scroll');
+    expect(String(kids[1]!.props?.['class'])).toBe('nb-nav');
+    expect(findByClass(kids[0], 'nb-nav').length).toBe(0);
+  });
+
+  it('la pantalla de llegada espera a que el jugador vea la fiesta desde fuera (no sobre la pared del camarote)', () => {
+    let w: ArrivalWait = { delay: ARRIVAL_SCREEN_DELAY, indoor: 0, nudged: false };
+    // Dormido o con pausa: no corre.
+    let r = arrivalCountdown(w, 1, { running: false, outdoors: true });
+    expect(r.delay).toBe(ARRIVAL_SCREEN_DELAY);
+    // Despierta en el camarote: avisa una vez de que salga y no cuenta.
+    r = arrivalCountdown(w, 1, { running: true, outdoors: false });
+    expect(r.nudge).toBe(true);
+    expect(r.delay).toBe(ARRIVAL_SCREEN_DELAY);
+    w = r;
+    r = arrivalCountdown(w, 5, { running: true, outdoors: false });
+    expect(r.nudge).toBe(false);
+    expect(r.delay).toBe(ARRIVAL_SCREEN_DELAY);
+    w = r;
+    // Sale a cubierta: ahora sí cuenta, y a los 7 s se abre.
+    for (let i = 0; i < 6; i++) w = arrivalCountdown(w, 1, { running: true, outdoors: true });
+    expect(w.delay).toBeCloseTo(1);
+    w = arrivalCountdown(w, 1, { running: true, outdoors: true });
+    expect(w.delay).toBe(0);
+    // Si se queda dentro demasiado tiempo, se abre igualmente.
+    w = { delay: ARRIVAL_SCREEN_DELAY, indoor: 0, nudged: false };
+    for (let t = 0; t < ARRIVAL_INDOOR_MAX + 1; t++) w = arrivalCountdown(w, 1, { running: true, outdoors: false });
+    expect(w.delay).toBe(0);
+    expect(arrivalCountdown({ delay: 3, indoor: 0, nudged: true }, Number.NaN, { running: true, outdoors: true }).delay).toBe(3);
+  });
+
+  it('timón: fondeados en la bocana hasta el amanecer, cruzando el puerto y con la decisión del rumbo pendiente', () => {
+    const sim = newSim();
+    const st = sim.state;
+    const story = st.story!;
+    story.pages = [1, 2, 3, 4, 5];
+    story.revealed = true;
+    // (a) De noche en la bocana: entraremos al amanecer (y no una cuenta atrás que no baja).
+    st.voyage.regionId = 'esperanza';
+    st.voyage.regionLength = 140;
+    st.voyage.regionDistance = 0;
+    st.time = Math.floor(st.time / 1440) * 1440 + 22 * 60;
+    sim.tick(1);
+    let n = helmNotices(sim);
+    expect(n.map((x) => x.id)).toEqual(['bocana']);
+    expect(n[0]!.text).toBe('Fondeados en la bocana de Puerto Esperanza: entraremos al amanecer, a las 6:00 (dentro de unas 8 horas).');
+    let t = vtext(renderHelm(fakeEnv(sim).env));
+    expect(t).toContain('Fondeados en la bocana de Puerto Esperanza');
+    expect(t).not.toContain('Levamos anclas en');
+    // (b) Tras la llegada, cruzando el fondeadero: cuándo salimos.
+    story.arrived = true;
+    st.time = Math.floor(st.time / 1440) * 1440 + 1440 + 10 * 60;
+    sim.tick(1);
+    n = helmNotices(sim);
+    expect(n.map((x) => x.id)).toEqual(['puerto']);
+    expect(n[0]!.text).toMatch(/^Cruzamos el fondeadero de Puerto Esperanza: saldremos a mar abierto en unas \d+ horas\.$/);
+    expect(vtext(renderHelm(fakeEnv(sim).env))).toContain('Cruzamos el fondeadero de Puerto Esperanza');
+    // (c) Al final de una región con el rumbo de la capitana en oferta: el barco espera la decisión.
+    const sim2 = newSim();
+    const s2 = sim2.state;
+    s2.story!.pages = [1, 2, 3, 4, 5];
+    s2.story!.revealed = true;
+    const v = s2.voyage;
+    v.regionDistance = v.regionLength;
+    v.nextChoices = [...REGION_LIST.find((r) => r.id === v.regionId)!.next.filter((id) => id !== 'esperanza'), 'esperanza'];
+    v.chosenNext = null;
+    s2.story!.course = { awake: 0, holdAt: s2.time, told: true };
+    n = helmNotices(sim2);
+    expect(n.map((x) => x.id)).toEqual(['decision']);
+    expect(n[0]!.text).toMatch(/^El barco espera tu decisión al final de [^:]+: ¿tomamos el rumbo de la capitana hacia Puerto Esperanza\? Si no eliges, en 30 min el piloto seguirá hacia /);
+    t = vtext(renderHelm(fakeEnv(sim2).env));
+    expect(t).toContain('El barco espera tu decisión');
+    // Con el rumbo fijado ya no espera nada.
+    v.chosenNext = 'esperanza';
+    expect(helmNotices(sim2)).toEqual([]);
   });
 });

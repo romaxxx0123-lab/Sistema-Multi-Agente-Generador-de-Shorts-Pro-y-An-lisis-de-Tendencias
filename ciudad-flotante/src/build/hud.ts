@@ -92,7 +92,7 @@ const kbd = (k: string): string => `<span class="kbd">${esc(k)}</span>`;
 
 /** Estructura de un diálogo (lo que no se puede parchear sin repintarlo). */
 function confirmShape(c: ConfirmModel): string {
-  return [c.kind, c.title, c.lines.length, c.progress !== undefined, c.progressTone ?? 'work', c.items.length, c.warnings?.length ?? 0].join('|');
+  return [c.kind, c.title, c.lines.length, c.progress !== undefined, c.items.length, c.warnings?.length ?? 0].join('|');
 }
 
 function el(tag: string, cls: string, parent?: HTMLElement): HTMLElement {
@@ -435,7 +435,7 @@ export class BuildHud {
       `<div class="bm-card bm-uphelp">` +
       `<div class="bm-card-head"><span class="bm-card-ico">${gl('star', 'bm-gl big')}</span><span class="bm-card-name">Mejorar instalaciones</span></div>` +
       `<div class="bm-card-desc">${esc(text)}</div>` +
-      `<div class="bm-card-foot">${kbd('Clic')} o ${kbd('1-9')} mejorar · en obras: cancelar</div>` +
+      `<div class="bm-card-foot">${kbd('Clic')} o ${kbd('1–9')} mejorar · en obras, cancelar</div>` +
       `</div>`
     );
   }
@@ -591,9 +591,9 @@ export class BuildHud {
     } else if (mode === 'demolish') {
       rows.push(['Clic', 'Desmontar'], ['Clic der. · Esc', 'Dejar de demoler']);
     } else if (mode === 'upgrade') {
-      rows.push(['Clic', 'Mejorar (o cancelar la mejora en obras)'], ['1-9', 'Elegir de la lista'], ['Clic der. · Esc · U', 'Dejar de mejorar']);
+      rows.push(['Clic', 'Mejorar (o cancelar la mejora en obras)'], ['1–9', 'Elegir de la lista'], ['Clic der. · Esc · U', 'Dejar de mejorar']);
     } else {
-      rows.push(['1-9', 'Elegir pieza'], ['Tab', 'Siguiente categoría'], ['U', 'Mejorar'], ['X', 'Demoler']);
+      rows.push(['1–9', 'Elegir pieza'], ['Tab', 'Siguiente categoría'], ['U', 'Mejorar'], ['X', 'Demoler']);
     }
     rows.push(['Arrastre der. · Q E', 'Girar la vista'], ['Rueda', 'Acercar / alejar'], ['WASD · Arrastre central', 'Desplazar'], ['Re Pág · Av Pág', 'Cambiar de nivel'], ['B · Esc', 'Volver al barco']);
     const body = rows.map(([k, t]) => `<div class="bm-key"><span class="k">${k.split(' · ').map(kbd).join('')}</span><span class="t">${esc(t)}</span></div>`).join('');
@@ -757,7 +757,16 @@ export class BuildHud {
       if (p && p.textContent !== l) p.textContent = l;
     });
     const bar = this.modal.querySelector<HTMLElement>('[data-cf-bar]');
-    if (bar && c.progress !== undefined) bar.style.width = `${Math.round(Math.max(0, Math.min(1, c.progress)) * 100)}%`;
+    if (bar && c.progress !== undefined) {
+      bar.style.width = `${Math.round(Math.max(0, Math.min(1, c.progress)) * 100)}%`;
+      // Obra en marcha o parada (arde): el color de la barra, sin repintar el diálogo.
+      const tone = c.progressTone ?? 'work';
+      const box = bar.parentElement;
+      if (box && !box.classList.contains(tone)) {
+        box.classList.remove('work', 'bad');
+        box.classList.add(tone);
+      }
+    }
   }
 
   hideConfirm(): void {
