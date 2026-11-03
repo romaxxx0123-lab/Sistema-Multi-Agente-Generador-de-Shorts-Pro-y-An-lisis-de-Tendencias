@@ -243,7 +243,7 @@ export function spawnAmbientDebris(sim: Simulation): Debris | null {
     const x = sim.rng.range(b.sternX + 2, b.bowX + 30);
     const loot = ambientLoot(sim, kind);
     const d = spawnDebris(sim, kind, { x, z }, { ...loot, lateral: -side * sim.rng.range(ANCHORED_INFLOW[0], ANCHORED_INFLOW[1]) });
-    if (hasStoryPage(d)) announcePageChest(sim, side);
+    if (hasStoryPage(d)) announcePageChest(sim, side, true);
     return d;
   }
   // Mismas tiradas de azar con hoja o sin ella: el cofre con hoja solo cambia de sitio.
@@ -258,7 +258,7 @@ export function spawnAmbientDebris(sim: Simulation): Debris | null {
   const z = side * (b.halfW + (page ? PAGE_CHEST_SIDE[0] + u * (PAGE_CHEST_SIDE[1] - PAGE_CHEST_SIDE[0]) : off));
   const x = b.bowX + (page ? PAGE_CHEST_AHEAD[0] + v * (PAGE_CHEST_AHEAD[1] - PAGE_CHEST_AHEAD[0]) : ahead);
   const d = spawnDebris(sim, kind, { x, z }, loot);
-  if (page) announcePageChest(sim, side);
+  if (page) announcePageChest(sim, side, false);
   return d;
 }
 
@@ -271,10 +271,16 @@ function hasStoryPage(d: Debris): boolean {
   return d.loot.some((l) => isStoryPageItem(l.id));
 }
 
-/** Aviso al aparecer un cofre con hoja (solo aparecen con el jugador despierto y de día). */
-function announcePageChest(sim: Simulation, side: number): void {
+/**
+ * Aviso al aparecer un cofre con hoja (solo aparecen con el jugador despierto y de día). Navegando
+ * asoma por la proa; fondeados, la corriente lo acerca despacio por el costado.
+ */
+function announcePageChest(sim: Simulation, side: number, anchored: boolean): void {
   const where = side < 0 ? 'babor' : 'estribor';
-  sim.log(`Por la proa, a ${where}, flota a la deriva un cofre metálico bien cerrado, como los que dejó la capitana Duarte: ¡échale el gancho desde la borda cuando pase!`, 'good');
+  const text = anchored
+    ? `Por ${where}, la corriente acerca un cofre metálico bien cerrado, como los que dejó la capitana Duarte: ¡échale el gancho desde la borda!`
+    : `Por la proa, a ${where}, flota a la deriva un cofre metálico bien cerrado, como los que dejó la capitana Duarte: ¡échale el gancho desde la borda cuando pase!`;
+  sim.log(text, 'good');
 }
 
 /**

@@ -31,13 +31,18 @@
  * - Comandos: `eventChoice`, `trade`, `extinguish` (cubo de agua de mar, lo devuelve vacío).
  * - Radar (`isRadarActive`): los avistamientos (naufragio, isla, estructura, mercante) se anuncian
  *   `RADAR_EXTRA_MIN` antes (más lejos) y duran otro tanto más; las balsas se detectan más lejos; y
- *   cada 6–12 h llega un mensaje de radio al diario (charla de otros barcos, pistas del cuaderno o
- *   precios de mercante, que el próximo mercante cumple).
+ *   cada 6–12 h llega un mensaje de radio al diario (charla de otros barcos, que no repite frase en
+ *   `RADIO_REPEAT_MIN`; pistas del cuaderno; o precios de mercante, que no caducan: el próximo
+ *   mercante que veamos los trae todos, y como mucho hay `RADIO_MAX_RUMOURS` a la vez).
  * - Hilo narrativo (data/story.ts): las hojas 2–7 del cuaderno del Albatros aparecen en cofres de
- *   naufragio (la del día 5, garantizada), estructuras, islas, cofres a la deriva y mercantes, en
- *   orden y preferentemente en su región, sin repetir las leídas o a bordo (`nextStoryPage`,
- *   `rollStoryPage`). Al entrar en Puerto Esperanza, el evento 'llegada' (`arrivalSummary` para la
- *   pantalla de final): dos vecinos se unen y el mercado del muelle abre seis horas.
+ *   naufragio (la del día 5, garantizada), estructuras, islas, cofres a la deriva (solo de día y con
+ *   el jugador despierto, `rollDriftPage`) y mercantes, en orden y preferentemente en su región, sin
+ *   repetir las leídas o a bordo (`nextStoryPage`, `rollStoryPage`). Tras aparecer una, ninguna otra
+ *   en `PAGE_COOLDOWN_MIN`; pero si se pierde sin llegar a bordo (el cofre pasa de largo, el pecio
+ *   queda atrás, el mercante se va sin venderla), el enfriamiento vuelve a como estaba y la sequía
+ *   sigue contando (`settlePlacedPages`). Al entrar en Puerto Esperanza, el evento 'llegada' con el
+ *   texto según la hora (`arrivalSummary` para la pantalla de final, con la instantánea de la llegada
+ *   en `story.arrival`): dos vecinos se unen y el mercado del muelle abre seis horas.
  * - Discusiones: los rivales (relaciones de npc.ts) discuten antes y más a menudo; discutir, mediar o
  *   dejar que se enquiste cambia su afinidad.
  *

@@ -22,6 +22,11 @@
  *   por defecto (`moduleTier`, `activeUpgrade`), así que una ida y vuelta deja el estado idéntico.
  *   Bandejas y combustible se dimensionan con el nivel de mejora (`moduleStat`): nunca se pierden
  *   objetos de un almacén ampliado.
+ * - Ronda de pruebas 2 (también opcionales, misma `SAVE_VERSION`): hojas del cuaderno en juego y
+ *   enfriamiento anterior (`story.placed`, `story.pageCooldownBefore`), decisión del rumbo de la
+ *   capitana (`story.course`), instantánea de la llegada (`story.arrival`) y transición del clima
+ *   (`weather.baseTemp`, `stormWarned`, `stormLead`, `windTarget`). Se validan si están; si no son
+ *   válidos se quitan, y su ausencia significa lo mismo que en una partida anterior.
  */
 import { ITEMS } from '../data/items';
 import { MODULES } from '../data/modules';
