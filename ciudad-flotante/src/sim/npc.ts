@@ -439,6 +439,8 @@ interface NpcMemo {
 interface LifeMemo {
   npcs: Map<string, NpcMemo>;
   rev: number;
+  /** Habitantes cuya ruta hay que rehacer tras un cambio del barco (se reparten entre pasos). */
+  stalePaths: Set<string>;
   reach: { nav: NavGrid; mask: Uint8Array[] } | null;
   rails: { nav: NavGrid; spots: RailSpot[] } | null;
   bedsAt: number;
@@ -481,6 +483,7 @@ function lifeMemo(sim: Simulation): LifeMemo {
     m = {
       npcs: new Map(),
       rev: -1,
+      stalePaths: new Set(),
       reach: null,
       rails: null,
       bedsAt: -Infinity,
@@ -4348,6 +4351,12 @@ export function tickNpcs(sim: Simulation, dt: number): void {
     }
     if (shipChanged) {
       ensureOnNav(sim, npc);
+      if (npc.path.length && npc.task?.targetPos) lm.stalePaths.add(npc.id);
+    }
+    // Rutas por rehacer tras un cambio del barco, con el presupuesto de búsquedas del paso: todas a
+    // la vez costaban 10–30 ms en el paso en que termina una obra o una mejora en un barco grande.
+    if (lm.stalePaths.has(npc.id) && lm.stats.pathSearches - searches0 < PATH_SEARCHES_PER_TICK) {
+      lm.stalePaths.delete(npc.id);
       if (npc.path.length && npc.task?.targetPos) {
         lm.stats.replans++;
         if (!planPath(sim, npc, npc.task.targetPos)) abortTask(sim, npc, td(npc).job ?? npc.task.kind, 10);

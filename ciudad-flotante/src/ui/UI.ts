@@ -240,6 +240,9 @@ export class UI {
     }) as never);
     registerDebug('uiLector', (() => ({ pagina: this.reader.current, quedan: Math.round(this.reader.remaining * 10) / 10 })) as never);
     registerDebug('uiLlegada', (() => this.showArrival()) as never);
+    // Toma por vistas las hojas y la llegada tal como están ahora (órdenes de depuración que las
+    // cambian, como puerto(millas, llegado)): no se abre el lector ni la pantalla de llegada.
+    registerDebug('uiHistoriaVista', (() => this.syncStory()) as never);
     this.syncStory();
 
     window.addEventListener('keydown', (e) => this.onKey(e));

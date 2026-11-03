@@ -113,7 +113,7 @@ con `registerDebug(nombre, fn)` (`src/game/debug.ts`); `Object.keys(__game.cmd)`
 | Jugador | `jugador()` (posición, objetivo, aviso, resaltado, herramientas, últimos avisos), `herramienta(id)`, `resto(tipo, dist, dx, supervivientes)`, `mirarA(x,y,z)`, `mirarResto(id)`, `pulsar(code, frames)`, `picarYa()` |
 | Mundo | `vista(px,py,pz,tx,ty,tz,fov)` (cámara libre; sin argumentos vuelve a la del juego), `clima(tipo)` (aspecto instantáneo), `avistamiento(tipo,x,dist,lado,nombre)`, `mundo()`, `delfines(dist)`, `peces(on)`, `decorado()`, `puerto(millas, llegado)` (lleva el barco a Puerto Esperanza; con `llegado`, por defecto, la llegada queda hecha y vista: sin fuegos ni pantalla de llegada ni pausa; con `false` no la toca: si aún no se había llegado, la llegada ocurre como en una partida), `luzVerde(millasRestantes)`, `fiesta()`; `mundo()` incluye puerto, fuegos, farolillos y antialias |
 | Construcción | `buildInfo()`, `buildLevel(l)`, `buildSelect(tipo)`, `buildRotate(n)`, `buildDemolish(on)`, `buildUpgrade(on)` (herramienta Mejorar), `buildUpgradeModule(id)` (encarga la mejora o abre la cancelación), `buildCategory(c)`, `buildView(yaw,pitch,dist,tx,tz)`, `buildCellToScreen(nivel,x,z)`, `buildModuleToScreen(id,altura)`, `buildExpand()`, `buildConfirm()` |
-| Interfaz | `uiScreen()`, `uiMenu(sub)` |
+| Interfaz | `uiScreen()`, `uiMenu(sub)`, `uiHistoriaVista()` (da por vistas las hojas y la llegada actuales) |
 | Audio | `audio()`, `audioMeter()`, `audioPlay(nombre)`, `audioUnlock()`, `audioTest()` (síntesis offline) |
 | Modelos | `models()` (lista), `showModel(nombre, dist, lado)` (delante del jugador), `clearModels()` |
 
