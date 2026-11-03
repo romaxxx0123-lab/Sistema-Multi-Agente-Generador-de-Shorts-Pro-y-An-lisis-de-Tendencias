@@ -163,3 +163,9 @@ guardan en el repositorio, así que el juego no necesita Blender para compilar.
   - `src/render/ship/characterModel.ts` funde las primitivas en una plantilla compartida: una llamada de dibujo por personaje, con color e índice propios según el `CharacterLook`.
   - Lo anima un AnimationMixer: fundidos de 0,25 s y andar y correr sincronizados con la velocidad. La herramienta va en `mano_d`, la caja en `pecho` y la manta en `raiz`.
   - Si el modelo falta, `CharacterRig` usa el rig procedimental (`setCharacterModels(false)` lo fuerza).
+- Muebles y máquinas del barco (props; `models/muebles.py` y `models/maquinas.py`):
+  - `prop_<kind>` sustituye SOLO la geometría sólida «base» de `propModel` (src/render/ship/props.ts). Se modela en coordenadas del juego con las medidas del colisionador de data/modules.ts, y `fitToDims` lo ajusta a las del layout (desplaza los bordes enteros y estira solo el centro).
+  - Anclajes, cristal, luces, contenido por tramos, piezas y placa salen siempre del procedimental, que se sigue construyendo. Lo que el builder añade tras `extras()` (detalles de cada nivel de mejora, objetos sobre la mesa, tierra y riego del bancal) se pinta sobre el modelo.
+  - `prop_<kind>@<nivel>` sustituye toda la geometría sólida de ese nivel (el depósito, más alto en el 2 y forrado en el 3). Sin él, un nivel que cambia la base (builder sin `extras()`) sigue siendo procedimental.
+  - Piezas: `prop_<kind>_<pieza>` sustituye la parte móvil (`_rueda` del timón; `_movil`, el cuerpo que vibra del generador y del motor) o una pieza de `parts` por su nombre (`prop_radar_antenna`…). Lleva el mismo pivote y se exporta subida `PIECE_LIFT` = 1 m.
+  - `setBlenderProps(false)` (o `cmd.mueblesBlender(false)`) fuerza el procedimental para comparar. tests/arte_muebles.test.ts comprueba medidas, alturas de uso, anclajes, niveles, colisionador, techo, mallas fusionadas y el respaldo.

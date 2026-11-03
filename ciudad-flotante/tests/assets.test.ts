@@ -41,7 +41,9 @@ describe('modelos de Blender', () => {
       let colored = 0;
       for (let i = 0; i < c.count; i++) if (c.getX(i) < 0.99 || c.getY(i) < 0.99 || c.getZ(i) < 0.99) colored++;
       expect(colored, `${m.name} tiene color`).toBeGreaterThan(0);
-      for (let i = 0; i < c.count; i++) expect(Number.isFinite(c.getX(i))).toBe(true);
+      let finite = true;
+      for (let i = 0; i < c.count; i++) finite &&= Number.isFinite(c.getX(i));
+      expect(finite, `${m.name} color finito`).toBe(true);
       expect(modelGeometry(m.name)).toBe(geo);
     }
   });
