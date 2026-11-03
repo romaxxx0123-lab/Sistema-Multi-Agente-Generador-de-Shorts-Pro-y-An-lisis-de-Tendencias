@@ -45,12 +45,12 @@ import { STORY_PAGES } from '../src/data/story';
 import { DEFAULT_SETTINGS } from '../src/game/types';
 import { storyStatus } from '../src/sim/actions';
 import { startEvent } from '../src/sim/events';
-import { checkPlacement, instantiateModule } from '../src/sim/ship';
+import { cellCenter, checkPlacement, instantiateModule, levelY } from '../src/sim/ship';
 import type { ModuleInstance } from '../src/sim/types';
 import { CAPTAIN_COURSE_LABEL } from '../src/sim/voyage';
 import { SIGHTING_GLYPH } from '../src/ui/icons';
 import { Menus } from '../src/ui/menus';
-import { ARRIVAL_INDOOR_MAX, ARRIVAL_SCREEN_DELAY, arrivalCountdown, panelViewKey, type ArrivalWait } from '../src/ui/UI';
+import { ARRIVAL_INDOOR_MAX, ARRIVAL_SCREEN_DELAY, arrivalCountdown, panelViewKey, seesCelebration, type ArrivalWait } from '../src/ui/UI';
 import { CATEGORY_NAMES, moduleSubtitle, radioMessages, upgradeEffectsText } from '../src/ui/model';
 import { finalRegionOnChart, helmNotices, renderHelm } from '../src/ui/panels/helm';
 import { renderInventory } from '../src/ui/panels/inventory';
@@ -1364,6 +1364,30 @@ describe('fix-ui: mejora parada, confort, almacén grande, cuaderno, llegada y t
     for (let t = 0; t < ARRIVAL_INDOOR_MAX + 1; t++) w = arrivalCountdown(w, 1, { running: true, outdoors: false });
     expect(w.delay).toBe(0);
     expect(arrivalCountdown({ delay: 3, indoor: 0, nudged: true }, Number.NaN, { running: true, outdoors: true }).delay).toBe(3);
+  });
+
+  it('la fiesta se ve desde cubierta y desde el timón (ventanales del puente), no desde el camarote', () => {
+    const sim = newSim();
+    const at = (type: string, kind?: RegExp): void => {
+      const m = mod(sim, type);
+      const prop = sim.layout.props.find((p) => p.moduleId === m.id && (!kind || kind.test(p.kind)))!;
+      const sp = sim.nav.standPoint(prop)!;
+      Object.assign(sim.state.player.pos, sp);
+    };
+    at('camarote', /cama|bed/);
+    expect(seesCelebration(sim)).toBe(false);
+    at('puente', /timon/);
+    expect(seesCelebration(sim)).toBe(true);
+    // Al aire libre, en la cubierta (celda transitable sin techo).
+    const deck = sim.layout.cells[1]!.flat().find((c) => c.walkable && !c.indoor && c.sky)!;
+    const c = cellCenter(deck.x, deck.z, sim.layout.width);
+    Object.assign(sim.state.player.pos, { x: c.x, y: levelY(1) + 0.05, z: c.z });
+    expect(seesCelebration(sim)).toBe(true);
+    // En la bodega (nivel 0), no.
+    const hold = sim.layout.cells[0]!.flat().find((cc) => cc.walkable)!;
+    const hc = cellCenter(hold.x, hold.z, sim.layout.width);
+    Object.assign(sim.state.player.pos, { x: hc.x, y: levelY(0) + 0.05, z: hc.z });
+    expect(seesCelebration(sim)).toBe(false);
   });
 
   it('timón: fondeados en la bocana hasta el amanecer, cruzando el puerto y con la decisión del rumbo pendiente', () => {

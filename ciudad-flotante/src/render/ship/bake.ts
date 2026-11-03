@@ -46,6 +46,28 @@ function countOf(g: THREE.BufferGeometry): number {
   return g.index ? g.index.count : p.count;
 }
 
+/** Colores de una pieza tal cual (blanco si no tiene). */
+function copyColors(ca: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined, col: Float32Array, o3: number, cnt: number): void {
+  if (!ca) {
+    col.fill(1, o3, o3 + cnt * 3);
+    return;
+  }
+  const sc = floats(ca);
+  if (sc) col.set(sc.subarray(0, cnt * 3), o3);
+  else
+    for (let i = 0; i < cnt; i++) {
+      col[o3 + i * 3] = ca.getX(i);
+      col[o3 + i * 3 + 1] = ca.getY(i);
+      col[o3 + i * 3 + 2] = ca.getZ(i);
+    }
+}
+
+/** Módulo dueño de cada vértice de una pieza. */
+function copyTags(part: BakePart, tags: Int32Array, o: number, cnt: number): void {
+  if (part.tags) tags.set(part.tags.subarray(0, cnt), o);
+  else if (part.tag !== undefined && part.tag >= 0) tags.fill(part.tag, o, o + cnt);
+}
+
 /**
  * Fusiona las piezas. `withTags` devuelve además la etiqueta de módulo de cada vértice (las piezas
  * sin `tag` ni `tags` quedan con -1).
@@ -81,6 +103,24 @@ export function bakeParts(parts: readonly BakePart[], withTags = false): Baked {
     const tz = part.z ?? 0;
     const o3 = o * 3;
     const sp = floats(pa);
+    const sn = na ? floats(na) : null;
+    const bb = g.boundingBox;
+    if (yaw === 0 && tx === 0 && ty === 0 && tz === 0 && sp && (!na || sn) && bb && !bb.isEmpty()) {
+      // Pieza ya colocada (columnas de la estructura): copia directa de los búferes y su caja.
+      pos.set(sp.subarray(0, cnt * 3), o3);
+      if (sn) nrm.set(sn.subarray(0, cnt * 3), o3);
+      else for (let i = 0; i < cnt; i++) nrm[o3 + i * 3 + 1] = 1;
+      if (bb.min.x < minX) minX = bb.min.x;
+      if (bb.min.y < minY) minY = bb.min.y;
+      if (bb.min.z < minZ) minZ = bb.min.z;
+      if (bb.max.x > maxX) maxX = bb.max.x;
+      if (bb.max.y > maxY) maxY = bb.max.y;
+      if (bb.max.z > maxZ) maxZ = bb.max.z;
+      copyColors(ca, col, o3, cnt);
+      if (tags) copyTags(part, tags, o, cnt);
+      o += cnt;
+      continue;
+    }
     // Posiciones: x' = c·x + s·z + tx, z' = −s·x + c·z + tz (como Matrix4.makeRotationY(yaw).setPosition).
     for (let i = 0; i < cnt; i++) {
       const i3 = i * 3;
@@ -103,7 +143,6 @@ export function bakeParts(parts: readonly BakePart[], withTags = false): Baked {
     }
     // Normales: solo el giro (una rotación conserva su longitud).
     if (na) {
-      const sn = floats(na);
       for (let i = 0; i < cnt; i++) {
         const i3 = i * 3;
         const x = sn ? sn[i3]! : na.getX(i);
@@ -115,16 +154,8 @@ export function bakeParts(parts: readonly BakePart[], withTags = false): Baked {
         nrm[j + 2] = -s * x + c * z;
       }
     } else for (let i = 0; i < cnt; i++) nrm[o3 + i * 3 + 1] = 1;
-    // Colores: tal cual (blanco si la pieza no tiene).
-    if (ca) {
-      const sc = floats(ca);
-      if (sc) col.set(sc.subarray(0, cnt * 3), o3);
-      else for (let i = 0; i < cnt; i++) col.set([ca.getX(i), ca.getY(i), ca.getZ(i)], o3 + i * 3);
-    } else col.fill(1, o3, o3 + cnt * 3);
-    if (tags) {
-      if (part.tags) tags.set(part.tags.subarray(0, cnt), o);
-      else if (part.tag !== undefined && part.tag >= 0) tags.fill(part.tag, o, o + cnt);
-    }
+    copyColors(ca, col, o3, cnt);
+    if (tags) copyTags(part, tags, o, cnt);
     o += cnt;
   }
   const geo = new THREE.BufferGeometry();

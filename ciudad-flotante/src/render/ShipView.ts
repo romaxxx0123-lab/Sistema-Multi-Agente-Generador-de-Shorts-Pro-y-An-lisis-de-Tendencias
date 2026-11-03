@@ -87,16 +87,22 @@ interface TintMesh {
 }
 
 /**
- * Columnas de celdas (4 m) por grupo de muebles. Una mejora solo vuelve a fusionar su grupo (en el
- * barco ampliado, una cuarta parte de los muebles del nivel) a cambio de unas pocas llamadas de
- * dibujo más; además, los grupos fuera de cámara no se dibujan.
+ * Columnas de celdas (4 m) por grupo de mallas fusionadas (sólido de la estructura y muebles). Una
+ * mejora solo vuelve a fusionar y a subir a la GPU su grupo de muebles, y una obra terminada los
+ * grupos de estructura de sus columnas (en el barco ampliado, una cuarta parte del nivel), a cambio
+ * de unas pocas llamadas de dibujo más; además, los grupos fuera de cámara no se dibujan.
  */
-export const FURN_COLS = 4;
+export const GROUP_COLS = 4;
 
-/** Muebles de un grupo de columnas de un nivel, ya fusionados (se conservan si su firma no cambia). */
-interface FurnGroup {
-  /** Firma: modelo y colocación de cada prop del grupo, y lo que leen sus placas y altillos. */
+/** Malla fusionada de un grupo de columnas de un nivel (se conserva mientras su contenido no cambie). */
+interface BakedGroup {
+  /**
+   * Muebles: firma (modelo y colocación de cada prop del grupo, y lo que leen sus placas y
+   * altillos). Estructura: vacía (se comparan las columnas de `chunks`).
+   */
   key: string;
+  /** Columnas de estructura del grupo (se reutilizan tal cual si su firma no cambia). */
+  chunks: StructCache[];
   mesh: THREE.Mesh | null;
   tint: TintMesh | null;
   tris: number;
@@ -124,11 +130,14 @@ interface LevelBuild {
   lights: LightSpot[];
   /** Estructura por columnas de celdas (una sola en el nivel de los techos). */
   struct: StructCache[];
+  /** Cristal exterior, faroles y radar (el sólido va por grupos en `solid`). */
   structObjs: THREE.Object3D[];
+  /** Sólido de la estructura por grupo de `GROUP_COLS` columnas. */
+  solid: Map<number, BakedGroup>;
   /** Cristal interior y lámparas (estructura y props). */
   propObjs: THREE.Object3D[];
-  /** Muebles por grupo de `FURN_COLS` columnas. */
-  furn: Map<number, FurnGroup>;
+  /** Muebles por grupo de `GROUP_COLS` columnas. */
+  furn: Map<number, BakedGroup>;
   structTris: number;
   structMeshes: number;
   propTris: number;
@@ -750,9 +759,10 @@ export class ShipView {
   /**
    * Rehace un nivel: estructura (de la caché si no ha cambiado), props con su nivel de mejora y
    * detalles de módulo, y lo fusiona por material. Los objetos de los props que no han cambiado
-   * (con sus partes animadas) se conservan. Los muebles van en grupos de `FURN_COLS` columnas: solo
-   * se vuelven a fusionar (y a subir a la GPU) los grupos cuya firma ha cambiado; una mejora toca
-   * uno solo. Las fusiones escriben cada vértice ya colocado en su búfer final (ship/bake.ts).
+   * (con sus partes animadas) se conservan. El sólido de la estructura y los muebles van en grupos
+   * de `GROUP_COLS` columnas: solo se vuelven a fusionar (y a subir a la GPU) los grupos que han
+   * cambiado; una mejora toca un grupo de muebles y una obra los de sus columnas. Las fusiones
+   * escriben cada vértice ya colocado en su búfer final (ship/bake.ts).
    */
   private rebuildLevel(l: number, key: string, state: GameState, layout: ShipLayout, modules: Map<number, ModuleInstance>): void {
     const old = this.levelBuilds[l];
@@ -778,7 +788,7 @@ export class ShipView {
     };
     const groups = new Map<number, FurnPlan>();
     const groupAt = (x: number): FurnPlan => {
-      const g = Math.floor(chunkOfX(layout.length, x) / FURN_COLS);
+      const g = Math.floor(chunkOfX(layout.length, x) / GROUP_COLS);
       let e = groups.get(g);
       if (!e) groups.set(g, (e = { index: g, parts: [], sig: [], ids: new Map(), decor: [] }));
       return e;
@@ -871,30 +881,47 @@ export class ShipView {
     const tinted: TintMesh[] = [];
     const fresh: TintMesh[] = [];
 
-    // Estructura
-    let structObjs: THREE.Object3D[];
-    if (newStruct) {
-      structObjs = [];
-      const solid = bakeParts(
-        struct.map((c) => ({ geo: c.solid, tags: c.tags })),
+    // Estructura: el sólido por grupos de columnas (solo se fusionan de nuevo los grupos con alguna
+    // columna nueva); el cristal exterior y los faroles, pocas piezas, enteros si cambia alguna.
+    const solid = new Map<number, BakedGroup>();
+    const beforeSolid = old?.solid ?? new Map<number, BakedGroup>();
+    const chunkGroups = new Map<number, StructCache[]>();
+    struct.forEach((c, i) => {
+      const g = Math.floor(i / GROUP_COLS);
+      let a = chunkGroups.get(g);
+      if (!a) chunkGroups.set(g, (a = []));
+      a.push(c);
+    });
+    for (const [g, chunks] of chunkGroups) {
+      const prev = beforeSolid.get(g);
+      if (prev && prev.chunks.length === chunks.length && prev.chunks.every((c, i) => c === chunks[i])) {
+        solid.set(g, prev);
+        if (prev.tint) tinted.push(prev.tint);
+        continue;
+      }
+      const baked = bakeParts(
+        chunks.map((c) => ({ geo: c.solid, tags: c.tags })),
         true,
       );
       const ids = new Map<number, number>();
-      for (const c of struct) for (const id of c.tagIds) ids.set(id, 1);
-      const t = tintable(mk(solid, this.mats.solid, true, `nivel-${l}-solido`, structObjs), solid.tags, ids);
-      if (t) fresh.push(t);
+      for (const c of chunks) for (const id of c.tagIds) ids.set(id, 1);
+      const mesh = mk(baked, this.mats.solid, true, `nivel-${l}-solido-${g}`, null);
+      const tint = tintable(mesh, baked.tags, ids);
+      if (tint) fresh.push(tint);
+      solid.set(g, { key: '', chunks, mesh, tint, tris: baked.vertices / 3 });
+    }
+    for (const [g, prev] of beforeSolid) if (solid.get(g) !== prev && prev.mesh) disposeObject(prev.mesh);
+    let structObjs: THREE.Object3D[];
+    if (newStruct) {
+      structObjs = [];
       mk(bakeParts(struct.map((c) => ({ geo: c.glassOut }))), this.mats.glassOut, false, `nivel-${l}-cristal-ext`, structObjs);
       mk(bakeParts(struct.map((c) => ({ geo: c.lanterns }))), this.mats.lantern, false, `nivel-${l}-faroles`, structObjs);
       if (l === layout.levels && this.radar) structObjs.push(this.radar);
-    } else {
-      structObjs = old!.structObjs;
-      const prev = old!.tinted.find((t) => t.mesh.name === `nivel-${l}-solido`);
-      if (prev) tinted.push(prev);
-    }
+    } else structObjs = old!.structObjs;
 
     // Muebles por grupos: los que no han cambiado se conservan tal cual (malla y tinte).
-    const furn = new Map<number, FurnGroup>();
-    const before = old?.furn ?? new Map<number, FurnGroup>();
+    const furn = new Map<number, BakedGroup>();
+    const before = old?.furn ?? new Map<number, BakedGroup>();
     for (const plan of groups.values()) {
       const gk = plan.sig.join('|');
       const prev = before.get(plan.index);
@@ -918,7 +945,7 @@ export class ShipView {
       const mesh = mk(baked, this.mats.solid, true, `nivel-${l}-muebles-${plan.index}`, null);
       const tint = tintable(mesh, baked.tags, plan.ids);
       if (tint) fresh.push(tint);
-      furn.set(plan.index, { key: gk, mesh, tint, tris: baked.vertices / 3 });
+      furn.set(plan.index, { key: gk, chunks: [], mesh, tint, tris: baked.vertices / 3 });
       this.stats.furnitureBakes++;
     }
     for (const [g, prev] of before) if (furn.get(g) !== prev && prev.mesh) disposeObject(prev.mesh);
@@ -927,7 +954,12 @@ export class ShipView {
     mk(bakeParts(glassParts), this.mats.glassIn, false, `nivel-${l}-cristal-int`, propObjs);
     mk(bakeParts(glowParts), this.mats.lamp, false, `nivel-${l}-lamparas`, propObjs);
 
-    const [structTris, structMeshes] = count(structObjs);
+    let [structTris, structMeshes] = count(structObjs);
+    for (const f of solid.values()) {
+      if (!f.mesh) continue;
+      structTris += f.tris;
+      structMeshes++;
+    }
     let [propTris, propMeshes] = count(propObjs);
     for (const f of furn.values()) {
       if (!f.mesh) continue;
@@ -935,7 +967,7 @@ export class ShipView {
       propMeshes++;
     }
     tinted.push(...fresh);
-    const build: LevelBuild = { key, lights: struct.flatMap((c) => c.lights), struct, structObjs, propObjs, furn, structTris, structMeshes, propTris, propMeshes, tinted };
+    const build: LevelBuild = { key, lights: struct.flatMap((c) => c.lights), struct, structObjs, solid, propObjs, furn, structTris, structMeshes, propTris, propMeshes, tinted };
     this.levelBuilds[l] = build;
     for (const t of fresh) this.applyTints(modules, t);
   }
@@ -1225,7 +1257,8 @@ export class ShipView {
   /** Libera todo lo construido en un nivel (mallas y caché de estructura). */
   private disposeLevel(b: LevelBuild): void {
     for (const o of [...b.structObjs, ...b.propObjs]) disposeObject(o);
-    for (const f of b.furn.values()) if (f.mesh) disposeObject(f.mesh);
+    for (const f of [...b.solid.values(), ...b.furn.values()]) if (f.mesh) disposeObject(f.mesh);
+    b.solid.clear();
     b.furn.clear();
     for (const c of b.struct) for (const g of [c.solid, c.glassOut, c.glassIn, c.lamps, c.lanterns]) g.dispose();
     b.struct = [];

@@ -17,7 +17,7 @@ import type { GameContext } from '../game/context';
 import type { PanelRequest, PromptInfo } from '../game/types';
 import { CELL, SHIP_ORIGIN_X } from '../sim/constants';
 import { cellAtPoint } from '../sim/ship';
-import type { ActionResult, InvRef } from '../sim/Simulation';
+import type { ActionResult, InvRef, Simulation } from '../sim/Simulation';
 import { registerDebug } from '../game/debug';
 import { dismissTutorial, resumeTutorial } from '../sim/tutorial';
 import { DragManager } from './drag';
@@ -34,7 +34,7 @@ import './panels.css';
 import './menus.css';
 import './story.css';
 
-/** Segundos de celebración que se ven (despierto, sin pausa y al aire libre) antes de abrir la pantalla de llegada. */
+/** Segundos de celebración que se ven (despierto, sin pausa y al aire libre o en el puente) antes de abrir la pantalla de llegada. */
 export const ARRIVAL_SCREEN_DELAY = 7;
 /**
  * Si el jugador sigue a cubierto tanto tiempo (s, despierto y sin pausa), la pantalla de llegada se
@@ -43,6 +43,19 @@ export const ARRIVAL_SCREEN_DELAY = 7;
 export const ARRIVAL_INDOOR_MAX = 60;
 /** Aviso para salir a cubierta cuando la llegada pilla al jugador a cubierto (p. ej. al despertar). */
 export const ARRIVAL_NUDGE = '¡Puerto Esperanza! Sal a cubierta a ver la fiesta de la llegada';
+
+/**
+ * ¿Ve el jugador el cielo del puerto desde donde está? Al aire libre, sí; en una habitación o en la
+ * bodega, no. El puente de mando cuenta como fuera: sus ventanales a proa y a los costados dejan ver
+ * los fuegos desde el timón, que es donde se suele estar al entrar en el puerto.
+ */
+export function seesCelebration(sim: Simulation): boolean {
+  const p = sim.state.player.pos;
+  const c = cellAtPoint(sim.layout, p.x, p.y, p.z);
+  if (!c?.indoor) return true;
+  const m = c.moduleId === null ? null : sim.state.ship.modules.find((mm) => mm.id === c.moduleId);
+  return m?.type === 'puente';
+}
 
 /** Espera de la pantalla de llegada (ver `arrivalCountdown`). */
 export interface ArrivalWait {
@@ -56,7 +69,7 @@ export interface ArrivalWait {
 
 /**
  * Cuenta atrás de la pantalla de llegada. Solo corre mientras el jugador ve la celebración: despierto,
- * sin pausa y al aire libre (o en el modo construcción, con la cámara fuera del barco). Si la llegada
+ * sin pausa y al aire libre (o en el puente, o en el modo construcción, con la cámara fuera del barco); ver `seesCelebration`. Si la llegada
  * lo pilla a cubierto (al despertar en el camarote, que es frecuente al entrar de noche), espera a que
  * salga (con un aviso), para que la pantalla no se abra sobre una pared y se vean los fuegos; como
  * mucho `ARRIVAL_INDOOR_MAX` s. `nudge`: hay que dar el aviso ahora.
@@ -126,7 +139,7 @@ export class UI {
     this.hud = new Hud(this.layer, ctx);
     this.hud.onDismissTutorial = () => {
       dismissTutorial(this.ctx.sim);
-      this.hud.toast('Consejos ocultos. F1 los vuelve a mostrar (también en el Diario o en Ajustes)', 'info');
+      this.hud.toast('Consejos ocultos. F1 los vuelve a mostrar (también en el Diario o en Ajustes)', 'info', 'consejos');
     };
 
     this.panelLayer = document.createElement('div');
@@ -340,13 +353,6 @@ export class UI {
     this.arrivalPending = true;
   }
 
-  /** ¿Está el jugador a cubierto (en una habitación o en la bodega), sin ver el cielo? */
-  private playerIndoors(): boolean {
-    const sim = this.ctx.sim;
-    const p = sim.state.player.pos;
-    return !!cellAtPoint(sim.layout, p.x, p.y, p.z)?.indoor;
-  }
-
   /** Lector de hojas y llegada: comprueba cada frame lo que ha cambiado en `state.story`. */
   private watchStory(): void {
     const ctx = this.ctx;
@@ -392,11 +398,11 @@ export class UI {
       this.panelTimer += dtReal;
       if (this.panelTimer >= PANEL_REFRESH) this.renderPanelNow();
     }
-    // La espera solo corre mientras se ve la fiesta: despierto, sin pausa y al aire libre.
+    // La espera solo corre mientras se ve la fiesta: despierto, sin pausa y al aire libre (o en el puente).
     if (this.arrivalPending && this.arrivalWait.delay > 0) {
       const p = ctx.sim.state.player;
       const running = !ctx.paused && !this.menuOpen && p.alive && !p.sleeping && (ctx.mode === 'play' || ctx.mode === 'build');
-      const r = arrivalCountdown(this.arrivalWait, dtReal, { running, outdoors: ctx.mode === 'build' || !this.playerIndoors() });
+      const r = arrivalCountdown(this.arrivalWait, dtReal, { running, outdoors: ctx.mode === 'build' || seesCelebration(ctx.sim) });
       this.arrivalWait = { delay: r.delay, indoor: r.indoor, nudged: r.nudged };
       if (r.nudge) this.toast(ARRIVAL_NUDGE, 'good');
     }
@@ -557,14 +563,14 @@ export class UI {
     const visible = this.ctx.settings.tutorial && !sim.state.tutorial.dismissed;
     if (visible) {
       dismissTutorial(sim);
-      this.toast('Consejos ocultos. F1 los vuelve a mostrar', 'info');
+      this.hud.toast('Consejos ocultos. F1 los vuelve a mostrar', 'info', 'consejos');
     } else {
       resumeTutorial(sim);
       if (!this.ctx.settings.tutorial) {
         this.ctx.settings.tutorial = true;
         this.ctx.saveSettings();
       }
-      this.toast('Consejos activados. F1 los oculta', 'info');
+      this.hud.toast('Consejos activados. F1 los oculta', 'info', 'consejos');
     }
   }
 

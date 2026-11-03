@@ -64,16 +64,37 @@ function addModule(state: GameState, type: string, level: number, x: number, z: 
   return { m, layout: computeLayout(state.ship) };
 }
 
-/** Malla sólida fusionada de un nivel. */
-function levelSolid(root: THREE.Object3D, l: number): THREE.Mesh {
-  return root.getObjectByName(`nivel-${l}-solido`) as THREE.Mesh;
+/** Mallas fusionadas de un tipo de un nivel, una por grupo de columnas (`GROUP_COLS`), en orden. */
+function levelGroups(root: THREE.Object3D, l: number, kind: 'solido' | 'muebles'): THREE.Mesh[] {
+  const prefix = `nivel-${l}-${kind}-`;
+  const out: [number, THREE.Mesh][] = [];
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.name.startsWith(prefix)) out.push([Number(o.name.slice(prefix.length)), o]);
+  });
+  return out.sort((a, b) => a[0] - b[0]).map(([, m]) => m);
 }
 
-function sumAttr(mesh: THREE.Mesh, name: string): number {
-  const a = mesh.geometry.getAttribute(name).array as ArrayLike<number>;
+/** Mallas sólidas fusionadas de la estructura de un nivel (una por grupo de columnas). */
+function levelSolid(root: THREE.Object3D, l: number): THREE.Mesh[] {
+  return levelGroups(root, l, 'solido');
+}
+
+/** Identidad de unas mallas (para comprobar que se reutilizan sin compararlas a fondo). */
+function ids(meshes: THREE.Mesh[]): string[] {
+  return meshes.map((m) => m.uuid);
+}
+
+function sumAttr(mesh: THREE.Mesh | THREE.Mesh[], name: string): number {
   let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i]!;
+  for (const m of Array.isArray(mesh) ? mesh : [mesh]) {
+    const a = m.geometry.getAttribute(name).array as ArrayLike<number>;
+    for (let i = 0; i < a.length; i++) s += a[i]!;
+  }
   return s;
+}
+
+function vertexCount(meshes: THREE.Mesh[]): number {
+  return meshes.reduce((a, m) => a + m.geometry.getAttribute('position').count, 0);
 }
 
 /** Contexto de animación suelto para probar un comportamiento dinámico fuera de ShipView. */
@@ -611,9 +632,10 @@ describe('niveles de mejora', () => {
     expect(view.getPropDynamic(shelf.key)!.model.tier).toBe(1);
     const tris0 = view.stats.triangles;
     const struct0 = view.stats.structRebuilds;
-    const other = levelSolid(root, 0);
-    const walls = levelSolid(root, alm.level);
-    const furniture0 = root.getObjectByName(`nivel-${alm.level}-muebles`);
+    const other = ids(levelSolid(root, 0));
+    const walls = ids(levelSolid(root, alm.level));
+    const furniture0 = ids(levelGroups(root, alm.level, 'muebles'));
+    const bakes0 = view.stats.furnitureBakes;
     alm.tier = 2;
     state.ship.revision++;
     layout = computeLayout(state.ship);
@@ -622,10 +644,15 @@ describe('niveles de mejora', () => {
     expect(view.stats.triangles).toBeGreaterThan(tris0);
     expect(view.stats.lastRebuildLevels).toBe(1);
     expect(view.stats.structRebuilds).toBe(struct0);
-    expect(levelSolid(root, 0)).toBe(other);
-    // la estructura del nivel ni se reconstruye ni se vuelve a fusionar: solo cambian los muebles
-    expect(levelSolid(root, alm.level)).toBe(walls);
-    expect(root.getObjectByName(`nivel-${alm.level}-muebles`)).not.toBe(furniture0);
+    expect(ids(levelSolid(root, 0))).toEqual(other);
+    // la estructura del nivel ni se reconstruye ni se vuelve a fusionar: solo cambian los muebles,
+    // y de ellos solo el grupo de columnas del almacén
+    expect(ids(levelSolid(root, alm.level))).toEqual(walls);
+    const furniture1 = ids(levelGroups(root, alm.level, 'muebles'));
+    expect(furniture1.length).toBe(furniture0.length);
+    expect(furniture0.length).toBeGreaterThan(1);
+    expect(furniture1.filter((u, i) => u !== furniture0[i]).length).toBe(1);
+    expect(view.stats.furnitureBakes - bakes0).toBe(1);
   });
 
   it('una mejora en obras muestra andamio o caballete y un cartel con su barra de progreso', () => {
@@ -665,12 +692,13 @@ describe('reconstrucción por niveles (QA P4)', () => {
     view.sync(state, layout, OPTS, 1 / 60, camera);
     const alm = state.ship.modules.find((m) => m.type === 'almacen')!;
     const mesh = levelSolid(root, alm.level);
+    const meshIds = ids(mesh);
     const before = sumAttr(mesh, 'color');
     const lr = view.stats.levelRebuilds;
     alm.condition = 30;
     view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.levelRebuilds).toBe(lr);
-    expect(levelSolid(root, alm.level)).toBe(mesh);
+    expect(ids(levelSolid(root, alm.level))).toEqual(meshIds);
     const dark = sumAttr(mesh, 'color');
     expect(dark).toBeLessThan(before - 1);
     alm.status = 'broken';
@@ -699,15 +727,20 @@ describe('reconstrucción por niveles (QA P4)', () => {
     view.sync(state, computeLayout(state.ship), OPTS, 1 / 60, camera);
     expect(view.stats.levelRebuilds).toBe(lr);
     expect(view.getSiteObject(m.id)).not.toBeNull();
-    const l0 = levelSolid(root, 0);
-    const l2 = levelSolid(root, 2);
+    const l0 = ids(levelSolid(root, 0));
+    const l2 = ids(levelSolid(root, 2));
+    const l1 = ids(levelSolid(root, 1));
     m.status = 'active';
     state.ship.revision++;
     const layout = computeLayout(state.ship);
     view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.lastRebuildLevels).toBe(1);
-    expect(levelSolid(root, 0)).toBe(l0);
-    expect(levelSolid(root, 2)).toBe(l2);
+    expect(ids(levelSolid(root, 0))).toEqual(l0);
+    expect(ids(levelSolid(root, 2))).toEqual(l2);
+    // del nivel de la obra solo se vuelven a fusionar los grupos de sus columnas (x = 5..7)
+    const l1b = ids(levelSolid(root, 1));
+    expect(l1b.length).toBe(l1.length);
+    expect(l1b.filter((u, i) => u !== l1[i]).length).toBeLessThan(l1.length);
     expect(view.getPropObject(layout.props.find((p) => p.moduleId === m.id)!.key)).not.toBeNull();
     // estructura reconstruida solo en su columna y las vecinas
     expect(view.stats.structRebuilds - sr).toBeLessThanOrEqual(3);
@@ -715,7 +748,17 @@ describe('reconstrucción por niveles (QA P4)', () => {
     fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
     for (let l = 0; l <= layout.levels; l++) {
-      for (const name of [`nivel-${l}-solido`, `nivel-${l}-muebles`, `nivel-${l}-cristal-int`, `nivel-${l}-lamparas`]) {
+      for (const kind of ['solido', 'muebles'] as const) {
+        const a = levelGroups(root, l, kind);
+        const b = levelGroups(fresh.root, l, kind);
+        expect(a.map((m) => m.name), `${l} ${kind}`).toEqual(b.map((m) => m.name));
+        a.forEach((m, i) => {
+          expect(m.geometry.getAttribute('position').count, m.name).toBe(b[i]!.geometry.getAttribute('position').count);
+          expect(sumAttr(m, 'position'), m.name).toBeCloseTo(sumAttr(b[i]!, 'position'), 1);
+          expect(sumAttr(m, 'color'), m.name).toBeCloseTo(sumAttr(b[i]!, 'color'), 1);
+        });
+      }
+      for (const name of [`nivel-${l}-cristal-ext`, `nivel-${l}-faroles`, `nivel-${l}-cristal-int`, `nivel-${l}-lamparas`]) {
         const a = root.getObjectByName(name) as THREE.Mesh | undefined;
         const b = fresh.root.getObjectByName(name) as THREE.Mesh | undefined;
         expect(!!a, name).toBe(!!b);
@@ -742,7 +785,7 @@ describe('reconstrucción por niveles (QA P4)', () => {
     const fresh = newView();
     fresh.view.sync(state, layout, OPTS, 1 / 60, camera);
     expect(view.stats.triangles).toBe(fresh.view.stats.triangles);
-    for (let l = 0; l <= layout.levels; l++) expect(levelSolid(root, l).geometry.getAttribute('position').count).toBe(levelSolid(fresh.root, l).geometry.getAttribute('position').count);
+    for (let l = 0; l <= layout.levels; l++) expect(vertexCount(levelSolid(root, l))).toBe(vertexCount(levelSolid(fresh.root, l)));
   });
 
   it('las esferas envolventes de las mallas fusionadas contienen todos sus vértices (recorte correcto)', () => {
