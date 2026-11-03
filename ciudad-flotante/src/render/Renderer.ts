@@ -532,7 +532,9 @@ export class Renderer {
     // Fuerza (o quita) el banco de peces visual: peces('si') / peces().
     registerDebug('peces', ((on?: unknown) => (this.forceFish = !!on)) as never);
     // Lleva el barco a Puerto Esperanza, `millas` dentro del puerto (pruebas visuales). Con
-    // `llegado` (por defecto) se da la llegada por hecha para que no salte la pantalla final.
+    // `llegado` (por defecto) la llegada queda hecha y vista: ni fuegos ni pantalla final (la UI la
+    // da por vista con su orden `uiHistoriaVista`, como al cargar una partida ya llegada). Con
+    // `llegado = false` la llegada ocurre al entrar, como en una partida.
     registerDebug('puerto', ((millas = 6, llegado = true) => {
       const st = this.lastState;
       const port = REGIONS[FINAL_REGION];
@@ -546,7 +548,11 @@ export class Renderer {
       if (vv.route[vv.route.length - 1] !== port.id) vv.route.push(port.id);
       st.story ??= { pages: [], revealed: false, arrived: false };
       st.story.revealed = true;
-      if (llegado) st.story.arrived = true;
+      if (llegado) {
+        st.story.arrived = true;
+        const cmd = (window as unknown as { __game?: { cmd?: Record<string, (() => unknown) | undefined> } }).__game?.cmd;
+        cmd?.['uiHistoriaVista']?.();
+      }
       this.lastArrived = st.story.arrived;
       this.region = null;
       return this.harbor.debugInfo();

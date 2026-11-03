@@ -19,14 +19,16 @@ import {
   harborSpan,
   HarborView,
   MOOR_MIN_Z,
+  PREWARM_MILES,
   PROMENADE_Z,
   segmentHitsBox,
   TOWER_BAND,
   TOWER_Z,
+  towerPrewarm,
   towerVisibility,
   towerX,
 } from '../src/render/world/harbor';
-import { channelBuoyModel, greenTowerModel, harborBoatModel, houseboatClusterModel, promenadeModel, TOWER_LIGHT_Y, type HarborModel } from '../src/render/world/harborModels';
+import { channelBuoyModel, greenTowerModel, greenTowerSteps, harborBoatModel, houseboatClusterModel, houseboatClusterSteps, promenadeModel, promenadeSteps, TOWER_LIGHT_Y, type HarborModel } from '../src/render/world/harborModels';
 import { Kit } from '../src/render/world/kit';
 import { Clouds } from '../src/render/world/clouds';
 import { waterlineProfile } from '../src/render/world/hullProfile';
@@ -702,9 +704,15 @@ describe('geografía del puerto', () => {
 describe('vista del puerto', () => {
   const water = (): number => 1;
   const shared = createGlowShared();
+  /** Vista que construye todo en el mismo frame (las pruebas de reparto fijan su presupuesto). */
+  const view = (q: 'baja' | 'media' | 'alta'): HarborView => {
+    const h = new HarborView(shared, q);
+    h.buildBudgetMs = Infinity;
+    return h;
+  };
 
   it('en la aproximación: la luz verde, las boyas de la bocana y el puerto solo más allá de ella', () => {
-    const h = new HarborView(shared, 'media');
+    const h = view('media');
     const st = harborState('approach', 20);
     h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
     const span = harborSpan(st)!;
@@ -727,7 +735,7 @@ describe('vista del puerto', () => {
   });
 
   it('en el puerto: grupos a ambos lados del canal, botes y, de noche, mil luces', () => {
-    const h = new HarborView(shared, 'media');
+    const h = view('media');
     const st = harborState('port', 30);
     h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
     expect(h.mode).toBe('port');
@@ -767,7 +775,7 @@ describe('vista del puerto', () => {
   }, 30_000);
 
   it('el puerto viaja con el agua: avanzar millas lo desplaza lo mismo que el mar', () => {
-    const h = new HarborView(shared, 'baja');
+    const h = view('baja');
     const st = harborState('port', 30);
     h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
     const g = h.root.children.find((c) => /^\d+[ab]$/.test(String(c.userData['harbor'])) && c.position.x > 0 && c.position.x < 800)!;
@@ -781,7 +789,7 @@ describe('vista del puerto', () => {
   });
 
   it('los botes van y vienen sin cruzar nunca el casco del barco', () => {
-    const h = new HarborView(shared, 'media');
+    const h = view('media');
     const st = harborState('port', 10);
     h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
     const boats = (): THREE.Object3D[] => h.root.children.filter((c) => String(c.userData['harbor']).startsWith('bote-'));
@@ -813,15 +821,19 @@ describe('vista del puerto', () => {
 
   it('al aparecer el puerto construye los modelos poco a poco (sin tirones) y no amarra sobre un naufragio', () => {
     const h = new HarborView(shared, 'media');
+    h.buildBudgetMs = 0;
     const st = harborState('port', 20);
     h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
-    const first = h.clusterCount;
-    expect(first).toBeGreaterThan(0);
-    for (let i = 0; i < 20; i++) h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
-    expect(h.clusterCount).toBeGreaterThan(first);
+    // con presupuesto 0, un paso de construcción por frame: el primer frame aún no hay grupos
+    expect(h.clusterCount).toBe(0);
+    expect(h.pendingModels).toBeGreaterThan(0);
+    let frames = 1;
+    for (; frames < 3000 && h.clusterCount < 6; frames++) h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+    expect(frames).toBeGreaterThan(20);
+    expect(h.clusterCount).toBeGreaterThan(5);
     h.dispose();
     // Con un naufragio a 90 m por estribor, ningún grupo a menos de su radio
-    const h2 = new HarborView(shared, 'media');
+    const h2 = view('media');
     const st2 = harborState('port', 20);
     st2.voyage.sightings = [{ id: 1, kind: 'naufragio', name: 'Restos', expiresAt: 1e6, side: 1, distance: 90, x: 200, eventId: 1 }];
     h2.update(st2, 0.1, 0, water, atmAt(12), true, HULL);
@@ -833,7 +845,7 @@ describe('vista del puerto', () => {
   }, 30_000);
 
   it('al dejar el puerto atrás todo se desvanece y se libera', () => {
-    const h = new HarborView(shared, 'media');
+    const h = view('media');
     const st = harborState('port', 70);
     h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
     expect(h.clusterCount).toBeGreaterThan(5);
@@ -850,8 +862,8 @@ describe('vista del puerto', () => {
   }, 30_000);
 
   it('una partida cargada en el puerto lo muestra igual (determinista)', () => {
-    const a = new HarborView(shared, 'media');
-    const b = new HarborView(shared, 'media');
+    const a = view('media');
+    const b = view('media');
     const st = harborState('port', 42);
     a.update(st, 0.1, 0, water, atmAt(12), true, HULL);
     b.update(JSON.parse(JSON.stringify(st)) as GameState, 0.1, 0, water, atmAt(12), true, HULL);
@@ -864,6 +876,130 @@ describe('vista del puerto', () => {
     expect(sig(a)).toBe(sig(b));
     a.dispose();
     b.dispose();
+  }, 30_000);
+  it('al cargar una partida en el puerto lo construye por pasos y las piezas aparecen fundiéndose (ronda 2: 0,9 s de tirón)', () => {
+    const st = harborState('port', 30);
+    const full = view('media');
+    full.update(st, 0.1, 0, water, atmAt(12), true, HULL);
+    const h = new HarborView(shared, 'media');
+    h.buildBudgetMs = 0;
+    h.update(st, 0.1, 0, water, atmAt(12), true, HULL);
+    // primer frame: solo lo pequeño (boyas, botes) y un paso de lo grande
+    expect(h.clusterCount).toBe(0);
+    expect(h.towerPosition).toBeNull();
+    let frames = 1;
+    let towerOpacity = -1;
+    for (; frames < 3000 && (h.pendingModels || h.clusterCount < full.clusterCount || !h.towerPosition); frames++) {
+      h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+      const torre = h.root.children.find((c) => c.userData['harbor'] === 'torre');
+      // lo que se va construyendo entra fundiéndose (no de golpe)
+      if (torre && towerOpacity < 0) towerOpacity = ((torre.children[0] as THREE.Mesh).material as THREE.Material).opacity;
+    }
+    expect(frames).toBeGreaterThan(30);
+    expect(h.clusterCount).toBe(full.clusterCount);
+    expect(h.towerPosition!.x).toBeCloseTo(full.towerPosition!.x, 3);
+    expect(towerOpacity).toBeGreaterThan(0);
+    expect(towerOpacity).toBeLessThan(0.2);
+    h.dispose();
+    full.dispose();
+  }, 30_000);
+
+  it('la torre se construye por adelantado en las millas previas, sin tirón al asomar la luz verde', () => {
+    // a PREWARM_MILES / 2 millas de que asome: aún no se ve, pero se va construyendo
+    const st = harborState('approach', APPROACH_MILES + PREWARM_MILES / 2);
+    expect(harborSpan(st)).toBeNull();
+    expect(towerPrewarm(st)).toBe(true);
+    expect(towerPrewarm(harborState('approach', APPROACH_MILES + PREWARM_MILES + 1))).toBe(false);
+    expect(towerPrewarm(harborState('normal', 1))).toBe(false);
+    const h = new HarborView(shared, 'media');
+    h.buildBudgetMs = 0;
+    h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+    expect(h.pendingModels).toBe(1);
+    expect(h.root.children.length).toBe(0);
+    // aunque pase más de medio minuto sin puerto a la vista, lo preparado no se libera
+    for (let i = 0; i < 400; i++) h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+    expect(h.pendingModels).toBe(0);
+    expect(h.cachedModels).toBe(1);
+    // al asomar, la torre aparece en ese mismo frame (con presupuesto 0 no podría construirla en uno)
+    st.voyage.regionDistance = st.voyage.regionLength - (APPROACH_MILES - 0.5);
+    h.update(st, 0.1, 0, water, atmAt(12), false, HULL);
+    expect(h.towerPosition).not.toBeNull();
+    h.dispose();
+  }, 30_000);
+
+  it('los modelos por pasos dan exactamente el mismo resultado que de una vez', () => {
+    const same = (a: HarborModel, b: HarborModel): void => {
+      expect(a.geo.getAttribute('position').count).toBe(b.geo.getAttribute('position').count);
+      expect(Array.from(a.geo.getAttribute('position').array as Float32Array)).toEqual(Array.from(b.geo.getAttribute('position').array as Float32Array));
+      expect(a.lights.length).toBe(b.lights.length);
+    };
+    const steps = (it: Generator<void, HarborModel, void>): [HarborModel, number] => {
+      let n = 0;
+      let r = it.next();
+      while (!r.done) {
+        n++;
+        r = it.next();
+      }
+      return [r.value, n];
+    };
+    const [t, nt] = steps(greenTowerSteps(77));
+    same(t, greenTowerModel(77));
+    expect(nt).toBeGreaterThan(20);
+    const [c, nc] = steps(houseboatClusterSteps(1037));
+    same(c, houseboatClusterModel(1037));
+    expect(nc).toBeGreaterThan(5);
+    const [p, np] = steps(promenadeSteps(517, PROMENADE_Z));
+    same(p, promenadeModel(517, PROMENADE_Z));
+    expect(np).toBeGreaterThan(5);
+  });
+
+  it('una partida nueva o cargada fuera del puerto lo retira en el acto, sin fundido (ronda 2: se veía 3 s)', () => {
+    const h = view('media');
+    h.update(harborState('port', 6), 0.1, 0, water, atmAt(22), true, HULL);
+    for (let i = 0; i < 5; i++) h.update(harborState('port', 6), 0.1, 0, water, atmAt(22), false, HULL);
+    expect(h.root.children.length).toBeGreaterThan(20);
+    const fresh = createNewGame(3);
+    h.update(fresh, 0.1, 0, water, atmAt(22), true, HULL);
+    expect(h.root.children.length).toBe(0);
+    expect(h.towerPosition).toBeNull();
+    expect(h.clusterCount + h.boatCount).toBe(0);
+    // y cargar otra vez en el puerto lo vuelve a poner entero y sin fundido (modelos ya hechos)
+    h.update(harborState('port', 6), 0.1, 0, water, atmAt(22), true, HULL);
+    expect(h.clusterCount).toBeGreaterThan(5);
+    const anyGroup = h.root.children.find((c) => /^\d+[abc]$/.test(String(c.userData['harbor'])))!;
+    expect(((anyGroup.children[0] as THREE.Mesh).material as THREE.Material).opacity).toBe(1);
+    h.dispose();
+  }, 30_000);
+
+  it('cambiar la calidad pone o quita en el acto los reflejos de las piezas que ya están', () => {
+    const h = view('baja');
+    const st = harborState('port', 6);
+    h.update(st, 0.1, 0, water, atmAt(22), true, HULL);
+    const reflections = (): number => {
+      let n = 0;
+      h.root.traverse((o) => {
+        if (o.name === 'reflejos-luces') n++;
+      });
+      return n;
+    };
+    expect(h.mirrorCount.with).toBe(0);
+    expect(h.mirrorCount.without).toBeGreaterThan(10);
+    expect(reflections()).toBe(0);
+    h.setQuality('media');
+    expect(h.mirrorCount.without).toBe(0);
+    expect(h.mirrorCount.with).toBeGreaterThan(10);
+    expect(reflections()).toBe(h.mirrorCount.with);
+    // se encienden de noche como los de las piezas nuevas
+    for (let i = 0; i < 3; i++) h.update(st, 0.1, 0, water, atmAt(22), false, HULL);
+    let lit = 0;
+    h.root.traverse((o) => {
+      if (o.name === 'reflejos-luces' && o.visible) lit++;
+    });
+    expect(lit).toBeGreaterThan(3);
+    h.setQuality('baja');
+    expect(h.mirrorCount.with).toBe(0);
+    expect(reflections()).toBe(0);
+    h.dispose();
   }, 30_000);
 });
 

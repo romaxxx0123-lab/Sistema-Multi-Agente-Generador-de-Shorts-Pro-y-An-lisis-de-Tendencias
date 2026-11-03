@@ -18,6 +18,12 @@
  *
  * La torre, enorme y lejana, se desplaza más despacio que el agua (`TOWER_PARALLAX`): así sigue a
  * la vista durante toda la estancia. Ningún grupo de barcos se amarra en su franja lateral.
+ *
+ * Sin tirones (ronda de QA 2): los modelos grandes se construyen por pasos, repartidos entre frames
+ * con un presupuesto (`buildBudgetMs`), también al cargar una partida en el puerto (las piezas
+ * aparecen fundiéndose); la torre se adelanta en los frames tranquilos de las últimas millas antes
+ * de que asome. Una partida nueva o cargada retira en el acto el puerto anterior, y la calidad
+ * gráfica pone o quita en caliente los reflejos de las luces.
  */
 import * as THREE from 'three';
 import { REGIONS } from '../../data/regions';
@@ -31,15 +37,16 @@ import { MERCHANT_STATION_X } from './sightings';
 import { createLitUniforms, GlowPoints, glowGeometry, lightsLevel, litMaterial, type GlowShared, type LitUniforms } from './glow';
 import {
   channelBuoyModel,
-  greenTowerModel,
+  greenTowerSteps,
   HARBOR_BOAT_KINDS,
   harborBoatModel,
-  houseboatClusterModel,
+  houseboatClusterSteps,
   PROMENADE_LEN,
-  promenadeModel,
+  promenadeSteps,
   TOWER_LIGHT_Y,
   type HarborBoatKind,
   type HarborModel,
+  type ModelSteps,
 } from './harborModels';
 
 type WaterFn = (x: number, z: number) => number;
@@ -78,6 +85,8 @@ const PROMENADE_VARIANTS = 4;
 const SIGHTING_RADIUS: Partial<Record<string, number>> = { naufragio: 22, isla: 42, estructura: 26 };
 /** Millas tras dejar el puerto en que aún se ve a popa. */
 const LEAVE_MILES = 75;
+/** Millas antes de que asome la luz verde en que se empieza a construir la torre por adelantado. */
+export const PREWARM_MILES = 12;
 
 export type HarborMode = 'approach' | 'port' | 'leaving';
 
@@ -120,6 +129,17 @@ export function harborSpan(st: GameState): HarborSpan | null {
 export function towerX(s: number): number {
   if (s < 0) return TOWER_ENTRY_X + (Math.min(APPROACH_MILES, -s) / APPROACH_MILES) * (TOWER_HORIZON_X - TOWER_ENTRY_X);
   return TOWER_ENTRY_X - TOWER_PARALLAX * DRIFT_PER_MILE * s;
+}
+
+/**
+ * ¿Hay que ir preparando la torre? Rumbo a Puerto Esperanza y a menos de `PREWARM_MILES` millas de
+ * que asome en el horizonte (luego, `harborSpan` ya da la aproximación).
+ */
+export function towerPrewarm(st: GameState): boolean {
+  const v = st.voyage;
+  if (v.regionId === FINAL_REGION || v.chosenNext !== FINAL_REGION) return false;
+  const len = v.regionLength > 0 ? v.regionLength : (REGIONS[v.regionId]?.length ?? 100);
+  return len - Math.max(0, fin(v.regionDistance)) <= APPROACH_MILES + PREWARM_MILES;
 }
 
 /** Visibilidad de la torre (asoma en el horizonte al empezar la aproximación; se pierde a popa). */
@@ -193,6 +213,9 @@ interface Entry {
   lit: LitUniforms;
   halos: GlowPoints;
   mirror: GlowPoints | null;
+  /** Halos del modelo (compartidos) y si lleva reflejo en el agua con calidad media o alta. */
+  halosGeo: THREE.BufferGeometry;
+  mirrorable: boolean;
   fade: number;
   leaving: boolean;
   x: number;
@@ -219,6 +242,12 @@ interface Boat {
 }
 
 const BEAM_COLOR = '#55ff8c';
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+/** Un modelo pequeño (boyas, botes) como construcción de un solo paso. */
+function* oneStep(make: () => HarborModel): ModelSteps {
+  return make();
+}
 
 export class HarborView {
   readonly root = new THREE.Group();
@@ -235,7 +264,12 @@ export class HarborView {
   private level = 0;
   /** Obstáculos para los botes (el mercado del muelle y los mercantes que navegan a la par). */
   private obstacles: { x: number; z: number; r: number }[] = [];
-  private builtThisFrame = 0;
+  /** Modelos a medio construir (por pasos) y límite de tiempo del frame para construirlos. */
+  private readonly building = new Map<string, ModelSteps>();
+  private frameDeadline = 0;
+  private steppedThisFrame = false;
+  /** Milisegundos por frame para construir modelos (siempre al menos un paso). Infinity = todo ya. */
+  buildBudgetMs = 4;
   private towerVis = 0;
   /** Segundos sin puerto a la vista (para liberar los modelos guardados). */
   private idle = 0;
@@ -248,8 +282,40 @@ export class HarborView {
     this.quality = quality;
   }
 
+  /**
+   * Cambia la calidad. Además de la ventana del puerto y de las piezas nuevas, pone o quita en el
+   * acto los reflejos de las luces de las piezas que ya están (sin reflejo con calidad baja).
+   */
   setQuality(q: Quality): void {
     this.quality = q;
+    const all = [...this.clusters.values(), ...this.piers.values(), ...this.buoys.values(), ...(this.tower ? [this.tower] : [])];
+    for (const e of all) {
+      if (q === 'baja' && e.mirror) {
+        e.mirror.points.removeFromParent();
+        e.mirror.dispose();
+        e.mirror = null;
+      } else if (q !== 'baja' && !e.mirror && e.mirrorable) {
+        e.mirror = this.makeMirror(e.halosGeo);
+        e.group.add(e.mirror.points);
+      }
+    }
+  }
+
+  /** Piezas que llevan reflejo de sus luces en el agua (pruebas y depuración). */
+  get mirrorCount(): { with: number; without: number } {
+    let w = 0;
+    let wo = 0;
+    for (const e of [...this.clusters.values(), ...this.piers.values(), ...this.buoys.values(), ...(this.tower ? [this.tower] : [])]) {
+      if (!e.mirrorable) continue;
+      if (e.mirror) w++;
+      else wo++;
+    }
+    return { with: w, without: wo };
+  }
+
+  /** Modelos a medio construir (pruebas). */
+  get pendingModels(): number {
+    return this.building.size;
   }
 
   get mode(): HarborMode | null {
@@ -272,20 +338,29 @@ export class HarborView {
   /* ---------------- Modelos ---------------- */
 
   /**
-   * Modelo de una variante (se construye una vez). Para no dar tirones cuando el puerto aparece,
-   * se construye como mucho una variante nueva por frame (salvo al cargar partida): si ya se
-   * construyó otra, devuelve null y la pieza aparece en el frame siguiente.
+   * Modelo de una variante (se construye una vez). Para no dar tirones, los modelos se construyen
+   * por pasos dentro del presupuesto del frame (al menos un paso por frame): mientras no está
+   * terminado devuelve null y la pieza aparece (fundiéndose) en un frame siguiente. `force` lo
+   * termina en el acto (modelos pequeños: boyas y botes).
    */
-  private variant(key: string, build: () => HarborModel, force = false): Variant | null {
+  private variant(key: string, steps: () => ModelSteps, force = false): Variant | null {
     let v = this.variants.get(key);
-    if (!v) {
-      if (this.builtThisFrame >= 1 && !force) return null;
-      this.builtThisFrame++;
-      const model = build();
-      v = { model, halos: glowGeometry(model.lights) };
-      this.variants.set(key, v);
-    }
+    if (v) return v;
+    if (!force && this.steppedThisFrame && now() >= this.frameDeadline) return null;
+    let it = this.building.get(key);
+    if (!it) this.building.set(key, (it = steps()));
+    this.steppedThisFrame = true;
+    let r = it.next();
+    while (!r.done && (force || now() < this.frameDeadline)) r = it.next();
+    if (!r.done) return null;
+    this.building.delete(key);
+    v = { model: r.value, halos: glowGeometry(r.value.lights) };
+    this.variants.set(key, v);
     return v;
+  }
+
+  private makeMirror(halos: THREE.BufferGeometry): GlowPoints {
+    return new GlowPoints(this.shared, halos, { mirror: true, minPx: 3, maxPx: 80, fogFloor: 0.15 });
   }
 
   private makeEntry(key: string, v: Variant, x: number, z: number, yaw: number, instant: boolean, withMirror: boolean): Entry {
@@ -300,15 +375,16 @@ export class HarborView {
     group.add(mesh);
     const halos = new GlowPoints(this.shared, v.halos, { minPx: 3, maxPx: 64, fogFloor: 0.22 });
     group.add(halos.points);
+    const mirrorable = withMirror && v.model.lights.length > 0;
     let mirror: GlowPoints | null = null;
-    if (withMirror && this.quality !== 'baja' && v.model.lights.length) {
-      mirror = new GlowPoints(this.shared, v.halos, { mirror: true, minPx: 3, maxPx: 80, fogFloor: 0.15 });
+    if (mirrorable && this.quality !== 'baja') {
+      mirror = this.makeMirror(v.halos);
       group.add(mirror.points);
     }
     group.rotation.y = yaw;
     group.position.set(x, WATERLINE_Y, z);
     this.root.add(group);
-    return { key, group, mat, lit, halos, mirror, fade: instant ? 1 : 0, leaving: false, x, z, pitch: 0, roll: 0, bob: 0.25, radius: v.model.radius };
+    return { key, group, mat, lit, halos, mirror, halosGeo: v.halos, mirrorable, fade: instant ? 1 : 0, leaving: false, x, z, pitch: 0, roll: 0, bob: 0.25, radius: v.model.radius };
   }
 
   private disposeEntry(e: Entry): void {
@@ -318,9 +394,12 @@ export class HarborView {
     e.mirror?.dispose();
   }
 
-  private makeTower(x: number, instant: boolean): NonNullable<HarborView['tower']> {
-    // La torre es el hito del puerto: se construye siempre en cuanto hace falta.
-    const v = this.variant('torre', () => greenTowerModel(77), true)!;
+  /** Modelo de la torre (por pasos: es el más grande, ~50–170 ms). */
+  private towerVariant(): Variant | null {
+    return this.variant('torre', () => greenTowerSteps(77));
+  }
+
+  private makeTower(v: Variant, x: number, instant: boolean): NonNullable<HarborView['tower']> {
     const e = this.makeEntry('torre', v, x, TOWER_Z, -0.35, instant, true);
     e.bob = 0;
     const star = new GlowPoints(this.shared, [{ p: [0, TOWER_LIGHT_Y, 0], color: '#22e86a', size: 36 }], { style: 'star', minPx: 15, maxPx: 140, fogFloor: 0.85, dimSmall: false });
@@ -346,7 +425,31 @@ export class HarborView {
     this.level = lightsLevel(atm.day, atm.overcast, atm.fogAmount);
     const seed = (Math.abs(Math.floor(fin(st.seed, 1))) % 9973) + 1;
     const [REMOVE_X, SPAWN_X] = WINDOW[this.quality];
-    this.builtThisFrame = 0;
+    this.frameDeadline = now() + this.buildBudgetMs;
+    this.steppedThisFrame = false;
+    // Partida nueva o cargada: lo que hubiera del puerto anterior se retira en el acto (lo que
+    // corresponda a la partida nueva se vuelve a poner enseguida, sin fundido, con los modelos ya
+    // construidos).
+    if (newSim) this.clearPieces();
+
+    // --- Torre de la luz verde (la primera: es el hito del puerto) ---
+    if (span) {
+      const x = towerX(span.s);
+      if (!this.tower) {
+        const v = this.towerVariant();
+        if (v) this.tower = this.makeTower(v, x, newSim);
+      }
+      if (this.tower) {
+        this.tower.leaving = false;
+        this.tower.x = x;
+        this.tower.z = TOWER_Z;
+      }
+    } else if (this.tower) {
+      this.tower.leaving = true;
+    } else if (towerPrewarm(st)) {
+      // A punto de asomar: se va construyendo en los frames tranquilos.
+      this.towerVariant();
+    }
     // Avistamientos que caen dentro del puerto (naufragios, islas, estructuras): ningún grupo de
     // barcos-hogar se amarra encima.
     const blocked = st.voyage.sightings
@@ -367,7 +470,7 @@ export class HarborView {
           if (blocked.some((b) => Math.hypot(b.x - x, b.z - s.z) < b.r + 24)) continue;
           let e = this.clusters.get(s.key);
           if (!e) {
-            const v = this.variant(`grupo:${s.variant}`, () => houseboatClusterModel(1000 + s.variant * 37), newSim);
+            const v = this.variant(`grupo:${s.variant}`, () => houseboatClusterSteps(1000 + s.variant * 37));
             if (!v) continue;
             e = this.makeEntry(s.key, v, x, s.z, s.yaw, newSim, true);
             this.clusters.set(s.key, e);
@@ -401,7 +504,7 @@ export class HarborView {
         let e = this.piers.get(key);
         if (!e) {
           const vi = Math.floor(hash01(j, seed, 61) * PROMENADE_VARIANTS);
-          const v = this.variant(`pantalan:${vi}`, () => promenadeModel(500 + vi * 17, PROMENADE_Z), newSim);
+          const v = this.variant(`pantalan:${vi}`, () => promenadeSteps(500 + vi * 17, PROMENADE_Z));
           if (!v) continue;
           e = this.makeEntry(key, v, x, 0, 0, newSim, true);
           e.bob = 0.12;
@@ -431,7 +534,7 @@ export class HarborView {
           buoyWant.add(key);
           let e = this.buoys.get(key);
           if (!e) {
-            const v = this.variant(`boya:${color}`, () => channelBuoyModel(color), true)!;
+            const v = this.variant(`boya:${color}`, () => oneStep(() => channelBuoyModel(color)), true)!;
             e = this.makeEntry(key, v, x, side * BUOY_Z, 0, newSim, true);
             e.bob = 0.8;
             e.group.userData['flash'] = color === 'red' ? 4 : 3;
@@ -447,17 +550,6 @@ export class HarborView {
         e.leaving = true;
         e.x -= ds;
       }
-    }
-
-    // --- Torre de la luz verde ---
-    if (span) {
-      const x = towerX(span.s);
-      if (!this.tower) this.tower = this.makeTower(x, newSim);
-      this.tower.leaving = false;
-      this.tower.x = x;
-      this.tower.z = TOWER_Z;
-    } else if (this.tower) {
-      this.tower.leaving = true;
     }
 
     // --- Botes que van y vienen ---
@@ -550,19 +642,30 @@ export class HarborView {
         t.birds.mesh.visible = gulls > 0.01 || t.birds.mesh.count > 0;
       }
     }
-    this.releaseIfIdle(dt);
+    this.releaseIfIdle(dt, !span && towerPrewarm(st));
   }
 
   /** Libera los modelos guardados cuando el puerto lleva un rato fuera de la vista. */
-  private releaseIfIdle(dt: number): void {
-    const empty = !this.span && !this.tower && this.clusters.size === 0 && this.piers.size === 0 && this.buoys.size === 0 && this.boats.length === 0;
+  private releaseIfIdle(dt: number, prewarm: boolean): void {
+    const empty = !this.span && !prewarm && !this.tower && this.clusters.size === 0 && this.piers.size === 0 && this.buoys.size === 0 && this.boats.length === 0;
     this.idle = empty ? this.idle + dt : 0;
-    if (this.idle < RELEASE_AFTER_S || this.variants.size === 0) return;
+    if (this.idle < RELEASE_AFTER_S || (this.variants.size === 0 && this.building.size === 0)) return;
     for (const v of this.variants.values()) {
       v.model.geo.dispose();
       v.halos.dispose();
     }
     this.variants.clear();
+    this.building.clear();
+  }
+
+  /** Retira en el acto todas las piezas (no los modelos guardados). */
+  private clearPieces(): void {
+    for (const m of [this.clusters, this.piers, this.buoys]) {
+      for (const e of m.values()) this.disposeEntry(e);
+      m.clear();
+    }
+    this.disposeTower();
+    this.towerVis = 0;
   }
 
   /** Modelos guardados (pruebas). */
@@ -624,7 +727,7 @@ export class HarborView {
 
   private spawnBoat(i: number, x: number, z: number, instant: boolean): Boat {
     const kind = HARBOR_BOAT_KINDS[i % HARBOR_BOAT_KINDS.length]!;
-    const v = this.variant(`bote:${kind}:${i % 2}`, () => harborBoatModel(kind, 900 + i * 13), true)!;
+    const v = this.variant(`bote:${kind}:${i % 2}`, () => oneStep(() => harborBoatModel(kind, 900 + i * 13)), true)!;
     const e = this.makeEntry(`bote-${i}`, v, x, z, 0, instant, false);
     e.bob = 0.9;
     const speed = kind === 'lancha' ? 3.6 : kind === 'velero' ? 2.3 : 1.3;
@@ -774,15 +877,10 @@ export class HarborView {
   }
 
   dispose(): void {
-    for (const e of this.clusters.values()) this.disposeEntry(e);
-    for (const e of this.piers.values()) this.disposeEntry(e);
-    for (const e of this.buoys.values()) this.disposeEntry(e);
+    this.clearPieces();
     for (const b of this.boats) this.disposeEntry(b.entry);
-    this.disposeTower();
-    this.clusters.clear();
-    this.piers.clear();
-    this.buoys.clear();
     this.boats = [];
+    this.building.clear();
     for (const v of this.variants.values()) {
       v.model.geo.dispose();
       v.halos.dispose();

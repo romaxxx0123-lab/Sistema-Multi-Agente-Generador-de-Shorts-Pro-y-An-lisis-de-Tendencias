@@ -32,11 +32,46 @@ export function makeRng(seed: number): () => number {
 }
 
 const _m = new THREE.Matrix4();
+const _m2 = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
-const _c = new THREE.Color();
+
+/**
+ * Colores ya interpretados y posiciones (no indexadas) de las primitivas ya construidas: los
+ * modelos repiten mucho los mismos colores y piezas (postes, bolardos, farolas…) y crear una
+ * geometría de three.js por pieza era lo que más costaba (la torre del puerto, ~70–170 ms).
+ */
+const colorCache = new Map<THREE.ColorRepresentation, THREE.Color>();
+const primCache = new Map<string, Float32Array>();
+const PRIM_CACHE_MAX = 4000;
+
+function colorOf(c: THREE.ColorRepresentation): THREE.Color {
+  if (c instanceof THREE.Color) return c;
+  let v = colorCache.get(c);
+  if (!v) {
+    v = new THREE.Color(c);
+    if (colorCache.size > PRIM_CACHE_MAX) colorCache.clear();
+    colorCache.set(c, v);
+  }
+  return v;
+}
+
+/** Posiciones no indexadas de una primitiva (se construye la primera vez que se pide). */
+function primitive(key: string, make: () => THREE.BufferGeometry): Float32Array {
+  let a = primCache.get(key);
+  if (!a) {
+    const g = make();
+    const n = g.index ? g.toNonIndexed() : g;
+    a = Float32Array.from(n.getAttribute('position').array as ArrayLike<number>);
+    if (n !== g) n.dispose();
+    g.dispose();
+    if (primCache.size > PRIM_CACHE_MAX) primCache.clear();
+    primCache.set(key, a);
+  }
+  return a;
+}
 
 export function placeMatrix(t: Place | undefined, out = new THREE.Matrix4()): THREE.Matrix4 {
   if (!t) return out.identity();
@@ -100,40 +135,69 @@ export class Kit {
     return this;
   }
 
-  /** Añade una geometría de three.js (se transforma una copia; la original no se toca). */
+  /** Añade una geometría de three.js (se transforma una copia y la original se libera). */
   add(geo: THREE.BufferGeometry, color: THREE.ColorRepresentation, t?: Place, jitter = this.jitter): this {
     const g = geo.index ? geo.toNonIndexed() : geo;
     const src = g.getAttribute('position') as THREE.BufferAttribute;
-    const m = _m.copy(this.stack[this.stack.length - 1]!).multiply(placeMatrix(t));
-    _c.set(color);
-    const v = new THREE.Vector3();
-    for (let i = 0; i < src.count; i++) {
-      v.fromBufferAttribute(src, i).applyMatrix4(m);
-      this.pos.push(v.x, v.y, v.z);
-    }
-    for (let f = 0; f < src.count; f += 3) {
-      const k = 1 + (this.rnd() * 2 - 1) * jitter;
-      for (let j = 0; j < 3; j++) this.col.push(_c.r * k, _c.g * k, _c.b * k);
-    }
-    const e = this.emitCol;
-    if (e) this.emitUsed = true;
-    // El canal de emisión se rellena siempre (con ceros) para que vaya alineado con las posiciones.
-    for (let i = 0; i < src.count; i++) this.emi.push(e ? e.r : 0, e ? e.g : 0, e ? e.b : 0);
+    this.addPositions(src.array as ArrayLike<number>, src.count, color, _m.copy(this.stack[this.stack.length - 1]!).multiply(placeMatrix(t)), jitter);
     if (g !== geo) g.dispose();
     geo.dispose();
     return this;
   }
 
+  /**
+   * Añade `count` vértices (posiciones x, y, z seguidas, en triángulos) transformados por `m`, con
+   * el color de la pieza variado por cara y el de emisión actual.
+   */
+  private addPositions(src: ArrayLike<number>, count: number, color: THREE.ColorRepresentation, m: THREE.Matrix4, jitter: number): void {
+    const e = m.elements;
+    const pos = this.pos;
+    // Como Vector3.applyMatrix4 con una transformación afín (w = 1).
+    for (let i = 0; i < count; i++) {
+      const x = src[i * 3]!;
+      const y = src[i * 3 + 1]!;
+      const z = src[i * 3 + 2]!;
+      pos.push(e[0]! * x + e[4]! * y + e[8]! * z + e[12]!, e[1]! * x + e[5]! * y + e[9]! * z + e[13]!, e[2]! * x + e[6]! * y + e[10]! * z + e[14]!);
+    }
+    const c = colorOf(color);
+    const col = this.col;
+    for (let f = 0; f < count; f += 3) {
+      const k = 1 + (this.rnd() * 2 - 1) * jitter;
+      const r = c.r * k;
+      const g = c.g * k;
+      const b = c.b * k;
+      col.push(r, g, b, r, g, b, r, g, b);
+    }
+    const em = this.emitCol;
+    if (em) this.emitUsed = true;
+    // El canal de emisión se rellena siempre (con ceros) para que vaya alineado con las posiciones.
+    const er = em ? em.r : 0;
+    const eg = em ? em.g : 0;
+    const eb = em ? em.b : 0;
+    const emi = this.emi;
+    for (let i = 0; i < count; i++) emi.push(er, eg, eb);
+  }
+
+  /** Primitiva guardada (por su clave) añadida con la transformación de grupo, `t` y `scale`. */
+  private addPrimitive(key: string, make: () => THREE.BufferGeometry, color: THREE.ColorRepresentation, t: Place | undefined, scale: V3 | null = null): this {
+    const a = primitive(key, make);
+    const m = _m.copy(this.stack[this.stack.length - 1]!).multiply(placeMatrix(t));
+    if (scale) m.multiply(_m2.makeScale(scale[0], scale[1], scale[2]));
+    this.addPositions(a, a.length / 3, color, m, this.jitter);
+    return this;
+  }
+
   box(w: number, h: number, d: number, color: THREE.ColorRepresentation, t?: Place): this {
-    return this.add(new THREE.BoxGeometry(w, h, d), color, t);
+    // Caja unidad escalada (mismos vértices y en el mismo orden que BoxGeometry(w, h, d)).
+    return this.addPrimitive('caja', () => new THREE.BoxGeometry(1, 1, 1), color, t, [w, h, d]);
   }
 
   cyl(rTop: number, rBot: number, h: number, seg: number, color: THREE.ColorRepresentation, t?: Place, open = false): this {
-    return this.add(new THREE.CylinderGeometry(rTop, rBot, h, seg, 1, open), color, t);
+    return this.addPrimitive(`cil:${rTop}:${rBot}:${h}:${seg}:${open ? 1 : 0}`, () => new THREE.CylinderGeometry(rTop, rBot, h, seg, 1, open), color, t);
   }
 
   cone(r: number, h: number, seg: number, color: THREE.ColorRepresentation, t?: Place): this {
-    return this.add(new THREE.ConeGeometry(r, h, seg), color, t);
+    return this.addPrimitive(`cono:${r}:${h}:${seg}`, () => new THREE.ConeGeometry(r, h, seg), color, t);
   }
 
   /** Icosaedro con los vértices desplazados al azar (rocas, copas, colinas). */
@@ -164,9 +228,10 @@ export class Kit {
       pos.push(...a, ...b, ...c);
       if (doubleSided) pos.push(...a, ...c, ...b);
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    return this.add(g, color, t);
+    // Redondeados a float32, como si pasaran por una geometría (mismo resultado que antes).
+    const f = Float32Array.from(pos);
+    this.addPositions(f, f.length / 3, color, _m.copy(this.stack[this.stack.length - 1]!).multiply(placeMatrix(t)), this.jitter);
+    return this;
   }
 
   get vertexCount(): number {
