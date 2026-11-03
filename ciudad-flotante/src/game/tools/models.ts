@@ -5,9 +5,16 @@
  * Marco de un objeto en mano: el puño está en el origen, +y hacia arriba a lo largo del mango,
  * −z hacia delante (lejos de la cámara), +x a la derecha. Todo con colores por vértice y caras
  * planas (`GeoBuilder` compartido con el resto del barco) para que encaje con el estilo visual.
+ *
+ * MODELOS DE BLENDER (scripts/blender/models/mano.py y herramientas.py): el brazo es `vm_brazo` y
+ * cada pieza tiene su `vm_<pieza>`, modelados en este mismo marco (subidos VM_LIFT metros para
+ * respetar la convención de base apoyada). Si el modelo existe se fusiona en la misma malla de la
+ * pieza (mismo nombre, mismos pivotes, anclajes, poses y escalas: viewmodel.ts no nota el
+ * cambio); si falta, se dibuja la versión procedimental de siempre.
  */
 import * as THREE from 'three';
 import { ITEMS } from '../../data/items';
+import { modelGeometry } from '../../render/assets';
 import { PALETTE } from '../../render/palette';
 import { GeoBuilder } from '../../render/ship/geo';
 import type { ItemId } from '../../sim/types';
@@ -38,6 +45,34 @@ export interface ItemModel {
 }
 
 type Build = (b: GeoBuilder) => void;
+
+/** Altura a la que los modelos `vm_*` de Blender llevan el origen del puño (y = 0 es su base). */
+export const VM_LIFT = 1.0;
+
+let blenderOn = true;
+
+/**
+ * Usa (o no) los modelos de Blender del modelo en mano. Para comparar con el procedimental en
+ * pruebas y capturas; los modelos ya construidos no cambian (viewmodel.ts los guarda).
+ */
+export function setBlenderHandModels(on: boolean): void {
+  blenderOn = on;
+}
+
+/**
+ * Añade el modelo de Blender `name` (en el marco del puño) a `b`. Devuelve false si no existe
+ * (o están desactivados) para que quien llama dibuje la versión procedimental.
+ */
+export function appendHandModel(b: GeoBuilder, name: string): boolean {
+  if (!blenderOn) return false;
+  const geo = modelGeometry(name);
+  if (!geo) return false;
+  b.push();
+  b.translate(0, -VM_LIFT, 0);
+  b.appendGeometry(geo);
+  b.pop();
+  return true;
+}
 
 function meshOf(build: Build, mat: THREE.Material, name: string): THREE.Mesh {
   const b = new GeoBuilder();
@@ -123,6 +158,7 @@ export function buildArm(mat: THREE.Material): THREE.Group {
   g.add(
     meshOf(
       (b) => {
+        if (appendHandModel(b, 'vm_brazo')) return;
         // antebrazo: desde la muñeca hacia abajo, a la derecha y hacia la cámara (sale de pantalla)
         b.cylinderBetween(0.015, -0.035, 0.05, 0.11, -0.42, 0.36, 0.05, 7, SLEEVE);
         b.cylinderBetween(0.012, -0.03, 0.045, 0.03, -0.1, 0.11, 0.056, 7, SLEEVE_DARK); // puño de la manga

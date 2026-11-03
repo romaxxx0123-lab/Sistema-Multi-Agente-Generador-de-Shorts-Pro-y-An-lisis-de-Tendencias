@@ -55,5 +55,23 @@
       }
     },
     "animations": false
+  },
+  "mano": {
+    "models": {
+      "vm_brazo": {
+        "tris": 824,
+        "min": [
+          -0.047,
+          -0.4997,
+          -0.0512
+        ],
+        "max": [
+          0.1815,
+          0.0602,
+          0.4506
+        ]
+      }
+    },
+    "animations": false
   }
 }
