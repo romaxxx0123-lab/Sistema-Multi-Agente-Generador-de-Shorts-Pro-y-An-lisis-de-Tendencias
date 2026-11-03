@@ -286,6 +286,15 @@ export function weighAnchor(sim: Simulation, quiet = false): void {
   if (!quiet) sim.log('Levamos anclas y seguimos rumbo', 'info');
 }
 
+/**
+ * ¿Cuenta su propio evento la partida al vencer el fondeo? El rescate de un pecio dura lo que el
+ * fondeo y se cierra al levar anclas con «Levamos anclas y dejamos atrás el pecio…» (events.ts):
+ * aquí se leva en silencio para no avisar dos veces.
+ */
+function departureToldByEvent(sim: Simulation): boolean {
+  return sim.state.events.active.some((e) => e.type === 'naufragio' && e.stage === 1);
+}
+
 /* ------------------------------------------------------------------ */
 /* Rumbo de la capitana y bocana de Puerto Esperanza                   */
 /* ------------------------------------------------------------------ */
@@ -407,7 +416,7 @@ export function tickVoyage(sim: Simulation, dt: number): void {
 
   // Bocana de Puerto Esperanza (de noche o con el jugador dormido) y fondeo cumplido: levar anclas.
   tickHarborWait(sim);
-  if (v.anchoredUntil !== null && st.time >= v.anchoredUntil) weighAnchor(sim);
+  if (v.anchoredUntil !== null && st.time >= v.anchoredUntil) weighAnchor(sim, departureToldByEvent(sim));
 
   // Velocidad (gradual) y distancia.
   v.speed = Math.max(0, approach(v.speed, targetSpeed(sim), SHIP_ACCEL * dt));

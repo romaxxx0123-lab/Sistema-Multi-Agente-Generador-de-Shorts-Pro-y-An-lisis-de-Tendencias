@@ -2,7 +2,8 @@
  * [AGENTE sim-survival] TUTORIAL PROGRESIVO (docs/SISTEMAS.md §4).
  *
  * Consejos que se muestran de uno en uno, sin bloquear, con al menos `TUTORIAL_GAP_MIN` minutos
- * de juego (≈ 20 s reales) entre un paso completado y el siguiente. Cada paso se completa cuando
+ * de juego (≈ 20 s reales) entre completar el consejo a la vista y el siguiente (un paso hecho por
+ * adelantado, con otro consejo en pantalla, no lo esconde ni abre esa pausa). Cada paso se completa cuando
  * el sistema correspondiente llama a `markTutorial(sim, id)`; el paso 'mover' lo detecta
  * `tickTutorial` (el jugador recorre 5 m) y se da por hecho en cuanto el jugador completa un paso
  * que exige caminar hasta un mueble (almacén, banco, cocina, depósito, cama, timón...).
@@ -10,9 +11,12 @@
  * No es estrictamente secuencial:
  *  - Cada paso puede declarar cuándo tiene sentido (`when`: 'pescar' solo con una caña, 'dormir'
  *    cuando ya se puede dormir...). Mientras no lo tenga, se muestra el siguiente aplicable.
- *  - Si un paso es oportuno ahora (`now`: 'dormir' de noche o agotado, 'timon' con una decisión
+ *  - Si un paso es oportuno ahora (`now`: 'dormir' al anochecer o agotado, 'timon' con una decisión
  *    pendiente, 'reparar' con algo dañado, 'comer'/'beber' con hambre o sed), se muestra antes que
  *    el primer pendiente aunque vaya después en la lista.
+ *  - Un paso aplazable (`defer`: 'dormir') que tiene sentido pero no es oportuno no tapa a los
+ *    siguientes: solo se muestra si no queda otro pendiente aplicable. Así una siesta posible a media
+ *    mañana no retiene «Construir», «Mejorar» ni «Cultivar» hasta la noche.
  *  - Los pasos hechos por adelantado (o fuera de orden) quedan marcados y se saltan.
  * Los textos describen la acción física (teclas y muebles), no menús, salvo donde el juego usa un
  * panel de estación.
@@ -28,6 +32,7 @@
  */
 import { ITEMS } from '../data/items';
 import { pageByItem } from '../data/story';
+import { WAKE_HOUR_TO } from './needs';
 import { hourOf } from './time';
 import { countItem } from './inventory';
 import { payInventories, shipCount } from './helpers';
@@ -55,6 +60,13 @@ interface StepDef {
   when?: (sim: Simulation) => boolean;
   /** El paso es oportuno ahora: se muestra antes que los pendientes anteriores. */
   now?: (sim: Simulation) => boolean;
+  /**
+   * Aplicable pero aplazable: mientras no sea oportuno (`now`), solo se muestra si no queda ningún
+   * otro pendiente aplicable (no retiene los consejos que van detrás).
+   */
+  defer?: boolean;
+  /** Frase que se añade al texto según el estado (p. ej. qué mejora se puede pagar ya). */
+  detail?: (sim: Simulation) => string | null;
 }
 
 /** Minutos de juego mínimos entre completar un paso y mostrar el siguiente. */
@@ -86,6 +98,20 @@ function somethingDamaged(sim: Simulation): boolean {
 function canSleepNow(sim: Simulation): boolean {
   const h = hourOf(sim.state.time);
   return h >= 21 || h < 5 || sim.state.player.needs.energy < 80;
+}
+
+/** Energía por debajo de la que dormir es oportuno a cualquier hora (cansancio de verdad). */
+const ENERGY_TIRED = 40;
+
+/**
+ * ¿Es oportuno acostarse? De noche, al anochecer con sueño (desde `WAKE_HOUR_TO`, las 20 h, quien se
+ * acuesta ya duerme hasta el amanecer: `needs.checkWake`) o con cansancio de verdad. Siempre implica
+ * `canSleepNow`, así que el consejo nunca pide algo que `sleepBlocker` rechace.
+ */
+function sleepIsTimely(sim: Simulation): boolean {
+  if (!canSleepNow(sim)) return false;
+  const h = hourOf(sim.state.time);
+  return h >= WAKE_HOUR_TO || h < 5 || sim.state.player.needs.energy < ENERGY_TIRED;
 }
 
 /** Hay pescado crudo a mano (encima o en los almacenes). */
@@ -138,6 +164,17 @@ function storageFullAndUpgradable(sim: Simulation): boolean {
   return affordableUpgrades(sim).some((m) => m.type === 'almacen' && !!m.inventory && m.inventory.slots.every((s) => !!s));
 }
 
+/** «a», «a y b», «a, b y c». */
+function listText(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`;
+}
+
+/** Qué mejoras se pueden pagar ya («Ahora puedes pagar: Camarote acogedor.»), para saber dónde usar U. */
+function payableUpgradesText(sim: Simulation): string | null {
+  const names = [...new Set(affordableUpgrades(sim).map((m) => nextUpgrade(m)?.name).filter((n): n is string => !!n))];
+  return names.length ? `Ahora puedes pagar: ${listText(names)}.` : null;
+}
+
 const STEPS: readonly StepDef[] = [
   { id: 'mover', title: 'Moverse', text: 'WASD para moverte, Mayús para correr y Espacio para saltar. Mira alrededor con el ratón.' },
   {
@@ -155,7 +192,7 @@ const STEPS: readonly StepDef[] = [
   {
     id: 'cuaderno',
     title: 'El cuaderno del Albatros',
-    text: 'Llevas en la mochila una hoja del cuaderno del Albatros: haz clic derecho sobre ella para leerla, o ponla en la barra rápida y pulsa F.',
+    text: 'Llevas en la mochila una hoja del cuaderno del Albatros. Abre la mochila con Tab y haz clic derecho sobre la hoja para leerla, o ponla en la barra rápida y pulsa F.',
     when: hasUnreadPage,
   },
   { id: 'almacen', title: 'Almacén', text: 'Guarda lo que no necesites en el almacén: pulsa E ante las estanterías.' },
@@ -181,12 +218,10 @@ const STEPS: readonly StepDef[] = [
   {
     id: 'dormir',
     title: 'Dormir',
-    text: 'Pulsa E sobre la cama de tu camarote para dormir hasta el amanecer y recuperar energía.',
+    text: 'Pulsa E sobre la cama de tu camarote para dormir y recuperar energía: de noche, hasta el amanecer; de día, hasta que estés descansado.',
     when: canSleepNow,
-    now: (sim) => {
-      const h = hourOf(sim.state.time);
-      return h >= 21 || h < 5 || sim.state.player.needs.energy < 40;
-    },
+    now: sleepIsTimely,
+    defer: true,
   },
   { id: 'construir', title: 'Construir', text: 'Pulsa B para construir: elige una pieza, colócala con clic y gírala con R.' },
   {
@@ -195,6 +230,7 @@ const STEPS: readonly StepDef[] = [
     text: 'En el modo construcción (B), la herramienta Mejorar (U) mejora lo que ya tienes: almacenes más grandes, depósitos mayores, camas más cómodas, cocinas más rápidas.',
     when: (sim) => sim.state.tutorial.done.includes('construir') && affordableUpgrades(sim).length > 0,
     now: storageFullAndUpgradable,
+    detail: payableUpgradesText,
   },
   {
     id: 'plantar',
@@ -233,13 +269,15 @@ interface TutorialMemo {
   walked: number;
   /** Minuto de juego en que se completó el último paso. */
   lastDoneAt: number;
+  /** Paso que devolvió `currentTutorial` la última vez (el consejo a la vista), o null. */
+  shownId: string | null;
 }
 
 const memos = new WeakMap<Simulation, TutorialMemo>();
 
 function memoOf(sim: Simulation): TutorialMemo {
   let m = memos.get(sim);
-  if (!m) memos.set(sim, (m = { origin: null, last: null, walked: 0, lastDoneAt: -Infinity }));
+  if (!m) memos.set(sim, (m = { origin: null, last: null, walked: 0, lastDoneAt: -Infinity, shownId: null }));
   return m;
 }
 
@@ -282,7 +320,10 @@ export function markTutorial(sim: Simulation, id: string): void {
   t.done.push(id);
   // Quien ya ha llegado andando hasta un mueble sabe moverse: el paso se da por hecho en silencio.
   if (IMPLIES_MOVING.has(id) && !t.done.includes('mover')) t.done.push('mover');
-  memoOf(sim).lastDoneAt = sim.state.time;
+  // La pausa entre consejos empieza al completar el que está a la vista (o si no hay ninguno): un
+  // paso hecho por adelantado no esconde el consejo actual durante `TUTORIAL_GAP_MIN`.
+  const memo = memoOf(sim);
+  if (memo.shownId === null || t.done.includes(memo.shownId)) memo.lastDoneAt = sim.state.time;
   sim.bus.emit('tutorialStep', { id });
   if (!wasComplete && !t.dismissed && allDone(sim)) {
     sim.notify('Tutorial completado: ya conoces lo básico. ¡Buena travesía!', 'good');
@@ -292,25 +333,53 @@ export function markTutorial(sim: Simulation, id: string): void {
 /**
  * Paso actual a mostrar (o null si el tutorial está descartado, terminado o en pausa entre pasos):
  * primero el pendiente que sea oportuno ahora (p. ej. 'dormir' de noche) y, si no hay ninguno, el
- * primer pendiente que tenga sentido.
+ * primer pendiente que tenga sentido (los aplazables, solo si no queda otro). Recuerda el paso
+ * devuelto: es el consejo a la vista (ver `markTutorial`).
  */
 export function currentTutorial(sim: Simulation): TutorialStep | null {
+  const step = pickStep(sim);
+  memoOf(sim).shownId = step?.id ?? null;
+  return step;
+}
+
+function stepView(sim: Simulation, i: number, urgent: boolean): TutorialStep {
+  const s = STEPS[i]!;
+  const extra = s.detail?.(sim);
+  const out: TutorialStep = { id: s.id, title: s.title, text: extra ? `${s.text} ${extra}` : s.text, index: i + 1, total: STEPS.length };
+  if (urgent) out.urgent = true;
+  return out;
+}
+
+function pickStep(sim: Simulation): TutorialStep | null {
   const st = sim.state;
   const t = st.tutorial;
   if (t.dismissed || !st.player.alive || st.player.sleeping) return null;
   const memo = memoOf(sim);
   if (st.time - memo.lastDoneAt < TUTORIAL_GAP_MIN) return null;
   let first = -1;
+  let deferred = -1;
   for (let i = 0; i < STEPS.length; i++) {
     const s = STEPS[i]!;
     if (t.done.includes(s.id)) continue;
     if (s.when && !s.when(sim)) continue;
-    if (s.now?.(sim)) return { id: s.id, title: s.title, text: s.text, index: i + 1, total: STEPS.length, urgent: true };
+    if (s.now?.(sim)) return stepView(sim, i, true);
+    if (s.defer) {
+      if (deferred < 0) deferred = i;
+      continue;
+    }
     if (first < 0) first = i;
   }
-  if (first < 0) return null;
-  const s = STEPS[first]!;
-  return { id: s.id, title: s.title, text: s.text, index: first + 1, total: STEPS.length };
+  if (first < 0) first = deferred;
+  return first < 0 ? null : stepView(sim, first, false);
+}
+
+/**
+ * ¿Se acaba de completar el consejo que estaba a la vista? (para el «¡Hecho!» y su sonido: un paso
+ * hecho por adelantado, con otro consejo en pantalla, no lo celebra). Válido al recibir `tutorialStep`.
+ */
+export function shownTutorialCompleted(sim: Simulation): boolean {
+  const shown = memoOf(sim).shownId;
+  return shown !== null && sim.state.tutorial.done.includes(shown);
 }
 
 /** Progreso del tutorial (pasos hechos / total). */

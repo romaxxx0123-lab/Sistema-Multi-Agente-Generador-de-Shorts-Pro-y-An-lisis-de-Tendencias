@@ -71,15 +71,25 @@ export interface ToastEntry {
   born: number;
   ttl: number;
   count: number;
+  /**
+   * Avisos que se sustituyen entre sí aunque digan cosas distintas (p. ej. 'consejos': «Consejos
+   * ocultos…» y «Consejos activados…» al pulsar F1 dos veces no se apilan: queda el último).
+   */
+  key?: string;
 }
 
 /**
  * Añade un aviso a la cola: si hay uno vivo con la misma forma y tono, lo actualiza en vez de
  * apilar otro (el mismo texto suma un contador ×N; si solo cambian las cifras, se queda el texto
  * más reciente sin contador, porque «Echas 5× Madera ×2» parecería 10); si pasan de `max`, se
- * quita el más viejo de los menos graves (un peligro no lo desplaza una ráfaga de avisos).
+ * quita el más viejo de los menos graves (un peligro no lo desplaza una ráfaga de avisos). Un aviso
+ * con `key` sustituye al que siga vivo con la misma clave, diga lo que diga.
  */
 export function pushToast(list: ToastEntry[], t: Omit<ToastEntry, 'count'>, max = MAX_TOASTS): ToastEntry[] {
+  if (t.key) {
+    const prev = list.find((x) => x.key === t.key && t.born - x.born < x.ttl);
+    if (prev && prev.text !== t.text) list = list.filter((x) => x !== prev);
+  }
   const shape = toastShape(t.text);
   const same = list.find((x) => x.kind === t.kind && toastShape(x.text) === shape && t.born - x.born < x.ttl);
   if (same) {
@@ -119,7 +129,10 @@ export class Hud {
   /** Opacidades suavizadas de la viñeta de daño y de la escarcha. */
   private fxDamage = 0;
   private fxFrost = 0;
+  /** Consejo que se ve en pantalla (null si no hay ninguno). */
   private tutShown: TutorialStep | null = null;
+  /** Paso cuyo «¡Hecho!» se está animando (o se animó) y desde cuándo. */
+  private tutDoneId: string | null = null;
   private tutDoneAt = -10;
   /** Se llama al pulsar el botón de descartar el tutorial. */
   onDismissTutorial: () => void = () => {};
@@ -139,10 +152,13 @@ export class Hud {
     this.prompt = p;
   }
 
-  toast(text: string, kind: NotifyKind): void {
+  /** Aviso breve. Con `key`, sustituye al que siga en pantalla con esa clave (ver `pushToast`). */
+  toast(text: string, kind: NotifyKind, key?: string): void {
     const t = text.trim();
     if (!t) return;
-    this.toasts = pushToast(this.toasts, { id: this.nextId++, text: t, kind, born: this.time, ttl: TOAST_TTL[kind] ?? 5 });
+    const entry: Omit<ToastEntry, 'count'> = { id: this.nextId++, text: t, kind, born: this.time, ttl: TOAST_TTL[kind] ?? 5 };
+    if (key) entry.key = key;
+    this.toasts = pushToast(this.toasts, entry);
   }
 
   itemGained(id: string, qty: number): void {
@@ -177,8 +193,23 @@ export class Hud {
     this.eventBorn.set(id, this.time);
   }
 
+  /** ¿Se ven los consejos? (el ajuste global y no haberlos ocultado en esta partida con la X o F1). */
+  private tutorialActive(): boolean {
+    return !!this.ctx.settings.tutorial && !this.ctx.sim.state.tutorial.dismissed;
+  }
+
+  /**
+   * Se ha completado un paso del tutorial (`tutorialStep`). El «¡Hecho!» solo celebra el consejo que
+   * está a la vista y solo si se ha completado él (o 'mover', que se da por hecho al llegar andando a
+   * un mueble): un paso hecho por adelantado no lo marca y el consejo sigue en su sitio. Con los
+   * consejos ocultos o desactivados no se enseña nada.
+   */
   tutorialDone(): void {
-    if (this.tutShown) this.tutDoneAt = this.time;
+    const s = this.tutShown;
+    if (!s || this.tutDoneId === s.id || !this.tutorialActive()) return;
+    if (!this.ctx.sim.state.tutorial.done.includes(s.id)) return;
+    this.tutDoneId = s.id;
+    this.tutDoneAt = this.time;
   }
 
   /** Quita los avisos en pantalla (al morir, por ejemplo). */
@@ -194,6 +225,7 @@ export class Hud {
     this.flash = 0;
     this.eventBorn.clear();
     this.tutShown = null;
+    this.tutDoneId = null;
     this.tutDoneAt = -10;
     this.slowAt = -1;
   }
@@ -474,21 +506,23 @@ export class Hud {
 
   private tutorial(panelOpen: boolean): VNode {
     const ctx = this.ctx;
-    let step: TutorialStep | null = null;
-    if (ctx.settings.tutorial) {
-      try {
-        step = currentTutorial(ctx.sim);
-      } catch {
-        step = null;
-      }
+    // Ocultos (X o F1) o desactivados en Ajustes: nada, ni un «¡Hecho!» de un consejo que no se ve.
+    if (!this.tutorialActive()) {
+      this.tutShown = null;
+      return h('div', { key: 'tut', class: 'hud-tut hidden' });
     }
-    const doneAge = this.time - this.tutDoneAt;
-    if (!step && this.tutShown && doneAge < 1.8) {
-      // Animación de "¡Hecho!" del paso que se acaba de completar.
-      const s = this.tutShown;
+    let step: TutorialStep | null = null;
+    try {
+      step = currentTutorial(ctx.sim);
+    } catch {
+      step = null;
+    }
+    const s = this.tutShown;
+    if (s && this.tutDoneId === s.id && this.time - this.tutDoneAt < 1.8 && step?.id !== s.id) {
+      // Animación de "¡Hecho!" del consejo a la vista que se acaba de completar.
       return h('div', { key: 'tut', class: cx('hud-tut', 'done', panelOpen && 'under') }, h('div', { class: 'tut-head' }, gl('check'), h('b', null, s.title), h('span', { class: 'tut-n' }, '¡Hecho!')), h('div', { class: 'tut-text' }, richKeys(s.text)));
     }
-    if (step) this.tutShown = step;
+    this.tutShown = step;
     if (!step) return h('div', { key: 'tut', class: 'hud-tut hidden' });
     const prog = tutorialProgress(ctx.sim);
     return h(

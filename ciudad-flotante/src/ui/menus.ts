@@ -539,13 +539,37 @@ export class Menus {
 
   /**
    * Restablece los ajustes. La perspectiva también se aplica al jugador (como al elegirla), para
-   * que el control «Cámara» y la cámara real no queden distintos.
+   * que el control «Cámara» y la cámara real no queden distintos; y, en pausa, los consejos ocultos
+   * con la X o F1 vuelven a verse (el valor por defecto es verlos).
    */
   resetSettings(): void {
     Object.assign(this.ctx.settings, DEFAULT_SETTINGS);
     if (this.ctx.player) this.ctx.player.perspective = this.ctx.settings.perspective;
+    if (this.ctx.settings.tutorial && this.tipsHiddenInGame()) resumeTutorial(this.ctx.sim);
     this.ctx.saveSettings();
     this.refresh();
+  }
+
+  /**
+   * ¿Se han ocultado los consejos en la partida en curso (X del recuadro o F1)? Solo en pausa: en el
+   * menú principal la partida de fondo no es la que se va a jugar y solo cuenta el ajuste.
+   */
+  private tipsHiddenInGame(): boolean {
+    return this.root === 'pause' && !!this.ctx.sim?.state.tutorial.dismissed;
+  }
+
+  /**
+   * El interruptor «Consejos» refleja si se ven (como F1, `UI.toggleTutorial`): el ajuste y no
+   * haberlos ocultado en esta partida. Encenderlo los recupera de un solo clic; apagarlo los quita
+   * en todas las partidas.
+   */
+  private tipsOn(): boolean {
+    return !!this.ctx.settings.tutorial && !this.tipsHiddenInGame();
+  }
+
+  private setTips(on: boolean): void {
+    if (on && this.tipsHiddenInGame()) resumeTutorial(this.ctx.sim);
+    this.set('tutorial', on);
   }
 
   /**
@@ -591,18 +615,15 @@ export class Menus {
         }),
         h('output', null, fmt(s[k])),
       );
-    const toggle = (k: 'invertY' | 'tutorial' | 'showFps', after?: (v: boolean) => void): VNode =>
+    const sw = (on: boolean, onToggle: (v: boolean) => void): VNode =>
       h('button', {
         type: 'button',
-        class: cx('switch', s[k] && 'on'),
+        class: cx('switch', on && 'on'),
         role: 'switch',
-        'aria-checked': s[k] ? 'true' : 'false',
-        onclick: () => {
-          const v = !s[k];
-          this.set(k, v);
-          after?.(v);
-        },
+        'aria-checked': on ? 'true' : 'false',
+        onclick: () => onToggle(!on),
       }, h('i'));
+    const toggle = (k: 'invertY' | 'showFps'): VNode => sw(s[k], (v) => this.set(k, v));
     const seg = <T extends string>(k: 'quality' | 'perspective', options: [T, string][]): VNode =>
       h(
         'div',
@@ -635,13 +656,7 @@ export class Menus {
       row('Mostrar FPS', toggle('showFps')),
       h('div', { class: 'set-group' }, 'Juego'),
       row('Volumen', range('volume', 0, 100, 1, (v) => `${Math.round(v * 100)} %`, 100)),
-      row(
-        'Consejos (tutorial)',
-        toggle('tutorial', (v) => {
-          if (v && this.ctx.sim.state.tutorial.dismissed) resumeTutorial(this.ctx.sim);
-        }),
-        'Consejos breves que no interrumpen',
-      ),
+      row('Consejos (tutorial)', sw(this.tipsOn(), (v) => this.setTips(v)), 'Consejos breves que no interrumpen'),
       h(
         'div',
         { class: 'menu-row' },

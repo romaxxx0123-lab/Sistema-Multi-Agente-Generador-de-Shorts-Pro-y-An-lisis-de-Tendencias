@@ -1198,7 +1198,8 @@ function rescueWreck(sim: Simulation, ev: ActiveEvent): ActionResult {
   ev.stage = 1;
   ev.title = `Rescate del «${d.ship}»`;
   ev.description = `Fondeados junto al pecio del «${d.ship}»: ${n} restos flotan alrededor del barco. Rescátalos con el gancho antes de levar anclas.`;
-  ev.endsAt = st.time + WRECK_ANCHOR_MIN + 30;
+  // El rescate dura lo que el fondeo: se cierra al levar anclas, con un único aviso (ver updateEvent).
+  ev.endsAt = st.time + WRECK_ANCHOR_MIN;
   ev.choices = [];
   const s = sightingOf(sim, d.sightingId);
   if (s) s.expiresAt = Math.max(s.expiresAt, st.time + WRECK_ANCHOR_MIN + 40);
@@ -2321,12 +2322,16 @@ function updateEvent(sim: Simulation, ev: ActiveEvent, dt: number): void {
       return;
     case 'naufragio': {
       const d = dataOf<WreckData>(ev);
-      if (now >= (ev.endsAt ?? Infinity)) {
-        if (d.phase === 'avistado') endEvent(sim, ev, false, `El «${d.ship}» se pierde a popa. Quién sabe qué guardaba.`, 'info');
-        else {
-          const good = d.chestCollected || d.collected >= Math.ceil(d.total / 2);
-          endEvent(sim, ev, good, `Levamos anclas y dejamos atrás el pecio del «${d.ship}» (rescatados ${d.collected} de ${d.total} restos).`, good ? 'good' : 'info');
-        }
+      if (d.phase === 'avistado') {
+        if (now >= (ev.endsAt ?? Infinity)) endEvent(sim, ev, false, `El «${d.ship}» se pierde a popa. Quién sabe qué guardaba.`, 'info');
+      } else if (now >= (ev.endsAt ?? Infinity) || !isAnchored(sim)) {
+        // El rescate termina al levar anclas: el viaje leva en silencio (`departureToldByEvent`) y
+        // este es el único aviso. Si seguimos fondeados por otra cosa (una expedición), no se leva.
+        if (isAnchored(sim) && st.voyage.anchorReason === wreckAnchorReason(d)) weighAnchor(sim, true);
+        const good = d.chestCollected || d.collected >= Math.ceil(d.total / 2);
+        const tally = `rescatados ${d.collected} de ${d.total} restos`;
+        const text = isAnchored(sim) ? `Termina el rescate del «${d.ship}» (${tally}).` : `Levamos anclas y dejamos atrás el pecio del «${d.ship}» (${tally}).`;
+        endEvent(sim, ev, good, text, good ? 'good' : 'info');
       }
       return;
     }

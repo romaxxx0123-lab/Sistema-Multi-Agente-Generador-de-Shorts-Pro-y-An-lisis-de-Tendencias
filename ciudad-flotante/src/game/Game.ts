@@ -124,10 +124,14 @@ export class CoreOverlay {
       const horiz = side === 'left' || side === 'right';
       const dir = { left: 'to right', right: 'to left', top: 'to bottom', bottom: 'to top' }[side];
       d.style.cssText =
-        `position:absolute;${side}:0;${horiz ? 'top:0;bottom:0;width:72px' : 'left:0;right:0;height:56px'};opacity:0;` +
-        `transition:opacity .15s;display:flex;align-items:center;justify-content:center;color:rgba(246,239,224,.85);` +
-        `font:900 34px/1 var(--font);text-shadow:0 1px 4px rgba(0,0,0,.6);background:linear-gradient(${dir},rgba(246,239,224,.22),rgba(246,239,224,0));`;
-      d.textContent = { left: '‹', right: '›', top: '˄', bottom: '˅' }[side];
+        `position:absolute;${side}:0;${horiz ? 'top:0;bottom:0;width:84px' : 'left:0;right:0;height:64px'};opacity:0;` +
+        `transition:opacity .15s;display:flex;align-items:center;justify-content:center;` +
+        `background:linear-gradient(${dir},rgba(246,239,224,.38),rgba(246,239,224,0));`;
+      // Chevrón hacia el lado del giro.
+      const rot = { right: 0, bottom: 90, left: 180, top: 270 }[side];
+      d.innerHTML =
+        `<svg width="26" height="44" viewBox="0 0 26 44" style="transform:rotate(${rot}deg);filter:drop-shadow(0 1px 3px rgba(0,0,0,.55))">` +
+        `<path d="M5 4 L21 22 L5 40" fill="none" stroke="#f6efe0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       root.appendChild(d);
       return d;
     };

@@ -6,14 +6,16 @@
  * `tickVoyage`) avanzando el reloj a mano, para que el azar de otros sistemas no interfiera.
  * Las pruebas de integración usan `sim.tick` con la simulación completa.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ITEMS } from '../src/data/items';
 import { REGION_LIST, REGIONS } from '../src/data/regions';
 import { FINAL_REGION, PAGES_TO_REVEAL, STORY_PAGES, STORY_TEXTS } from '../src/data/story';
 import * as actions from '../src/sim/actions';
+import { DEFAULT_SETTINGS } from '../src/game/types';
+import * as events from '../src/sim/events';
 import { ARRIVAL_HOURS } from '../src/sim/events';
 import { CRUISE_SPEED, LEVEL_H, MINUTES_PER_DAY, NEED_RATES, PLAYER_SLOTS, SLEEP_TIME_SCALE, VISUAL_DRIFT } from '../src/sim/constants';
-import { addItem, countItem, createInventory } from '../src/sim/inventory';
+import { addItem, countItem, createInventory, removeItem } from '../src/sim/inventory';
 import * as needs from '../src/sim/needs';
 import { createNewGame } from '../src/sim/newGame';
 import { forwardOf } from '../src/sim/physics';
@@ -27,6 +29,9 @@ import { SAVE_VERSION } from '../src/sim/types';
 import { isRadarActive } from '../src/sim/utilities';
 import * as voyage from '../src/sim/voyage';
 import * as weather from '../src/sim/weather';
+import { Hud, pushToast, type ToastEntry } from '../src/ui/hud';
+import { Menus } from '../src/ui/menus';
+import type { VChild, VNode } from '../src/ui/vdom';
 
 /* ------------------------------------------------------------------ */
 /* Utilidades de prueba                                                */
@@ -1669,7 +1674,8 @@ describe('tutorial', () => {
 
   it('los consejos describen la acción física (teclas y muebles), no menús, y «dormir» coincide con cuándo se puede dormir', () => {
     for (const s of tutorial.TUTORIAL_STEPS) {
-      expect(s.text, s.id).not.toMatch(/\b(Tab|inventario|menú)\b/i);
+      // La mochila sí se nombra (con su tecla, Tab): es el sitio de la hoja del cuaderno y de lo que no cabe en la barra.
+      expect(s.text, s.id).not.toMatch(/\b(inventario|menú)\b/i);
       expect(s.text.trim().endsWith('.'), s.id).toBe(true);
     }
     const comer = tutorial.TUTORIAL_STEPS.find((s) => s.id === 'comer')!;
@@ -2548,6 +2554,371 @@ describe('tutorial: cuaderno y mejoras', () => {
     tutorial.tickTutorial(sim, 0.5);
     expect(sim.state.tutorial.done).toContain('mejorar');
     expect(tutorial.tutorialProgress(sim).complete).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Tutorial y primer día (ronda de pruebas 2, presentación)            */
+/* ------------------------------------------------------------------ */
+
+/** Texto plano de un nodo virtual. */
+function vtext(n: VChild | null | undefined): string {
+  if (!n) return '';
+  return typeof n === 'string' ? n : n.children.map(vtext).join('');
+}
+
+/** Nodos de un árbol virtual que cumplen `pred`. */
+function vfind(n: VChild, pred: (v: VNode) => boolean, out: VNode[] = []): VNode[] {
+  if (typeof n === 'string') return out;
+  if (pred(n)) out.push(n);
+  for (const c of n.children) vfind(c, pred, out);
+  return out;
+}
+
+/** `document` mínimo para construir el HUD y los menús fuera del navegador (no se pinta nada). */
+function withFakeDocument(): void {
+  const g = globalThis as unknown as { document?: unknown };
+  let saved: unknown;
+  beforeEach(() => {
+    saved = g.document;
+    const el = (): unknown => ({ className: '', childNodes: [], appendChild() {}, classList: { add() {}, remove() {} } });
+    g.document = { createElement: el, createElementNS: el, createTextNode: (t: string) => ({ nodeValue: t }) };
+  });
+  afterEach(() => {
+    g.document = saved;
+  });
+}
+
+/** HUD de prueba enganchado al bus como en UI.ts (`tutorialStep` → `tutorialDone`). */
+function tutorialHud(sim: Simulation, settings = { tutorial: true }) {
+  const ctx = { sim, bus: sim.bus, settings, mode: 'play' };
+  const hud = new Hud({ appendChild() {} } as unknown as HTMLElement, ctx as never);
+  sim.bus.on('tutorialStep', () => hud.tutorialDone());
+  const raw = hud as unknown as { tutorial(panelOpen: boolean): VNode; time: number };
+  return {
+    hud,
+    /** Recuadro de consejos: clase y texto. */
+    box: () => {
+      const v = raw.tutorial(false);
+      return { cls: String(v.props['class']), text: vtext(v) };
+    },
+    /** Avanza el reloj real del HUD (segundos). */
+    wait: (s: number) => {
+      raw.time += s;
+    },
+  };
+}
+
+/** Marca todos los pasos menos `except` y deja al jugador sin hambre ni sed a la hora `hour`. */
+function allStepsBut(sim: Simulation, except: string[], hour: number, energy: number): void {
+  for (const s of tutorial.TUTORIAL_STEPS) if (!except.includes(s.id)) tutorial.markTutorial(sim, s.id);
+  sim.state.time += 30;
+  goToHour(sim, hour);
+  setNeeds(sim, { hunger: 90, thirst: 90, energy });
+}
+
+describe('tutorial: primer día (ronda de pruebas 2)', () => {
+  withFakeDocument();
+
+  it('«dormir» de día no tapa a construir, mejorar ni cultivar; sale al anochecer o con cansancio de verdad', () => {
+    const { sim } = setup();
+    allStepsBut(sim, ['dormir', 'construir', 'mejorar', 'plantar'], 11, 70);
+    // A media mañana con energía 70 ya se podría echar la siesta, pero no es oportuno: toca construir.
+    expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
+    tutorial.markTutorial(sim, 'construir');
+    sim.state.time += 25;
+    expect(tutorial.currentTutorial(sim)?.id).toBe('mejorar');
+    tutorial.markTutorial(sim, 'mejorar');
+    sim.state.time += 25;
+    expect(tutorial.currentTutorial(sim)?.id).toBe('plantar');
+    tutorial.markTutorial(sim, 'plantar');
+    sim.state.time += 25;
+    // Solo queda dormir: entonces sí sale, sin «Ahora» (de día es una siesta).
+    const nap = tutorial.currentTutorial(sim)!;
+    expect(nap.id).toBe('dormir');
+    expect(nap.urgent).toBeUndefined();
+    // Con cansancio de verdad, al anochecer con sueño o de noche, es oportuno y pasa delante de lo pendiente.
+    const { sim: s2 } = setup();
+    allStepsBut(s2, ['dormir', 'construir', 'mejorar', 'plantar'], 15, 39);
+    expect(tutorial.currentTutorial(s2)).toMatchObject({ id: 'dormir', urgent: true });
+    for (const [hour, energy, timely] of [[19, 39, true], [19, 60, false], [20, 70, true], [21, 85, true], [3, 95, true], [20, 85, false]] as const) {
+      goToHour(s2, hour);
+      setNeeds(s2, { energy });
+      const t = tutorial.currentTutorial(s2)!;
+      expect(t.id === 'dormir' && t.urgent === true, `${hour}:00 energía ${energy}`).toBe(timely);
+      if (!timely) expect(t.id, `${hour}:00 energía ${energy}`).toBe('construir');
+    }
+  });
+
+  it('un primer día siguiendo cada consejo sin echarse la siesta enseña construir, mejorar y cultivar antes de que salga «dormir»', () => {
+    for (const seed of [1, 2, 3]) {
+      const sim = Simulation.newGame(seed);
+      const seen: string[] = [];
+      const seenAt = new Map<string, number>();
+      let firstSleep: { at: number; urgent: boolean } | null = null;
+      for (let i = 0; i < 14 * 60; i++) {
+        const t = tutorial.currentTutorial(sim);
+        if (t && !seenAt.has(t.id)) {
+          seenAt.set(t.id, sim.state.time);
+          seen.push(t.id);
+        }
+        if (t?.id === 'dormir' && !firstSleep) firstSleep = { at: sim.state.time, urgent: !!t.urgent };
+        // Hace cada consejo 5 min después de verlo, salvo dormir (de día no quiere echarse la siesta).
+        if (t && t.id !== 'dormir' && sim.state.time - seenAt.get(t.id)! >= 5) {
+          if (t.id === 'fabricar') addItem(sim.state.player.inventory, 'cana', 1);
+          tutorial.markTutorial(sim, t.id);
+        }
+        Object.assign(sim.state.player.needs, { hunger: 80, thirst: 80 });
+        sim.tick(1);
+      }
+      const order = seen.join(' ');
+      for (const id of ['construir', 'mejorar', 'plantar']) expect(seen.indexOf(id), `semilla ${seed}: ${order}`).toBeGreaterThanOrEqual(0);
+      expect(seen.indexOf('dormir'), `semilla ${seed}: ${order}`).toBeGreaterThan(seen.indexOf('plantar'));
+      expect(firstSleep, `semilla ${seed}`).not.toBeNull();
+      // Si sale de día es porque ya no queda nada más: nunca antes de enseñar lo demás.
+      expect(seenAt.get('plantar')!, `semilla ${seed}`).toBeLessThan(firstSleep!.at);
+    }
+  });
+
+  it('el texto de «dormir» se cumple: de noche hasta el amanecer, de día hasta estar descansado', () => {
+    const step = tutorial.TUTORIAL_STEPS.find((s) => s.id === 'dormir')!;
+    expect(step.text).toMatch(/de noche, hasta el amanecer; de día, hasta que estés descansado\.$/);
+    const { sim } = setup();
+    const cam = mod(sim, 'camarote');
+    nearBed(sim, cam.id, 0);
+    goToHour(sim, 11);
+    setNeeds(sim, { energy: 70, hunger: 90, thirst: 90 });
+    expect(sim.sleep(cam.id, 0).ok).toBe(true);
+    let napEnd = -1;
+    let napEnergy = -1;
+    runNeeds(sim, 6 * 60, () => {
+      if (napEnd < 0 && !sim.state.player.sleeping) {
+        napEnd = sim.state.time;
+        napEnergy = sim.state.player.needs.energy;
+      }
+    });
+    // La siesta acaba de día y descansado (no al amanecer).
+    expect(napEnd).toBeGreaterThan(0);
+    expect(hourOf(napEnd)).toBeLessThan(20);
+    expect(napEnergy).toBeGreaterThanOrEqual(98);
+    nearBed(sim, cam.id, 0);
+    goToHour(sim, 21);
+    setNeeds(sim, { energy: 85, hunger: 95, thirst: 95 });
+    expect(sim.sleep(cam.id, 0).ok).toBe(true);
+    let wokeAt = -1;
+    runNeeds(sim, 12 * 60, () => {
+      if (wokeAt < 0 && !sim.state.player.sleeping) wokeAt = sim.state.time;
+    });
+    expect(wokeAt).toBeGreaterThan(0);
+    expect(hourOf(wokeAt)).toBeGreaterThanOrEqual(6);
+    expect(hourOf(wokeAt)).toBeLessThan(8);
+  });
+
+  it('el consejo de la hoja enseña a abrir la mochila (Tab) antes de pedir el clic derecho', () => {
+    const cuaderno = tutorial.TUTORIAL_STEPS.find((s) => s.id === 'cuaderno')!;
+    expect(cuaderno.text).toMatch(/Abre la mochila con Tab y haz clic derecho sobre la hoja/);
+    expect(cuaderno.text.indexOf('Tab')).toBeLessThan(cuaderno.text.indexOf('clic derecho'));
+    // Ningún consejo anterior a la hoja necesitaba la mochila: es el primero que la nombra.
+    const before = tutorial.TUTORIAL_STEPS.slice(0, cuaderno.index! - 1);
+    expect(before.some((s) => /mochila/.test(s.text))).toBe(false);
+  });
+
+  it('un paso hecho por adelantado no esconde ni marca como «¡Hecho!» el consejo a la vista', () => {
+    const { sim } = setup();
+    const { box, wait } = tutorialHud(sim);
+    expect(box().text).toMatch(/^Moverse0\/15/);
+    // Lee la hoja (o come) sin haberse movido: el consejo «Moverse» sigue ahí, sin pausa.
+    tutorial.markTutorial(sim, 'cuaderno');
+    expect(tutorial.shownTutorialCompleted(sim)).toBe(false);
+    let b = box();
+    expect(b.cls).not.toContain('done');
+    expect(b.text).toMatch(/^Moverse1\/15/);
+    sim.state.time += 5;
+    tutorial.markTutorial(sim, 'comer');
+    expect(box().text).toMatch(/^Moverse2\/15/);
+    // Ahora sí se mueve: «¡Hecho!» de «Moverse» y la pausa de 20 min.
+    tutorial.markTutorial(sim, 'mover');
+    expect(tutorial.shownTutorialCompleted(sim)).toBe(true);
+    b = box();
+    expect(b.cls).toContain('done');
+    expect(b.text).toMatch(/^Moverse¡Hecho!/);
+    wait(2);
+    expect(box().cls).toContain('hidden');
+    // Otro paso hecho durante la pausa no repite el «¡Hecho!» de un consejo que ya no se ve.
+    tutorial.markTutorial(sim, 'almacen');
+    expect(box().cls).toContain('hidden');
+    sim.state.time += 20;
+    expect(box().text).not.toMatch(/Moverse/);
+  });
+
+  it('llegar andando a un mueble completa «Moverse» a la vista: ese «¡Hecho!» sí es cierto', () => {
+    const { sim } = setup();
+    const { box } = tutorialHud(sim);
+    expect(box().text).toMatch(/^Moverse/);
+    tutorial.markTutorial(sim, 'almacen');
+    const b = box();
+    expect(b.cls).toContain('done');
+    expect(b.text).toMatch(/^Moverse¡Hecho!/);
+  });
+
+  it('con los consejos ocultos (X o F1) o desactivados, completar un paso no enseña nada', () => {
+    const { sim } = setup();
+    const { box, wait } = tutorialHud(sim);
+    expect(box().text).toMatch(/^Moverse/);
+    tutorial.dismissTutorial(sim);
+    expect(box().cls).toContain('hidden');
+    tutorial.markTutorial(sim, 'mover');
+    expect(box().cls).toContain('hidden');
+    // Al volver a mostrarlos, el siguiente consejo, sin un «¡Hecho!» atrasado.
+    tutorial.resumeTutorial(sim);
+    wait(0.5);
+    const b = box();
+    expect(b.cls).not.toContain('done');
+    expect(b.text).not.toMatch(/Moverse/);
+    // Desactivados en Ajustes: lo mismo.
+    const { sim: s2 } = setup();
+    const settings = { tutorial: true };
+    const h2 = tutorialHud(s2, settings);
+    expect(h2.box().text).toMatch(/^Moverse/);
+    settings.tutorial = false;
+    expect(h2.box().cls).toContain('hidden');
+    tutorial.markTutorial(s2, 'comer');
+    tutorial.markTutorial(s2, 'mover');
+    expect(h2.box().cls).toContain('hidden');
+  });
+
+  it('«mejorar» dice qué mejora se puede pagar ya', () => {
+    const { sim } = setup();
+    allStepsBut(sim, ['mejorar'], 12, 90);
+    const step = tutorial.currentTutorial(sim)!;
+    expect(step.id).toBe('mejorar');
+    expect(step.text).toMatch(/herramienta Mejorar \(U\)/);
+    expect(step.text).toMatch(/Ahora puedes pagar: Camarote acogedor\.$/);
+    // La lista estática (repaso de consejos) no depende del estado.
+    expect(tutorial.TUTORIAL_STEPS.find((s) => s.id === 'mejorar')!.text).not.toMatch(/Ahora puedes pagar/);
+  });
+
+  it('la mejora del primer día se puede pagar aunque la primera obra sea un camarote, un colector o un comedor', () => {
+    const firstSpot = (sim: Simulation, type: string) => {
+      for (const level of [1, 2, 0]) for (let x = 0; x < 20; x++) for (let z = -1; z < 6; z++) for (const rot of [0, 1, 2, 3] as const) if (sim.checkPlace(type, level, x, z, rot).ok) return { level, x, z, rot };
+      return null;
+    };
+    for (const type of ['camarote', 'colector', 'comedor', 'almacen', 'huerto', 'banco_trabajo']) {
+      const { sim } = setup(1);
+      for (const s of tutorial.TUTORIAL_STEPS) if (s.id !== 'mejorar' && s.id !== 'construir') tutorial.markTutorial(sim, s.id);
+      // La caña del paso «fabricar» ya gastó 2 de madera y 2 de cuerda del almacén.
+      const alm = mod(sim, 'almacen').inventory!;
+      removeItem(alm, 'madera', 2);
+      removeItem(alm, 'cuerda', 2);
+      setNeeds(sim, { hunger: 90, thirst: 90, energy: 90 });
+      const spot = firstSpot(sim, type)!;
+      expect(spot, type).not.toBeNull();
+      const r = sim.placeModule(type, spot.level, spot.x, spot.z, spot.rot);
+      expect(r.ok, `${type}: ${r.msg}`).toBe(true);
+      expect(sim.state.tutorial.done, type).toContain('construir');
+      sim.state.time += 30;
+      expect(tutorial.affordableUpgrades(sim).map((m) => m.type), type).toContain('camarote');
+      expect(tutorial.currentTutorial(sim)?.id, type).toBe('mejorar');
+    }
+  });
+
+  it('Ajustes: con los consejos ocultos, el interruptor sale apagado y un clic los recupera; «Valores por defecto» también', () => {
+    const { sim } = setup();
+    const settings = { ...DEFAULT_SETTINGS };
+    const ctx = { sim, bus: sim.bus, settings, saveSettings() {}, renderer: { needsReloadFor: () => false }, listSaves: () => [] };
+    const menus = new Menus({ appendChild() {} } as unknown as HTMLElement, ctx as never, {} as never);
+    const raw = menus as unknown as { root: string | null; refresh: () => void; settingsCard(): VNode };
+    raw.refresh = () => {};
+    raw.root = 'pause';
+    const tips = (): VNode => {
+      const row = vfind(raw.settingsCard(), (v) => String(v.props['class']).includes('set-row') && vtext(v).startsWith('Consejos (tutorial)'))[0]!;
+      return vfind(row, (v) => v.props['role'] === 'switch')[0]!;
+    };
+    const click = (v: VNode): void => (v.props['onclick'] as () => void)();
+    expect(tips().props['aria-checked']).toBe('true');
+    tutorial.dismissTutorial(sim);
+    expect(tips().props['aria-checked']).toBe('false');
+    click(tips());
+    expect(sim.state.tutorial.dismissed).toBe(false);
+    expect(settings.tutorial).toBe(true);
+    expect(tips().props['aria-checked']).toBe('true');
+    expect(tutorial.currentTutorial(sim)?.id).toBe('mover');
+    // Apagarlo es el ajuste global; volver a encenderlo, un clic.
+    click(tips());
+    expect(settings.tutorial).toBe(false);
+    expect(tips().props['aria-checked']).toBe('false');
+    click(tips());
+    expect(settings.tutorial).toBe(true);
+    // «Valores por defecto» con los consejos ocultos los devuelve.
+    tutorial.dismissTutorial(sim);
+    menus.resetSettings();
+    expect(sim.state.tutorial.dismissed).toBe(false);
+    expect(tips().props['aria-checked']).toBe('true');
+    // En el menú principal solo cuenta el ajuste (la partida de fondo no es la que se va a jugar).
+    tutorial.dismissTutorial(sim);
+    raw.root = 'main';
+    expect(tips().props['aria-checked']).toBe('true');
+    menus.resetSettings();
+    expect(sim.state.tutorial.dismissed).toBe(true);
+  });
+
+  it('F1 dos veces seguidas deja un solo aviso de consejos (el último), no «ocultos» y «activados» a la vez', () => {
+    let list: ToastEntry[] = [];
+    list = pushToast(list, { id: 1, text: 'Consejos ocultos. F1 los vuelve a mostrar', kind: 'info', born: 0, ttl: 4.5, key: 'consejos' });
+    list = pushToast(list, { id: 2, text: 'Bebes agua', kind: 'info', born: 0.2, ttl: 4.5 });
+    list = pushToast(list, { id: 3, text: 'Consejos activados. F1 los oculta', kind: 'info', born: 0.5, ttl: 4.5, key: 'consejos' });
+    expect(list.map((t) => t.text)).toEqual(['Bebes agua', 'Consejos activados. F1 los oculta']);
+    // Sin clave, dos avisos distintos siguen apilándose como siempre.
+    list = pushToast(list, { id: 4, text: 'Comes una lata de conserva', kind: 'info', born: 0.6, ttl: 4.5 });
+    expect(list).toHaveLength(3);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Rescate del pecio: un solo «Levamos anclas»                          */
+/* ------------------------------------------------------------------ */
+
+describe('rescate de un pecio: el evento dura lo que el fondeo', () => {
+  it('al vencer el fondeo se avisa una sola vez de que levamos anclas y el rescate se cierra entonces', () => {
+    const { sim } = setup(1);
+    sim.state.events.nextRollAt = 1e12;
+    sim.state.events.scripted = events.SCRIPT.map((s) => s.id);
+    const ev = events.startEvent(sim, 'naufragio')!;
+    expect(sim.eventChoice(ev.id, 'rescatar').ok).toBe(true);
+    const from = sim.state.time;
+    expect(sim.state.voyage.anchoredUntil).toBe(from + events.WRECK_ANCHOR_MIN);
+    expect(ev.endsAt).toBe(from + events.WRECK_ANCHOR_MIN);
+    const logAt = sim.state.log.length;
+    for (let i = 0; i < 2 * events.WRECK_ANCHOR_MIN; i++) {
+      setNeeds(sim, { hunger: 90, thirst: 90, energy: 90 });
+      sim.tick(1);
+    }
+    const anchors = sim.state.log.slice(logAt).filter((l) => /Levamos anclas/.test(l.text));
+    expect(anchors.map((l) => l.text)).toHaveLength(1);
+    expect(anchors[0]!.text).toMatch(/^Levamos anclas y dejamos atrás el pecio del «.+» \(rescatados 0 de \d+ restos\)\.$/);
+    expect(anchors[0]!.at).toBeLessThanOrEqual(from + events.WRECK_ANCHOR_MIN + 1);
+    expect(events.activeEvent(sim, 'naufragio')).toBeUndefined();
+    expect(sim.state.voyage.anchoredUntil).toBeNull();
+  });
+
+  it('si el barco sigue fondeado por otra cosa, el rescate termina sin decir que levamos anclas', () => {
+    const { sim } = setup(1);
+    sim.state.events.nextRollAt = 1e12;
+    sim.state.events.scripted = events.SCRIPT.map((s) => s.id);
+    const ev = events.startEvent(sim, 'naufragio')!;
+    expect(sim.eventChoice(ev.id, 'rescatar').ok).toBe(true);
+    // Una expedición alarga el fondeo más allá del rescate.
+    voyage.anchorShip(sim, 3 * events.WRECK_ANCHOR_MIN, 'expedición a la isla');
+    const logAt = sim.state.log.length;
+    for (let i = 0; i < events.WRECK_ANCHOR_MIN + 5; i++) {
+      setNeeds(sim, { hunger: 90, thirst: 90, energy: 90 });
+      sim.tick(1);
+    }
+    expect(events.activeEvent(sim, 'naufragio')).toBeUndefined();
+    const fresh = sim.state.log.slice(logAt).map((l) => l.text);
+    expect(fresh.some((t) => /^Termina el rescate del «.+» \(rescatados 0 de \d+ restos\)\.$/.test(t))).toBe(true);
+    expect(fresh.some((t) => /Levamos anclas/.test(t))).toBe(false);
+    expect(voyage.isAnchored(sim)).toBe(true);
   });
 });
 
