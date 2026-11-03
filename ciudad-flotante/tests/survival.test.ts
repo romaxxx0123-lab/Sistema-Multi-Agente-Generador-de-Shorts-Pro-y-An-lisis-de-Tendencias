@@ -2521,7 +2521,7 @@ describe('tutorial: cuaderno y mejoras', () => {
     expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
     tutorial.markTutorial(sim, 'construir');
     sim.state.time += 30;
-    // Camarote acogedor: 4 de tela y 10 de madera, que hay en el almacén inicial.
+    // El camarote acogedor se paga con lo que hay en el almacén inicial.
     expect(tutorial.affordableUpgrades(sim).map((m) => m.type)).toContain('camarote');
     const step = tutorial.currentTutorial(sim)!;
     expect(step.id).toBe('mejorar');
