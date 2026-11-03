@@ -11,7 +11,7 @@ import type { NotifyKind } from '../core/EventBus';
 import { FINAL_REGION } from '../data/story';
 import { GRUA_CYCLE_MIN, GRUA_LIFT_MIN } from '../sim/debris';
 import { moduleTier } from '../sim/moduleStats';
-import { cellAtPoint, getCell, moduleCenter, type LayoutCell, type ShipLayout } from '../sim/ship';
+import { cellAtPoint, getCell, levelOfY, levelY, moduleCenter, type LayoutCell, type ShipLayout } from '../sim/ship';
 import { daylight } from '../sim/time';
 import type { GameState, ModuleInstance, NpcState } from '../sim/types';
 import { viveroHasRoom } from '../sim/utilities';
@@ -590,6 +590,18 @@ export function distanceGain(d: number, ref: number, maxDist: number): number {
 export interface Occlusion {
   gain: number;
   cutoff: number;
+}
+
+/** Por encima de esta altura (m), fuera del casco, una fuente está en el cielo (fuegos artificiales). */
+const SKY_Y = levelY(3) + 1;
+
+/**
+ * Cubierta de una fuente para la oclusión. Lo que suena en el cielo lejos del barco (fuegos) es
+ * exterior a la altura del oyente: entra por las ventanas como el mar, sin atravesar cubiertas.
+ */
+export function sourceLevel(cell: LayoutCell | null, y: number, listenerLevel: number): number {
+  if (!cell && y > SKY_Y) return listenerLevel;
+  return levelOfY(y - 0.5);
 }
 
 /**

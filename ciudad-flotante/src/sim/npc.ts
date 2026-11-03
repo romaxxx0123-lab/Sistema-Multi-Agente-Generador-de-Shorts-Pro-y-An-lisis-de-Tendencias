@@ -14,7 +14,10 @@
  * Movimiento: rutas A* con `sim.nav.findPath` cacheadas en `npc.path` (solo se replanifican si la
  * ruta falla, si el barco cambia o si se atascan), 1,4 m por minuto de juego, con altura del suelo y
  * de las rampas sacada de la propia rejilla de navegación, y tiempos límite para no quedarse
- * atrapados. `yaw = atan2(−dx, −dz)` según la dirección de la marcha (o mirando a lo que usan).
+ * atrapados. `yaw = atan2(−dx, −dz)` según la dirección de la marcha (o mirando a lo que usan). Para
+ * que no busquen ruta todos a la vez, cada uno se despierta con su propio desfase (`npcWakeHour`) y,
+ * si en un paso ya se han buscado `PATH_SEARCHES_PER_TICK` rutas, las decisiones que no corren prisa
+ * esperan al paso siguiente.
  *
  * Trabajo real: el cocinero encola recetas pagando SOLO con los almacenes y alimenta el fogón; el
  * jardinero siembra, cosecha y quita plagas; el mecánico repara con repuestos del almacén y recarga

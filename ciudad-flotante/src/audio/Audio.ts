@@ -26,7 +26,7 @@ import type { NotifyKind } from '../core/EventBus';
 import { clamp, lerp } from '../core/math';
 import { registerDebug } from '../game/debug';
 import type { GameContext } from '../game/context';
-import { cellAtPoint, levelOfY, moduleCenter, type ShipLayout } from '../sim/ship';
+import { cellAtPoint, moduleCenter, type ShipLayout } from '../sim/ship';
 import { GRUA_LIFT_MIN } from '../sim/debris';
 import type { GameState, ModuleInstance } from '../sim/types';
 import { AudioEngine, audioContextCtor, hasUserActivation } from './engine';
@@ -48,6 +48,7 @@ import {
   occlusion,
   panFor,
   portPresence,
+  sourceLevel,
   toolFallback,
   topNotify,
   type EmitterKind,
@@ -457,7 +458,7 @@ export class Audio {
         if (dg <= 0.002) return false;
         const layout = this.safeLayout();
         const cell = layout ? cellAtPoint(layout, pos.x, pos.y, pos.z) : null;
-        const occ = occlusion(this.env, cell, levelOfY(pos.y - 0.5));
+        const occ = occlusion(this.env, cell, sourceLevel(cell, pos.y, this.env.level));
         gain *= dg * occ.gain;
         cutoff = Math.min(cutoff, occ.cutoff, lerp(20000, 6500, behindFor(l, pos.x, pos.z)));
         pan = panFor(l, pos.x, pos.z);

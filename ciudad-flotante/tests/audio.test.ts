@@ -50,6 +50,7 @@ import {
   occlusion,
   panFor,
   portPresence,
+  sourceLevel,
   toolFallback,
   topNotify,
   type AmbientInput,
@@ -1160,6 +1161,18 @@ describe('Audio de punta a punta (WebAudio falso)', () => {
     expect(r.fake().state).toBe('running');
     expect(r.eng().ambience.runningLayers()).toBeGreaterThan(0);
     expect((r.audio as unknown as { errors: number }).errors).toBe(0);
+  });
+
+  it('desde un camarote, los fuegos del cielo se oyen como el resto del exterior (sin atravesar cubiertas)', () => {
+    const sim = Simulation.newGame(41);
+    const cabin = listenerEnv(sim.layout, -7.4, 3.5, -7.4);
+    expect(cabin.kind).toBe('habitacion');
+    const sky = occlusion(cabin, null, sourceLevel(null, 80, cabin.level));
+    expect(sky.gain).toBeCloseTo(exteriorGain(cabin.exposure));
+    expect(sky.cutoff).toBeCloseTo(exteriorCutoff(cabin.exposure));
+    // El agua junto al casco y lo que hay a bordo conservan su cubierta.
+    expect(sourceLevel(null, 0.5, 1)).toBe(0);
+    expect(sourceLevel(cellAtPoint(sim.layout, 2, 3.5, -2), 3.5, 0)).toBe(1);
   });
 
   it('fuegos artificiales: se oyen con el retardo de su distancia', () => {
