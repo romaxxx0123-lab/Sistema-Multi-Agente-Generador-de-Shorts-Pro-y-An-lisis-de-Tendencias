@@ -2514,7 +2514,7 @@ describe('tutorial: cuaderno y mejoras', () => {
     expect(tutorial.currentTutorial(sim)?.id).toBe('construir');
     tutorial.markTutorial(sim, 'construir');
     sim.state.time += 30;
-    // Camarote acogedor: 4 de tela y 6 de madera, que hay en el almacén inicial.
+    // Camarote acogedor: 4 de tela y 10 de madera, que hay en el almacén inicial.
     expect(tutorial.affordableUpgrades(sim).map((m) => m.type)).toContain('camarote');
     const step = tutorial.currentTutorial(sim)!;
     expect(step.id).toBe('mejorar');
@@ -2527,11 +2527,12 @@ describe('tutorial: cuaderno y mejoras', () => {
     sim.state.player.inventory.slots.fill(null);
     expect(tutorial.affordableUpgrades(sim)).toEqual([]);
     expect(tutorial.currentTutorial(sim)).toBeNull();
-    // Almacén lleno y con lo necesario para ampliarlo (12 de madera y 6 de tornillería): oportuno.
+    // Almacén lleno y con lo necesario para ampliarlo (16 de madera, 8 de tornillería y 2 placas): oportuno.
     const alm = mod(sim, 'almacen');
     alm.inventory!.slots.fill({ id: 'chatarra', qty: 50 });
-    alm.inventory!.slots[0] = { id: 'madera', qty: 12 };
-    alm.inventory!.slots[1] = { id: 'tornillos', qty: 6 };
+    alm.inventory!.slots[0] = { id: 'madera', qty: 16 };
+    alm.inventory!.slots[1] = { id: 'tornillos', qty: 8 };
+    alm.inventory!.slots[2] = { id: 'placa_metal', qty: 2 };
     const urgent = tutorial.currentTutorial(sim)!;
     expect(urgent.id).toBe('mejorar');
     expect(urgent.urgent).toBe(true);

@@ -246,7 +246,7 @@ hasta repararse; una discusión resta 3 de ánimo al resto; el director reduce a
 
 ## 11. Habitantes (`npc.ts`) — sim-life
 
-- Necesidades: hambre −5/h (× rasgo), sed −7/h, energía −4,5/h; dormir +14/h (cama) / +8 (suelo).
+- Necesidades: hambre −5/h (× rasgo), sed −7/h, energía −4,5/h; dormir +14/h en cama (+1 por punto de confort por encima de 3, hasta +4, como el jugador) / +8 (suelo).
   Salud −6/h con hambre o sed a 0, −2/h enfermos. Mueren a 0 (diario, ánimo −20 al resto).
 - Ánimo tiende (4/h) a `60 + rasgo + cama (camarote +10, dormitorio +4, sin cama −15) + comida
   cocinada reciente (+8) + comedor (+5) − tormenta (10 × miedo) − hambre/sed < 30 (−15 c/u)
@@ -260,10 +260,12 @@ hasta repararse; una discusión resta 3 de ánimo al resto; el director reduce a
   8. ocio: pasear por cubierta, charlar (bocadillos), sentarse.
 - Puestos: **cocinero** (cocina con lo que hay en los almacenes y repone leña), **jardinero**
   (siembra, cosecha, retira plagas), **mecánico** (repara con repuestos del almacén, recarga el
-  generador, ayuda en obras), **pescador** (pesca desde la borda, 1 pez/45–75 min), **recolector**
+  generador —de día cuando le quedan < 90 min; desde las 16 h lo deja lleno hasta la próxima jornada;
+  de noche se levanta si va a apagarse con consumidores encendidos; prefiere bidones y deja la madera al
+  fogón—, ayuda en obras), **pescador** (pesca desde la borda, 1 pez/45–75 min), **recolector**
   (gancho: rescata el resto más cercano cada 20–40 min), **libre** (ayuda en obras / ocio).
   Los habitantes pagan con los **almacenes**, nunca con el inventario del jugador.
-- Movimiento: rutas con `sim.nav.findPath`, 1,4 m/min de juego; `yaw = atan2(−dx, −dz)`.
+- Movimiento: rutas con `sim.nav.findPath`, 1,4 m/min de juego; `yaw = atan2(−dx, −dz)`. Cada habitante se despierta con un desfase propio de 0–25 min y, si en un paso ya se han buscado 4 rutas, las decisiones que no corren prisa esperan al siguiente.
 - Camas: asignación automática a camas libres (camarote primero).
 - Diálogo (`talkTo`): saludo según ánimo, qué hace, quejas (hambre, sin cama, enfermo), petición.
   Opciones: mediar, curar (botiquín), cambiar de puesto (`setRole`), dar objeto (`giveItem`).
@@ -280,7 +282,7 @@ hasta repararse; una discusión resta 3 de ánimo al resto; el director reduce a
 - Balsas: el habitante despierto más cercano da la voz de alarma; si la balsa se escapa, la rescata
   el recolector, quien no tiene puesto o un habitante valiente.
 - Salud: aviso en el diario cuando alguien está grave (< 35); la enfermedad solo se cura con
-  tratamiento (ver §10); regeneración 2/h. Los factores del ánimo son consultables
+  tratamiento (ver §10); regeneración 2/h (×1,5 dormido; en la camilla de una enfermería con energía, ×3 × su healMult, como el jugador: `healingBedMults`). Los factores del ánimo son consultables
   (`npcMoodFactors`) y el diálogo explica lo que más pesa.
 
 ---
@@ -428,9 +430,16 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 
 ## 16. Relaciones entre habitantes (GDD §13)
 
-- Afinidad −100..100 por pareja (`npc.relations`): charlar y compartir mesa o sala común la sube;
-  discutir la baja. Amistad (≥ 40): ánimo al estar juntos y más pena si el otro muere. Rivalidad
-  (≤ −40): ánimo negativo y más discusiones entre esos dos. La ficha del habitante las muestra.
+- **Afinidad** −100..100 por pareja (`npc.relations`). La ficha del habitante las muestra.
+- **Química** de cada pareja (`npcChemistry`, −1..1): sus caracteres (como gruñón–hablador o madrugador–dormilón) más algo personal y fijo.
+- **Qué la mueve:**
+  - Charlar la sube, más si congenian. De mal humor, si chocan o si ya hay roces, la baja (−4..−8).
+  - Compartir mesa y sala común acerca hasta «se llevan bien» (tope 30 y 40; la sala, como mucho una vez cada 8 h por pareja), o deja roces (−3) si no congenian. Con roces, ni la mesa ni la sala acercan.
+  - Apagar un fuego juntos une (+6). Discutir la baja (−15).
+  - Cuanto más alta (o baja) está, menos se mueve.
+  - Sin trato se enfría 1 punto al día (los roces, 0,5).
+- **Amistad** (≥ 40): ánimo al estar juntos y más pena si el otro muere.
+- **Rivalidad** (≤ −40): ánimo negativo y más discusiones entre esos dos.
 
 ## 17. Interfaces nuevas de la ronda de contenido 2 (para interfaz, render, construcción y audio)
 

@@ -200,12 +200,12 @@ describe('catálogo de la paleta', () => {
   it('estadísticas de energía y agua en las fichas', () => {
     const txt = (id: string) => moduleStats(moduleDef(id)).map((s) => s.text).join(' | ');
     expect(txt('generador')).toContain('+5 kW');
-    expect(txt('panel_solar')).toContain('+1,6 kW de día');
+    expect(txt('panel_solar')).toContain('+1,2 kW de día');
     expect(txt('potabilizadora')).toContain('−2 kW');
-    expect(txt('potabilizadora')).toContain('+10 L/h');
+    expect(txt('potabilizadora')).toContain('+4 L/h');
     expect(txt('colector')).toContain('con lluvia');
     expect(txt('deposito')).toContain('+120 L');
-    expect(txt('bateria')).toContain('25 kWh');
+    expect(txt('bateria')).toContain('20 kWh');
     expect(txt('enfermeria')).toContain('2 camillas');
     expect(txt('camarote')).toContain('1 cama');
     expect(txt('camarote')).toContain('40 min');
@@ -527,9 +527,9 @@ describe('herramienta Mejorar: efectos legibles', () => {
     expect(texts('almacen', 1, 2)).toEqual(['+12 huecos']);
     expect(texts('almacen', 2, 3)).toEqual(['+16 huecos']);
     expect(texts('deposito', 1, 2)).toEqual(['+100 L']);
-    expect(texts('colector', 1, 2)).toEqual(['+15 L', '+8 L/h con lluvia']);
+    expect(texts('colector', 1, 2)).toEqual(['+15 L', '+4 L/h con lluvia']);
     expect(texts('bateria', 1, 2)).toEqual(['+20 kWh']);
-    expect(texts('panel_solar', 1, 2)).toEqual(['+0,8 kW de día']);
+    expect(texts('panel_solar', 1, 2)).toEqual(['+0,6 kW de día']);
     expect(texts('camarote', 1, 2)).toEqual(['Confort +2']);
     expect(texts('motor', 1, 2)).toEqual(['+2 nudos']);
   });
@@ -543,7 +543,7 @@ describe('herramienta Mejorar: efectos legibles', () => {
     expect(texts('generador', 2, 3)).toEqual(['+3 kW', 'Combustible −23 % → −38 %']);
     expect(texts('taller', 1, 2)).toEqual(['×1,6 velocidad', '−30 % desgaste']);
     expect(texts('enfermeria', 1, 2)).toEqual(['×1,5 curación']);
-    expect(texts('potabilizadora', 1, 2)).toEqual(['+6 L/h', '−30 % desgaste']);
+    expect(texts('potabilizadora', 1, 2)).toEqual(['+3 L/h', '−30 % desgaste']);
   });
 
   it('módulos nuevos: grúa con su alcance, vivero con su ritmo', () => {
@@ -576,7 +576,7 @@ describe('herramienta Mejorar: estado de cada módulo', () => {
     expect(u.name).toBe('Almacén');
     expect([u.tier, u.maxTier, u.toTier]).toEqual([1, 3, 2]);
     expect(u.nextName).toBe('Almacén con altillo');
-    expect(u.timeText).toBe('45 min');
+    expect(u.timeText).toBe('1 h');
     expect(u.effects.map((e) => e.text)).toEqual(['+12 huecos']);
     expect(u.cost.every((c) => c.ok)).toBe(true);
     const before = stock(sim);
@@ -679,7 +679,7 @@ describe('herramienta Mejorar: estado de cada módulo', () => {
     expect(c.title).toBe('¿Mejorar el almacén?');
     expect(c.lines[0]).toMatch(/^Nivel 2: Almacén con altillo\. /);
     // Sin «unas 45 min» (minuto es masculino): la duración va sin artículo.
-    expect(c.lines[1]).toMatch(/^La obra dura 45 min y el almacén se sigue usando mientras tanto\./);
+    expect(c.lines[1]).toMatch(/^La obra dura 1 h y el almacén se sigue usando mientras tanto\./);
     expect(c.chips?.map((e) => e.text)).toEqual(['+12 huecos']);
     expect(c.items.every((i) => i.have !== undefined && i.have >= i.qty)).toBe(true);
     expect(c.danger).toBe(false);
@@ -741,6 +741,7 @@ describe('herramienta Mejorar: estado de cada módulo', () => {
     expect(p.waterLossL).toBeCloseTo(est.waterLossL, 0);
     expect(p.upgradeInProgress).toBeNull();
     giveFor(sim, moduleDef('deposito').upgrades![1]!.cost);
+    sim.state.unlocks.push('agua'); // el gran depósito (nivel 3) pide el plano de la potabilizadora
     expect(sim.startUpgrade(dep.id).ok).toBe(true);
     expect(demolishPreview(sim, dep).upgradeInProgress).toBe('Gran depósito');
   });
@@ -759,7 +760,7 @@ describe('paleta: módulos especializados de la ronda 2', () => {
 
   it('estadísticas de lo que hace cada uno', () => {
     expect(txt('sala_comun')).toEqual(expect.arrayContaining(['Confort +4', 'Ocio y relaciones']));
-    expect(txt('ahumadero')).toEqual(expect.arrayContaining(['3 en 1 h 30 min', '6 huecos', 'Cielo abierto']));
+    expect(txt('ahumadero')).toEqual(expect.arrayContaining(['3 en 1 h', '6 huecos', 'Cielo abierto']));
     expect(txt('vivero')).toEqual(expect.arrayContaining(['1 cada 2 h 30 min', '−0,5 kW']));
     expect(txt('grua')).toEqual(expect.arrayContaining([`Rescata a ${GRUA_RANGE} m`, 'Junto a la borda', '−0,4 kW']));
     // La grúa (solo cubierta) no repite "Cielo abierto": lo dice su regla de la borda.

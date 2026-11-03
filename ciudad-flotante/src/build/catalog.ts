@@ -451,6 +451,7 @@ export function upgradePreview(sim: Simulation, m: ModuleInstance, have: Record<
   if (m.status === 'construction') hint = 'Espera a que termine la obra (o ayuda con el martillo)';
   else if (m.fire > 0) hint = 'Apaga antes el fuego con el cubo';
   else if (m.status === 'broken') hint = repairHint(m);
+  else if (reason.startsWith('Necesitas el Plano')) hint = 'Los planos aparecen en naufragios, islas y estructuras a la deriva, y algunos mercantes los cambian';
   return { ...base, ...info, state: 'blocked', reason, hint };
 }
 
