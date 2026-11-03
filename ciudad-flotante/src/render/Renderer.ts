@@ -534,7 +534,7 @@ export class Renderer {
     // Lleva el barco a Puerto Esperanza, `millas` dentro del puerto (pruebas visuales). Con
     // `llegado` (por defecto) la llegada queda hecha y vista: ni fuegos ni pantalla final (la UI la
     // da por vista con su orden `uiHistoriaVista`, como al cargar una partida ya llegada). Con
-    // `llegado = false` la llegada ocurre al entrar, como en una partida.
+    // `llegado = false` no se toca: si aún no se había llegado, la llegada ocurre como en una partida.
     registerDebug('puerto', ((millas = 6, llegado = true) => {
       const st = this.lastState;
       const port = REGIONS[FINAL_REGION];
