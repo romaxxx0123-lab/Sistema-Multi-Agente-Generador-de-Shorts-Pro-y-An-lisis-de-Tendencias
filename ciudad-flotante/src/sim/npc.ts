@@ -1414,10 +1414,20 @@ function onActStart(sim: Simulation, npc: NpcState): void {
         }
         memoOf(sim, npc).blocked[`fabricar:${r}`] = sim.state.time + 20;
         say(sim, npc, `Voy a fabricar ${(RECIPES[r]?.name ?? r).toLowerCase()}.`);
-      } else if (job === 'leña' || job === 'combustible') {
+      } else if (job === 'leña') {
         const m = findModule(sim, t.targetModuleId ?? -1);
         if (!m || !m.fuelInv || !loadFuelFromStorage(sim, m)) {
           abortTask(sim, npc, job, 30);
+          return;
+        }
+      } else if (job === 'combustible') {
+        // El generador se llena de una vez para lo que queda de jornada (o hasta mañana).
+        const m = findModule(sim, t.targetModuleId ?? -1);
+        const target = typeof d['fuelTarget'] === 'number' ? (d['fuelTarget'] as number) : GEN_FUEL_LOW;
+        let loads = 0;
+        while (m?.fuelInv && loads < GEN_MAX_LOADS && (loads === 0 || fuelMinutes(m) < target) && loadFuelFromStorage(sim, m)) loads++;
+        if (!m || !loads) {
+          abortTask(sim, npc, `combustible:${t.targetModuleId ?? -1}`, 30);
           return;
         }
       } else if (job === 'ahumar') {
@@ -2153,17 +2163,107 @@ function chooseRecipe(sim: Simulation): string | null {
   return null;
 }
 
-/** Combustible que hay en los almacenes para el fogón o el generador. */
+/**
+ * Combustible que hay en los almacenes para el fogón, el ahumadero o el generador. El fogón tira de
+ * la madera que sobra (la grúa y el gancho la traen a diario) y guarda los bidones; el generador,
+ * al revés: bidones (un bidón da 6 h; tres maderas, 2 h) y madera solo si sobra, sin tocar la
+ * reserva del fogón (`GEN_WOOD_RESERVE`).
+ */
 function fuelInStorage(sim: Simulation, m?: ModuleInstance): { id: ItemId; qty: number } | null {
   const comb = storageCount(sim, 'combustible');
   const wood = storageCount(sim, 'madera');
   const opts: { id: ItemId; qty: number }[] = [];
-  if (wood > 10) opts.push({ id: 'madera', qty: 3 });
-  if (comb > 0) opts.push({ id: 'combustible', qty: 1 });
-  if (wood >= 3 && wood <= 10) opts.push({ id: 'madera', qty: 3 });
+  if (m?.type === 'generador') {
+    if (comb > 0) opts.push({ id: 'combustible', qty: 1 });
+    if (wood >= GEN_WOOD_RESERVE + 3) opts.push({ id: 'madera', qty: 3 });
+  } else {
+    if (wood > 10) opts.push({ id: 'madera', qty: 3 });
+    if (comb > 0) opts.push({ id: 'combustible', qty: 1 });
+    if (wood >= 3 && wood <= 10) opts.push({ id: 'madera', qty: 3 });
+  }
   // Solo lo que cabe en la ranura de combustible (si ya tiene un bidón, no se le echa madera encima).
   const fits = m?.fuelInv ? opts.filter((o) => spaceFor(m.fuelInv!, o.id) > 0) : opts;
   return fits[0] ?? null;
+}
+
+/* ---- Generador: combustible para el día y para la noche ---- */
+
+/** Madera que el generador deja siempre en los almacenes para el fogón y el ahumadero (dos cargas). */
+const GEN_WOOD_RESERVE = 6;
+/** De día, se recarga el generador cuando le quedan menos de estos minutos. */
+export const GEN_FUEL_LOW = 90;
+/** Desde esta hora, la recarga ha de durar hasta la próxima jornada (más `GEN_FUEL_MARGIN`). */
+export const GEN_EVENING_FROM = WORK_TO - 4;
+export const GEN_FUEL_MARGIN = 120;
+/** Fuera de horario, quien lo atiende se levanta si al generador le quedan menos de estos minutos. */
+export const GEN_FUEL_ALERT = 45;
+/** Cargas como mucho en una recarga (bidones o tandas de tres maderas). */
+const GEN_MAX_LOADS = 12;
+
+/** Minutos que faltan para la próxima jornada de trabajo (`WORK_FROM`). */
+function minutesToWork(sim: Simulation): number {
+  const left = WORK_FROM * 60 - minuteOfDay(sim.state.time);
+  return left > 0 ? left : left + 24 * 60;
+}
+
+/**
+ * Minutos de combustible que debe tener el generador: de día, `GEN_FUEL_LOW`; desde media tarde y de
+ * noche, lo que falte hasta la próxima jornada con margen (así no se apaga de madrugada con los
+ * bidones en el almacén mientras el mecánico duerme).
+ */
+function genFuelTarget(sim: Simulation): number {
+  const h = hourOf(sim.state.time);
+  if (h >= WORK_FROM && h < GEN_EVENING_FROM) return GEN_FUEL_LOW;
+  return Math.max(GEN_FUEL_LOW, minutesToWork(sim) + GEN_FUEL_MARGIN);
+}
+
+/** ¿Hace falta que el generador funcione? (está en marcha, o algún consumidor encendido pide energía). */
+function generatorWanted(sim: Simulation, g: ModuleInstance): boolean {
+  if (g.powered) return true;
+  return sim.state.ship.modules.some((m) => isConsumer(sim, m) && currentDemand(sim, m) > 0);
+}
+
+/**
+ * Quién atiende los generadores: el mecánico (sano y a bordo) o, si no hay, el primero que pueda.
+ * Solo esa persona se levanta de noche para recargarlo.
+ */
+function fuelKeeper(sim: Simulation): NpcState | null {
+  let first: NpcState | null = null;
+  for (const n of sim.state.npcs) {
+    if (!isPresent(n) || n.sick || !fit(n)) continue;
+    if (n.role === 'mecanico') return n;
+    first ??= n;
+  }
+  return first;
+}
+
+/**
+ * Recargar un generador que se queda corto de combustible (encendido, terminado, sin fuego y con
+ * algo que echarle en los almacenes; si ya va otro, no). Carga hasta `target` minutos de una vez.
+ * `alert`: solo si está a punto de apagarse con consumidores que lo necesitan (de noche).
+ */
+function generatorFuelPlan(sim: Simulation, npc: NpcState, prio: number, alert = false): Plan | null {
+  for (const g of sim.state.ship.modules) {
+    if (g.type !== 'generador' || g.status !== 'active' || !g.on || g.fire > 0 || !g.fuelInv) continue;
+    const left = fuelMinutes(g);
+    const target = genFuelTarget(sim);
+    if (left >= (alert ? Math.min(GEN_FUEL_ALERT, target) : target)) continue;
+    if (alert && !generatorWanted(sim, g)) continue;
+    if (!fuelInStorage(sim, g) || blocked(sim, npc, `combustible:${g.id}`)) continue;
+    if (sim.state.npcs.some((n) => n !== npc && n.task?.kind === 'trabajar' && td(n).job === 'combustible' && n.task.targetModuleId === g.id)) continue;
+    const t = workTarget(sim, g);
+    if (!t) continue;
+    return { kind: 'trabajar', prio, target: t.pos, moduleId: g.id, data: { job: 'combustible', anim: 'reparar', faceYaw: t.faceYaw, fuelTarget: target, matchesRole: npc.role === 'mecanico' }, duration: 5 };
+  }
+  return null;
+}
+
+/** Fuera de horario: quien atiende los generadores se levanta si uno está a punto de apagarse. */
+function urgentFuelPlan(sim: Simulation, npc: NpcState): Plan | null {
+  if (npc.sick || npc.injured || npc.needs.energy <= 10 || fuelKeeper(sim) !== npc) return null;
+  const p = generatorFuelPlan(sim, npc, PRIO.urgente, true);
+  if (p) p.say = 'El generador se está quedando sin combustible: voy a llenarlo.';
+  return p;
 }
 
 /** Pasa combustible de los almacenes a la ranura de un módulo. */
@@ -2635,13 +2735,6 @@ function mechanicPlan(sim: Simulation, npc: NpcState): Plan | null {
       complain(sim, npc, `Necesito ${what} para arreglar ${target}, o ${how}.`, `${npc.name}: «Para reparar ${target} necesito ${what} en el almacén, o ${how}»`);
     }
   }
-  for (const g of sim.state.ship.modules) {
-    if (g.type !== 'generador' || g.status !== 'active' || !g.on || g.fire > 0) continue;
-    if (fuelMinutes(g) >= 90 || !fuelInStorage(sim, g) || blocked(sim, npc, `combustible:${g.id}`)) continue;
-    const t = workTarget(sim, g);
-    if (!t) continue;
-    return { kind: 'trabajar', prio: PRIO.trabajar, target: t.pos, moduleId: g.id, data: { job: 'combustible', anim: 'reparar', faceYaw: t.faceYaw }, duration: 5 };
-  }
   return null;
 }
 
@@ -2763,6 +2856,11 @@ function workPlan(sim: Simulation, npc: NpcState): Plan | null {
   if (npc.needs.mood < 15) {
     complain(sim, npc, 'No pienso mover un dedo hasta que mejoren las cosas.', `${npc.name} se niega a trabajar: su ánimo está por los suelos`);
     return null;
+  }
+  // El generador, antes de que se apague: el mecánico (o, si no hay, quien atiende las máquinas).
+  if (npc.role === 'mecanico' || fuelKeeper(sim) === npc) {
+    const fuel = generatorFuelPlan(sim, npc, PRIO.trabajar);
+    if (fuel) return fuel;
   }
   let p: Plan | null = null;
   switch (npc.role) {
@@ -3198,7 +3296,13 @@ function decide(sim: Simulation, npc: NpcState): Plan | null {
   // Con hambre y nada que comer: a pescar (antes que el trabajo o el ocio).
   if (starving && !sl) add(survivalFishPlan(sim, npc, PRIO.comer));
   if (isWorkHour(hour) && !sl) add(workPlan(sim, npc));
-  else if (npc.role === 'mecanico' && !npc.sick && !npc.injured && n.energy > 10) add(urgentRepairPlan(sim, npc));
+  else {
+    if (npc.role === 'mecanico' && !npc.sick && !npc.injured && n.energy > 10) add(urgentRepairPlan(sim, npc));
+    // Fuera de horario: el generador no se apaga de noche con bidones en el almacén. Despierto, quien
+    // lo atiende lo deja cargado hasta mañana; dormido, solo se levanta si está a punto de apagarse.
+    if (!sl && fuelKeeper(sim) === npc && !npc.sick && !npc.injured) add(generatorFuelPlan(sim, npc, PRIO.trabajar));
+    add(urgentFuelPlan(sim, npc));
+  }
   // Fuera de horario, si la despensa no da ni para una ración por cabeza, se pesca igualmente.
   if (!isWorkHour(hour) && !sl && !starving && needsFishing(sim, 1)) add(survivalFishPlan(sim, npc, PRIO.trabajar));
   if (!candidates.length) return sl ? null : leisurePlan(sim, npc);
@@ -3325,12 +3429,13 @@ function tickAct(sim: Simulation, npc: NpcState, dt: number): void {
       const starving = mustGetUpFor(sim, npc, 10);
       const night = isNightFor(npc, hour);
       const rested = d['nap'] ? n.energy >= 60 : !night && n.energy >= 30;
-      // El mecánico se levanta para una fuga (comprobado cada 10 min).
+      // El mecánico se levanta para una fuga, y quien atiende el generador para que no se apague
+      // (comprobado cada 10 min).
       let urgent = false;
       const mem = memoOf(sim, npc);
-      if (npc.role === 'mecanico' && n.energy > 40 && now >= mem.nextDecideAt) {
+      if (n.energy > 40 && now >= mem.nextDecideAt) {
         mem.nextDecideAt = now + DECIDE_EVERY;
-        urgent = !!urgentRepairPlan(sim, npc);
+        urgent = (npc.role === 'mecanico' && !!urgentRepairPlan(sim, npc)) || !!urgentFuelPlan(sim, npc);
       }
       if (fire || starving || rested || urgent || (!night && n.energy >= 98)) {
         finishTask(sim, npc);

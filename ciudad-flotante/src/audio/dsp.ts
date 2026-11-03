@@ -306,3 +306,109 @@ export function creakBuffer(sampleRate: number, rand: RandFn): Float32Array {
   highpassInPlace(out, sampleRate, 120);
   return normalizePeak(out, 0.85);
 }
+
+/**
+ * Burbujeo en bucle (aireador del vivero): cada burbuja es una senoide amortiguada que sube de tono
+ * al ascender (resonancia de Minnaert). Las grandes suenan más graves y más fuertes; salen a rachas
+ * de la piedra difusora.
+ * @param rate burbujas por segundo.
+ */
+export function bubblesLoop(sampleRate: number, seconds: number, rate: number, rand: RandFn): Float32Array {
+  const n = Math.max(1, Math.floor(sampleRate * seconds));
+  const out = new Float32Array(n);
+  let made = 0;
+  const target = Math.round(rate * seconds);
+  while (made < target) {
+    // Racha: de 1 a 5 burbujas muy seguidas.
+    const burst = 1 + Math.floor(rand() * rand() * 5);
+    let start = Math.floor(rand() * n);
+    for (let b = 0; b < burst && made < target; b++, made++) {
+      const size = rand();
+      const f0 = 380 + (1 - size) * (1 - size) * 1500;
+      const amp = 0.25 + 0.75 * size * (0.6 + 0.4 * rand());
+      const decay = sampleRate * (0.006 + 0.02 * size + 0.006 * rand());
+      const len = Math.floor(decay * 5);
+      const rise = 0.12 + rand() * 0.3;
+      let ph = 0;
+      for (let i = 0; i < len; i++) {
+        const u = i / len;
+        const f = f0 * (1 + rise * u);
+        ph += (2 * Math.PI * f) / sampleRate;
+        // Arranque suave (sin chasquido) y caída exponencial.
+        const env = Math.min(1, i / (sampleRate * 0.0015)) * Math.exp(-i / decay);
+        const idx = (start + i) % n;
+        out[idx] = out[idx]! + Math.sin(ph) * amp * env;
+      }
+      start += Math.floor(sampleRate * (0.012 + rand() * 0.05));
+    }
+  }
+  highpassInPlace(out, sampleRate, 150);
+  return normalizePeak(out, 0.9);
+}
+
+/** Formantes (F1, F2, F3) de vocales para el murmullo de conversación. */
+const MURMUR_VOWELS: readonly [number, number, number][] = [
+  [780, 1250, 2500],
+  [430, 2000, 2650],
+  [320, 2250, 2900],
+  [480, 870, 2450],
+  [360, 760, 2350],
+  [620, 1650, 2550],
+];
+
+/**
+ * Murmullo de conversación en bucle (sala común, muelle del puerto): varias voces ininteligibles,
+ * cada una con frases de sílabas (pulso glotal → tres formantes) y pausas para dejar hablar a las
+ * demás. Sin agudos: suena cálido y algo lejano.
+ * @param talkers voces que hablan por turnos y a la vez.
+ */
+export function murmurLoop(sampleRate: number, seconds: number, talkers: number, rand: RandFn): Float32Array {
+  const n = Math.max(1, Math.floor(sampleRate * seconds));
+  const f = Math.floor(sampleRate * 0.2);
+  const raw = new Float32Array(n + f);
+  for (let k = 0; k < talkers; k++) {
+    const base = 95 + rand() * 140;
+    const voiceGain = 0.6 + rand() * 0.4;
+    let t = Math.floor(rand() * sampleRate * 0.8);
+    let ph = 0;
+    while (t < raw.length) {
+      // Una frase de 3 a 9 sílabas con su entonación (cae al final).
+      const syll = 3 + Math.floor(rand() * 7);
+      let pitch = base * (0.95 + rand() * 0.15);
+      for (let s = 0; s < syll && t < raw.length; s++) {
+        const dur = Math.floor(sampleRate * (0.08 + rand() * 0.13));
+        const [f1, f2, f3] = MURMUR_VOWELS[Math.floor(rand() * MURMUR_VOWELS.length)]!;
+        const res = [new Resonator(sampleRate, f1, 6), new Resonator(sampleRate, f2, 9), new Resonator(sampleRate, f3, 11)];
+        const p0 = pitch;
+        const p1 = pitch * (s === syll - 1 ? 0.8 : 0.93 + rand() * 0.14);
+        const atk = sampleRate * 0.018;
+        const consonant = rand() < 0.6 ? Math.floor(sampleRate * (0.01 + rand() * 0.02)) : 0;
+        for (let i = 0; i < dur && t + i < raw.length; i++) {
+          const u = i / dur;
+          ph += (p0 + (p1 - p0) * u) / sampleRate;
+          ph -= Math.floor(ph);
+          // Pulso glotal suave (seno al cuadrado en la primera mitad del periodo).
+          const glot = ph < 0.5 ? Math.sin(ph * 2 * Math.PI) ** 2 - 0.25 : -0.25;
+          const env = Math.min(1, i / atk) * (u > 0.65 ? (1 - u) / 0.35 : 1);
+          let x = glot * env;
+          if (i < consonant) x += gauss(rand) * 0.25 * (1 - i / consonant);
+          const y = res[0]!.process(x) + res[1]!.process(x) * 0.5 + res[2]!.process(x) * 0.18;
+          raw[t + i] = raw[t + i]! + y * voiceGain;
+        }
+        t += dur + Math.floor(sampleRate * (0.015 + rand() * 0.05));
+        pitch = p1;
+      }
+      // Pausa entre frases (turno de otro).
+      t += Math.floor(sampleRate * (0.25 + rand() * 1.2));
+    }
+  }
+  // Algo de habitación: paso bajo suave (voces lejanas y cálidas) y sin graves de manejo.
+  let lp = 0;
+  const a = 1 - Math.exp((-2 * Math.PI * 2200) / sampleRate);
+  for (let i = 0; i < raw.length; i++) {
+    lp += (raw[i]! - lp) * a;
+    raw[i] = lp;
+  }
+  highpassInPlace(raw, sampleRate, 90);
+  return normalizeRms(makeLoopable(raw, n), 0.2);
+}

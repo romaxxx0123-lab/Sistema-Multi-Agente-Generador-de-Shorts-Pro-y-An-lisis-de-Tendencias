@@ -337,7 +337,7 @@ describe('red eléctrica', () => {
 /* ------------------------------------------------------------------ */
 
 describe('red de agua', () => {
-  it('el colector recoge 10 L/h × lluvia a cielo abierto', () => {
+  it('el colector recoge 8 L/h × lluvia a cielo abierto', () => {
     const { sim } = setup();
     // Los habitantes beben del depósito (SISTEMAS §11): fuera para medir solo el colector.
     sim.state.npcs = [];
@@ -348,9 +348,11 @@ describe('red de agua', () => {
       sim.state.weather.rain = 1;
       sim.tick(0.5);
     }
-    expect(u.waterL - w0).toBeGreaterThan(9.8);
-    expect(u.waterL - w0).toBeLessThanOrEqual(10.0001);
-    expect(u.water.inPerHour).toBeGreaterThan(9);
+    const gen = moduleDef('colector').waterGen!;
+    expect(gen).toBe(8);
+    expect(u.waterL - w0).toBeGreaterThan(gen - 0.2);
+    expect(u.waterL - w0).toBeLessThanOrEqual(gen + 0.0001);
+    expect(u.water.inPerHour).toBeGreaterThan(gen - 1);
     // Sin lluvia no entra nada (clima seco: con el clima real la lluvia tiende a su objetivo).
     freeze(sim, 'despejado');
     run(sim, 60, () => {
@@ -678,17 +680,19 @@ describe('fabricación', () => {
 /* ------------------------------------------------------------------ */
 
 describe('taller eléctrico', () => {
-  it('solo trabaja con energía, a velocidad × satisfacción', () => {
+  it('sin electricidad trabaja a mano (25 %); con energía, a velocidad × satisfacción', () => {
     const { sim, notes } = setup();
     sim.state.unlocks.push('taller', 'energia', 'solar');
     give(sim, MATERIALS);
     const taller = build(sim, 'taller', 1, 8, 2, 0);
     expect(sim.queueCraft(taller.id, 'pieza_mecanica').ok).toBe(true);
     run(sim, 30);
-    expect(taller.queue[0]!.progress).toBe(0);
+    // A manivela: 30 min de trabajo × 0,25 = 7,5 min de avance.
+    expect(taller.queue[0]!.progress).toBeCloseTo(30 * stations.WORKSHOP_HAND_SPEED, 6);
     expect(taller.powered).toBe(false);
-    expect(texts(notes, /taller no tiene energía/)).toHaveLength(1);
-    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Sin energía');
+    expect(texts(notes, /^Sin electricidad, el taller trabaja a mano/)).toHaveLength(1);
+    expect(texts(notes, /Falta energía/)).toHaveLength(0);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('A mano, sin electricidad (25 %)');
 
     // Panel solar a mediodía: 1,6 kW × luz × nubes < 1,5 kW → trabaja a velocidad parcial.
     build(sim, 'panel_solar', 1, 9, 3);
@@ -1269,7 +1273,7 @@ describe('ampliación del casco', () => {
 /* ------------------------------------------------------------------ */
 
 describe('desgaste y reparación', () => {
-  it('las máquinas funcionando pierden 1 punto cada 8 h y se averían a 0', () => {
+  it('las máquinas funcionando pierden 1 punto cada 5 h y se averían a 0', () => {
     const { sim, notes } = setup();
     sim.state.unlocks.push('energia', 'agua');
     give(sim, MATERIALS);
@@ -1280,8 +1284,8 @@ describe('desgaste y reparación', () => {
     const empty = () => {
       sim.state.utilities.waterL = 0;
     };
-    expect(construction.WEAR_HOURS_PER_POINT).toBe(8);
-    run(sim, 8 * 60, empty);
+    expect(construction.WEAR_HOURS_PER_POINT).toBe(5);
+    run(sim, 5 * 60, empty);
     expect(gen.condition).toBeCloseTo(99, 2);
     expect(pot.condition).toBeCloseTo(99, 2);
     expect(banco.condition).toBe(100); // no es una máquina
@@ -1703,7 +1707,7 @@ describe('regresiones QA 1 (economía)', () => {
     expect(u.batteryKWh).toBeLessThan(20);
   });
 
-  it('[44] el taller apagado con el interruptor dice «Apagado», no «Sin energía»', () => {
+  it('[44] el taller apagado con el interruptor dice «Apagado», no «A mano»', () => {
     const { sim, notes } = setup();
     sim.state.unlocks.push('taller', 'energia');
     give(sim, MATERIALS);
@@ -1718,16 +1722,18 @@ describe('regresiones QA 1 (economía)', () => {
     sim.tick(0.5);
     expect(stations.stationStatus(sim, taller.id)!.status).toBe('Apagado');
     expect(texts(notes, /^El taller mecánico está apagado: enciéndelo para seguir trabajando$/)).toHaveLength(1);
-    expect(texts(notes, /no tiene energía/)).toHaveLength(0);
+    expect(texts(notes, /Sin electricidad/)).toHaveLength(0);
     sim.togglePower(taller.id);
     sim.tick(0.5);
     expect(stations.stationStatus(sim, taller.id)!.status).toBe('Trabajando');
-    // Encendido pero sin energía: ahora sí «Sin energía».
+    // Encendido pero sin energía: sigue, a mano (y lo dice una sola vez).
     u.batteryKWh = 0;
     sim.tick(0.5);
     sim.tick(0.5);
-    expect(stations.stationStatus(sim, taller.id)!.status).toBe('Sin energía');
-    expect(texts(notes, /^El taller no tiene energía/)).toHaveLength(1);
+    expect(stations.stationStatus(sim, taller.id)!.status).toBe('A mano, sin electricidad (25 %)');
+    expect(texts(notes, /^Sin electricidad, el taller trabaja a mano/)).toHaveLength(1);
+    sim.tick(0.5);
+    expect(texts(notes, /^Sin electricidad, el taller trabaja a mano/)).toHaveLength(1);
   });
 
   it('[20] los encargos del jugador pasan delante de los de los habitantes (que conservan su avance)', () => {
@@ -1771,7 +1777,7 @@ describe('regresiones QA 1 (economía)', () => {
     expect(taller.status).toBe('active');
   });
 
-  it('[9] con el único generador averiado, la pista no manda al taller sin energía', () => {
+  it('[9] con el único generador averiado, la pista ofrece el taller (a mano) y el banco', () => {
     const { sim } = setup();
     sim.state.unlocks.push('taller', 'energia');
     give(sim, { ...MATERIALS, llave_inglesa: 1 });
@@ -1782,7 +1788,11 @@ describe('regresiones QA 1 (economía)', () => {
     expect(construction.partSourceHint(sim, 'pieza_mecanica')).toBe('fabrícala en el taller o improvísala en el banco de trabajo');
     events.startEvent(sim, 'averia', { moduleId: gen.id, scripted: true });
     sim.tick(0.5);
-    expect(sim.repairInfo(gen.id).reason).toBe('Necesitas una pieza mecánica: improvísala en el banco de trabajo');
+    // Sin electricidad el taller sigue sirviendo (a mano, más despacio que el apaño del banco).
+    expect(sim.repairInfo(gen.id).reason).toBe('Necesitas una pieza mecánica: fabrícala en el taller o improvísala en el banco de trabajo');
+    // Taller apagado: solo el banco.
+    sim.togglePower(mod(sim, 'taller').id);
+    expect(construction.partSourceHint(sim, 'pieza_mecanica')).toBe('improvísala en el banco de trabajo');
     // Sin banco ni taller útiles: pecios y mercantes.
     mod(sim, 'banco_trabajo').fire = 10;
     expect(construction.partSourceHint(sim, 'pieza_mecanica')).toBe('búscala en los pecios o cámbiala a un mercante');

@@ -6,7 +6,7 @@
  * Todo recibe un `BaseAudioContext`, así que funciona igual en el `AudioContext` del juego y en un
  * `OfflineAudioContext` (pruebas de síntesis). Ningún bloque deja nodos vivos tras su duración.
  */
-import { brownNoise, crackleLoop, creakBuffer, dropsLoop, pinkNoise, whiteNoise, type RandFn } from './dsp';
+import { brownNoise, bubblesLoop, crackleLoop, creakBuffer, dropsLoop, murmurLoop, pinkNoise, whiteNoise, type RandFn } from './dsp';
 
 /* ------------------------------------------------------------------ */
 /* Banco de búferes                                                    */
@@ -22,6 +22,10 @@ export interface NoiseBank {
   drops: AudioBuffer;
   /** Variantes de crujido de madera. */
   creaks: AudioBuffer[];
+  /** Burbujeo del aireador (bucle). */
+  bubbles: AudioBuffer;
+  /** Murmullo de conversación lejana (bucle): sala común, muelle del puerto, vítores. */
+  murmur: AudioBuffer;
 }
 
 function toBuffer(ctx: BaseAudioContext, data: Float32Array): AudioBuffer {
@@ -51,10 +55,13 @@ export function* noiseBankSteps(ctx: BaseAudioContext, rand: RandFn): Generator<
     creaks.push(toBuffer(ctx, creakBuffer(sr, rand)));
     if (i % 2 === 1) yield;
   }
-  return { white, pink, brown, crackle, drops, creaks };
+  const bubbles = toBuffer(ctx, bubblesLoop(sr, 2.7, 34, rand));
+  yield;
+  const murmur = toBuffer(ctx, murmurLoop(sr, 4.6, 4, rand));
+  return { white, pink, brown, crackle, drops, creaks, bubbles, murmur };
 }
 
-/** Genera todos los búferes de una vez (≈ 50–120 ms de CPU). */
+/** Genera todos los búferes de una vez (≈ 70–150 ms de CPU). */
 export function createNoiseBank(ctx: BaseAudioContext, rand: RandFn): NoiseBank {
   const it = noiseBankSteps(ctx, rand);
   let r = it.next();
@@ -370,6 +377,81 @@ export function brass(s: Synth, p: { at?: number; freq: number; dur: number; gai
     o.connect(lp);
     o.start(t0);
     o.stop(end);
+  }
+  return end;
+}
+
+/**
+ * Nota de lengüeta (acordeón): dos dientes de sierra y un cuadrado algo desafinados, filtro que se
+ * abre al atacar y un leve trémolo del fuelle.
+ */
+export function reed(s: Synth, p: { at?: number; freq: number; dur: number; gain?: number; dest?: AudioNode; bright?: number }): number {
+  const dest = p.dest ?? s.out;
+  const t0 = s.t + (p.at ?? 0);
+  const g = p.gain ?? 0.1;
+  const { node, end } = envGain(s, dest, { at: p.at, attack: 0.03, hold: Math.max(0, p.dur - 0.05), decay: 0.14, gain: g });
+  const trem = s.ctx.createGain();
+  trem.gain.value = 0.85;
+  trem.connect(node);
+  const lfo = s.ctx.createOscillator();
+  lfo.frequency.value = 5.6;
+  const depth = s.ctx.createGain();
+  depth.gain.value = 0.15;
+  lfo.connect(depth);
+  depth.connect(trem.gain);
+  const lp = s.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = 0.8;
+  const bright = p.bright ?? 1;
+  lp.frequency.setValueAtTime(Math.min(9000, p.freq * 3 * bright), t0);
+  lp.frequency.exponentialRampToValueAtTime(Math.min(7000, p.freq * 7 * bright), t0 + 0.05);
+  lp.frequency.exponentialRampToValueAtTime(Math.min(5000, p.freq * 4.5 * bright), t0 + Math.max(0.12, p.dur));
+  lp.connect(trem);
+  for (const [type, det, k] of [
+    ['sawtooth', -6, 0.5],
+    ['sawtooth', 7, 0.5],
+    ['square', 0, 0.3],
+  ] as const) {
+    const o = s.ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = p.freq;
+    o.detune.value = det;
+    const og = s.ctx.createGain();
+    og.gain.value = k;
+    o.connect(og);
+    og.connect(lp);
+    o.start(t0);
+    o.stop(end);
+  }
+  lfo.start(t0);
+  lfo.stop(end);
+  return end;
+}
+
+/** Acorde de cuerdas suave (colchón): dientes de sierra desafinados tras un paso bajo, ataque lento. */
+export function pad(s: Synth, p: { at?: number; freqs: number[]; dur: number; gain?: number; dest?: AudioNode; cutoff?: number }): number {
+  const dest = p.dest ?? s.out;
+  const t0 = s.t + (p.at ?? 0);
+  const { node, end } = envGain(s, dest, { at: p.at, attack: Math.min(0.5, p.dur * 0.3), hold: Math.max(0, p.dur * 0.7 - 0.1), decay: 0.9, gain: p.gain ?? 0.06 });
+  const lp = s.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = p.cutoff ?? 1500;
+  lp.Q.value = 0.3;
+  lp.connect(node);
+  const k = 1 / Math.max(1, p.freqs.length);
+  for (const f of p.freqs) {
+    for (const det of [-9, 8]) {
+      const o = s.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.detune.value = det;
+      const og = s.ctx.createGain();
+      og.gain.value = k * 0.5;
+      o.connect(og);
+      og.connect(lp);
+      o.start(t0);
+      o.stop(end);
+    }
   }
   return end;
 }

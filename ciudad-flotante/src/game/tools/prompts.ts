@@ -119,9 +119,9 @@ const VERB: Record<Exclude<InteractKind, 'dormir'>, string> = {
   timon: 'Timón: rumbo y avistamientos',
   motor: 'Manejar el motor auxiliar',
   ahumadero: 'Usar el ahumadero',
-  vivero: 'Ver el vivero',
+  vivero: 'Atender el vivero',
   grua: 'Manejar la grúa',
-  radar: 'Escuchar la radio',
+  radar: 'Ver el radar y la radio',
 };
 
 function usedSlots(m: ModuleInstance): string {
@@ -239,8 +239,11 @@ export function propPrompt(sim: Simulation, prop: PropInstance): PromptInfo | nu
       const stock = vs ? (vs.stock === 1 ? '1 pescado en la bandeja' : `${vs.stock} pescados en la bandeja`) : null;
       return { key: 'E', text: VERB.vivero, sub: join(warn, vs?.status, stock) };
     }
-    case 'grua':
-      return { key: 'E', text: VERB.grua, sub: join(warn, onOff(m), usedSlots(m)) };
+    case 'grua': {
+      // Lo que está haciendo; parada, el interruptor (la avería ya la dice `warn`).
+      const gs = sim.gruaStatus(m.id);
+      return { key: 'E', text: VERB.grua, sub: join(warn, gs && gs.phase !== 'parada' ? gs.status : onOff(m), usedSlots(m)) };
+    }
     case 'radar':
       return { key: 'E', text: VERB.radar, sub: join(warn, onOff(m)) };
     default:

@@ -33,6 +33,9 @@ import './panels.css';
 import './menus.css';
 import './story.css';
 
+/** Segundos de celebración que se ven antes de abrir la pantalla de llegada. */
+const ARRIVAL_SCREEN_DELAY = 7;
+
 /** Intervalo de repintado de los paneles (s). */
 const PANEL_REFRESH = 0.15;
 
@@ -67,8 +70,13 @@ export class UI {
   private seenPages: number[] = [];
   /** ¿Se había llegado a Puerto Esperanza la última vez que se miró? */
   private seenArrived = false;
-  /** La llegada acaba de ocurrir: la pantalla se abre en el próximo frame (con los recién llegados). */
+  /** La llegada acaba de ocurrir: la pantalla se abre en cuanto se pueda (con los recién llegados). */
   private arrivalPending = false;
+  /**
+   * Segundos reales que faltan para abrirla: la pantalla pausa la partida, así que antes se deja
+   * ver la primera andanada de fuegos y farolillos de la celebración.
+   */
+  private arrivalDelay = 0;
 
   constructor(
     container: HTMLElement,
@@ -134,7 +142,7 @@ export class UI {
     bus.on('newDay', (e) => this.hud.newDay(e.day));
     bus.on('worldEventStarted', (e) => {
       this.hud.eventStarted(e.eventId);
-      if (e.type === 'llegada') this.arrivalPending = true;
+      if (e.type === 'llegada') this.queueArrival();
     });
     bus.on('tutorialStep', () => this.hud.tutorialDone());
 
@@ -294,6 +302,11 @@ export class UI {
     return true;
   }
 
+  private queueArrival(): void {
+    if (!this.arrivalPending) this.arrivalDelay = ARRIVAL_SCREEN_DELAY;
+    this.arrivalPending = true;
+  }
+
   /** Lector de hojas y llegada: comprueba cada frame lo que ha cambiado en `state.story`. */
   private watchStory(): void {
     const ctx = this.ctx;
@@ -315,9 +328,9 @@ export class UI {
       }
     }
     const arrived = !!story?.arrived;
-    if (arrived && !this.seenArrived) this.arrivalPending = true;
+    if (arrived && !this.seenArrived) this.queueArrival();
     this.seenArrived = arrived;
-    if (this.arrivalPending && !this.menuOpen && (ctx.mode === 'play' || ctx.mode === 'build') && ctx.sim.state.player.alive && !ctx.sim.state.player.sleeping) {
+    if (this.arrivalPending && this.arrivalDelay <= 0 && !this.menuOpen && (ctx.mode === 'play' || ctx.mode === 'build') && ctx.sim.state.player.alive && !ctx.sim.state.player.sleeping) {
       this.arrivalPending = false;
       this.showArrival();
     }
@@ -339,6 +352,8 @@ export class UI {
       this.panelTimer += dtReal;
       if (this.panelTimer >= PANEL_REFRESH) this.renderPanelNow();
     }
+    // La espera solo corre mientras se juega (despierto y sin pausa), que es cuando se ve la fiesta.
+    if (this.arrivalDelay > 0 && !ctx.paused && !ctx.sim.state.player.sleeping) this.arrivalDelay = Math.max(0, this.arrivalDelay - dtReal);
     this.watchStory();
     // La pantalla de llegada se ve sola, sobre la celebración: sin HUD ni avisos encima.
     this.hud.update(dtReal, { panelOpen: this.panelOpen, menuOpen: this.menuOpen, quiet: this.menus.screen === 'arrival' });

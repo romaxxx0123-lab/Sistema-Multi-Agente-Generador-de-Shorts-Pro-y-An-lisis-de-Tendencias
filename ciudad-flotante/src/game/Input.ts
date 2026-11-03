@@ -84,6 +84,13 @@ export class Input {
     });
     document.addEventListener('pointerlockchange', () => {
       if (this.locked) this.needsGesture = false;
+      // Una captura pedida con una tecla (gesto) puede llegar cuando esa misma tecla ya abrió un
+      // panel o un menú: se suelta, o el ratón quedaría capturado con el panel abierto.
+      if (this.locked && !this.lockWanted) {
+        this.weReleased = true;
+        document.exitPointerLock();
+        return;
+      }
       if (!this.locked && this.lockWanted && !this.weReleased) this.lockLost = true;
       this.weReleased = false;
       this.updateCursor();
