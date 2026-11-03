@@ -294,6 +294,8 @@ export class Game implements GameContext {
     }
     if (mode === 'dead') this.ui.showDeath();
     if (mode === 'play') this.ui.hideMenus();
+    // Los avisos del núcleo son del menú principal: fuera de él se retiran ya (no al frame siguiente).
+    if (mode !== 'menu') this.overlay?.setNotices([]);
   }
 
   /* ---------------- Ajustes ---------------- */
