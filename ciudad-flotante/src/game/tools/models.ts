@@ -402,6 +402,10 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
           b.cylinder(0, 0.09, 0, 0.022, 0.012, 0.02, 6, ROPE);
           b.frustum(0, 0.11, 0, 0.04, 0.03, 0.06, 0.04, 0.025, def.color);
         });
+      } else if (def?.category === 'documento') {
+        // Hoja del cuaderno: cogida por la esquina de abajo, con la cara escrita hacia los ojos.
+        pose = { x: 0.3, y: -0.27, z: -0.46, rx: -0.42, ry: -0.5, rz: -0.08 };
+        add('hoja', (b) => buildPage(b, id));
       } else if (def?.category === 'plano') {
         pose = { ...SMALL_POSE, ry: -0.2 };
         add('plano', (b) => {
@@ -416,6 +420,128 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     }
   }
   return { group, parts, anchors, pose, armRot, scale };
+}
+
+/* ------------------------------------------------------------------ */
+/* Hoja del cuaderno                                                   */
+/* ------------------------------------------------------------------ */
+
+const PAPER = '#f1e6c8';
+const PAPER_BACK = '#d9c89f';
+const PAPER_CREASE = '#dccda6';
+const RULE = '#a7b6bd';
+const MARGIN = '#c98b7a';
+const INK = '#4a3b2a';
+
+/**
+ * Hoja de papel del cuaderno de la capitana, en el marco del puño: el puño la pinza por la
+ * esquina de abajo a la derecha y la hoja sube hacia la izquierda. Es una lámina fina (cara y
+ * dorso), con el borde libre algo curvado hacia atrás y la mitad de arriba doblada por el pliegue
+ * en que venía guardada; lleva renglones, el margen y líneas de texto insinuado (el título más
+ * grueso). El texto cambia con la página (`id`) pero siempre es el mismo para la misma.
+ */
+function buildPage(b: GeoBuilder, id: ItemId): void {
+  const W = 0.145;
+  const H = 0.2;
+  const xR = 0.035;
+  const xL = xR - W;
+  const y0 = -0.01;
+  const z0 = -0.018;
+  /** Pliegue (fracción de la altura) y ángulo con que se abre la mitad de arriba. */
+  const VF = 0.48;
+  const FOLD = 0.24;
+  const US = [0, 0.18, 0.36, 0.54, 0.72, 0.86, 1];
+  const VS = [0, 0.24, VF, 0.74, 1];
+  const point = (u: number, v: number): THREE.Vector3 => {
+    const x = xL + u * W;
+    // El borde libre (izquierda, u = 0) se curva hacia atrás.
+    const curl = -0.026 * (1 - u) * (1 - u);
+    if (v <= VF) return new THREE.Vector3(x, y0 + v * H, z0 + curl);
+    const s = (v - VF) * H;
+    return new THREE.Vector3(x, y0 + VF * H + s * Math.cos(FOLD), z0 + curl - s * Math.sin(FOLD));
+  };
+  const normal = (u: number, v: number): THREE.Vector3 => {
+    const e = 1e-3;
+    const du = point(Math.min(1, u + e), v).sub(point(Math.max(0, u - e), v));
+    const dv = point(u, Math.min(1, v + e)).sub(point(u, Math.max(0, v - e)));
+    return du.cross(dv).normalize();
+  };
+  /** Punto de la cara (lift > 0) o del dorso (lift < 0). */
+  const at = (u: number, v: number, lift: number): THREE.Vector3 => point(u, v).addScaledVector(normal(u, v), lift);
+
+  // Cara y dorso (lámina de 1,6 mm).
+  const T = 0.0008;
+  for (let j = 0; j < VS.length - 1; j++) {
+    for (let i = 0; i < US.length - 1; i++) {
+      const u0 = US[i]!;
+      const u1 = US[i + 1]!;
+      const va = VS[j]!;
+      const vb = VS[j + 1]!;
+      b.quad(at(u0, va, T), at(u1, va, T), at(u1, vb, T), at(u0, vb, T), PAPER);
+      b.quad(at(u0, va, -T), at(u0, vb, -T), at(u1, vb, -T), at(u1, va, -T), PAPER_BACK);
+    }
+  }
+  // Cantos (para que de perfil no desaparezca).
+  const edge = (pa: THREE.Vector3, pb: THREE.Vector3, na: THREE.Vector3, nb: THREE.Vector3): void => {
+    b.quad(pa.clone().addScaledVector(na, -T), pb.clone().addScaledVector(nb, -T), pb.clone().addScaledVector(nb, T), pa.clone().addScaledVector(na, T), PAPER_BACK);
+  };
+  for (let j = 0; j < VS.length - 1; j++) {
+    const va = VS[j]!;
+    const vb = VS[j + 1]!;
+    edge(point(0, vb), point(0, va), normal(0, vb), normal(0, va));
+    edge(point(1, va), point(1, vb), normal(1, va), normal(1, vb));
+  }
+  for (let i = 0; i < US.length - 1; i++) {
+    const u0 = US[i]!;
+    const u1 = US[i + 1]!;
+    edge(point(u0, 0), point(u1, 0), normal(u0, 0), normal(u1, 0));
+    edge(point(u1, 1), point(u0, 1), normal(u1, 1), normal(u0, 1));
+  }
+
+  // Tira dibujada sobre la cara, de u0 a u1, entre las alturas va y vb (sigue la curva).
+  const LIFT = 0.0018;
+  const strip = (u0: number, u1: number, va: number, vb: number, color: string): void => {
+    const cuts = [u0, ...US.filter((u) => u > u0 && u < u1), u1];
+    for (let k = 0; k < cuts.length - 1; k++) {
+      const a = cuts[k]!;
+      const c = cuts[k + 1]!;
+      b.quad(at(a, va, LIFT), at(c, va, LIFT), at(c, vb, LIFT), at(a, vb, LIFT), color);
+    }
+  };
+  // Pliegue, margen y renglones.
+  strip(0, 1, VF - 0.004, VF - 0.0005, PAPER_CREASE);
+  const MU = 0.13;
+  const vline = (u: number, va: number, vb: number): void => {
+    const du = 0.0025 / W;
+    b.quad(at(u, va, LIFT), at(u + du, va, LIFT), at(u + du, vb, LIFT), at(u, vb, LIFT), MARGIN);
+  };
+  vline(MU, 0.02, VF - 0.01);
+  vline(MU, VF + 0.01, 0.97);
+  const rows: number[] = [];
+  for (let v = 0.09; v < 0.86; v += 0.07) if (Math.abs(v - VF) > 0.035) rows.push(v);
+  const lh = 0.0024 / H;
+  for (const v of rows) strip(0.02, 0.98, v, v + lh, RULE);
+
+  // Texto insinuado: palabras de largo variable sobre cada renglón (pseudoaleatorio por página).
+  let seed = 7;
+  for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = (): number => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const wh = 0.0042 / H;
+  rows.forEach((v, r) => {
+    // Del renglón de abajo (el puño tapa su derecha) al de arriba; el último es el título.
+    const title = r === rows.length - 1;
+    const end = title ? 0.62 : r === 3 || r === 7 ? 0.45 + rnd() * 0.3 : 0.94;
+    let u = MU + 0.04 + (r === 4 ? 0.06 : 0);
+    while (u < end) {
+      const len = title ? 0.14 + rnd() * 0.12 : 0.06 + rnd() * 0.18;
+      const u1 = Math.min(end, u + len);
+      if (u1 - u > 0.03) strip(u, u1, v + lh * 1.6, v + lh * 1.6 + (title ? wh * 1.5 : wh), INK);
+      u = u1 + 0.045;
+    }
+  });
 }
 
 /** Materiales y piezas (montones, rollos, placas…). */

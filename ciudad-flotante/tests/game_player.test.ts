@@ -914,3 +914,230 @@ describe('[19] los habitantes son sólidos', () => {
     expect(inside).toBe(false);
   });
 });
+
+/* ---------------------------------------------------------------------- */
+/* fix3 (ronda de pruebas 2): martillo en mejoras, aviso de la caña, hoja   */
+/* ---------------------------------------------------------------------- */
+
+import { buildItemModel } from '../src/game/tools/models';
+import { losBoxes, moduleBox } from '../src/game/tools/targets';
+import { centerOf } from '../src/game/tools/aim';
+import { checkPlacement, instantiateModule, levelY } from '../src/sim/ship';
+import type { Rotation } from '../src/sim/types';
+
+describe('[fix3] martillo en las mejoras, aviso de la caña en interiores y hoja en la mano', () => {
+  const ALL_UNLOCKS = ['taller', 'energia', 'agua', 'solar', 'enfermeria', 'casco', 'invernadero', 'acuicultura', 'grua', 'radar', 'motor'];
+
+  /** Coloca un módulo ya terminado (sin obra) y lo pone en obras de mejora al nivel 2. */
+  function upgrading(sim: Simulation, type: string, levels: number[]): ModuleInstance {
+    const ship = sim.state.ship;
+    for (const level of levels)
+      for (let x = ship.length - 1; x >= 0; x--)
+        for (let z = 0; z < ship.width; z++)
+          for (const rot of [0, 1, 2, 3] as Rotation[]) {
+            if (!checkPlacement(ship, ALL_UNLOCKS, type, level, x, z, rot).ok) continue;
+            const m = instantiateModule(sim.nextId(), type, level, x, z, rot, 'active');
+            ship.modules.push(m);
+            sim.shipChanged();
+            m.upgrade = { toTier: 2, progress: 0 };
+            return m;
+          }
+    throw new Error(`No cabe ${type}`);
+  }
+
+  /** Jugador de pie junto a un mueble (punto de la navegación) y mirándolo. */
+  function standAndLook(h: Harness, moduleId: number, kind: string): void {
+    const sim = h.sim;
+    const prop = sim.layout.props.find((p) => p.moduleId === moduleId && p.kind === kind)!;
+    expect(prop).toBeTruthy();
+    const sp = sim.nav.standPoint(prop)!;
+    expect(sp).toBeTruthy();
+    const st = sim.state.player;
+    st.pos = { x: sp.x, y: sp.y, z: sp.z };
+    const yp = yawPitchTo({ x: sp.x, y: sp.y + EYE_HEIGHT, z: sp.z }, { x: prop.x, y: prop.y + 0.5, z: prop.z });
+    st.yaw = yp.yaw;
+    st.pitch = yp.pitch;
+    h.frame();
+  }
+
+  function holdClick(h: Harness, frames: number): void {
+    h.input.key('Mouse0', true);
+    h.frame(frames);
+    h.input.key('Mouse0', false);
+    h.frame();
+  }
+
+  for (const [type, levels, kind] of [
+    ['sala_comun', [1, 0], 'sofa'],
+    ['sala_comun', [1, 0], 'mesa_juegos'],
+    ['comedor', [0, 1], 'mesa'],
+  ] as const) {
+    it(`${type}: dentro, mirando ${kind === 'sofa' ? 'el sofá' : 'la mesa'}, la mejora es el objetivo y el martillo la acelera`, () => {
+      const h = harness();
+      const sim = h.sim;
+      sim.state.npcs = [];
+      const m = upgrading(sim, type, [...levels]);
+      const st = sim.state.player;
+      st.inventory.slots[st.hotbar] = { id: 'martillo', qty: 1 };
+      standAndLook(h, m.id, kind);
+      expect(h.ia.focus?.kind).toBe('site');
+      expect(h.ia.focus?.moduleId).toBe(m.id);
+      const name = sim.constructionStatus(m.id)!.name;
+      expect(h.ui.prompt?.text).toBe(`Mejora: ${name} (0 %)`);
+      expect(h.ui.prompt?.disabled).toBeFalsy();
+      expect(h.ctx.highlight).toEqual({ kind: 'module', id: m.id });
+      // Los golpes saltan delante de la mirada, dentro del módulo (no en el centro de la sala).
+      const box = moduleBox(m, sim.layout.width);
+      const pt = h.ia.focus!.point;
+      expect(pt.x).toBeGreaterThanOrEqual(box.minX);
+      expect(pt.x).toBeLessThanOrEqual(box.maxX);
+      expect(Math.hypot(pt.x - st.pos.x, pt.z - st.pos.z)).toBeLessThan(1.3);
+      // Clic mantenido con el martillo: la obra avanza (la simulación no corre en el arnés).
+      const p0 = m.upgrade!.progress;
+      holdClick(h, 60);
+      const dClick = m.upgrade!.progress - p0;
+      expect(dClick).toBeGreaterThan(0.005);
+      // Mantener E también ayuda (en estos módulos E no tiene otro uso).
+      const p1 = m.upgrade!.progress;
+      h.input.key('KeyE', true);
+      h.frame(60);
+      expect(h.ia.toolState.building).toBe(m.id);
+      expect(h.ui.prompt?.sub).toMatch(/Trabajando con el martillo/);
+      h.input.key('KeyE', false);
+      h.frame();
+      expect(m.upgrade!.progress - p1).toBeCloseTo(dClick, 3);
+      expect(h.ia.toolState.building).toBeNull();
+    });
+  }
+
+  it('sin martillo, el aviso de la mejora lo explica y E no hace nada', () => {
+    const h = harness();
+    const sim = h.sim;
+    sim.state.npcs = [];
+    const inv = sim.state.player.inventory;
+    for (let i = 0; i < inv.slots.length; i++) if (inv.slots[i]?.id === 'martillo') inv.slots[i] = null;
+    const m = upgrading(sim, 'sala_comun', [1, 0]);
+    standAndLook(h, m.id, 'sofa');
+    expect(h.ia.focus?.kind).toBe('site');
+    expect(h.ui.prompt?.disabled).toBe(true);
+    expect(h.ui.prompt?.sub).toBe('Necesitas un martillo para ayudar en la obra');
+    h.tap('KeyE');
+    expect(h.ia.toolState.building).toBeNull();
+    expect(m.upgrade!.progress).toBe(0);
+  });
+
+  it('desde fuera, a través de la pared, la mejora de la sala no se enfoca', () => {
+    const h = harness();
+    const sim = h.sim;
+    sim.state.npcs = [];
+    const m = upgrading(sim, 'sala_comun', [1, 0]);
+    const box = moduleBox(m, sim.layout.width);
+    const c = centerOf(box);
+    const walls = losBoxes(sim.layout);
+    const st = sim.state.player;
+    let tested = 0;
+    for (const [x, z] of [
+      [box.minX - 0.9, c.z],
+      [box.maxX + 0.9, c.z],
+      [c.x, box.minZ - 0.9],
+      [c.x, box.maxZ + 0.9],
+    ] as const) {
+      const y = levelY(m.level);
+      if (!sim.collision.isFree(x, z, y)) continue;
+      const eye = { x, y: y + EYE_HEIGHT, z };
+      if (!segmentBlocked(eye, { x: c.x, y: y + 1, z: c.z }, walls)) continue;
+      st.pos = { x, y, z };
+      const yp = yawPitchTo(eye, { x: c.x, y: y + 1, z: c.z });
+      st.yaw = yp.yaw;
+      st.pitch = yp.pitch;
+      h.frame();
+      expect(h.ia.focus?.moduleId === m.id && h.ia.focus?.kind === 'site').toBe(false);
+      tested++;
+    }
+    expect(tested).toBeGreaterThan(0);
+  });
+
+  it('un camarote en mejora conserva el foco en la cama (E duerme) y el clic con el martillo ayuda', () => {
+    const h = harness();
+    const sim = h.sim;
+    sim.state.npcs = [];
+    const m = upgrading(sim, 'camarote', [1, 0]);
+    const st = sim.state.player;
+    st.inventory.slots[st.hotbar] = { id: 'martillo', qty: 1 };
+    standAndLook(h, m.id, 'cama');
+    expect(h.ia.focus?.kind).toBe('prop');
+    expect(h.ia.focus?.prop?.interact).toBe('dormir');
+    expect(h.ui.prompt?.text).toMatch(/^Dormir/);
+    const p0 = m.upgrade!.progress;
+    holdClick(h, 60);
+    expect(m.upgrade!.progress).toBeGreaterThan(p0);
+  });
+
+  it('con la caña en la mano, «Lanzar la caña» desactivado no sale bajo la cama, la cocina ni el timón', () => {
+    const h = harness();
+    const st = h.sim.state.player;
+    st.inventory.slots[st.hotbar] = { id: 'cana', qty: 1 };
+    for (const interact of ['dormir', 'cocina', 'timon']) {
+      // De pie donde se usa el mueble (punto de la navegación), mirándolo.
+      const prop = h.sim.layout.props.find((p) => p.interact === interact && !!h.sim.nav.standPoint(p))!;
+      standAndLook(h, prop.moduleId, prop.kind);
+      expect(h.ia.focus?.prop?.interact).toBe(interact);
+      expect(h.ia.rail?.ok).toBe(false);
+      expect(h.ui.prompt?.key).toBe('E');
+      // Antes: alt = { key: 'Clic', text: 'Lanzar la caña', disabled: true }.
+      expect(h.ui.prompt?.alt?.text ?? null).not.toBe('Lanzar la caña');
+    }
+    // En cubierta, junto a la borda y mirando al agua: la caña sí se ofrece.
+    st.pos = { x: 6, y: LEVEL_H, z: -6.6 };
+    st.yaw = 0;
+    st.pitch = -0.3;
+    h.frame();
+    expect(h.ui.prompt).toMatchObject({ key: 'Clic', text: 'Lanzar la caña' });
+    expect(h.ui.prompt?.disabled).toBeFalsy();
+    // Junto a la borda mirando hacia dentro: aviso propio con el motivo.
+    st.yaw = Math.PI;
+    h.frame();
+    expect(h.ui.prompt).toMatchObject({ key: 'Clic', text: 'Lanzar la caña', sub: 'Mira hacia el agua', disabled: true });
+    // Con una caja delante y mirando al agua, la caña utilizable sigue como segunda acción.
+    h.sim.state.crates.push({ id: 950, pos: { x: 6, y: LEVEL_H, z: -7.3 }, inventory: { slots: [{ id: 'madera', qty: 1 }] }, label: 'Restos' });
+    const yp = yawPitchTo({ x: 6, y: LEVEL_H + EYE_HEIGHT, z: -6.6 }, { x: 6, y: LEVEL_H + 0.3, z: -7.3 });
+    st.yaw = yp.yaw;
+    st.pitch = yp.pitch;
+    h.frame();
+    expect(h.ia.focus?.kind).toBe('crate');
+    expect(h.ui.prompt?.alt).toEqual({ key: 'Clic', text: 'Lanzar la caña' });
+  });
+
+  it('la hoja del cuaderno en la mano es una hoja de papel fina, curvada y con renglones', () => {
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lineMat = new THREE.LineBasicMaterial();
+    for (const id of ['pagina_1', 'pagina_7'] as const) {
+      const model = buildItemModel(id, mat, lineMat);
+      const mesh = model.parts.get('hoja') as THREE.Mesh | undefined;
+      expect(mesh, 'pieza «hoja»').toBeTruthy();
+      expect(model.parts.has('objeto')).toBe(false);
+      const geo = mesh!.geometry;
+      geo.computeBoundingBox();
+      const size = geo.boundingBox!.getSize(new THREE.Vector3());
+      const dims = [size.x, size.y, size.z].sort((a, b) => a - b);
+      // Ancho y alto de una hoja de cuaderno (no un cubo de 8 cm) y poco fondo (solo la curva).
+      expect(dims[1]).toBeGreaterThan(0.12);
+      expect(dims[2]).toBeGreaterThan(0.16);
+      expect(dims[0]).toBeLessThan(0.06);
+      // Curvada: las caras del papel no son coplanarias (varias normales distintas).
+      const nrm = geo.getAttribute('normal');
+      const col = geo.getAttribute('color');
+      const normals = new Set<string>();
+      const colors = new Set<string>();
+      for (let i = 0; i < nrm.count; i++) {
+        normals.add(`${nrm.getX(i).toFixed(2)},${nrm.getY(i).toFixed(2)},${nrm.getZ(i).toFixed(2)}`);
+        colors.add(`${col.getX(i).toFixed(2)},${col.getY(i).toFixed(2)},${col.getZ(i).toFixed(2)}`);
+      }
+      expect(normals.size).toBeGreaterThanOrEqual(6);
+      // Papel por delante y por detrás, renglones y texto insinuado.
+      expect(colors.size).toBeGreaterThanOrEqual(4);
+      // Encuadre: no sube por encima de la mitad de la pantalla ni tapa la mira.
+      expect(model.pose.y + geo.boundingBox!.max.y * model.scale).toBeLessThan(0);
+    }
+  });
+});

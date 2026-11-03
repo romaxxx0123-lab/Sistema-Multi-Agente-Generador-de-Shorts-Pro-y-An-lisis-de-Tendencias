@@ -7,7 +7,9 @@
  *     cubo, el resto flotante cerca del rayo de la cámara (gancho) y la borda (caña y cubo).
  *  2. Procesa la entrada:
  *     - E: abre el panel (estación, almacén, huerto, agua, energía, timón, habitante, caja) o se
- *       acuesta; mantener E (o el clic con el martillo) en una obra ayuda a construir.
+ *       acuesta; mantener E (o el clic con el martillo) en una obra ayuda a construir. En una
+ *       mejora, el clic con el martillo sobre el mueble del módulo (o sobre la propia sala si no
+ *       tiene ninguno interactivo) ayuda a la obra.
  *       En los usos frecuentes la tecla es física: pulsar E bebe del depósito, cosecha o limpia
  *       un bancal y coge todo lo de una caja (si cabe); mantener E abre el panel.
  *     - R en el depósito: llena una botella (si no hay que repararlo).
@@ -412,7 +414,9 @@ export class Interaction implements ToolEnv {
     const hasHammer = countItem(sim.state.player.inventory, 'martillo') > 0;
     const f = this.focus;
     const siteId = f?.kind === 'site' ? (f.moduleId ?? null) : f?.kind === 'expansion' ? -1 : null;
-    // Mejora en obras: con el martillo en la mano, el clic sobre un mueble del módulo ayuda (E sigue abriendo el panel).
+    // Mejora en obras: con el martillo en la mano, el clic sobre un mueble interactivo del módulo
+    // ayuda (E sigue abriendo el panel o acostándose). Los módulos sin ninguno (sala común,
+    // comedor) son objetivo 'site' por sí mismos (`scanFocus`) y ahí también vale mantener E.
     const upgradeId = f?.kind === 'prop' && f.moduleId !== undefined && findModule(sim, f.moduleId)?.upgrade ? f.moduleId : null;
 
     // --- Obras: mantener E (o el clic con el martillo) ---
@@ -1003,13 +1007,15 @@ export class Interaction implements ToolEnv {
         prompt = this.focusPrompt(this.focus, hasHammer);
         hl = this.focusHighlight(this.focus);
       }
-      // 3) Herramienta seleccionada.
+      // 3) Herramienta seleccionada. Como segunda acción solo si se puede usar ya: la línea
+      //    secundaria no lleva el motivo, y un «Clic Lanzar la caña» gris bajo «E Dormir» (el
+      //    camarote o la cocina están junto al costado) solo es ruido.
       const tp = this.toolPrompt(tool);
       if (tp) {
         if (!prompt) {
           prompt = tp;
           if (tool === 'gancho' && this.debrisTarget) hl = { kind: 'debris', id: this.debrisTarget.debris.id };
-        } else if (!prompt.alt) prompt = { ...prompt, alt: { key: tp.key, text: tp.text, disabled: tp.disabled } };
+        } else if (!prompt.alt && !tp.disabled) prompt = { ...prompt, alt: { key: tp.key, text: tp.text } };
       }
       // 4) Reparación (R). Mirando al depósito, R llena una botella salvo que sea él el que se repara.
       const r = this.repairTarget;

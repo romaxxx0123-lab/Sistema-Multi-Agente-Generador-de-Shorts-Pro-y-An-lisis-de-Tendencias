@@ -3,8 +3,8 @@
  *
  * Cada frame `Interaction` pregunta qué hay delante del jugador:
  *  - `scanFocus`: el mejor objetivo para la tecla E (props interactivos, habitantes, cajas
- *    sueltas, obras y la ampliación del casco) a ≤ INTERACT_RANGE, en el cono de visión, en el
- *    mismo nivel y sin paredes en medio.
+ *    sueltas, obras —nuevas o mejoras de módulos sin mueble interactivo— y la ampliación del
+ *    casco) a ≤ INTERACT_RANGE, en el cono de visión, en el mismo nivel y sin paredes en medio.
  *  - `scanRepair`: módulo dañado o averiado cercano al que se apunta (tecla R / herramienta).
  *  - `scanFire`: módulo en llamas al alcance del cubo.
  *  - `scanDebris`: resto flotante cerca del rayo de la cámara (gancho), en coordenadas del océano.
@@ -179,6 +179,23 @@ function occluded(eye: V3, point: V3, box: AABB, walls: readonly AABB[]): boolea
 
 const sameLevel = (aim: Aim, y: number): boolean => Math.abs(y - aim.pos.y) <= SAME_LEVEL_DY;
 
+/** ¿Tiene el módulo algún mueble interactivo en el layout? */
+function hasInteractProp(layout: ShipLayout, moduleId: number): boolean {
+  for (const p of layout.props) if (p.moduleId === moduleId && p.interact) return true;
+  return false;
+}
+
+/**
+ * Punto de trabajo dentro de una obra: delante de la mirada, a la altura de la mano y dentro de
+ * la caja (ahí saltan las virutas del martillo; el centro de una sala amueblada queda dentro de
+ * una mesa o lejos de lo que se mira).
+ */
+function insidePoint(aim: Aim, box: AABB): V3 {
+  const reach = 1;
+  const p = { x: aim.eye.x + aim.dir.x * reach, y: aim.eye.y + aim.dir.y * reach - 0.2, z: aim.eye.z + aim.dir.z * reach };
+  return closestOnAabb(p, inflate(box, -0.1));
+}
+
 /** El mejor objetivo para la tecla E, o null. */
 export function scanFocus(aim: Aim): Focus | null {
   const { sim, pos } = aim;
@@ -217,23 +234,38 @@ export function scanFocus(aim: Aim): Focus | null {
     if (r) consider({ kind: 'crate', key: `crate:${c.id}`, ...r, dist: d, crate: c });
   }
 
-  // Obras en curso: el jugador puede estar dentro del recinto (andamios en cubierta).
-  for (const site of layout.sites) {
-    const m = findModule(sim, site.moduleId);
-    if (!m || m.status !== 'construction' || !sameLevel(aim, levelY(m.level))) continue;
+  // Obra de un módulo: el jugador puede estar dentro del recinto (andamios en cubierta, o la
+  // sala que se está mejorando).
+  const site = (m: ModuleInstance): void => {
     const box = moduleBox(m, layout.width);
     const d = distXZToAabb(pos.x, pos.z, box);
-    if (d > INTERACT_RANGE) continue;
+    if (d > INTERACT_RANGE) return;
     const inside = insideAabb(aim.eye, inflate(box, 0.05));
     if (inside) {
       // Dentro de la obra: cuenta si se mira hacia su interior (no al cielo).
-      if (aim.dir.y > 0.75) continue;
-      consider({ kind: 'site', key: `site:${m.id}`, score: 0.35, dist: 0, point: centerOf(box), direct: false, moduleId: m.id });
-      continue;
+      if (aim.dir.y > 0.75) return;
+      consider({ kind: 'site', key: `site:${m.id}`, score: 0.35, dist: 0, point: insidePoint(aim, box), direct: false, moduleId: m.id });
+      return;
     }
     const r = rate(aim, { box, dist: d }, walls);
     // Las obras son grandes: un poco de penalización para que un mueble apuntado gane.
     if (r) consider({ kind: 'site', key: `site:${m.id}`, ...r, score: r.score + 0.08, dist: d, moduleId: m.id });
+  };
+
+  // Obras nuevas en curso.
+  for (const s of layout.sites) {
+    const m = findModule(sim, s.moduleId);
+    if (m && m.status === 'construction' && sameLevel(aim, levelY(m.level))) site(m);
+  }
+
+  // Mejoras en obras. Donde hay un mueble interactivo (cama, camilla, estación) se ayuda
+  // apuntándolo con el martillo (`Interaction`) y conserva su foco y su tecla E; la obra solo es
+  // objetivo propio en los módulos sin ninguno (sala común, comedor). Sus paredes ya existen, así
+  // que desde fuera solo se enfoca por la puerta.
+  for (const m of st.ship.modules) {
+    if (!m.upgrade || m.status === 'construction' || !sameLevel(aim, levelY(m.level))) continue;
+    if (hasInteractProp(layout, m.id)) continue;
+    site(m);
   }
 
   // Ampliación del casco (andamio en la proa).

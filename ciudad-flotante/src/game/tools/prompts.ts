@@ -269,17 +269,18 @@ export function cratePrompt(crate: LooseCrate, fits?: boolean): PromptInfo {
   return { key: 'E', text: `Abrir: ${crate.label}`, sub: piles };
 }
 
-/** Obra en curso (`moduleId` = -1 para la ampliación del casco). */
+/** Obra en curso (`moduleId` = -1 para la ampliación del casco). En una mejora, «Mejora: …». */
 export function sitePrompt(sim: Simulation, moduleId: number, hasHammer: boolean, working: boolean): PromptInfo | null {
   const cs = sim.constructionStatus(moduleId);
   if (!cs) return null;
   const pct = Math.floor(cs.progress * 100);
   const name = moduleId === -1 ? HULL_EXPANSION.name : cs.name;
+  const what = cs.toTier !== undefined ? 'Mejora' : 'Obra';
   const helpers = cs.builders > 0 ? (cs.builders === 1 ? '1 habitante ayudando' : `${cs.builders} habitantes ayudando`) : null;
   const sub = hasHammer
     ? working
       ? `Trabajando con el martillo… ${helpers ?? ''}`.trim()
       : ['Ayuda con el martillo para acabar antes', helpers].filter(Boolean).join(' · ')
     : 'Necesitas un martillo para ayudar en la obra';
-  return { key: 'Mantén E', text: `Obra: ${name} (${pct} %)`, sub, progress: cs.progress, disabled: !hasHammer };
+  return { key: 'Mantén E', text: `${what}: ${name} (${pct} %)`, sub, progress: cs.progress, disabled: !hasHammer };
 }
