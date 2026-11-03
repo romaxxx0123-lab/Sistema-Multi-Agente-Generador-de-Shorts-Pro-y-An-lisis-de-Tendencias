@@ -975,3 +975,5 @@ def build():
                restos_0, restos_1, restos_2, red_0, red_1, red_2, bidon_0, bidon_1, bidon_2,
                cofre_0, cofre_1, cofre_2, balsa_0, balsa_1, balsa_2):
         fn()
+    # Cajas envolventes al día (build.py las lee para el manifiesto tras transformar los vértices).
+    bpy.context.view_layer.update()

@@ -398,7 +398,8 @@ def palm(name, h, lean, seed, n_leaves=7, dry=1):
     for i in range(7):
         t = i / 6
         pts.append((lean * h * (0.25 * t + 0.75 * t * t), 0.15 * lean * h * math.sin(t * 2.2), h * t))
-    parts = [trunk(pts, 0.3, 0.17)]
+    # El primer anillo sigue la inclinación del tronco: se aplana para que apoye en z = 0.
+    parts = [deform(trunk(pts, 0.3, 0.17), lambda c: (c.x, c.y, max(c.z, 0.0)))]
     top = Vector(pts[-1]) + Vector((0, 0, 0.12))
     for i in range(n_leaves):
         yaw = 2 * math.pi * i / n_leaves + r.random() * 0.45
@@ -519,6 +520,7 @@ def hills(name, seed, R=17.5, H=13.0, peak=(4.0, 3.0), rings=7, seg=18):
         cf.paint(rk, ROCK_D, lambda p: p.normal.z < 0.1)
         rk.data.transform(Matrix.Translation((px + i * 2.2, py - i * 1.5, height(px + i * 2.2, py - i * 1.5) - 1.1)))
         parts.append(rk)
+    clamp_bottom(parts, 0.0)  # lo que queda bajo la playa no se ve: base apoyada en z = 0
     return cf.model(parts, name)
 
 
@@ -571,7 +573,7 @@ def hut():
         parts.append(cf.box((0.07, 0.07, 1.0), at=(0, y, 0), rot=(0, 25, 0), color=RIB))
     for z in (0.2, 0.5):
         parts.append(cf.box((0.07, 0.55, 0.05), at=(-0.1 - z * 0.45, 0, z), color=WOOD_L))
-    xform(parts, Matrix.Translation((0, 0, 0)))
+    clamp_bottom(parts, 0.0)  # la escalera inclinada no baja de la arena
     return cf.model(parts, 'mundo_cabana')
 
 
@@ -664,3 +666,5 @@ def build():
     hills('mundo_colinas_1', 22, R=18.0, H=12.5, peak=(-4.0, -2.5))
     dolphin()
     fish()
+    # Cajas envolventes al día (build.py las lee para el manifiesto tras transformar los vértices).
+    bpy.context.view_layer.update()
