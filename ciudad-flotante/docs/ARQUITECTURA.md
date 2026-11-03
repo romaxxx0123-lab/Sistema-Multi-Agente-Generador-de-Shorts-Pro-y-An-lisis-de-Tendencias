@@ -145,6 +145,12 @@ guardan en el repositorio, así que el juego no necesita Blender para compilar.
   falta, devuelven `null` y la vista usa su versión procedimental.
 - Presupuesto: ≤ 2500 triángulos por modelo estático (`MAX_TRIS` en el script para subirlo). Tras
   la optimización, unos 10 KB por cada 1000 triángulos.
+- Modelos que van medio hundidos: se modelan con la superficie del agua a una altura fija sobre su base (que se apoya en z = 0, como en todos) y la vista los baja esa altura.
+  - Restos flotantes `resto_<tipo>_<v>` (restos.py): `DEBRIS_LIFT` = 1 m en src/render/ship/debrisModels.ts.
+  - Piezas del mundo `mundo_*` (mundo.py): `WORLD_LIFT` = 3 m en src/render/world/models.ts, que las funde con el Kit mediante `Pieces`.
+  - La fauna lleva el eje del cuerpo a `DOLPHIN_AXIS` y `FISH_AXIS` (marine.ts).
+  - Para comparar con el procedimental en el navegador: `restosBlender(false|true)`, `mundoBlender(false|true)` y `faunaBlender()`.
+- La variación de color por cara (`jitter_colors`) impide soldar vértices: los modelos muy variados pesan unos 14 B por triángulo en vez de 10.
 - Modelo en mano (primera persona):
   - Archivos: scripts/blender/models/mano.py (`vm_brazo`) y herramientas.py (`vm_<pieza>`; los materiales, `vm_<itemId>`).
   - Se modelan en el marco del puño de src/game/tools/models.ts (mango = eje Z en el origen, +Y hacia delante) y se exportan subidos `VM_LIFT` = 1 m para respetar la base apoyada.
