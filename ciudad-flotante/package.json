@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node scripts/smoke.mjs",
-    "build:single": "npm run build && node scripts/build-single.mjs"
+    "build:single": "npm run build && node scripts/build-single.mjs",
+    "models": "node scripts/blender/build.mjs"
   },
   "dependencies": {
     "three": "0.186.1"

@@ -4,3 +4,4 @@ test-output
 *.log
 dist-single
 tests/_scratch*
+__pycache__/

@@ -145,3 +145,8 @@ guardan en el repositorio, así que el juego no necesita Blender para compilar.
   falta, devuelven `null` y la vista usa su versión procedimental.
 - Presupuesto: ≤ 2500 triángulos por modelo estático (`MAX_TRIS` en el script para subirlo). Tras
   la optimización, unos 10 KB por cada 1000 triángulos.
+- Modelo en mano (primera persona):
+  - Archivos: scripts/blender/models/mano.py (`vm_brazo`) y herramientas.py (`vm_<pieza>`; los materiales, `vm_<itemId>`).
+  - Se modelan en el marco del puño de src/game/tools/models.ts (mango = eje Z en el origen, +Y hacia delante) y se exportan subidos `VM_LIFT` = 1 m para respetar la base apoyada.
+  - `appendHandModel()` los fusiona en la misma malla de cada pieza, con los mismos pivotes, anclajes, poses y escala (viewmodel.ts no cambia). Si faltan, se dibuja el procedimental; `setBlenderHandModels(false)` lo fuerza para comparar.
+  - El garfio lanzado y el pez capturado (effects.ts) usan los mismos modelos a través de buildGrapnel/buildFish.
