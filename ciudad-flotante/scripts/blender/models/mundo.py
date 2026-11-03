@@ -9,6 +9,8 @@ marine.ts colocan y fusionan en sus geometrías (una llamada de dibujo por model
 - `mundo_roca_0..2`: rocas facetadas (canto rodado, aguja y losa) de 1 m de radio, con la cara de
   arriba más clara y el pie oscuro y mojado.
 - `mundo_cabana`: cabaña de náufrago sobre pilotes con techo de hojas.
+- `mundo_colinas_0..1`: núcleo de las islas (colinas facetadas con selva, laderas de roca, cumbre y
+  matas), de ~17 m de radio y base en z = 0; models.ts lo pone sobre la playa.
 - `mundo_delfin`, `mundo_pez`: fauna de los saltos (marine.ts), con el eje del cuerpo a DOLPHIN_AXIS
   y FISH_AXIS sobre la base (marine.ts los baja lo mismo para que el eje quede en el origen).
 
@@ -45,10 +47,10 @@ LEAF = '#3f8a3a'
 LEAF_L = '#5aa04a'
 LEAF_DRY = '#a8904e'
 COCO = '#6b4f2a'
-ROCK = '#7d7f7c'
-ROCK_L = '#9a9a92'
-ROCK_D = '#55585a'
-ROCK_WET = '#3f4446'
+ROCK = '#8a8a84'
+ROCK_L = '#aaa89c'
+ROCK_D = '#6a6d6b'
+ROCK_WET = '#4d5354'
 THATCH = '#c9a75a'
 THATCH_D = '#a8863f'
 WOOD = '#8b5e3c'
@@ -250,8 +252,8 @@ def wreck():
         _, y0, z0 = hull_point(6.5, 5)
         bow.append(cf.tube([(4.6, 0, 5.6), (5.6, side * y0 * 0.6, 4.4), (6.5, side * y0, z0)], 0.05, seg=4, color=ROPE))
     # Proa al aire: cabeceo hacia arriba y escora a estribor
-    xform(bow, rot(ry=-14, rx=22, at=(0, 0, 0)))
-    xform(bow, Matrix.Translation((1.2, 0.6, -1.0)))
+    xform(bow, rot(ry=-21, rx=24, at=(0, 0, 0)))
+    xform(bow, Matrix.Translation((1.2, 0.6, -1.5)))
 
     st_x = [-11.0 + 1.3 * j for j in range(7)]  # popa: de x = −11 a −3.2
     n = len(st_x)
@@ -278,9 +280,9 @@ def wreck():
             stern.append(cf.box((0.7, 0.06, 0.55), at=(x, y, zd + 0.75), color='#1f2a30'))
     stern.append(cf.box((0.06, 0.8, 1.4), at=(-6.18, 0.5, zd - 0.15), color='#2b2118'))
     # Popa medio hundida: cabeceo hacia la rotura y escora a babor
-    xform(stern, rot(ry=9, rx=-16, at=(-7.0, 0, 0)))
+    xform(stern, rot(ry=17, rx=-26, at=(-7.0, 0, 0)))
     xform(stern, rot(rz=14, at=(-7.0, 0, 0)))
-    xform(stern, Matrix.Translation((-0.8, -0.5, -0.9)))
+    xform(stern, Matrix.Translation((-0.8, -0.5, -2.3)))
 
     # Trozo de mástil caído de la cubierta al agua, con la verga y la vela rasgada flotando
     spar = cf.tube([(4.8, -1.0, 2.9), (9.6, -7.6, -0.4)], 0.24, seg=6, color=RIB)
@@ -360,7 +362,7 @@ def frond(top, yaw, length, rise, width, color, seed, droop=1.15):
     d = Vector((math.cos(yaw), math.sin(yaw), 0))
     side = Vector((-d.y, d.x, 0))
     verts, faces = [], []
-    ns = 4
+    ns = 3
     for i in range(ns + 1):
         s = i / ns
         spine = Vector(top) + d * length * s + Vector((0, 0, length * (rise * s - droop * s * s)))
@@ -436,6 +438,105 @@ def rock(name, seed, sx=1.0, sy=1.0, sz=0.7, n=16, sink=0.15):
     cf.paint(ob, ROCK_WET, lambda p: p.center.z < sz * 0.35 and p.normal.z < 0.5)
     cf.jitter_colors(ob, 0.09, seed=seed)
     return cf.model([ob], name)
+
+
+# ---------------------------------------------------------------- colinas de isla
+
+GRASS = '#6a994e'
+GRASS_D = '#4f7c3a'
+JUNGLE = '#3f7d3a'
+SAND_GRASS = '#b9b06e'
+
+
+def hills(name, seed, R=17.5, H=13.0, peak=(4.0, 3.0), rings=7, seg=18):
+    """
+    Núcleo de una isla: colinas facetadas en una malla polar (radio R, base en z = 0), verdes con
+    manchas de selva, roca en las laderas empinadas y en la cumbre, y matas de vegetación.
+    """
+    r = cf.rng(seed)
+    ph = [r.random() * 6.28 for _ in range(6)]
+    px, py = peak
+
+    def height(x, y):
+        d = math.hypot(x - px * 0.6, y - py * 0.6) / R
+        base = max(0.0, 1 - d * d) ** 1.4
+        hump = max(0.0, 1 - math.hypot(x - px, y - py) / (R * 0.45)) ** 1.6
+        n = 0.06 * math.sin(x * 0.45 + ph[0]) * math.cos(y * 0.5 + ph[1]) + 0.04 * math.sin(x * 0.9 + y * 0.7 + ph[2])
+        return H * (0.42 * base + 0.62 * hump + n * base)
+    verts, faces = [], []
+    for k in range(1, rings + 1):
+        rr = R * (k / rings) ** 0.85
+        for i in range(seg):
+            a = 2 * math.pi * (i + 0.5 * (k % 2)) / seg
+            wob = 1 + 0.1 * math.sin(a * 3 + ph[3]) + 0.06 * math.sin(a * 5 + ph[4])
+            x, y = rr * wob * math.cos(a), rr * wob * math.sin(a)
+            z = height(x, y) if k < rings else 0.0
+            verts.append((x, y, z))
+    verts.append((px * 0.95, py * 0.95, height(px, py) + 1.2))
+    top = len(verts) - 1
+    for k in range(rings - 1):
+        for i in range(seg):
+            a, b = k * seg + i, k * seg + (i + 1) % seg
+            c, d = (k + 1) * seg + (i + 1) % seg, (k + 1) * seg + i
+            faces.append((a, d, b) if k % 2 == 0 else (a, d, c))
+            faces.append((b, d, c) if k % 2 == 0 else (a, c, b))
+    # Centro: abanico al vértice más alto cercano (la cumbre)
+    for i in range(seg):
+        faces.append((top, i, (i + 1) % seg))
+    ob = mesh_from(name + '_m', verts, faces, GRASS)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bm.normal_update()
+    for f in bm.faces:
+        if f.normal.z < 0:
+            f.normal_flip()
+    bm.to_mesh(ob.data)
+    bm.free()
+    cf.paint(ob, GRASS_D, lambda p: math.sin(p.center.x * 0.3 + ph[5]) * math.cos(p.center.y * 0.35) > 0.1)
+    cf.paint(ob, JUNGLE, lambda p: math.sin(p.center.x * 0.22 + ph[2]) + math.cos(p.center.y * 0.27 + ph[0]) > 1.0 and p.center.z > 2.0)
+    cf.paint(ob, SAND_GRASS, lambda p: p.center.z < 1.2)
+    cf.paint(ob, ROCK, lambda p: p.normal.z < 0.62 and p.center.z > 2.5)
+    cf.paint(ob, ROCK_L, lambda p: p.center.z > H * 0.82)
+    cf.jitter_colors(ob, 0.08, seed=seed)
+    parts = [ob]
+    # Matas de selva sobre las laderas
+    for i in range(9):
+        a = r.random() * 2 * math.pi
+        d = R * (0.25 + r.random() * 0.5)
+        x, y = d * math.cos(a), d * math.sin(a)
+        z = height(x, y)
+        bush = rock_mesh(seed * 7 + i, 1.6 + r.random() * 1.4, 1.4 + r.random(), 1.1 + r.random() * 0.6, n=12)
+        cf.paint(bush, JUNGLE if i % 2 else GRASS_D)
+        cf.paint(bush, GRASS, lambda p: p.normal.z > 0.8)
+        cf.jitter_colors(bush, 0.1, seed=i)
+        bush.data.transform(Matrix.Translation((x, y, z - 0.5)))
+        parts.append(bush)
+    # Peñas en la cumbre
+    for i in range(2):
+        rk = rock_mesh(seed * 3 + i, 2.2 - i * 0.6, 2.0, 2.4 - i * 0.8, n=14)
+        cf.paint(rk, ROCK)
+        cf.paint(rk, ROCK_L, lambda p: p.normal.z > 0.7)
+        cf.paint(rk, ROCK_D, lambda p: p.normal.z < 0.1)
+        rk.data.transform(Matrix.Translation((px + i * 2.2, py - i * 1.5, height(px + i * 2.2, py - i * 1.5) - 1.1)))
+        parts.append(rk)
+    return cf.model(parts, name)
+
+
+def rock_mesh(seed, sx, sy, sz, n=14):
+    """Envolvente convexa de puntos al azar (base de las rocas y las matas), centrada en z = 0."""
+    r = cf.rng(seed)
+    bm = bmesh.new()
+    for i in range(n):
+        u = r.random() * 2 - 1
+        a = r.random() * 2 * math.pi
+        s = math.sqrt(1 - u * u)
+        k = 0.8 + r.random() * 0.28
+        bm.verts.new((sx * k * s * math.cos(a), sy * k * s * math.sin(a), sz * k * u))
+    res = bmesh.ops.convex_hull(bm, input=list(bm.verts))
+    bmesh.ops.delete(bm, geom=[g for g in res['geom_interior'] if isinstance(g, bmesh.types.BMVert)], context='VERTS')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    return cf._link('mata', bm)
 
 
 # ---------------------------------------------------------------- cabaña
@@ -559,5 +660,7 @@ def build():
     rock('mundo_roca_1', 12, 0.7, 0.65, 1.5, n=22)
     rock('mundo_roca_2', 13, 1.2, 1.0, 0.45, n=22)
     hut()
+    hills('mundo_colinas_0', 21, R=19.0, H=15.0, peak=(5.0, 3.5))
+    hills('mundo_colinas_1', 22, R=18.0, H=12.5, peak=(-4.0, -2.5))
     dolphin()
     fish()

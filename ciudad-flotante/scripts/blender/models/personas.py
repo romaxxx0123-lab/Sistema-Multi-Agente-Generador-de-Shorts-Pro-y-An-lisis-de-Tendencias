@@ -23,20 +23,27 @@ HUESOS (giros de las acciones escritos en ejes del ARMAZÓN en reposo, relativos
 grupos del rig procedimental): x = flexión (miembros hacia delante; tronco y cabeza hacia atrás),
 y = inclinación lateral (la punta de un hueso que sube va hacia +X), z = giro (positivo a la
 izquierda, visto desde arriba). `raiz` (en los pies) lleva los desplazamientos del cuerpo entero:
-sentarse, tumbarse, arrodillarse.
+sentarse, tumbarse, arrodillarse. En los clips de pie la altura de la raíz se ajusta en cada
+fotograma para que el pie más bajo apoye en el suelo (PLANTED). Los ciclos cierran: la última clave
+es la primera. Andar y correr tienen la misma fase (pierna izquierda delante en t = 0,25) para
+mezclarse según la velocidad.
 
 El modelo raíz es la malla `persona`; el esqueleto `persona_esqueleto` es su hijo (así el
 manifiesto tiene caja envolvente y triángulos de la malla).
 """
+import inspect
 import math
 
 import bmesh
 import bpy
-from mathutils import Euler, Matrix, Vector
+from mathutils import Euler, Vector
 
 import cf
 
 ANIMATIONS = True
+# Opciones del exportador glTF para este archivo: sin los canales quietos de los huesos (ver
+# export_without_still_channels). Si cf.export_glb acepta opciones extra, build.py se las pasa.
+EXPORT_OPTIONS = {'export_optimize_animation_keep_anim_armature': False}
 # Muestreo de las acciones: el exportador escribe una clave por fotograma y three.js interpola
 # entre ellas; 10 por segundo bastan para estos ciclos y dejan el archivo en la mitad.
 FPS = 10
@@ -236,7 +243,7 @@ def zweights(table):
             if z <= z1:
                 t = (z - z0) / (z1 - z0) if z1 > z0 else 0
                 out = {}
-                for k in set(w0) | set(w1):
+                for k in sorted(set(w0) | set(w1)):  # orden fijo: el .glb tiene que salir igual cada vez
                     out[k] = w0.get(k, 0) * (1 - t) + w1.get(k, 0) * t
                 return out
         return dict(table[-1][1])
@@ -1197,12 +1204,15 @@ def export_without_still_channels():
     """
     El exportador común (cf.export_glb) deja en cada clip la traslación, el giro y la escala de
     TODOS los huesos aunque no cambien (dos claves): 27 huesos × 3 × 29 clips son más de 2300
-    canales y unos 300 KB de JSON. Para este archivo se exporta igual que cf.export_glb pero sin
-    esos canales quietos (`export_optimize_animation_keep_anim_armature=False`): los huesos sin
-    claves en un clip quedan en reposo, que es lo que hace el AnimationMixer del juego. Se instala
-    para una sola llamada (la de este archivo) y deja cf.export_glb como estaba.
+    canales y unos 250 KB de JSON (el .glb pasaría de 175 a 425 KB). Para este archivo se exporta
+    igual que cf.export_glb pero con EXPORT_OPTIONS (sin esos canales quietos): los huesos sin
+    claves en un clip quedan en reposo, que es lo que hace el AnimationMixer del juego.
+    Solo hace falta mientras cf.export_glb no acepte opciones extra; se instala para una sola
+    llamada (la de este archivo) y deja cf.export_glb como estaba.
     """
     orig = cf.export_glb
+    if 'options' in inspect.signature(orig).parameters:
+        return
 
     def export_glb(path, animations=False):
         cf.export_glb = orig
@@ -1223,7 +1233,7 @@ def export_without_still_channels():
             export_skins=True,
             export_morph=False,
             export_image_format='NONE',
-            export_optimize_animation_keep_anim_armature=False,
+            **EXPORT_OPTIONS,
         )
 
     cf.export_glb = export_glb

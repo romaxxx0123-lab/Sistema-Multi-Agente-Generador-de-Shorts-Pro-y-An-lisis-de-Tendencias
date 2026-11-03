@@ -45,7 +45,7 @@ function skinnedBox(rig: CharacterRig): THREE.Box3 {
   const box = new THREE.Box3();
   const v = new THREE.Vector3();
   const idx = mesh.geometry.getIndex()!;
-  for (let i = 0; i < idx.count; i++) box.expandByPoint(mesh.getVertexPosition(idx.getX(i), v).applyMatrix4(mesh.matrixWorld));
+  for (let i = 0; i < rig.model!.indexCount; i++) box.expandByPoint(mesh.getVertexPosition(idx.getX(i), v).applyMatrix4(mesh.matrixWorld));
   return box;
 }
 
@@ -54,7 +54,9 @@ function drawn(root: THREE.Object3D): THREE.Mesh[] {
   const out: THREE.Mesh[] = [];
   const walk = (o: THREE.Object3D): void => {
     if (!o.visible) return;
-    if ((o as THREE.Mesh).isMesh && ((o as THREE.Mesh).geometry.getIndex()?.count ?? (o as THREE.Mesh).geometry.getAttribute('position')?.count ?? 0) > 0) out.push(o as THREE.Mesh);
+    const g = (o as THREE.Mesh).geometry;
+    const n = Math.min(g?.drawRange.count ?? 0, g?.getIndex()?.count ?? g?.getAttribute('position')?.count ?? 0);
+    if ((o as THREE.Mesh).isMesh && n > 0) out.push(o as THREE.Mesh);
     for (const c of o.children) walk(c);
   };
   walk(root);
@@ -305,7 +307,7 @@ describe('CharacterRig con el modelo', () => {
     const tpl = characterTemplate()!;
     for (const p of ['cuerpo', 'pelo_corto', 'pelo_melena', 'pelo_rapado', 'pelo_recogido', 'pelo_bollo', 'gorro_lana', 'gorra', 'abrigo']) expect(tpl.pieces.has(p), p).toBe(true);
     const rig = new CharacterRig(look(), 10);
-    const count = (): number => rig.model!.mesh.geometry.getIndex()!.count;
+    const count = (): number => rig.model!.indexCount;
     const base = count();
     rig.applyLook(look({ coat: '#3a5a40' }));
     expect(count()).toBe(base + tpl.pieces.get('abrigo')!.length);

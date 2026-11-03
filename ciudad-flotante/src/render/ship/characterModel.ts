@@ -275,6 +275,8 @@ export class CharacterModel {
   readonly mesh: THREE.SkinnedMesh;
   private geometry = new THREE.BufferGeometry();
   private color: THREE.Float32BufferAttribute;
+  /** Índice con sitio para todas las piezas: cada aspecto lo rellena y fija el rango de dibujo. */
+  private index: THREE.BufferAttribute;
   private mixer: THREE.AnimationMixer;
   private layers = new Map<string, Layer>();
   private phase = 0;
@@ -307,6 +309,10 @@ export class CharacterModel {
     this.mesh = meshes[0]!;
     for (const m of meshes.slice(1)) m.removeFromParent();
     this.color = new THREE.Float32BufferAttribute(new Float32Array(tpl.vertexCount * 3), 3);
+    let cap = 0;
+    for (const p of tpl.pieces.values()) cap += p.length;
+    this.index = new THREE.BufferAttribute(new Uint16Array(cap), 1);
+    this.geometry.setIndex(this.index);
     this.geometry.setAttribute('position', tpl.position);
     this.geometry.setAttribute('skinIndex', tpl.skinIndex);
     this.geometry.setAttribute('skinWeight', tpl.skinWeight);
@@ -350,14 +356,21 @@ export class CharacterModel {
     const eyes = this.eyesClosed;
     this.eyesClosed = false;
     this.setEyesClosed(eyes);
-    const parts = piecesFor(look).map((p) => t.pieces.get(p)).filter((p): p is Uint16Array => !!p);
-    const index = new Uint16Array(parts.reduce((n, p) => n + p.length, 0));
+    const index = this.index.array as Uint16Array;
     let o = 0;
-    for (const p of parts) {
+    for (const name of piecesFor(look)) {
+      const p = t.pieces.get(name);
+      if (!p) continue;
       index.set(p, o);
       o += p.length;
     }
-    this.geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    this.index.needsUpdate = true;
+    this.geometry.setDrawRange(0, o);
+  }
+
+  /** Vértices de índice que se dibujan con el aspecto actual (tres por triángulo). */
+  get indexCount(): number {
+    return this.geometry.drawRange.count;
   }
 
   /** Ojos cerrados (durmiendo): los pinta del color de la piel algo más oscuro. */
@@ -500,6 +513,8 @@ export class CharacterModel {
     this.geometry.deleteAttribute('skinIndex');
     this.geometry.deleteAttribute('skinWeight');
     this.geometry.dispose();
+    // la textura de huesos del esqueleto (se crea al dibujarlo la primera vez)
+    this.mesh.skeleton.dispose();
     this.object.removeFromParent();
   }
 }

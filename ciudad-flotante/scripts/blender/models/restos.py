@@ -361,8 +361,8 @@ def barril_2():
     for o in parts:
         o.data.transform(Matrix.Translation((0, 0, -0.68)))
     tilt(parts, rx=9, ry=-6)
-    parts.append(strand(wavy((0.3, 0.1, -0.24), (0.75, 0.42, -0.22), n=5, amp=0.04, lift=0.12, seed=7), 0.017, ROPE))
-    parts.append(cork((0.78, 0.45, -0.02), rot=(0, 90, 30), color=BUOY))
+    parts.append(strand(wavy((0.3, 0.1, -0.24), (0.5, 0.3, -0.06), n=4, amp=0.03, lift=0.1, seed=7), 0.017, ROPE))
+    parts.append(cork((0.5, 0.3, -0.02), rot=(0, 90, 30), color=BUOY))
     parts.append(strand(wavy((-0.18, -0.1, 0.2), (0.12, -0.2, 0.21), n=4, amp=0.03, seed=3), 0.022, ALGA))
     return finish_debris(parts, 'resto_barril_2')
 
@@ -915,7 +915,7 @@ def balsa_1():
     for i in range(n):
         y = (i - (n - 1) / 2) * 0.33
         ln = 3.0 + ((i * 37) % 5) * 0.08
-        log = cf.cylinder(0.165, ln, seg=7, at=(-ln / 2 + ((i * 13) % 3 - 1) * 0.08, y, DECK - 0.17), rot=(0, 90, 0), color='#9c6b43')
+        log = cf.cylinder(0.165, ln, seg=7, at=(-ln / 2 + ((i * 13) % 3 - 1) * 0.08, y, DECK - 0.13), rot=(0, 90, 0), color='#9c6b43')
         cf.paint(log, '#c9a06a', lambda p: abs(p.normal.x) > 0.8)
         cf.jitter_colors(log, 0.1, seed=150 + i)
         parts.append(log)
@@ -945,7 +945,7 @@ def balsa_2():
         parts.append(drum((0.0, y, -0.06), color='#d9a441' if y < 0 else BLUE, length=2.4, r=0.26, seed=int(y * 10) + 30))
     for i in range(7):
         y = (i - 3) * 0.24
-        parts.append(plank(2.6 - (i % 2) * 0.25, 0.22, 0.05, at=(0.05 * (i % 3 - 1), y, DECK - 0.025), color=WOOD, f=0.8 + 0.05 * (i % 4), broken=(i == 6, i == 0), seed=180 + i, bev=False))
+        parts.append(plank(2.6 - (i % 2) * 0.25, 0.24, 0.05, at=(0.05 * (i % 3 - 1), y, DECK - 0.025), color=WOOD, f=0.8 + 0.05 * (i % 4), broken=(i == 6, i == 0), seed=180 + i, bev=False))
     for x in (-0.9, 0.9):
         b = cf.box((0.12, 1.75, 0.08), at=(x, 0, DECK - 0.13), color=WOOD_D)
         parts.append(b)
@@ -961,8 +961,8 @@ def balsa_2():
     cf.jitter_colors(cloth, 0.08, seed=8)
     parts.append(two_sided(cloth))
     # Remo cruzado
-    parts.append(cf.cylinder(0.025, 1.7, seg=5, at=(0.35, 0.95, DECK + 0.03), rot=(0, 90, -8), color=BARREL))
-    blade = cf.box((0.36, 0.14, 0.025), at=(2.15, 0.71, DECK + 0.03), color=WOOD_D, rot=(0, 0, -8))
+    parts.append(cf.cylinder(0.025, 1.35, seg=5, at=(0.35, 0.95, DECK + 0.03), rot=(0, 90, -8), color=BARREL))
+    blade = cf.box((0.34, 0.14, 0.025), at=(1.82, 0.76, DECK + 0.03), color=WOOD_D, rot=(0, 0, -8))
     parts.append(blade)
     parts += mast_with_rag(1.05, 0.75, 1.9, rag='#e9c46a', flag=True)
     return finish_debris(parts, 'resto_balsa_2')

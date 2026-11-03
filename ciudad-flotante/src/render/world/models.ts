@@ -289,8 +289,9 @@ function rockCluster(kit: Kit, x: number, z: number, r: number, n: number, y = 0
     const ry = kit.random() * 3;
     const rz = kit.random();
     const sy = s * (0.6 + kit.random() * 0.5);
-    // Roca facetada de Blender (base en su pie): se hunde un poco para que asome como la procedimental.
-    if (pieces?.add(`mundo_roca_${i % 3}`, { p: [x + Math.cos(a) * d, y - sy * 0.45, z + Math.sin(a) * d], r: [0, ry * 2, 0], s: [s * 1.1, sy * 1.3, s] })) continue;
+    // Roca facetada de Blender (base en su pie): se hunde un poco para que asome como la
+    // procedimental. Canto rodado o losa (la aguja queda para farallones y el faro).
+    if (pieces?.add(`mundo_roca_${(i % 2) * 2}`, { p: [x + Math.cos(a) * d, y - sy * 0.45, z + Math.sin(a) * d], r: [0, ry * 2, 0], s: [s * 1.1, sy * 1.3, s] })) continue;
     kit.rock(1, 0, i % 2 ? color : COL.rockDark, { p: [x + Math.cos(a) * d, y + s * 0.15, z + Math.sin(a) * d], r: [rx, ry, rz], s: [s, sy, s] }, 0.22);
   }
 }
@@ -300,7 +301,7 @@ function rockCluster(kit: Kit, x: number, z: number, r: number, n: number, y = 0
 /* ------------------------------------------------------------------ */
 
 /** Restos de Blender que flotan alrededor del naufragio (mismos modelos que los que se pescan). */
-const WRECK_JUNK = ['resto_tablones_2', 'resto_barril_0', 'resto_caja_2', 'resto_restos_0', 'resto_barril_2', 'resto_tablones_0', 'resto_bidon_1'];
+const WRECK_JUNK = ['resto_tablones_2', 'resto_barril_0', 'resto_bidon_1', 'resto_restos_0'];
 
 /**
  * Naufragio: casco semihundido y escorado, mástil roto, vela rasgada y restos. Con Blender, un
@@ -346,7 +347,9 @@ export function wreckModel(seed: number, scale = 1): WorldModel {
     const a = kit.random() * Math.PI * 2;
     const d = 9 + kit.random() * 7;
     const t = kit.random();
-    if (blender && pieces.add(WRECK_JUNK[(i + seed) % WRECK_JUNK.length]!, { p: [Math.cos(a) * d, 0, Math.sin(a) * d], r: [0, a, 0], s: 1.5 }, DEBRIS_LIFT)) continue;
+    // Los cuatro primeros, de Blender en el avistamiento; en los cascos lejanos del decorado (más
+    // grandes y a cientos de metros) bastan las cajas procedimentales.
+    if (blender && scale <= 1 && i < WRECK_JUNK.length && pieces.add(WRECK_JUNK[(i + seed) % WRECK_JUNK.length]!, { p: [Math.cos(a) * d, 0, Math.sin(a) * d], r: [0, a, 0], s: 1.5 }, DEBRIS_LIFT)) continue;
     if (t < 0.4) kit.box(1.1, 0.55, 1.1, i % 2 ? COL.woodLight : COL.wood, { p: [Math.cos(a) * d, 0.1, Math.sin(a) * d], r: [0.2, a, 0.1] });
     else if (t < 0.7) kit.cyl(0.4, 0.4, 1.1, 8, COL.rustLight, { p: [Math.cos(a) * d, 0.15, Math.sin(a) * d], r: [Math.PI / 2, a, 0] });
     else kit.box(3.2, 0.2, 0.5, COL.wood, { p: [Math.cos(a) * d, 0.05, Math.sin(a) * d], r: [0, a, 0.05] });
@@ -365,12 +368,16 @@ export function islandModel(seed: number, scale = 1, hut = true): WorldModel {
   kit.cyl(25, 30.5, 1.6, 18, COL.sand, { p: [0, 0.6, 0] });
   // Rompiente: anillo de espuma a ras de agua
   kit.add(new THREE.TorusGeometry(31.5, 0.7, 4, 28), COL.foam, { p: [0, 0.05, 0], r: [Math.PI / 2, 0, 0], s: [1, 1, 0.45] }, 0.02);
-  // Colinas
-  kit.rock(16, 1, COL.grass, { p: [-3, 1.2, -2], s: [1.25, 0.62, 1.05] }, 0.2);
-  kit.rock(11, 1, COL.grassDark, { p: [7, 2.5, 4], s: [1.1, 0.95, 1] }, 0.22);
-  kit.rock(7, 1, COL.jungle, { p: [-10, 2, 7], s: [1, 0.8, 1] }, 0.2);
-  // Cumbre rocosa
-  kit.rock(4.5, 0, COL.rock, { p: [7.5, 11.5, 4], s: [1, 1.3, 1] }, 0.25);
+  // Colinas: el núcleo facetado de Blender (con sus matas y la cumbre) sobre la playa, o las
+  // procedimentales.
+  const hills = pieces.add(`mundo_colinas_${seed % 2}`, { p: [0, 1.3, 0], r: [0, (seed % 7) * 0.9, 0] });
+  if (!hills) {
+    kit.rock(16, 1, COL.grass, { p: [-3, 1.2, -2], s: [1.25, 0.62, 1.05] }, 0.2);
+    kit.rock(11, 1, COL.grassDark, { p: [7, 2.5, 4], s: [1.1, 0.95, 1] }, 0.22);
+    kit.rock(7, 1, COL.jungle, { p: [-10, 2, 7], s: [1, 0.8, 1] }, 0.2);
+    // Cumbre rocosa
+    kit.rock(4.5, 0, COL.rock, { p: [7.5, 11.5, 4], s: [1, 1.3, 1] }, 0.25);
+  }
   // Rocas en la orilla
   rockCluster(kit, 24, -10, 6, 4, 0, COL.rock, pieces);
   rockCluster(kit, -22, 14, 5, 3, 0, COL.rock, pieces);
@@ -382,8 +389,8 @@ export function islandModel(seed: number, scale = 1, hut = true): WorldModel {
     const d = 18 + kit.random() * 6;
     palm(kit, Math.cos(a) * d, 1.2, Math.sin(a) * d, 6 + kit.random() * 3.5, 0.6 + kit.random() * 0.8, a + Math.PI / 2 + (kit.random() - 0.5), pieces);
   }
-  // Arbustos
-  for (let i = 0; i < 8; i++) {
+  // Arbustos (las colinas de Blender ya traen sus matas)
+  for (let i = 0; i < 8 && !hills; i++) {
     const a = kit.random() * Math.PI * 2;
     const d = 8 + kit.random() * 10;
     kit.rock(1.6 + kit.random() * 1.2, 0, i % 2 ? COL.leaf : COL.grassDark, { p: [Math.cos(a) * d, 2.5 + kit.random() * 2, Math.sin(a) * d] }, 0.25);
@@ -633,7 +640,7 @@ export function lighthouseModel(seed: number): WorldModel {
       const a = (i / 9) * Math.PI * 2 + kit.random() * 0.4;
       const d = 10 + kit.random() * 4;
       const s = 2.2 + kit.random() * 2.6;
-      pieces.add(`mundo_roca_${i % 3}`, { p: [Math.cos(a) * d, -s * 0.5, Math.sin(a) * d], r: [0, a * 2, 0], s: [s * 1.2, s * (i % 3 === 1 ? 1.4 : 1.1), s] });
+      pieces.add(`mundo_roca_${i % 3}`, { p: [Math.cos(a) * d, -s * 0.5, Math.sin(a) * d], r: [0, a * 2, 0], s: [s * 1.2, s * (i % 3 === 1 ? 0.75 : 1.1), s] });
     }
     pieces.add('mundo_roca_0', { p: [9, -1.4, 6], s: [5, 4, 4.5] });
   } else {
