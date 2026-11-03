@@ -793,6 +793,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Mejora parada mientras arde: en rojo, sin parpadeo de obra. */
+.bm-upcard.paused {
+  border-color: rgba(255, 107, 87, 0.65);
+}
+
+.bm-upcard.paused .bm-up-prog,
+.bm-upcard .bm-card-lock.bad {
+  color: var(--bm-bad);
+}
+
+/* Número del atajo tras las placas de nivel (lista de mejoras). */
+.bm-pips + .bm-card-key {
+  margin-left: 4px;
+}
+
 .bm-card.bm-uphelp {
   flex-basis: 214px;
   cursor: default;

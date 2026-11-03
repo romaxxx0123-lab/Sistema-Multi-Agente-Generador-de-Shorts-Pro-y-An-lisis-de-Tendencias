@@ -10,7 +10,7 @@
 import './build.css';
 import type { ModuleCategory } from '../data/modules';
 import { glyph, itemIcon, MODULE_GLYPH } from '../ui/icons';
-import { CATEGORIES, fmtNum, levelName, tierRoman, type CardInfo, type CostLine, type DemolishPreview, type ExpansionInfo, type ModuleInfo, type ShipSummary, type StatChip, type UpgradePreview } from './catalog';
+import { CATEGORIES, fmtNum, levelName, tierRoman, UPGRADE_STALL_HINT, type CardInfo, type CostLine, type DemolishPreview, type ExpansionInfo, type ModuleInfo, type ShipSummary, type StatChip, type UpgradePreview } from './catalog';
 import { durationText } from '../sim/construction';
 
 /** Acciones que la interfaz pide al modo construcción. */
@@ -63,6 +63,8 @@ export interface ConfirmModel {
   chips?: StatChip[];
   /** Barra de progreso (obra de mejora que se cancelaría), 0..1. */
   progress?: number;
+  /** Color de la barra: obra en marcha (`work`) o parada (`bad`). */
+  progressTone?: 'work' | 'bad';
   /** Lista de objetos (reembolso o coste). */
   items: { id: string; name: string; qty: number; have?: number }[];
   itemsLabel: string;
@@ -85,8 +87,13 @@ export function esc(s: string): string {
 const gl = (name: string, cls = 'bm-gl'): string => `<i class="${cls}">${glyph(name)}</i>`;
 
 /** Glifos que usa la interfaz del modo construcción (los tests comprueban que existen). */
-export const HUD_GLYPHS = ['alert', 'arrow', 'battery', 'bed', 'box', 'check', 'clock', 'drop', 'exit', 'eye', 'hammer', 'info', 'keyboard', 'lock', 'map', 'medical', 'power', 'ship', 'star', 'swap', 'trash'] as const;
+export const HUD_GLYPHS = ['alert', 'arrow', 'battery', 'bed', 'box', 'check', 'clock', 'drop', 'exit', 'eye', 'fire', 'hammer', 'info', 'keyboard', 'lock', 'map', 'medical', 'power', 'ship', 'star', 'swap', 'trash'] as const;
 const kbd = (k: string): string => `<span class="kbd">${esc(k)}</span>`;
+
+/** Estructura de un diálogo (lo que no se puede parchear sin repintarlo). */
+function confirmShape(c: ConfirmModel): string {
+  return [c.kind, c.title, c.lines.length, c.progress !== undefined, c.progressTone ?? 'work', c.items.length, c.warnings?.length ?? 0].join('|');
+}
 
 function el(tag: string, cls: string, parent?: HTMLElement): HTMLElement {
   const e = document.createElement(tag);
@@ -108,6 +115,19 @@ function costHtml(c: CostLine): string {
 
 function statHtml(s: StatChip): string {
   return `<span class="bm-stat ${s.tone}" title="${esc(s.title)}">${gl(s.glyph)}${esc(s.text)}</span>`;
+}
+
+/**
+ * Progreso de una mejora en obras: «40 % · faltan 25 min · 2 habitantes ayudan» o, parada mientras
+ * arde, «40 % · obra parada mientras arde» (sin cuenta atrás: no baja). `short`: para la ficha de la
+ * lista («2 ayudan», «parada: arde»).
+ */
+export function upgradeProgressText(u: Pick<UpgradePreview, 'progress' | 'etaMin' | 'builders' | 'paused'>, short = false): string {
+  const p = `${Math.floor((u.progress ?? 0) * 100)} %`;
+  if (u.paused) return `${p} · ${short ? 'parada por el fuego' : 'obra parada mientras arde'}`;
+  const eta = u.etaMin !== null ? ` · faltan ${durationText(u.etaMin)}` : '';
+  const help = u.builders ? ` · ${u.builders} ${short ? (u.builders === 1 ? 'ayuda' : 'ayudan') : u.builders === 1 ? 'habitante ayuda' : 'habitantes ayudan'}` : '';
+  return `${p}${eta}${help}`;
 }
 
 /**
@@ -190,6 +210,8 @@ export class BuildHud {
   private sizeKey = '';
   private keysCollapsed = false;
   private palH = 0;
+  /** Estructura del diálogo abierto (`confirmShape`). */
+  private confirmShape = '';
   /** El puntero está sobre un panel de la interfaz (no sobre el lienzo). */
   pointerOverUi = false;
 
@@ -387,7 +409,9 @@ export class BuildHud {
     let html = '';
     if (m.upgrade && m.upgrades) {
       html = this.upgradeHelpHtml(m.upgrades.length > 0);
-      for (const u of m.upgrades) html += this.upgradeCardHtml(u);
+      m.upgrades.forEach((u, i) => {
+        html += this.upgradeCardHtml(u, i);
+      });
     } else {
       m.cards.forEach((c, i) => {
         html += this.cardHtml(c, i, m.selected === c.def.id && !m.demolish);
@@ -411,19 +435,20 @@ export class BuildHud {
       `<div class="bm-card bm-uphelp">` +
       `<div class="bm-card-head"><span class="bm-card-ico">${gl('star', 'bm-gl big')}</span><span class="bm-card-name">Mejorar instalaciones</span></div>` +
       `<div class="bm-card-desc">${esc(text)}</div>` +
-      `<div class="bm-card-foot">${kbd('Clic')} mejorar · en obras: cancelar</div>` +
+      `<div class="bm-card-foot">${kbd('Clic')} o ${kbd('1-9')} mejorar · en obras: cancelar</div>` +
       `</div>`
     );
   }
 
-  /** Ficha de un módulo del barco en la lista de mejoras. */
-  private upgradeCardHtml(u: UpgradePreview): string {
+  /** Ficha de un módulo del barco en la lista de mejoras (`index`: su atajo 1-9). */
+  private upgradeCardHtml(u: UpgradePreview, index: number): string {
     const glyphName = MODULE_GLYPH[u.type] ?? 'box';
     const busy = u.state === 'busy';
-    const cls = ['bm-card', 'bm-upcard', `up-${u.state}`].join(' ');
+    const cls = ['bm-card', 'bm-upcard', `up-${u.state}`, busy && u.paused ? 'paused' : ''].filter(Boolean).join(' ');
+    const keyHint = index < 9 ? `<span class="bm-card-key">${index + 1}</span>` : '';
     const head =
       `<div class="bm-card-head"><span class="bm-card-ico">${gl(glyphName, 'bm-gl big')}</span>` +
-      `<span class="bm-card-name">${esc(u.name)}</span>${tierPips(u.tier, u.maxTier, busy)}</div>`;
+      `<span class="bm-card-name">${esc(u.name)}</span>${tierPips(u.tier, u.maxTier, busy && !u.paused)}${keyHint}</div>`;
     let body = '';
     let foot = '';
     const where = esc(levelName(u.level));
@@ -433,8 +458,10 @@ export class BuildHud {
     } else if (busy) {
       body =
         `<div class="bm-card-prog"><span>Mejorando a <b>${esc(u.nextName ?? '')}</b></span>` +
-        `<span class="bm-up-prog" data-up-text="${u.id}"></span><div class="bm-bar work"><i data-up-bar="${u.id}" style="width:0%"></i></div></div>`;
-      foot = `<div class="bm-card-lock warn">${gl('trash')}<span>Clic: cancelar la mejora (recuperas todo)</span></div>`;
+        `<span class="bm-up-prog" data-up-text="${u.id}"></span><div class="bm-bar ${u.paused ? 'bad' : 'work'}"><i data-up-bar="${u.id}" style="width:0%"></i></div></div>`;
+      foot = u.paused
+        ? `<div class="bm-card-lock bad" title="${esc(u.hint ?? '')}">${gl('fire')}<span>Parada mientras arde. Clic: cancelarla</span></div>`
+        : `<div class="bm-card-lock warn">${gl('trash')}<span>Clic: cancelar la mejora (recuperas todo)</span></div>`;
     } else {
       body =
         `<div class="bm-up-next" title="${esc(`Nivel ${u.toTier ?? u.tier + 1}: ${u.nextName ?? ''}. ${u.desc ?? ''}`)}">${gl('arrow')}<span>${esc(u.nextName ?? '')}</span></div>` +
@@ -445,7 +472,7 @@ export class BuildHud {
           ? `<div class="bm-card-lock" title="${esc([u.reason, u.hint].filter(Boolean).join('. '))}">${gl('lock')}<span>${esc(u.reason ?? 'No se puede mejorar')}</span></div>`
           : `<div class="bm-card-foot">${gl('clock')}${esc(u.timeText ?? '')} · ${where}</div>`;
     }
-    const title = u.state === 'blocked' || u.state === 'max' ? (u.reason ?? '') : busy ? 'Clic para cancelar la mejora' : (u.desc ?? '');
+    const title = u.state === 'blocked' || u.state === 'max' ? (u.reason ?? '') : busy ? (u.paused ? `Obra parada mientras arde. ${u.hint ?? ''} Clic para cancelar la mejora` : 'Clic para cancelar la mejora') : (u.desc ?? '');
     return `<div class="${cls}" role="button" data-act="upmod" data-v="${u.id}" data-upid="${u.id}" title="${esc(title)}">${head}${body}${foot}</div>`;
   }
 
@@ -458,9 +485,7 @@ export class BuildHud {
       const txt = this.cards.querySelector<HTMLElement>(`[data-up-text="${u.id}"]`);
       if (bar) bar.style.width = `${pct}%`;
       if (txt) {
-        const eta = u.etaMin !== null ? ` · faltan ${durationText(u.etaMin)}` : '';
-        const help = u.builders ? ` · ${u.builders} ${u.builders === 1 ? 'ayuda' : 'ayudan'}` : '';
-        const t = `${pct} %${eta}${help}`;
+        const t = upgradeProgressText(u, true);
         if (txt.textContent !== t) txt.textContent = t;
       }
     }
@@ -566,7 +591,7 @@ export class BuildHud {
     } else if (mode === 'demolish') {
       rows.push(['Clic', 'Desmontar'], ['Clic der. · Esc', 'Dejar de demoler']);
     } else if (mode === 'upgrade') {
-      rows.push(['Clic', 'Mejorar (o cancelar la mejora en obras)'], ['Clic der. · Esc', 'Dejar de mejorar']);
+      rows.push(['Clic', 'Mejorar (o cancelar la mejora en obras)'], ['1-9', 'Elegir de la lista'], ['Clic der. · Esc · U', 'Dejar de mejorar']);
     } else {
       rows.push(['1-9', 'Elegir pieza'], ['Tab', 'Siguiente categoría'], ['U', 'Mejorar'], ['X', 'Demoler']);
     }
@@ -607,8 +632,10 @@ export class BuildHud {
     if (m.progress !== null) html += `<div class="bm-bar work"><i style="width:${Math.round(m.progress * 100)}%"></i></div>`;
     // Mejora en obras (la ficha de la herramienta Mejorar la cuenta con más detalle).
     if (m.upgrade && !upgrade) {
-      const p = Math.floor(m.upgrade.progress * 100);
-      html += `<div class="bm-info-line warn">Mejorando a ${esc(m.upgrade.name)} · ${p} % · faltan ${esc(durationText(m.upgrade.etaMin))}</div><div class="bm-bar work"><i style="width:${p}%"></i></div>`;
+      const up = m.upgrade;
+      const p = Math.floor(up.progress * 100);
+      const when = up.paused ? 'parada mientras arde' : up.etaMin !== null ? `faltan ${durationText(up.etaMin)}` : '';
+      html += `<div class="bm-info-line ${up.paused ? 'bad' : 'warn'}">Mejorando a ${esc(up.name)} · ${p} %${when ? ` · ${esc(when)}` : ''}</div><div class="bm-bar ${up.paused ? 'bad' : 'work'}"><i style="width:${p}%"></i></div>`;
     }
     if (m.condition !== null) {
       const c = Math.round(m.condition);
@@ -639,12 +666,14 @@ export class BuildHud {
     if (u.state === 'max') return `<div class="bm-info-foot good">${gl('check')}<span><b>${esc(u.reason ?? 'Nivel máximo')}</b><br><span class="bm-info-hint">Ya tiene todas sus mejoras</span></span></div>`;
     if (u.state === 'busy') {
       const p = Math.floor((u.progress ?? 0) * 100);
-      const eta = u.etaMin !== null ? ` · faltan ${durationText(u.etaMin)}` : '';
-      const help = u.builders ? ` · ${u.builders} ${u.builders === 1 ? 'habitante ayuda' : 'habitantes ayudan'}` : '';
+      // Parada (arde): ni cuenta atrás, ni «se sigue usando», ni el martillo, que ahora no ayuda.
+      const how = u.paused
+        ? `<div class="bm-info-line bad">${esc(upgradeProgressText(u))}.</div><div class="bm-info-line"><span class="bm-info-hint">${esc(u.hint ?? UPGRADE_STALL_HINT)}</span></div>`
+        : `<div class="bm-info-line">${esc(upgradeProgressText(u))}. ${u.inUse ? 'Se sigue usando mientras tanto; el martillo acelera la obra' : 'El martillo acelera la obra'}</div>`;
       return (
-        `<div class="bm-up-next">${gl('hammer')}<span>Mejorando a <b>${esc(u.nextName ?? '')}</b></span></div>` +
-        `<div class="bm-bar work"><i style="width:${p}%"></i></div>` +
-        `<div class="bm-info-line">${p} %${esc(eta)}${esc(help)}. Se sigue usando mientras tanto; el martillo acelera la obra</div>` +
+        `<div class="bm-up-next">${gl(u.paused ? 'fire' : 'hammer')}<span>Mejorando a <b>${esc(u.nextName ?? '')}</b></span></div>` +
+        `<div class="bm-bar ${u.paused ? 'bad' : 'work'}"><i style="width:${p}%"></i></div>` +
+        how +
         `<div class="bm-info-foot bad">${gl('trash')}<span><b>Clic: cancelar la mejora</b><br>Recuperas: ${u.cost.map((c) => `${c.need}× ${esc(c.name)}`).join(', ')}</span></div>`
       );
     }
@@ -700,8 +729,8 @@ export class BuildHud {
     const html =
       `<div class="bm-confirm panel" role="dialog" aria-modal="true" aria-label="${esc(c.title)}">` +
       `<div class="bm-confirm-title">${gl(c.glyph)}<span>${esc(c.title)}</span></div>` +
-      c.lines.map((l) => `<p>${esc(l)}</p>`).join('') +
-      (c.progress !== undefined ? `<div class="bm-bar work bm-confirm-bar"><i style="width:${Math.round(Math.max(0, Math.min(1, c.progress)) * 100)}%"></i></div>` : '') +
+      c.lines.map((l, i) => `<p data-cf-line="${i}">${esc(l)}</p>`).join('') +
+      (c.progress !== undefined ? `<div class="bm-bar ${c.progressTone ?? 'work'} bm-confirm-bar"><i data-cf-bar style="width:${Math.round(Math.max(0, Math.min(1, c.progress)) * 100)}%"></i></div>` : '') +
       (c.chips?.length ? `<div class="bm-card-stats bm-confirm-chips">${c.chips.map(statHtml).join('')}</div>` : '') +
       items +
       (c.note ? `<div class="bm-confirm-note">${gl('box')}<span>${esc(c.note)}</span></div>` : '') +
@@ -710,6 +739,25 @@ export class BuildHud {
       `</div>`;
     setHtml(this.modal, html);
     this.modal.classList.add('show');
+    this.confirmShape = confirmShape(c);
+  }
+
+  /**
+   * Pone al día el diálogo abierto (la obra avanza o se para mientras se lee). Si solo cambian los
+   * textos y la barra, los parchea sin repintar: así no se pierde un clic a medias en sus botones.
+   */
+  patchConfirm(c: ConfirmModel): void {
+    if (!this.confirmOpen) return;
+    if (confirmShape(c) !== this.confirmShape) {
+      this.showConfirm(c);
+      return;
+    }
+    c.lines.forEach((l, i) => {
+      const p = this.modal.querySelector<HTMLElement>(`[data-cf-line="${i}"]`);
+      if (p && p.textContent !== l) p.textContent = l;
+    });
+    const bar = this.modal.querySelector<HTMLElement>('[data-cf-bar]');
+    if (bar && c.progress !== undefined) bar.style.width = `${Math.round(Math.max(0, Math.min(1, c.progress)) * 100)}%`;
   }
 
   hideConfirm(): void {

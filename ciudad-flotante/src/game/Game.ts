@@ -141,11 +141,7 @@ export class CoreOverlay {
     this.notices = notices;
   }
 
-  /** Avisos visibles ahora (los descartados con «Entendido» no vuelven en esta sesión). */
-  get visibleNotices(): NoticeKind[] {
-    return this.shown ? (this.shown.split(',') as NoticeKind[]) : [];
-  }
-
+  /** Muestra estos avisos (los descartados con «Entendido» no vuelven en esta sesión). */
   setNotices(kinds: NoticeKind[]): void {
     const list = kinds.filter((k) => !this.dismissed.has(k));
     const key = list.join(',');
@@ -181,15 +177,18 @@ export class CoreOverlay {
     }
   }
 
-  /** Pista del giro por el borde (−1..1 por eje), o null para ocultarla. */
+  /** Pista del giro por el borde (−1..1 por eje), o null para ocultarla. Solo toca el DOM si cambia. */
   setEdges(turn: { x: number; y: number } | null): void {
     const x = turn?.x ?? 0;
     const y = turn?.y ?? 0;
-    const op = (v: number) => (v > 0 ? String(Math.min(1, 0.35 + v * 0.65)) : '0');
-    this.edges.left.style.opacity = op(-x);
-    this.edges.right.style.opacity = op(x);
-    this.edges.top.style.opacity = op(-y);
-    this.edges.bottom.style.opacity = op(y);
+    const op = (v: number) => (v > 0 ? (Math.min(1, 0.35 + v * 0.65)).toFixed(2) : '0');
+    const set = (el: HTMLDivElement, v: string) => {
+      if (el.style.opacity !== v) el.style.opacity = v;
+    };
+    set(this.edges.left, op(-x));
+    set(this.edges.right, op(x));
+    set(this.edges.top, op(-y));
+    set(this.edges.bottom, op(y));
   }
 }
 

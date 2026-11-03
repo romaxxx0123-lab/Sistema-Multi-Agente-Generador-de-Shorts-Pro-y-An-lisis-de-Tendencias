@@ -112,17 +112,28 @@ function start(data: unknown): void {
   }
 }
 
-/** Los modelos de Blender se decodifican antes de crear las vistas (si fallan, se usan los procedimentales). */
+/**
+ * Arranca una sola vez. Los modelos de Blender se decodifican antes de crear las vistas (si fallan,
+ * se usan los procedimentales). Nunca lanza: cualquier fallo acaba en la pantalla de error.
+ */
+let booted = false;
 function boot(data: unknown): void {
-  preloadModels()
+  if (booted) return;
+  booted = true;
+  Promise.resolve()
+    .then(() => preloadModels())
     .catch((err: unknown) => console.warn('Modelos no disponibles', err))
     .then(() => start(data))
     .catch((err: unknown) => showFatal('error', err));
 }
 
+// Un gancho roto o que no responde no puede dejar la página vacía: se arranca sin instantánea.
 try {
-  if (hot?.ready) hot.ready(boot);
-  else boot(hot?.data ?? null);
+  if (hot?.ready) {
+    hot.ready(boot);
+    setTimeout(() => boot(null), 10000);
+  } else boot(hot?.data ?? null);
 } catch (e) {
-  showFatal('error', e);
+  console.warn('[Ciudad Flotante] el gancho del visor falló; arranque normal', e);
+  boot(null);
 }

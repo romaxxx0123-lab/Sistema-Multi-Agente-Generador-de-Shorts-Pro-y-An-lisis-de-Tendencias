@@ -39,7 +39,7 @@ import type { ModuleInstance, Rotation } from '../sim/types';
 import { explainPlacement, levelReason, placeHintSteps, type PlaceSpot } from './advice';
 import { CATEGORIES, cardInfo, demolishPreview, expansionInfo, fmtNum, moduleInfo, paletteModules, shipSummary, stock, upgradeList, upgradePreview, type DemolishPreview, type UpgradePreview } from './catalog';
 import { BoxMarker, GHOST_COLORS, GhostView, GridView, Pulse, ReachArc } from './ghost';
-import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, upgradeConfirmModel } from './confirm';
+import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, refreshConfirm, upgradeConfirmModel, type ConfirmTarget } from './confirm';
 import { BuildHud, esc, type ConfirmModel, type HudActions, type TipModel } from './hud';
 import { DEFAULT_PITCH, DEFAULT_YAW, fitDistance, OrbitRig, rescaleDistance } from './orbit';
 import { anchorFor, continuousCell, intersectLevel, moduleBox, pickModule, toShipLocalRay } from './picking';
@@ -62,7 +62,7 @@ const HINT_DELAY = 0.12;
  */
 const HINT_BUDGET_MS = 6;
 
-type Confirm = { kind: 'demolish'; moduleId: number } | { kind: 'expand' } | { kind: 'upgrade'; moduleId: number } | { kind: 'cancelUpgrade'; moduleId: number };
+type Confirm = ConfirmTarget;
 
 interface PlaceState {
   key: string;
@@ -413,6 +413,12 @@ export class BuildMode {
     }
     for (let d = 1; d <= 9; d++) {
       if (!inp.pressed(`Digit${d}`) && !inp.pressed(`Numpad${d}`)) continue;
+      // Con la herramienta Mejorar, la paleta es la lista de mejoras: el número elige su ficha
+      // (la categoría de piezas no se ve, así que no se coge una pieza a ciegas).
+      if (this.upgrading) {
+        this.pickUpgradeCard(d - 1);
+        continue;
+      }
       const mods = paletteModules(this.category);
       const def = mods[d - 1];
       if (def) this.selectModule(def.id, true);
@@ -963,9 +969,23 @@ export class BuildMode {
       this.ctx.bus.emit('sfx', { name: 'ui_error' });
       return;
     }
-    this.confirm = { kind: 'demolish', moduleId: m.id };
+    this.confirm = { kind: 'demolish', moduleId: m.id, obra: prev.inConstruction };
     this.hud!.showConfirm(demolishConfirmModel(prev));
     this.ctx.bus.emit('sfx', { name: 'ui_click' });
+  }
+
+  /**
+   * Atajo 1-9 con la herramienta Mejorar: la ficha `index` de la lista (la misma que se ve, con su
+   * número). Sin ficha con ese número, solo el sonido de error.
+   */
+  private pickUpgradeCard(index: number): void {
+    const list = upgradeList(this.ctx.sim);
+    const u = list[index];
+    if (!u) {
+      this.ctx.bus.emit('sfx', { name: 'ui_error' });
+      return;
+    }
+    this.requestUpgrade(u.id, true);
   }
 
   /** Clic con la herramienta Mejorar sobre un módulo del barco. */
@@ -1029,6 +1049,13 @@ export class BuildMode {
     if (!c) return;
     const sim = this.ctx.sim;
     this.closeConfirm();
+    // Lo que se confirma es lo que el diálogo pregunta ahora (puede haber cambiado desde el último repintado).
+    const now = refreshConfirm(sim, c);
+    if ('close' in now) {
+      sim.notify(now.close, now.kind);
+      this.ctx.bus.emit('sfx', { name: 'ui_error' });
+      return;
+    }
     if (c.kind === 'demolish') {
       const res = sim.demolish(c.moduleId);
       sim.notify(res.msg ?? (res.ok ? 'Desmontado' : 'No se puede desmontar'), res.ok ? 'good' : 'warn');
@@ -1056,6 +1083,24 @@ export class BuildMode {
     this.confirm = null;
     this.hud?.hideConfirm();
     this.hudDirty = true;
+  }
+
+  /**
+   * El diálogo abierto, al día con la simulación (que sigue mientras se lee): la obra avanza o se
+   * para, y si la pregunta ya no tiene sentido (la mejora terminó, el módulo ya no está, ya no se
+   * puede pagar…) se cierra con un aviso. Así Intro nunca confirma algo que ya no es lo que dice.
+   */
+  private syncConfirm(): void {
+    const c = this.confirm;
+    const hud = this.hud;
+    if (!c || !hud) return;
+    const r = refreshConfirm(this.ctx.sim, c);
+    if ('close' in r) {
+      this.closeConfirm();
+      this.ctx.sim.notify(r.close, r.kind);
+      return;
+    }
+    hud.patchConfirm(r.model);
   }
 
   /* ================================================================== */
@@ -1111,6 +1156,7 @@ export class BuildMode {
     hud.renderLevels(sim.state.ship.levels, this.level, (l) => (sel ? sel.levels.includes(l) : null));
     hud.renderSummary(shipSummary(sim));
     hud.renderKeys(this.selected ? 'place' : this.demolishing ? 'demolish' : this.upgrading ? 'upgrade' : 'inspect');
+    this.syncConfirm();
   }
 
   /* ================================================================== */

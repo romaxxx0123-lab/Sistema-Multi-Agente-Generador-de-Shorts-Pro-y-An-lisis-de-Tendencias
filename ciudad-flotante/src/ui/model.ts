@@ -219,7 +219,11 @@ export function moduleIssues(sim: Simulation): ModuleIssue[] {
       continue;
     }
     // Mejora en obras (el módulo sigue funcionando con su nivel actual).
-    if (m.upgrade) out.push({ module: m, name, kind: 'construction', text: `Mejorando a nivel ${m.upgrade.toTier} · ${Math.floor(Math.max(0, Math.min(1, m.upgrade.progress)) * 100)} %`, severity: 'info' });
+    if (m.upgrade) {
+      const p = Math.floor(Math.max(0, Math.min(1, m.upgrade.progress)) * 100);
+      // Mientras arde, la obra de mejora no avanza (SISTEMAS §13).
+      out.push({ module: m, name, kind: 'construction', text: m.fire > 0 ? `Mejora a nivel ${m.upgrade.toTier} parada mientras arde · ${p} %` : `Mejorando a nivel ${m.upgrade.toTier} · ${p} %`, severity: m.fire > 0 ? 'warn' : 'info' });
+    }
     if (m.fire > 0) out.push({ module: m, name, kind: 'fire', text: `¡Ardiendo! (${Math.round(m.fire)} %)`, severity: 'danger' });
     if (m.status === 'broken') out.push({ module: m, name, kind: 'broken', text: m.brokenReason ? `Averiado: ${m.brokenReason}` : 'Averiado', severity: 'danger' });
     if (m.leak) out.push({ module: m, name, kind: 'leak', text: 'Fuga de agua', severity: 'warn' });

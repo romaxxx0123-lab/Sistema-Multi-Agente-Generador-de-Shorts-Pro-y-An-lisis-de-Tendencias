@@ -25,6 +25,7 @@ import { findModule, payInventories } from '../../sim/helpers';
 import { countIn, countItem } from '../../sim/inventory';
 import { maxTier, moduleDisplayName, moduleMult, moduleStat, moduleTier, nextUpgrade } from '../../sim/moduleStats';
 import type { InvRef } from '../../sim/Simulation';
+import { bedComfortBonus } from '../../sim/needs';
 import { MAX_QUEUE, plotLight, stationKindOf, viveroStatus } from '../../sim/stations';
 import { daylight } from '../../sim/time';
 import type { ModuleInstance } from '../../sim/types';
@@ -123,7 +124,11 @@ export function renderStation(env: UiEnv, moduleId: number): PanelView | null {
 function statusChips(m: ModuleInstance): VNode {
   const chips: VNode[] = [];
   if (m.status === 'construction') chips.push(chip(`En obras · ${Math.floor(m.buildProgress * 100)} %`, 'info', 'hammer'));
-  else if (m.upgrade) chips.push(chip(`Mejorando · ${Math.floor(Math.max(0, Math.min(1, m.upgrade.progress)) * 100)} %`, 'info', 'upgrade'));
+  else if (m.upgrade) {
+    const p = Math.floor(Math.max(0, Math.min(1, m.upgrade.progress)) * 100);
+    // Mientras arde, la obra de mejora no avanza (SISTEMAS §13).
+    chips.push(m.fire > 0 ? chip(`Mejora parada · ${p} %`, 'danger', 'upgrade') : chip(`Mejorando · ${p} %`, 'info', 'upgrade'));
+  }
   if (m.fire > 0) chips.push(chip(`¡Ardiendo! ${Math.round(m.fire)} %`, 'danger', 'fire'));
   if (m.status === 'broken') chips.push(chip('Averiado', 'danger', 'wrench'));
   if (m.leak) chips.push(chip('Fuga', 'warn', 'leak'));
@@ -194,6 +199,21 @@ export function upgradeLine(env: UiEnv, m: ModuleInstance): VNode | null {
   if (max <= 1 && !cs) return null;
   const tier = moduleTier(m);
   const lvl = h('span', { class: 'tier-badge', title: `Nivel de mejora ${tier} de ${max}` }, gl('chevrons'), `Nivel ${tier}/${max}`);
+  if (cs && cs.toTier && m.fire > 0) {
+    // Parada mientras arde: sin cuenta atrás (no baja), sin «sigue funcionando» y sin el martillo,
+    // que ahora no ayuda (`helpBuild` lo rechaza hasta apagar el fuego).
+    return h(
+      'div',
+      { class: 'tier-row upgrading paused' },
+      lvl,
+      h(
+        'div',
+        { class: 'tier-main' },
+        meter([gl('upgrade'), `Mejorando a «${cs.name}»`], `${Math.floor(cs.progress * 100)} % · parada`, cs.progress, 'var(--danger)'),
+        h('div', { class: 'danger small' }, gl('fire'), 'Obra parada mientras arde: apaga el fuego con el cubo y seguirá donde se quedó.'),
+      ),
+    );
+  }
   if (cs && cs.toTier) {
     const hammer = countItem(sim.state.player.inventory, 'martillo') > 0;
     return h(
@@ -207,7 +227,7 @@ export function upgradeLine(env: UiEnv, m: ModuleInstance): VNode | null {
         h(
           'div',
           { class: 'faint small' },
-          'Sigue funcionando con su nivel actual mientras dura la obra',
+          m.status === 'active' ? 'Sigue funcionando con su nivel actual mientras dura la obra' : 'La obra sigue aunque no funcione hasta repararlo',
           cs.builders > 0 ? ` · ${cs.builders} ${cs.builders === 1 ? 'habitante ayuda' : 'habitantes ayudan'}` : '',
           '. ',
           // Como en Interaction: en una mejora, E sigue abriendo el panel y ayuda el clic con el martillo.
@@ -831,6 +851,12 @@ function genericBody(env: UiEnv, m: ModuleInstance, _def: ModuleDef): VNode {
   const sim = env.ctx.sim;
   const comfort = moduleStat(m, 'comfort');
   const heal = moduleMult(m, 'healMult');
+  // Las camas solo descansan más por encima del confort de una cama básica (`bedComfortBonus`).
+  const rest = moduleDef(m.type).healingBeds ? 0 : bedComfortBonus(m);
+  const comfortTitle =
+    rest > 0
+      ? `Confort ${comfort}: mejora el ánimo de quien duerme o pasa aquí su tiempo libre, y sus camas dan +${num(rest, 0)} de energía por hora durmiendo`
+      : `Confort ${comfort}: mejora el ánimo de quien duerme o pasa aquí su tiempo libre`;
   const beds = m.beds.map((b, i) => {
     const who = b === 'player' ? 'Tú' : b ? (sim.state.npcs.find((n) => n.id === b)?.name ?? '—') : 'Libre';
     return h('li', { key: i }, gl('bed'), h('span', { class: 'ml-name' }, `Cama ${i + 1}`), h('span', { class: cx('ml-val', !b && 'faint') }, who));
@@ -839,7 +865,7 @@ function genericBody(env: UiEnv, m: ModuleInstance, _def: ModuleDef): VNode {
     'div',
     { class: 'generic' },
     beds.length ? section('Camas', h('ul', { class: 'mini-list' }, beds)) : null,
-    comfort ? h('div', { class: 'faint small', title: `Confort ${comfort}: mejora el ánimo y el descanso de quien duerme o pasa aquí su tiempo libre` }, `Confort: ${'★'.repeat(Math.min(6, Math.round(comfort)))} (${num(comfort, 0)})`) : null,
+    comfort ? h('div', { class: 'faint small', title: comfortTitle }, `Confort: ${'★'.repeat(Math.min(6, Math.round(comfort)))} (${num(comfort, 0)})`) : null,
     heal > 1.001 ? h('div', { class: 'faint small' }, gl('medical'), ` Equipada: se cura ×${num(heal, 1)} más rápido en sus camillas.`) : null,
     powerSwitch(env, m),
   );

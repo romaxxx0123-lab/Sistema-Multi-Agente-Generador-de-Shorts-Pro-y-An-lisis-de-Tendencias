@@ -17,6 +17,7 @@ import { payInventories } from '../sim/helpers';
 import { totals } from '../sim/inventory';
 import { maxTier, moduleDisplayName, moduleMult, moduleStat, moduleTier, nextUpgrade } from '../sim/moduleStats';
 import type { Simulation } from '../sim/Simulation';
+import { bedComfortBonus } from '../sim/needs';
 import { moduleCells, unreachableModules } from '../sim/ship';
 import { blueprintName, viveroStatus } from '../sim/stations';
 import type { ItemId, ModuleInstance } from '../sim/types';
@@ -265,6 +266,23 @@ export function expansionInfo(sim: Simulation, have: Record<ItemId, number>): Ex
 
 type TierRef = { type: string; tier: number };
 
+/** Energía extra por hora que dan las camas de un módulo de ese tipo y nivel (`bedComfortBonus`). */
+export function bedRestBonus(type: string, tier: number): number {
+  return bedComfortBonus({ type, tier } as ModuleInstance);
+}
+
+/**
+ * ¿Está parada la obra de mejora de `m`, y por qué? Mientras el módulo arde la mejora no avanza ni
+ * admite el martillo (SISTEMAS §13: `tickConstruction` y `helpBuild` la saltan con `m.fire > 0`), así
+ * que la interfaz no da cuenta atrás ni consejos de ayudar: da el motivo.
+ */
+export function upgradeStall(m: Pick<ModuleInstance, 'fire'>): 'fuego' | null {
+  return m.fire > 0 ? 'fuego' : null;
+}
+
+/** Qué hacer para que siga una obra de mejora parada. */
+export const UPGRADE_STALL_HINT = 'Apaga el fuego con el cubo: la obra seguirá donde se quedó';
+
 /** "40 %" de un factor <1 ("−40 % agua") o el ahorro de un multiplicador de duración (1,5 → 33 %). */
 function pct(v: number): string {
   return `${fmtNum(Math.abs(v) * 100, 0)} %`;
@@ -309,7 +327,15 @@ export function upgradeEffects(type: string, from: number, to: number): StatChip
   if (d) out.push({ glyph: 'battery', text: `${plus(d[2])} kWh`, tone: 'good', title: `Capacidad de las baterías: ${fmtNum(d[0])} → ${fmtNum(d[1])} kWh` });
   d = diff('comfort');
   if (d) {
-    const why = def.beds && !def.healingBeds ? 'mejor ánimo y mejor descanso en sus camas' : 'mejor ánimo de quien pasa aquí su tiempo';
+    // Las camas solo descansan más por encima del confort de una cama básica (`bedComfortBonus`):
+    // el dormitorio con taquillas (3) da ánimo, no descanso (SISTEMAS §13).
+    const rest = def.beds && !def.healingBeds ? bedRestBonus(type, to) - bedRestBonus(type, from) : 0;
+    const why =
+      def.beds && !def.healingBeds
+        ? rest > 1e-9
+          ? `mejor ánimo y mejor descanso en sus camas: +${fmtNum(rest)} de energía por hora durmiendo`
+          : 'mejor ánimo de quien duerme aquí'
+        : 'mejor ánimo de quien pasa aquí su tiempo';
     out.push({ glyph: 'smile', text: `Confort ${plus(d[2])}`, tone: 'good', title: `Confort: ${fmtNum(d[0])} → ${fmtNum(d[1])} (${why})` });
   }
   d = diff('speedBonus');
@@ -388,10 +414,14 @@ export interface UpgradePreview {
   /** Coste (en obras: lo pagado, que se recupera entero al cancelar). */
   cost: CostLine[];
   timeText: string | null;
-  /** Obra de mejora en curso. */
+  /** Obra de mejora en curso (`etaMin` es null mientras está parada). */
   progress: number | null;
   etaMin: number | null;
   builders: number;
+  /** Obra de mejora parada (mientras el módulo arde), o null. */
+  paused: 'fuego' | null;
+  /** El módulo funciona ahora mismo (con su nivel actual) mientras dura la obra: ni arde ni está averiado. */
+  inUse: boolean;
 }
 
 /** "Repáralo con la llave inglesa y una pieza mecánica". */
@@ -426,6 +456,8 @@ export function upgradePreview(sim: Simulation, m: ModuleInstance, have: Record<
     progress: null,
     etaMin: null,
     builders: 0,
+    paused: null,
+    inUse: m.status === 'active' && !(m.fire > 0),
   };
   if (!def.upgrades?.length) return { ...base, state: 'none', reason: `${withArticle(def.name, true)} no admite mejoras` };
   const busy = m.status !== 'construction' ? activeUpgrade(m) : null;
@@ -442,7 +474,18 @@ export function upgradePreview(sim: Simulation, m: ModuleInstance, have: Record<
   };
   if (busy) {
     const cs = sim.constructionStatus(m.id);
-    return { ...base, ...info, state: 'busy', progress: cs?.progress ?? finite(m.upgrade?.progress), etaMin: cs?.etaMin ?? null, builders: cs?.builders ?? 0 };
+    const paused = upgradeStall(m);
+    return {
+      ...base,
+      ...info,
+      state: 'busy',
+      progress: cs?.progress ?? finite(m.upgrade?.progress),
+      // Parada: la cuenta atrás no baja, así que no se da.
+      etaMin: paused ? null : (cs?.etaMin ?? null),
+      builders: cs?.builders ?? 0,
+      paused,
+      hint: paused ? UPGRADE_STALL_HINT : null,
+    };
   }
   if (chk.ok) return { ...base, ...info, state: 'ok' };
   const reason = chk.reason ?? 'No se puede mejorar';
@@ -556,8 +599,11 @@ export interface ModuleInfo {
   /** Nivel de mejora actual y máximo (1 y 1 si no se mejora). */
   tier: number;
   maxTier: number;
-  /** Obra de mejora en curso (el módulo sigue en uso mientras dura). */
-  upgrade: { name: string; toTier: number; progress: number; etaMin: number; builders: number } | null;
+  /**
+   * Obra de mejora en curso (el módulo sigue en uso mientras dura). `paused`: parada mientras arde
+   * (entonces `etaMin` es null).
+   */
+  upgrade: { name: string; toTier: number; progress: number; etaMin: number | null; builders: number; paused: 'fuego' | null } | null;
 }
 
 function bedOwnerName(sim: Simulation, owner: string | null): string {
@@ -628,7 +674,8 @@ export function moduleInfo(sim: Simulation, m: ModuleInstance): ModuleInfo {
   const up = m.status !== 'construction' ? activeUpgrade(m) : null;
   if (up) {
     const cs = sim.constructionStatus(m.id);
-    upgrade = { name: up.name, toTier: up.tier, progress: cs?.progress ?? finite(m.upgrade?.progress), etaMin: cs?.etaMin ?? 0, builders: cs?.builders ?? 0 };
+    const paused = upgradeStall(m);
+    upgrade = { name: up.name, toTier: up.tier, progress: cs?.progress ?? finite(m.upgrade?.progress), etaMin: paused ? null : (cs?.etaMin ?? 0), builders: cs?.builders ?? 0, paused };
   }
   return { id: m.id, name, type: m.type, level: m.level, state, tone, progress, condition, lines, tier: moduleTier(m), maxTier: maxTier(m.type), upgrade };
 }

@@ -18,14 +18,16 @@ import {
   moduleStats,
   paletteModules,
   shipSummary,
+  bedRestBonus,
   stock,
   upgradeEffects,
   upgradeList,
   upgradePreview,
+  upgradeStall,
 } from '../src/build/catalog';
-import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, upgradeConfirmModel } from '../src/build/confirm';
+import { cancelUpgradeConfirmModel, demolishConfirmModel, expandConfirmModel, refreshConfirm, upgradeConfirmModel } from '../src/build/confirm';
 import { buildGhostGeometry, dashedRibbon, GridView, reachArcPoints } from '../src/build/ghost';
-import { HUD_GLYPHS, tooltipPos } from '../src/build/hud';
+import { HUD_GLYPHS, tooltipPos, upgradeProgressText } from '../src/build/hud';
 import { hasGlyph, MODULE_GLYPH } from '../src/ui/icons';
 import { fitDistance, ORBIT_LIMITS, OrbitRig, rescaleDistance } from '../src/build/orbit';
 import { GRUA_RANGE } from '../src/sim/debris';
@@ -956,5 +958,140 @@ describe('P5: reencuadre de la cámara al redimensionar', () => {
     expect(rescaleDistance(ORBIT_LIMITS.maxDist, 20, 80)).toBe(ORBIT_LIMITS.maxDist);
     expect(rescaleDistance(30, 0, 50)).toBe(50);
     expect(rescaleDistance(Number.NaN, 40, 50)).toBe(50);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Ronda de pruebas 2 (fix-ui): mejoras paradas, textos y diálogos al día */
+/* ------------------------------------------------------------------ */
+
+describe('fix-ui: mejora parada por el fuego', () => {
+  it('ni cuenta atrás, ni «se sigue usando», ni el martillo: dice que está parada y qué hacer', () => {
+    const sim = Simulation.newGame(11);
+    const alm = sim.state.ship.modules.find((m) => m.type === 'almacen')!;
+    giveFor(sim, moduleDef('almacen').upgrades![0]!.cost);
+    expect(sim.startUpgrade(alm.id).ok).toBe(true);
+    sim.tick(5);
+    let u = upgradePreview(sim, alm);
+    expect(u.paused).toBeNull();
+    expect(u.inUse).toBe(true);
+    expect(upgradeProgressText(u)).toMatch(/^\d+ % · faltan \d+ min$/);
+
+    alm.fire = 40;
+    const frozen = alm.upgrade!.progress;
+    sim.tick(10);
+    expect(alm.upgrade!.progress).toBe(frozen); // la simulación la pausa de verdad
+    expect(upgradeStall(alm)).toBe('fuego');
+    u = upgradePreview(sim, alm);
+    expect(u.state).toBe('busy');
+    expect(u.paused).toBe('fuego');
+    expect(u.etaMin).toBeNull();
+    expect(u.inUse).toBe(false);
+    expect(u.hint).toMatch(/cubo/);
+    expect(upgradeProgressText(u)).toMatch(/^\d+ % · obra parada mientras arde$/);
+    expect(upgradeProgressText(u, true)).toMatch(/parada por el fuego$/);
+    // Ficha general: sin «faltan».
+    const info = moduleInfo(sim, alm);
+    expect(info.upgrade?.paused).toBe('fuego');
+    expect(info.upgrade?.etaMin).toBeNull();
+    // Diálogo de cancelar: dice que está parada, no los minutos que faltan.
+    const k = cancelUpgradeConfirmModel(u);
+    expect(k.lines.join(' ')).not.toMatch(/faltan/);
+    expect(k.lines[0]).toMatch(/^La obra va por el \d+ % y está parada mientras arde: si apagas el fuego, seguirá donde se quedó\. Si la cancelas, el almacén se queda en el nivel 1\.$/);
+    expect(k.progressTone).toBe('bad');
+    // Y el martillo no ayuda (por eso no se aconseja).
+    addItem(sim.state.player.inventory, 'martillo', 1);
+    expect(sim.helpBuild(alm.id, 5).ok).toBe(false);
+
+    // Apagado: vuelve la cuenta atrás.
+    alm.fire = 0;
+    u = upgradePreview(sim, alm);
+    expect(u.paused).toBeNull();
+    expect(u.etaMin).toBeGreaterThan(0);
+    expect(moduleInfo(sim, alm).upgrade?.etaMin).toBeGreaterThan(0);
+    expect(cancelUpgradeConfirmModel(u).lines[0]).toMatch(/y le faltan \d+ min/);
+    // Averiado: la obra sigue, pero el módulo no se usa.
+    alm.status = 'broken';
+    expect(upgradePreview(sim, alm).inUse).toBe(false);
+    expect(upgradePreview(sim, alm).paused).toBeNull();
+  });
+});
+
+describe('fix-ui: efectos de confort de las mejoras', () => {
+  it('el dormitorio con taquillas no promete descanso; el camarote acogedor sí, con su número', () => {
+    const conf = (type: string) => upgradeEffects(type, 1, 2).find((e) => e.glyph === 'smile')!;
+    expect(bedRestBonus('dormitorio', 2) - bedRestBonus('dormitorio', 1)).toBe(0);
+    expect(conf('dormitorio').title).not.toMatch(/descans/i);
+    expect(conf('dormitorio').title).toMatch(/mejor ánimo de quien duerme aquí/);
+    expect(bedRestBonus('camarote', 2)).toBeGreaterThan(bedRestBonus('camarote', 1));
+    expect(conf('camarote').title).toMatch(/mejor descanso en sus camas: \+2 de energía por hora durmiendo/);
+  });
+
+  it('ninguna mejora con camas promete descanso que no da (ni lo calla si lo da)', () => {
+    for (const def of MODULE_LIST) {
+      for (const up of def.upgrades ?? []) {
+        const chip = upgradeEffects(def.id, up.tier - 1, up.tier).find((e) => e.glyph === 'smile');
+        if (!chip) continue;
+        const gain = bedRestBonus(def.id, up.tier) - bedRestBonus(def.id, up.tier - 1);
+        if (gain > 0) expect(chip.title, `${def.id} → ${up.tier}`).toMatch(/descanso/);
+        else expect(chip.title, `${def.id} → ${up.tier}`).not.toMatch(/descans/i);
+      }
+    }
+  });
+});
+
+describe('fix-ui: los diálogos de confirmación siguen a la simulación', () => {
+  it('cancelar la mejora: el progreso avanza, se para si arde y, si termina, el diálogo se cierra', () => {
+    const sim = Simulation.newGame(17);
+    const cam = sim.state.ship.modules.find((m) => m.type === 'camarote')!;
+    giveFor(sim, moduleDef('camarote').upgrades![0]!.cost);
+    expect(sim.startUpgrade(cam.id).ok).toBe(true);
+    sim.tick(2);
+    const target = { kind: 'cancelUpgrade' as const, moduleId: cam.id };
+    const r1 = refreshConfirm(sim, target);
+    expect('model' in r1).toBe(true);
+    const p1 = 'model' in r1 ? r1.model.progress! : 0;
+    sim.tick(10);
+    const r2 = refreshConfirm(sim, target);
+    expect('model' in r2 && r2.model.progress! > p1).toBe(true);
+    expect('model' in r2 && r2.model.title).toBe(cancelUpgradeConfirmModel(upgradePreview(sim, cam)).title);
+    cam.fire = 30;
+    const r3 = refreshConfirm(sim, target);
+    expect('model' in r3 && r3.model.lines[0]).toMatch(/parada mientras arde/);
+    cam.fire = 0;
+    cam.upgrade!.progress = 0.9999;
+    sim.tick(1);
+    expect(cam.tier).toBe(2);
+    const r4 = refreshConfirm(sim, target);
+    expect('close' in r4 && r4.close).toBe('La mejora ya ha terminado (ahora es el camarote acogedor): no hay nada que cancelar');
+  });
+
+  it('cancelar una obra que termina, desmontar algo que ya no está y mejorar sin poder pagarlo: se cierran', () => {
+    const sim = Simulation.newGame(18);
+    giveFor(sim, moduleDef('camarote').cost);
+    const res = sim.placeModule('camarote', 1, 6, 0, 2);
+    expect(res.ok).toBe(true);
+    const id = res.moduleId!;
+    const obra = { kind: 'demolish' as const, moduleId: id, obra: true };
+    const r1 = refreshConfirm(sim, obra);
+    expect('model' in r1 && r1.model.title).toMatch(/^¿Cancelar la obra/);
+    sim.state.ship.modules.find((m) => m.id === id)!.buildProgress = 0.9999;
+    sim.tick(1);
+    // Ya no es «cancelar la obra» (todo de vuelta) sino «desmontar» (la mitad): no se confirma a ciegas.
+    const r2 = refreshConfirm(sim, obra);
+    expect('close' in r2 && r2.close).toMatch(/La obra ya ha terminado/);
+    expect('model' in refreshConfirm(sim, { kind: 'demolish', moduleId: id, obra: false })).toBe(true);
+    expect(sim.demolish(id).ok).toBe(true);
+    const r3 = refreshConfirm(sim, { kind: 'demolish', moduleId: id, obra: false });
+    expect('close' in r3 && r3.close).toBe('Ese módulo ya no está en el barco');
+
+    const dep = sim.state.ship.modules.find((m) => m.type === 'deposito')!;
+    giveFor(sim, moduleDef('deposito').upgrades![0]!.cost);
+    const up = { kind: 'upgrade' as const, moduleId: dep.id };
+    expect('model' in refreshConfirm(sim, up)).toBe(true);
+    sim.state.player.inventory.slots.fill(null);
+    for (const m of sim.state.ship.modules) if (m.inventory) m.inventory.slots.fill(null);
+    const r4 = refreshConfirm(sim, up);
+    expect('close' in r4 && r4.close).toMatch(/^Depósito de agua: Faltan/);
   });
 });
