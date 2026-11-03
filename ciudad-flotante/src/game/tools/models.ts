@@ -16,7 +16,7 @@ import * as THREE from 'three';
 import { ITEMS } from '../../data/items';
 import { modelGeometry } from '../../render/assets';
 import { PALETTE } from '../../render/palette';
-import { GeoBuilder } from '../../render/ship/geo';
+import { GeoBuilder, type ColorLike } from '../../render/ship/geo';
 import type { ItemId } from '../../sim/types';
 
 const WOOD = '#9c6644';
@@ -60,16 +60,17 @@ export function setBlenderHandModels(on: boolean): void {
 }
 
 /**
- * Añade el modelo de Blender `name` (en el marco del puño) a `b`. Devuelve false si no existe
- * (o están desactivados) para que quien llama dibuje la versión procedimental.
+ * Añade el modelo de Blender `name` (en el marco del puño, o en el de la función que lo monta) a
+ * `b`, teñido de `color` si se da (planos y semillas cambian de color según el objeto). Devuelve
+ * false si no existe (o están desactivados) para que quien llama dibuje la versión procedimental.
  */
-export function appendHandModel(b: GeoBuilder, name: string): boolean {
+export function appendHandModel(b: GeoBuilder, name: string, color: ColorLike | null = null): boolean {
   if (!blenderOn) return false;
   const geo = modelGeometry(name);
   if (!geo) return false;
   b.push();
   b.translate(0, -VM_LIFT, 0);
-  b.appendGeometry(geo);
+  b.appendGeometry(geo, null, color);
   b.pop();
   return true;
 }
@@ -97,6 +98,10 @@ function anchor(name: string, x: number, y: number, z: number): THREE.Object3D {
 export function buildGrapnel(b: GeoBuilder, s = 1): void {
   b.push();
   b.scale(s, s, s);
+  if (appendHandModel(b, 'vm_garfio')) {
+    b.pop();
+    return;
+  }
   b.ring(0, 0.0, 0, 0.022, 0.007, 8, STEEL_DARK, 4);
   b.cylinderBetween(0, -0.02, 0, 0, -0.2, 0, 0.012, 6, STEEL_DARK);
   for (let k = 0; k < 4; k++) {
@@ -115,16 +120,35 @@ export function buildGrapnel(b: GeoBuilder, s = 1): void {
 export function buildBobber(b: GeoBuilder, s = 1): void {
   b.push();
   b.scale(s, s, s);
+  if (appendHandModel(b, 'vm_corcho')) {
+    b.pop();
+    return;
+  }
   b.sphere(0, 0.015, 0, 0.045, '#e63946', 0, 0.9);
   b.cylinder(0, -0.045, 0, 0.012, 0.04, 0.05, 6, '#f8f9fa', { capTop: false });
   b.cylinder(0, 0.05, 0, 0.006, 0.004, 0.07, 4, '#f8f9fa');
   b.pop();
 }
 
+/** Colores de los peces (crudo, asado, ahumado) y su modelo de Blender. */
+export const FISH_RAW = { color: '#8ecae6', belly: '#e8f4f2' } as const;
+export const FISH_GRILLED = { color: '#c9844a', belly: '#e9a25f' } as const;
+export const FISH_SMOKED = { color: '#c97c3d', belly: '#e0a458' } as const;
+const FISH_MODELS: Record<string, string> = {
+  [FISH_RAW.color]: 'vm_pez_crudo',
+  [FISH_GRILLED.color]: 'vm_pez_asado',
+  [FISH_SMOKED.color]: 'vm_pez_ahumado',
+};
+
 /** Pez low-poly orientado a lo largo de x (cabeza en +x). */
 export function buildFish(b: GeoBuilder, color: string, belly: string, s = 1, cooked = false): void {
   b.push();
   b.scale(s, s, s);
+  const model = FISH_MODELS[color];
+  if (model && appendHandModel(b, model)) {
+    b.pop();
+    return;
+  }
   b.sphere(0, 0, 0, 0.1, color, 0, 0.42);
   b.push();
   b.scale(1, 1, 0.42);
@@ -218,6 +242,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'martillo': {
       pose = { x: 0.34, y: -0.33, z: -0.52, rx: -0.55, ry: -0.18, rz: 0.12 };
       add('martillo', (b) => {
+        if (appendHandModel(b, 'vm_martillo')) return;
         b.cylinderBetween(0, -0.09, 0, 0, 0.25, 0, 0.017, 6, WOOD);
         b.cylinderBetween(0, -0.1, 0, 0, -0.06, 0, 0.021, 6, '#6e4a2e');
         // cabeza: cara de golpeo hacia −z, uña hacia +z
@@ -237,6 +262,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'llave_inglesa': {
       pose = { x: 0.34, y: -0.32, z: -0.5, rx: -0.5, ry: -0.25, rz: 0.35 };
       add('llave', (b) => {
+        if (appendHandModel(b, 'vm_llave_inglesa')) return;
         b.box(-0.016, -0.08, -0.008, 0.016, 0.22, 0.008, STEEL);
         b.box(-0.02, -0.08, -0.01, 0.02, 0.04, 0.01, '#6c757d');
         // boca abierta
@@ -254,7 +280,8 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       pose = { x: 0.35, y: -0.32, z: -0.5, rx: -0.15, ry: -0.2, rz: 0.08 };
       scale = 0.64;
       add('rollo', (b) => {
-        // rollo de cabo en la mano
+        // rollo de cabo en la mano (el de Blender pasa por dentro del puño y cuelga por delante)
+        if (appendHandModel(b, 'vm_gancho_rollo')) return;
         b.push();
         b.rotateY(Math.PI / 2);
         b.ring(0, -0.01, 0.0, 0.085, 0.022, 10, ROPE, 4);
@@ -278,6 +305,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       pose = { x: 0.32, y: -0.33, z: -0.5, rx: -0.38, ry: -0.12, rz: 0.08 };
       scale = 0.68;
       add('cana', (b) => {
+        if (appendHandModel(b, 'vm_cana')) return;
         // mango de corcho y caña en dos tramos (más fina hacia la punta)
         b.cylinderBetween(0, -0.13, 0.06, 0, 0.06, -0.03, 0.022, 7, '#c9a36a');
         b.cylinderBetween(0, 0.06, -0.03, 0, 0.55, -0.3, 0.012, 6, '#bc8a5f');
@@ -317,6 +345,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       armRot.z = 1.2;
       armRot.x = 0.25;
       add('cubo', (b) => {
+        if (appendHandModel(b, 'vm_cubo')) return;
         // asa (en el puño) y brazos del asa hasta el borde
         b.cylinderBetween(-0.06, 0, 0, 0.06, 0, 0, 0.007, 4, STEEL_DARK);
         b.cylinderBetween(-0.06, 0, 0, -0.14, -0.14, 0, 0.006, 4, STEEL_DARK);
@@ -333,6 +362,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
         b.pop();
       });
       const water = add('agua', (b) => {
+        if (appendHandModel(b, 'vm_cubo_agua')) return;
         b.push();
         b.translate(0, -0.152, 0);
         b.rotateX(-Math.PI / 2);
@@ -345,14 +375,15 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       break;
     }
     case 'pescado_crudo':
-    case 'pescado_asado': {
+    case 'pescado_asado':
+    case 'pescado_ahumado': {
       pose = { ...SMALL_POSE, ry: -0.9 };
-      const cooked = id === 'pescado_asado';
+      const look = id === 'pescado_crudo' ? FISH_RAW : id === 'pescado_asado' ? FISH_GRILLED : FISH_SMOKED;
       add('pez', (b) => {
         b.push();
         b.translate(0, 0.06, -0.02);
         b.rotateZ(0.5);
-        buildFish(b, cooked ? '#c9844a' : '#8ecae6', cooked ? '#e9a25f' : '#e8f4f2', 1.1, cooked);
+        buildFish(b, look.color, look.belly, 1.1, id !== 'pescado_crudo');
         b.pop();
       });
       break;
@@ -360,6 +391,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'conserva':
       pose = SMALL_POSE;
       add('lata', (b) => {
+        if (appendHandModel(b, 'vm_conserva')) return;
         b.cylinder(0, 0.0, 0, 0.042, 0.042, 0.075, 10, '#adb5bd', { capColor: '#ced4da' });
         b.cylinder(0, 0.015, 0, 0.044, 0.044, 0.045, 10, '#c8553d', { capTop: false, capBottom: false });
         b.cylinder(0, 0.03, 0, 0.0445, 0.0445, 0.012, 10, '#f3ead6', { capTop: false, capBottom: false });
@@ -368,6 +400,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'fruta':
       pose = SMALL_POSE;
       add('fruta', (b) => {
+        if (appendHandModel(b, 'vm_fruta')) return;
         b.sphere(0, 0.06, -0.01, 0.055, '#f9c74f', 0, 1.1);
         b.sphere(0.02, 0.07, -0.04, 0.03, '#f8961e', 0, 1);
         b.cylinderBetween(0, 0.11, -0.01, 0.005, 0.135, -0.01, 0.004, 3, '#6e4a2e');
@@ -377,6 +410,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'hortaliza':
       pose = SMALL_POSE;
       add('hortaliza', (b) => {
+        if (appendHandModel(b, 'vm_hortaliza')) return;
         b.sphere(0, 0.06, 0, 0.05, '#90be6d', 0, 1);
         b.sphere(0.03, 0.08, -0.02, 0.035, '#6a994e', 0, 1);
         b.sphere(-0.025, 0.085, 0.01, 0.03, '#a7c957', 0, 1);
@@ -387,6 +421,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'guiso':
       pose = { ...SMALL_POSE, rx: 0.4 };
       add('cuenco', (b) => {
+        if (appendHandModel(b, id === 'sopa' ? 'vm_sopa' : 'vm_guiso')) return;
         b.cylinder(0, 0.02, 0, 0.05, 0.085, 0.06, 10, '#f3ead6', { capTop: false });
         b.push();
         b.translate(0, 0.07, 0);
@@ -400,6 +435,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'agua_potable':
       pose = { ...SMALL_POSE, rx: 0.15 };
       add('botella', (b) => {
+        if (appendHandModel(b, 'vm_botella')) return;
         b.cylinder(0, -0.04, 0, 0.034, 0.034, 0.13, 8, '#4cc9f0');
         b.cylinder(0, 0.09, 0, 0.034, 0.014, 0.035, 8, '#7fd8f5');
         b.cylinder(0, 0.125, 0, 0.015, 0.015, 0.022, 6, '#f8f9fa');
@@ -409,6 +445,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'vendaje':
       pose = SMALL_POSE;
       add('venda', (b) => {
+        if (appendHandModel(b, 'vm_vendaje')) return;
         b.cylinderBetween(-0.04, 0.05, 0, 0.04, 0.05, 0, 0.035, 9, '#f8f9fa');
         b.box(0.0, 0.015, -0.01, 0.03, 0.02, 0.06, '#f1ece0');
       });
@@ -416,6 +453,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
     case 'botiquin':
       pose = { ...SMALL_POSE, ry: -0.5 };
       add('botiquin', (b) => {
+        if (appendHandModel(b, 'vm_botiquin')) return;
         b.boxC(0, 0.06, 0, 0.14, 0.1, 0.06, '#e63946');
         b.boxC(0, 0.06, -0.031, 0.05, 0.016, 0.004, '#f8f9fa');
         b.boxC(0, 0.06, -0.031, 0.016, 0.05, 0.004, '#f8f9fa');
@@ -434,6 +472,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       if (def?.category === 'semilla') {
         pose = SMALL_POSE;
         add('semillas', (b) => {
+          if (appendHandModel(b, 'vm_semillas_saco', def.color) && appendHandModel(b, 'vm_semillas_cordel')) return;
           b.frustum(0, 0.0, 0, 0.09, 0.06, 0.07, 0.045, 0.09, def.color);
           b.cylinder(0, 0.09, 0, 0.022, 0.012, 0.02, 6, ROPE);
           b.frustum(0, 0.11, 0, 0.04, 0.03, 0.06, 0.04, 0.025, def.color);
@@ -445,6 +484,7 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       } else if (def?.category === 'plano') {
         pose = { ...SMALL_POSE, ry: -0.2 };
         add('plano', (b) => {
+          if (appendHandModel(b, 'vm_plano_rollo', def.color) && appendHandModel(b, 'vm_plano_cinta')) return;
           b.cylinderBetween(-0.1, 0.05, 0, 0.1, 0.05, 0, 0.032, 8, def.color);
           b.cylinderBetween(-0.025, 0.05, 0, 0.025, 0.05, 0, 0.034, 8, '#f3ead6');
           b.cylinderBetween(-0.105, 0.05, 0, -0.1, 0.05, 0, 0.026, 8, '#e8f4f2');
