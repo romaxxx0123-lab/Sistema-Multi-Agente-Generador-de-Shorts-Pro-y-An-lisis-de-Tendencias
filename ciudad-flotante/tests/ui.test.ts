@@ -866,8 +866,8 @@ describe('c2-ui: paneles de estación por nivel y módulos nuevos', () => {
     expect(t).toContain('Nivel 1/3');
     expect(t).toContain('Mejorable en el modo construcción (B, herramienta Mejorar): Almacén con altillo (32 huecos)');
     // Mejora en obras: se paga y el panel enseña el progreso (el módulo sigue en uso).
-    addItem(sim.state.player.inventory, 'tornillos', 10);
-    addItem(sim.state.player.inventory, 'madera', 12);
+    // Lo que cueste la mejora (el equilibrio puede cambiar las cantidades).
+    for (const [id, qty] of Object.entries(sim.checkUpgrade(alm.id).cost)) addItem(sim.state.player.inventory, id, qty);
     expect(sim.startUpgrade(alm.id).ok).toBe(true);
     alm.upgrade!.progress = 0.4;
     t = vtext(renderStation(env, alm.id));
