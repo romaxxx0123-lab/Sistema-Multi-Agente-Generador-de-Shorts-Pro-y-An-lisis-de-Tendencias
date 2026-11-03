@@ -20,12 +20,13 @@ import {
   FISH_SMOKED,
   hasHandModels,
   setBlenderHandModels,
+  tintedGeometry,
   VM_LIFT,
   type ItemModel,
 } from '../src/game/tools/models';
 import { ViewModel, type VmActionName } from '../src/game/tools/viewmodel';
 import { modelGeometry, preloadModels } from '../src/render/assets';
-import { GeoBuilder } from '../src/render/ship/geo';
+import { col, GeoBuilder } from '../src/render/ship/geo';
 
 interface ManifestModel {
   tris: number;
@@ -110,6 +111,8 @@ function framing(vm: ViewModel, fov = FOV): { depth: number; top: number; left: 
   return { depth, top, left };
 }
 
+/** MEDIR=1 imprime las medidas (distancias a la cámara, extremos de manga vistos). */
+const MEDIR = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env['MEDIR'];
 /** FOV extremos del menú de opciones y el de por defecto. */
 const FOVS = [55, 72, 100];
 /** Dirección del antebrazo (de la muñeca al codo) en el marco del puño, la del procedimental. */
@@ -179,6 +182,35 @@ function nearPlaneCuts(vm: ViewModel, fov: number): number {
   };
   visit(vm.root);
   return n;
+}
+
+/** Vértices de la manga (azules) del brazo que caen dentro de la pantalla con este FOV. */
+function sleeveOnScreen(vm: ViewModel, fov: number): number {
+  const tan = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+  vm.camera.updateMatrixWorld(true);
+  let n = 0;
+  vm.root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || m.name !== 'puño') return;
+    const p = m.geometry.getAttribute('position');
+    const c = m.geometry.getAttribute('color');
+    const v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      if (!(c.getZ(i) > c.getX(i) * 1.3)) continue;
+      v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
+      if (v.z > -NEAR) continue;
+      if (Math.abs(v.x / -v.z / (tan * ASPECT)) <= 1 && Math.abs(v.y / -v.z / tan) <= 1) n++;
+    }
+  });
+  return n;
+}
+
+/** Color lineal de un vértice pasado a sRGB 0..255. */
+function srgb(c: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, i: number): [number, number, number] {
+  const t = new THREE.Color().setRGB(c.getX(i), c.getY(i), c.getZ(i), THREE.LinearSRGBColorSpace);
+  const o = { r: 0, g: 0, b: 0 };
+  t.getRGB(o, THREE.SRGBColorSpace);
+  return [o.r * 255, o.g * 255, o.b * 255];
 }
 
 const MOTION = { bobPhase: 0, bobAmount: 0, yaw: 0, pitch: 0, landKick: 0, light: 1 };
@@ -438,7 +470,7 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
         });
       }
     }
-    if (process.env.MEDIR) console.log(rows.join('\n'));
+    if (MEDIR) console.log(rows.join('\n'));
   }, 120_000);
 
   it('el extremo cortado de la manga no se ve nunca (FOV 55–100, reposo y todas las acciones)', () => {
@@ -448,11 +480,109 @@ describe('[arte-mano] modelos de Blender del modelo en mano', () => {
       for (const r of proc) if (r.sleeveEnd > 0) procSeen.push(`FOV ${fov} ${id} · ${r.action}`);
       for (const r of blend) if (r.sleeveEnd > 0) seen.push(`FOV ${fov} ${id} · ${r.action} (${r.sleeveEnd})`);
     }
-    if (process.env.MEDIR) console.log(`procedimental: ${procSeen.length} casos (${procSeen.slice(0, 8).join('; ')}…)`);
+    if (MEDIR) console.log(`procedimental: ${procSeen.length} casos (${procSeen.slice(0, 8).join('; ')}…)`);
     // El procedimental sí lo enseña (cubo al volcar, FOV 100); el brazo de Blender, nunca.
     expect(procSeen.length).toBeGreaterThan(0);
     expect(seen).toEqual([]);
   }, 120_000);
+
+  it('la manga azul entra en cuadro con FOV 72 y 100 (el brazo no es solo piel sobre la cubierta)', () => {
+    for (const fov of [72, 100]) {
+      for (const id of IDS) {
+        const vm = equipped(id, fov);
+        expect(sleeveOnScreen(vm, fov), `FOV ${fov} ${id}`).toBeGreaterThanOrEqual(10);
+        vm.dispose();
+      }
+    }
+  });
+
+  it('ningún modelo vm_* tiene triángulos degenerados (área nula)', () => {
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    for (const name of HAND_MODELS) {
+      const g = modelGeometry(name)!;
+      const p = g.getAttribute('position');
+      const idx = g.getIndex();
+      const n = idx ? idx.count : p.count;
+      let degenerate = 0;
+      for (let i = 0; i + 2 < n; i += 3) {
+        a.fromBufferAttribute(p, idx ? idx.getX(i) : i);
+        b.fromBufferAttribute(p, idx ? idx.getX(i + 1) : i + 1);
+        c.fromBufferAttribute(p, idx ? idx.getX(i + 2) : i + 2);
+        if (b.clone().sub(a).cross(c.clone().sub(a)).length() / 2 < 1e-10) degenerate++;
+      }
+      expect(degenerate, name).toBe(0);
+    }
+  });
+
+  it('presupuestos de la corrección: caña ≤ 650 triángulos y botella ≤ 200', () => {
+    const tris = (name: string): number => (manifest.mano?.models[name] ?? manifest.herramientas!.models[name])!.tris;
+    expect(tris('vm_cana')).toBeLessThanOrEqual(650);
+    expect(tris('vm_botella')).toBeLessThanOrEqual(200);
+  });
+
+  it('el tinte multiplica (no sustituye) el color de los vértices', () => {
+    const g = modelGeometry('vm_semillas_saco')!;
+    const t = tintedGeometry(g, '#6a994e');
+    expect(tintedGeometry(g, '#6a994e')).toBe(t);
+    const src = g.getAttribute('color');
+    const out = t.getAttribute('color');
+    const k = col('#6a994e');
+    for (let i = 0; i < src.count; i += 7) {
+      expect(out.getX(i)).toBeCloseTo(src.getX(i) * k.r, 5);
+      expect(out.getY(i)).toBeCloseTo(src.getY(i) * k.g, 5);
+      expect(out.getZ(i)).toBeCloseTo(src.getZ(i) * k.b, 5);
+    }
+    // El saquito conserva su variación de tono (antes salía de un color plano).
+    const part = build('semilla_lino').model.parts.get('semillas') as THREE.Mesh;
+    const cs = part.geometry.getAttribute('color');
+    const tones = new Set<string>();
+    for (let i = 0; i < cs.count; i++) tones.add(`${cs.getX(i).toFixed(3)},${cs.getY(i).toFixed(3)},${cs.getZ(i).toFixed(3)}`);
+    expect(tones.size).toBeGreaterThan(8);
+  });
+
+  it('planos: el rollo es papel azul de plano igual para todos y solo la cinta lleva el color del plano', () => {
+    const colors = (id: string): THREE.BufferAttribute => (build(id).model.parts.get('plano') as THREE.Mesh).geometry.getAttribute('color') as THREE.BufferAttribute;
+    const dark = colors('plano_casco'); // #023047: teñido entero era una barra negra
+    const light = colors('plano_energia');
+    expect(dark.count).toBe(light.count);
+    let same = 0;
+    let lum = 0;
+    const tint = col('#023047');
+    for (let i = 0; i < dark.count; i++) {
+      const eq = Math.abs(dark.getX(i) - light.getX(i)) + Math.abs(dark.getY(i) - light.getY(i)) + Math.abs(dark.getZ(i) - light.getZ(i)) < 1e-6;
+      if (eq) same++;
+      else {
+        // Lo que cambia es la cinta: el color del plano por un gris (blanco con sombras).
+        const k = (dark.getX(i) * tint.r + dark.getY(i) * tint.g + dark.getZ(i) * tint.b) / (tint.r ** 2 + tint.g ** 2 + tint.b ** 2);
+        expect(k).toBeGreaterThan(0.6);
+        expect(k).toBeLessThan(1.01);
+      }
+      lum += 0.2126 * dark.getX(i) + 0.7152 * dark.getY(i) + 0.0722 * dark.getZ(i);
+    }
+    expect(same / dark.count).toBeGreaterThan(0.5);
+    // Con el plano más oscuro el objeto sigue teniendo papel claro y azul (no es una barra negra).
+    expect(lum / dark.count).toBeGreaterThan(0.1);
+  });
+
+  it('las hortalizas no se confunden con la piel: verde de lechuga y naranja vivo de zanahoria', () => {
+    const g = modelGeometry('vm_hortaliza')!;
+    const c = g.getAttribute('color');
+    let skinLike = 0;
+    let green = 0;
+    let orange = 0;
+    const skins = [[224, 172, 105], [234, 189, 132], [244, 162, 97]];
+    for (let i = 0; i < c.count; i++) {
+      const [r, gg, b] = srgb(c, i);
+      if (skins.some(([sr, sg, sb]) => Math.hypot(r - sr!, gg - sg!, b - sb!) < 40)) skinLike++;
+      if (gg > r && gg > b) green++;
+      if (r > 200 && gg < 140 && b < 80) orange++;
+    }
+    expect(skinLike / c.count, 'tonos de piel').toBeLessThan(0.05);
+    expect(green / c.count, 'verde').toBeGreaterThan(0.5);
+    expect(orange / c.count, 'naranja vivo').toBeGreaterThan(0.05);
+  });
 
   it('el garfio lanzado y el pez capturado (efectos) también usan Blender, con el mismo tamaño', () => {
     const cases: [string, (b: GeoBuilder) => void][] = [

@@ -16,7 +16,7 @@ import * as THREE from 'three';
 import { ITEMS } from '../../data/items';
 import { modelGeometry } from '../../render/assets';
 import { PALETTE } from '../../render/palette';
-import { GeoBuilder, type ColorLike } from '../../render/ship/geo';
+import { col, GeoBuilder, type ColorLike } from '../../render/ship/geo';
 import type { ItemId } from '../../sim/types';
 
 const WOOD = '#9c6644';
@@ -64,10 +64,46 @@ export function hasHandModels(...names: string[]): boolean {
   return blenderOn && names.every((n) => modelGeometry(n) !== null);
 }
 
+/** Copias teñidas de los modelos que cambian de color según el objeto (por geometría y color). */
+const tintCache = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+
+/**
+ * Copia de `geo` con el color de cada vértice MULTIPLICADO por `color` (no sustituido): se
+ * conservan el sombreado y la variación pintados en Blender (`jitter_colors`, cantos más
+ * oscuros), y lo que se modeló en blanco toma exactamente el color del objeto.
+ */
+export function tintedGeometry(geo: THREE.BufferGeometry, color: ColorLike): THREE.BufferGeometry {
+  const c = col(color);
+  const key = c.getHexString();
+  let byColor = tintCache.get(geo);
+  if (!byColor) {
+    byColor = new Map();
+    tintCache.set(geo, byColor);
+  }
+  const hit = byColor.get(key);
+  if (hit) return hit;
+  const pos = geo.getAttribute('position');
+  const src = geo.getAttribute('color');
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', pos);
+  const index = geo.getIndex();
+  if (index) out.setIndex(index);
+  const clr = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    clr[i * 3] = (src ? src.getX(i) : 1) * c.r;
+    clr[i * 3 + 1] = (src ? src.getY(i) : 1) * c.g;
+    clr[i * 3 + 2] = (src ? src.getZ(i) : 1) * c.b;
+  }
+  out.setAttribute('color', new THREE.BufferAttribute(clr, 3));
+  byColor.set(key, out);
+  return out;
+}
+
 /**
  * Añade el modelo de Blender `name` (en el marco del puño, o en el de la función que lo monta) a
- * `b`, teñido de `color` si se da (planos y semillas cambian de color según el objeto). Devuelve
- * false si no existe (o están desactivados) para que quien llama dibuje la versión procedimental.
+ * `b`, teñido de `color` si se da (la cinta de los planos y el saquito de semillas cambian de color
+ * según el objeto: el tinte multiplica, ver `tintedGeometry`). Devuelve false si no existe (o están
+ * desactivados) para que quien llama dibuje la versión procedimental.
  */
 export function appendHandModel(b: GeoBuilder, name: string, color: ColorLike | null = null): boolean {
   if (!blenderOn) return false;
@@ -75,7 +111,7 @@ export function appendHandModel(b: GeoBuilder, name: string, color: ColorLike | 
   if (!geo) return false;
   b.push();
   b.translate(0, -VM_LIFT, 0);
-  b.appendGeometry(geo, null, color);
+  b.appendGeometry(color === null ? geo : tintedGeometry(geo, color));
   b.pop();
   return true;
 }
@@ -491,9 +527,11 @@ export function buildItemModel(id: ItemId, mat: THREE.Material, lineMat: THREE.L
       } else if (def?.category === 'plano') {
         pose = { ...SMALL_POSE, ry: -0.2 };
         add('plano', (b) => {
+          // De Blender: el rollo es papel azul de plano (como en el icono, igual para todos; teñido
+          // entero, los planos oscuros eran una barra negra) y la cinta lleva el color del plano.
           if (hasHandModels('vm_plano_rollo', 'vm_plano_cinta')) {
-            appendHandModel(b, 'vm_plano_rollo', def.color);
-            appendHandModel(b, 'vm_plano_cinta');
+            appendHandModel(b, 'vm_plano_rollo');
+            appendHandModel(b, 'vm_plano_cinta', def.color);
             return;
           }
           b.cylinderBetween(-0.1, 0.05, 0, 0.1, 0.05, 0, 0.032, 8, def.color);
