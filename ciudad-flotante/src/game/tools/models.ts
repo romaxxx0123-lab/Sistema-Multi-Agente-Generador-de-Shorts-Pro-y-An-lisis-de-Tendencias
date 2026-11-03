@@ -431,7 +431,7 @@ const PAPER_BACK = '#d9c89f';
 const PAPER_CREASE = '#dccda6';
 const RULE = '#a7b6bd';
 const MARGIN = '#c98b7a';
-const INK = '#4a3b2a';
+const INK = '#5b4a37';
 
 /**
  * Hoja de papel del cuaderno de la capitana, en el marco del puño: el puño la pinza por la
@@ -449,13 +449,13 @@ function buildPage(b: GeoBuilder, id: ItemId): void {
   const z0 = -0.018;
   /** Pliegue (fracción de la altura) y ángulo con que se abre la mitad de arriba. */
   const VF = 0.48;
-  const FOLD = 0.24;
+  const FOLD = 0.3;
   const US = [0, 0.18, 0.36, 0.54, 0.72, 0.86, 1];
   const VS = [0, 0.24, VF, 0.74, 1];
   const point = (u: number, v: number): THREE.Vector3 => {
     const x = xL + u * W;
     // El borde libre (izquierda, u = 0) se curva hacia atrás.
-    const curl = -0.026 * (1 - u) * (1 - u);
+    const curl = -0.036 * (1 - u) * (1 - u);
     if (v <= VF) return new THREE.Vector3(x, y0 + v * H, z0 + curl);
     const s = (v - VF) * H;
     return new THREE.Vector3(x, y0 + VF * H + s * Math.cos(FOLD), z0 + curl - s * Math.sin(FOLD));
@@ -529,7 +529,7 @@ function buildPage(b: GeoBuilder, id: ItemId): void {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
   };
-  const wh = 0.0042 / H;
+  const wh = 0.0036 / H;
   rows.forEach((v, r) => {
     // Del renglón de abajo (el puño tapa su derecha) al de arriba; el último es el título.
     const title = r === rows.length - 1;

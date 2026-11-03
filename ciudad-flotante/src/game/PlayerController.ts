@@ -8,6 +8,8 @@
  *   ensanchamiento al correr. Los deltas de los primeros frames tras recuperar el control (cerrar
  *   un panel o el menú) o capturar el puntero se descartan: al capturarlo, el navegador puede
  *   mandar un salto igual a la posición del cursor y la vista acabaría mirando al cielo.
+ * - Mirada libre (sin captura del ratón, p. ej. en un iframe sin permiso): la vista gira sola con
+ *   el cursor en la franja del borde y con ← → (que entonces no desplazan), para poder dar la vuelta.
  * - Choque con los habitantes visibles (círculo contra círculo, radios 0,32 + 0,3 m) y la cámara
  *   en tercera persona tampoco se mete en ellos. Si uno tapa un paso estrecho y el jugador lleva
  *   2,5 s empujando sin avanzar, se le deja pasar (nunca se queda encerrado).
@@ -56,6 +58,32 @@ export const LOOK_GRACE_TIME = 0.15;
  */
 export const MAX_LOOK_DELTA = 2000;
 
+/**
+ * Mirada libre (sin captura del ratón): el giro con el cursor está limitado al ancho de la página
+ * (unos 100° en un iframe de 800 px). Para dar la vuelta, la vista gira sola mientras el cursor
+ * está en la franja del borde (EDGE_BAND del lado, al menos EDGE_BAND_MIN px), más deprisa cuanto
+ * más cerca del borde, y con ← → (que en mirada libre giran en vez de desplazar).
+ */
+export const EDGE_BAND = 0.08;
+export const EDGE_BAND_MIN = 28;
+/** Giro máximo por el borde (rad/s): media vuelta en ~1,3 s. */
+export const EDGE_YAW_SPEED = 2.4;
+export const EDGE_PITCH_SPEED = 1.3;
+/** Giro con ← → en mirada libre (rad/s). */
+export const KEY_YAW_SPEED = 2.2;
+
+/**
+ * Cuánto empuja el borde en un eje: −1 pegado al borde inicial (izquierda/arriba), +1 pegado al
+ * final (derecha/abajo), 0 fuera de la franja. Lineal dentro de la franja.
+ */
+export function edgeFactor(pos: number, size: number, band = EDGE_BAND, minBand = EDGE_BAND_MIN): number {
+  if (!(size > 0) || !Number.isFinite(pos)) return 0;
+  const b = Math.min(size / 4, Math.max(minBand, band * size));
+  if (pos < b) return -Math.min(1, 1 - pos / b);
+  if (pos > size - b) return Math.min(1, 1 - (size - pos) / b);
+  return 0;
+}
+
 const _v = new THREE.Vector3();
 
 /** ¿Es el delta de ratón un múltiplo (1–4) de menos la posición del cursor (salto del navegador)? */
@@ -94,6 +122,15 @@ export class PlayerController {
   private freeCursor: { x: number; y: number } | null = null;
   private hadControl = false;
   private wasLocked = false;
+  /**
+   * El giro por el borde (mirada libre) solo se arma cuando el cursor pasa por la zona central con
+   * control: así cerrar un panel con un clic en una esquina no pone la vista a girar sola.
+   */
+  private edgeArmed = false;
+  /** El último `lookDelta` cayó en el margen de gracia (se descartó el ratón). */
+  private lookGraced = false;
+  /** Empuje del borde aplicado este frame (−1..1 por eje; 0 sin giro). Lo dibuja Game. */
+  readonly edgeTurn = { x: 0, y: 0 };
   /** Cuerpos de los habitantes de este frame (reutilizado). */
   private readonly obstacles: Obstacle[] = [];
   /** Choque con los habitantes (con salida de emergencia si uno tapa un paso estrecho). */
@@ -207,6 +244,7 @@ export class PlayerController {
     if (ctx.mode !== 'play') ctx.interaction?.hideViewModel();
 
     if (st.sleeping) {
+      this.freeLookTurn(false);
       this.updateSleeping(dt, canControl);
       return;
     }
@@ -221,6 +259,8 @@ export class PlayerController {
     if (canControl) {
       const f = forwardOf(st.yaw);
       const r = { x: -f.z, z: f.x };
+      // En mirada libre ← → giran la vista (applyLook) en vez de desplazar.
+      const arrowsTurn = this.freeLook();
       if (input.down('KeyW') || input.down('ArrowUp')) {
         ix += f.x;
         iz += f.z;
@@ -229,11 +269,11 @@ export class PlayerController {
         ix -= f.x;
         iz -= f.z;
       }
-      if (input.down('KeyD') || input.down('ArrowRight')) {
+      if (input.down('KeyD') || (!arrowsTurn && input.down('ArrowRight'))) {
         ix += r.x;
         iz += r.z;
       }
-      if (input.down('KeyA') || input.down('ArrowLeft')) {
+      if (input.down('KeyA') || (!arrowsTurn && input.down('ArrowLeft'))) {
         ix -= r.x;
         iz -= r.z;
       }
@@ -357,9 +397,11 @@ export class PlayerController {
     }
     this.hadControl = canControl;
     this.wasLocked = locked;
+    this.lookGraced = false;
     if (!canControl) return null;
     const md = input.mouseDelta();
-    if (this.lookGrace > 0 || this.lookGraceT > 0) {
+    this.lookGraced = this.lookGrace > 0 || this.lookGraceT > 0;
+    if (this.lookGraced) {
       this.lookGrace = Math.max(0, this.lookGrace - 1);
       this.lookGraceT -= Math.max(0, Number.isFinite(dt) ? dt : 0);
       return null;
@@ -383,10 +425,56 @@ export class PlayerController {
     if (!Number.isFinite(st.yaw)) st.yaw = 0;
     if (!Number.isFinite(st.pitch)) st.pitch = 0;
     const md = this.lookDelta(canControl, dt);
-    if (!md) return;
-    const sens = ctx.settings.sensitivity / 1000;
-    st.yaw = wrapAngle(st.yaw - md.dx * sens);
-    st.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, st.pitch - md.dy * sens * (ctx.settings.invertY ? -1 : 1)));
+    const inv = ctx.settings.invertY ? -1 : 1;
+    if (md) {
+      const sens = ctx.settings.sensitivity / 1000;
+      st.yaw = wrapAngle(st.yaw - md.dx * sens);
+      st.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, st.pitch - md.dy * sens * inv));
+    }
+    // Mirada libre: giro por el borde y con ← → (el ratón solo no da la vuelta completa).
+    const turn = this.freeLookTurn(canControl && !this.lookGraced);
+    const step = Math.max(0, Math.min(0.1, Number.isFinite(dt) ? dt : 0));
+    if (turn.yaw !== 0) st.yaw = wrapAngle(st.yaw + turn.yaw * step);
+    if (turn.pitch !== 0) st.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, st.pitch + turn.pitch * inv * step));
+  }
+
+  /** ¿Mirada libre (sin captura del ratón)? */
+  private freeLook(): boolean {
+    return (this.ctx.input as { freeLook?: boolean }).freeLook === true;
+  }
+
+  /**
+   * Velocidad de giro de la mirada libre este frame (rad/s): por el borde, si el cursor está en la
+   * franja y el giro está armado, y con ← →. `active` = hay control y no se están descartando deltas.
+   */
+  freeLookTurn(active: boolean): { yaw: number; pitch: number } {
+    const input = this.ctx.input as GameContext['input'] & { pointerInside?: boolean; viewWidth?: number; viewHeight?: number };
+    this.edgeTurn.x = 0;
+    this.edgeTurn.y = 0;
+    if (!active || !this.freeLook()) {
+      this.edgeArmed = false;
+      return { yaw: 0, pitch: 0 };
+    }
+    let yaw = 0;
+    let pitch = 0;
+    if (input.down('ArrowLeft')) yaw += KEY_YAW_SPEED;
+    if (input.down('ArrowRight')) yaw -= KEY_YAW_SPEED;
+    const w = input.viewWidth ?? 0;
+    const h = input.viewHeight ?? 0;
+    if (!input.pointerInside) {
+      this.edgeArmed = false;
+      return { yaw, pitch };
+    }
+    const fx = edgeFactor(input.mouseX, w);
+    const fy = edgeFactor(input.mouseY, h);
+    if (fx === 0 && fy === 0) this.edgeArmed = true;
+    if (!this.edgeArmed) return { yaw, pitch };
+    this.edgeTurn.x = fx;
+    this.edgeTurn.y = fy;
+    // Derecha (fx > 0) gira como mover el ratón a la derecha (yaw baja); abajo baja la vista.
+    yaw -= fx * EDGE_YAW_SPEED;
+    pitch -= fy * EDGE_PITCH_SPEED;
+    return { yaw, pitch };
   }
 
   /* ------------------------------------------------------------------ */

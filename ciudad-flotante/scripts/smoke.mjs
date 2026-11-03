@@ -5,9 +5,11 @@
  *   node scripts/smoke.mjs
  */
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath (y no URL.pathname): rutas con espacios o acentos, y Windows.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const checks = `
   const g = __game;
   const t0 = g.state.time;
@@ -24,5 +26,6 @@ const checks = `
   for (const n of s.npcs) if (!Number.isFinite(n.pos.x + n.pos.y + n.pos.z)) problems.push('posición inválida de ' + n.name);
   return problems.length ? 'FALLOS: ' + problems.join('; ') : 'OK ' + JSON.stringify({ dia: Math.floor(s.time/1440)+1, npcs: s.npcs.length, restos: s.debris.length, eventos: s.events.active.map(e => e.type) });
 `;
-const r = spawnSync('node', ['scripts/shot.mjs', '--eval', checks, '--frames', '0', '--out', 'test-output/smoke.png'], { cwd: root, stdio: 'inherit' });
+const r = spawnSync(process.execPath, [join(root, 'scripts', 'shot.mjs'), '--eval', checks, '--frames', '0', '--out', join(root, 'test-output', 'smoke.png')], { cwd: root, stdio: 'inherit' });
+if (r.error) console.error('smoke: no se pudo lanzar shot.mjs', r.error);
 process.exit(r.status ?? 1);

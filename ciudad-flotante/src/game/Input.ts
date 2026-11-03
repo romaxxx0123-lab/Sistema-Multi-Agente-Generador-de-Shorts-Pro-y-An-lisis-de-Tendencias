@@ -23,10 +23,20 @@ export class Input {
   private needsGesture = false;
   /** El usuario soltó la captura (Esc del navegador) mientras el juego la quería. */
   private lockLost = false;
+  /**
+   * La página perdió el foco (clic fuera del juego o del iframe, otra ventana, otra pestaña). Sin
+   * captura del ratón nada más lo delata: el juego pausa con ello (`consumeFocusLost`).
+   */
+  private focusLost = false;
   private weReleased = false;
   /** Última posición del cursor sin capturar (Chromium manda saltos relativos a ella). */
   private freeX = 0;
   private freeY = 0;
+  /**
+   * El cursor está dentro de la página (no ha salido por un borde ni la página ha perdido el foco).
+   * Fuera de ella `mouseX`/`mouseY` se quedan en la última posición dentro, que suele ser el borde.
+   */
+  pointerInside = false;
 
   constructor(private readonly element: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -41,7 +51,16 @@ export class Input {
       this.held.delete(e.code);
       this.justUp.add(e.code);
     });
-    window.addEventListener('blur', () => this.held.clear());
+    window.addEventListener('blur', () => {
+      this.held.clear();
+      this.focusLost = true;
+      this.pointerInside = false;
+    });
+    // Salir de la página (o del iframe) por un borde: `relatedTarget` nulo.
+    window.addEventListener('mouseout', (e) => {
+      if (!e.relatedTarget) this.pointerInside = false;
+    });
+    window.addEventListener('mouseover', () => (this.pointerInside = true));
     element.addEventListener('mousedown', (e) => {
       const code = `Mouse${e.button}`;
       // El clic que sirve para recuperar la captura no debe usar la herramienta de la mano.
@@ -61,6 +80,7 @@ export class Input {
       const r = element.getBoundingClientRect();
       this.mouseX = e.clientX - r.left;
       this.mouseY = e.clientY - r.top;
+      this.pointerInside = true;
       if (!this.locked) {
         this.freeX = e.clientX;
         this.freeY = e.clientY;
@@ -136,9 +156,32 @@ export class Input {
     return v;
   }
 
-  /** Mirada libre sin captura (el cursor se oculta sobre el lienzo). */
+  /**
+   * true si la página perdió el foco desde la última lectura (se consume al leerlo). Se lee en
+   * todos los modos para que una pérdida en el menú no pause la partida siguiente al empezar.
+   */
+  consumeFocusLost(): boolean {
+    const v = this.focusLost;
+    this.focusLost = false;
+    return v;
+  }
+
+  /**
+   * Mirada libre sin captura (el cursor se oculta sobre el lienzo). El giro con el ratón queda
+   * limitado al ancho de la página: `PlayerController` gira además al acercar el cursor al borde
+   * y con ← →.
+   */
   get freeLook(): boolean {
     return this.lockWanted && this.lockUnavailable;
+  }
+
+  /** Tamaño del lienzo en píxeles CSS (para el giro por el borde en mirada libre). */
+  get viewWidth(): number {
+    return this.element.clientWidth;
+  }
+
+  get viewHeight(): number {
+    return this.element.clientHeight;
   }
 
   /** El juego quiere el ratón y espera un clic del jugador para capturarlo. */

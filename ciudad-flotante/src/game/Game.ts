@@ -2,6 +2,11 @@
  * Pegamento principal: crea todas las piezas, gestiona modos (menú, juego, construcción,
  * muerte), atajos globales, guardado automático y el bucle de render/simulación.
  *
+ * Guardado automático (ranura `auto`): al empezar cada día, cada AUTOSAVE_INTERVAL segundos reales
+ * de partida y, sin aviso, al ocultar o cerrar la página (`visibilitychange`/`pagehide`), para que
+ * recargar, cerrar la pestaña o publicar una versión nueva no cueste lo jugado: al volver, el menú
+ * principal ofrece «Continuar». La partida se pausa sola al perder el foco (clic fuera del juego).
+ *
  * Atajos globales (aquí): Esc (cerrar/pausa/salir de construcción), B (construcción),
  * V (perspectiva), Tab/I (inventario), J (diario), C (fabricar a mano), 1-8 y rueda (barra rápida).
  * E, clics y herramientas los gestiona Interaction; WASD/ratón, PlayerController.
@@ -15,7 +20,7 @@ import { PlayerAvatar } from '../render/PlayerAvatar';
 import { Renderer } from '../render/Renderer';
 import { ShipView } from '../render/ShipView';
 import { TIME_SCALE } from '../sim/constants';
-import { createLocalSaveStore, restoreState, serialize, type SaveSlotInfo, type SaveStore } from '../sim/save';
+import { createLocalSaveStore, restoreState, SaveError, serialize, type SaveSlotInfo, type SaveStore } from '../sim/save';
 import { Simulation } from '../sim/Simulation';
 import { UI } from '../ui/UI';
 import type { GameContext } from './context';
@@ -35,6 +40,154 @@ import { modelNames, modelObject } from '../render/assets';
 
 const SETTINGS_KEY = 'ciudad-flotante:settings';
 const AUTOSAVE_SLOT = 'auto';
+/** Guardado automático periódico: segundos reales de partida (sin contar la pausa) entre guardados. */
+export const AUTOSAVE_INTERVAL = 300;
+/** Por debajo de este ancho (px) la interfaz no cabe bien: se avisa en el menú principal. */
+export const NARROW_WIDTH = 700;
+
+/** ¿Deja el navegador escribir en `localStorage`? (iframe de origen opaco, modo privado estricto…) */
+export function storageWritable(): boolean {
+  try {
+    const ls = (globalThis as { localStorage?: Storage }).localStorage;
+    if (!ls) return false;
+    const k = 'ciudad-flotante:prueba';
+    ls.setItem(k, '1');
+    ls.removeItem(k);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Aviso al guardar a mano sin almacenamiento local. */
+export const NO_STORAGE_MESSAGE = 'Este navegador no permite guardar partidas: la partida se perderá al cerrar la página';
+
+export type NoticeKind = 'storage' | 'touch' | 'narrow';
+
+/** Avisos del núcleo en el menú principal (no dependen de la interfaz). */
+export const NOTICE_TEXT: Record<NoticeKind, { title: string; body: string }> = {
+  storage: {
+    title: 'Este navegador no deja guardar partidas',
+    body: 'El almacenamiento local está bloqueado aquí. Puedes jugar, pero la partida se perderá al cerrar o recargar la página.',
+  },
+  touch: {
+    title: 'Ciudad Flotante se juega con teclado y ratón',
+    body: 'En una pantalla táctil verás los menús, pero no podrás mover al personaje ni mirar alrededor. Ábrelo en un ordenador.',
+  },
+  narrow: {
+    title: 'La ventana es demasiado estrecha',
+    body: 'La interfaz no cabe entera. Ciudad Flotante se juega con teclado y ratón: amplía la ventana o ábrela a pantalla completa.',
+  },
+};
+
+/** Aviso de dispositivo: solo táctil (sin ningún puntero fino) o pantalla demasiado estrecha. */
+export function deviceNotice(env: { coarse: boolean; fine: boolean; width: number }): 'touch' | 'narrow' | null {
+  if (env.coarse && !env.fine) return 'touch';
+  if (env.width > 0 && env.width < NARROW_WIDTH) return 'narrow';
+  return null;
+}
+
+function media(q: string): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia(q).matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Capa propia del núcleo sobre el lienzo: avisos del menú principal (sin almacenamiento, pantalla
+ * táctil o estrecha) y la pista del giro por el borde en mirada libre. No usa `src/ui`: solo las
+ * clases base (`panel`, `btn`) y las variables de `base.css`.
+ */
+export class CoreOverlay {
+  readonly root: HTMLDivElement;
+  private readonly notices: HTMLDivElement;
+  private readonly edges: Record<'left' | 'right' | 'top' | 'bottom', HTMLDivElement>;
+  private readonly dismissed = new Set<NoticeKind>();
+  private shown = '';
+
+  constructor(container: HTMLElement) {
+    const root = document.createElement('div');
+    root.className = 'core-overlay';
+    root.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:80;font-family:var(--font);';
+    const notices = document.createElement('div');
+    notices.className = 'core-notices';
+    notices.setAttribute('role', 'status');
+    notices.setAttribute('aria-live', 'polite');
+    notices.style.cssText =
+      'position:absolute;top:16px;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 32px));display:flex;flex-direction:column;gap:10px;';
+    root.appendChild(notices);
+    const edge = (side: 'left' | 'right' | 'top' | 'bottom'): HTMLDivElement => {
+      const d = document.createElement('div');
+      d.className = `core-edge core-edge-${side}`;
+      const horiz = side === 'left' || side === 'right';
+      const dir = { left: 'to right', right: 'to left', top: 'to bottom', bottom: 'to top' }[side];
+      d.style.cssText =
+        `position:absolute;${side}:0;${horiz ? 'top:0;bottom:0;width:72px' : 'left:0;right:0;height:56px'};opacity:0;` +
+        `transition:opacity .15s;display:flex;align-items:center;justify-content:center;color:rgba(246,239,224,.85);` +
+        `font:900 34px/1 var(--font);text-shadow:0 1px 4px rgba(0,0,0,.6);background:linear-gradient(${dir},rgba(246,239,224,.22),rgba(246,239,224,0));`;
+      d.textContent = { left: '‹', right: '›', top: '˄', bottom: '˅' }[side];
+      root.appendChild(d);
+      return d;
+    };
+    this.edges = { left: edge('left'), right: edge('right'), top: edge('top'), bottom: edge('bottom') };
+    container.appendChild(root);
+    this.root = root;
+    this.notices = notices;
+  }
+
+  /** Avisos visibles ahora (los descartados con «Entendido» no vuelven en esta sesión). */
+  get visibleNotices(): NoticeKind[] {
+    return this.shown ? (this.shown.split(',') as NoticeKind[]) : [];
+  }
+
+  setNotices(kinds: NoticeKind[]): void {
+    const list = kinds.filter((k) => !this.dismissed.has(k));
+    const key = list.join(',');
+    if (key === this.shown) return;
+    this.shown = key;
+    this.notices.replaceChildren();
+    for (const k of list) {
+      const t = NOTICE_TEXT[k];
+      const card = document.createElement('div');
+      card.className = 'panel core-notice';
+      card.dataset['notice'] = k;
+      card.style.cssText = 'pointer-events:auto;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.4;';
+      const text = document.createElement('div');
+      text.style.cssText = 'flex:1;min-width:0;';
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:800;color:var(--warn);margin-bottom:2px;';
+      title.textContent = t.title;
+      const body = document.createElement('div');
+      body.style.cssText = 'color:var(--ink-dim);';
+      body.textContent = t.body;
+      text.append(title, body);
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn';
+      ok.textContent = 'Entendido';
+      ok.style.cssText = 'flex:none;';
+      ok.addEventListener('click', () => {
+        this.dismissed.add(k);
+        this.setNotices(list);
+      });
+      card.append(text, ok);
+      this.notices.appendChild(card);
+    }
+  }
+
+  /** Pista del giro por el borde (−1..1 por eje), o null para ocultarla. */
+  setEdges(turn: { x: number; y: number } | null): void {
+    const x = turn?.x ?? 0;
+    const y = turn?.y ?? 0;
+    const op = (v: number) => (v > 0 ? String(Math.min(1, 0.35 + v * 0.65)) : '0');
+    this.edges.left.style.opacity = op(-x);
+    this.edges.right.style.opacity = op(x);
+    this.edges.top.style.opacity = op(-y);
+    this.edges.bottom.style.opacity = op(y);
+  }
+}
 
 export class Game implements GameContext {
   readonly bus = new EventBus();
@@ -56,8 +209,17 @@ export class Game implements GameContext {
   highlight: HighlightTarget | null = null;
   private saves: SaveStore;
   private last = performance.now();
-  private autosaveTimer = 0;
+  /** Segundos reales de partida (sin pausa) desde el último guardado. */
+  private autosaveClock = 0;
+  /** El navegador deja guardar (se comprueba al arrancar). */
+  readonly storageOk: boolean;
+  /** Tipos de error de guardado ya escritos en la consola (una vez cada uno). */
+  private readonly saveErrorsLogged = new Set<string>();
   private clickHintShown = false;
+  private freeLookHintShown = false;
+  readonly overlay: CoreOverlay;
+  /** Aviso de dispositivo (pantalla táctil o estrecha); se recalcula al cambiar el tamaño. */
+  private deviceKind: 'touch' | 'narrow' | null = null;
   private fpsAcc = 0;
   private fpsFrames = 0;
   fps = 0;
@@ -68,6 +230,7 @@ export class Game implements GameContext {
     const q = new URLSearchParams(location.search).get('quality');
     if (q === 'baja' || q === 'media' || q === 'alta') this.settings.quality = q;
     this.saves = createLocalSaveStore();
+    this.storageOk = storageWritable();
     this.sim = Simulation.newGame(undefined, this.bus);
     this.renderer = new Renderer(container, this.settings.quality);
     this.input = new Input(this.renderer.canvas);
@@ -79,6 +242,7 @@ export class Game implements GameContext {
     this.interaction = new Interaction(this);
     this.build = new BuildMode(this);
     this.ui = new UI(container, this);
+    this.overlay = new CoreOverlay(container);
     this.audio = new Audio(this);
     // Cada estallido de los fuegos de Puerto Esperanza suena en su posición (marco del océano ≈ local).
     this.renderer.onFirework = (x, y, z) => this.bus.emit('sfx', { name: 'fuego_artificial', x, y, z });
@@ -86,6 +250,12 @@ export class Game implements GameContext {
     this.bus.on('playerDied', () => this.setMode('dead'));
     this.bus.on('newDay', () => this.autosave());
     window.addEventListener('resize', () => this.onResize());
+    // Guardar al ocultar o cerrar la página (recargar, cerrar la pestaña, publicar una versión nueva).
+    // Es síncrono y corto (unos KB en localStorage); no se usa `beforeunload`, que puede bloquear.
+    window.addEventListener('pagehide', () => this.saveOnHide());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.saveOnHide();
+    });
     this.onResize();
     installDebug(this);
     this.registerDebugCommands();
@@ -163,6 +333,7 @@ export class Game implements GameContext {
     this.build.reset();
     this.ui.reset();
     this.paused = false;
+    this.autosaveClock = 0;
     this.bus.emit('simReplaced', { reason });
     this._mode = 'menu';
     this.setMode('play');
@@ -175,19 +346,60 @@ export class Game implements GameContext {
   }
 
   saveGame(slot = 'manual'): void {
-    try {
-      this.sim.syncRng();
-      this.saves.save(slot, this.sim.state);
+    const err = this.writeSave(slot);
+    if (err === null) {
       this.bus.emit('saved', { slot });
       this.sim.notify(slot === AUTOSAVE_SLOT ? 'Partida guardada automáticamente' : 'Partida guardada', 'good');
-    } catch (e) {
-      console.error(e);
+      return;
+    }
+    // Los fallos conocidos (sin almacenamiento, sin espacio) traen un mensaje claro para el jugador;
+    // en la consola quedan una sola vez, como aviso.
+    if (err instanceof SaveError) {
+      this.logSaveError(err.kind, err.message);
+      // Sin almacenamiento el mensaje del navegador puede venir en inglés: uno fijo y claro.
+      this.sim.notify(err.kind === 'unavailable' && !this.storageOk ? NO_STORAGE_MESSAGE : err.message, 'danger');
+    } else {
+      console.error(err);
       this.sim.notify('No se pudo guardar la partida', 'danger');
     }
   }
 
+  /** Escribe la partida en una ranura sin avisar. Devuelve el error o null si se guardó. */
+  private writeSave(slot: string): unknown {
+    try {
+      this.sim.syncRng();
+      this.saves.save(slot, this.sim.state);
+      this.autosaveClock = 0;
+      return null;
+    } catch (e) {
+      return e ?? new Error('error desconocido al guardar');
+    }
+  }
+
+  private logSaveError(kind: string, message: string): void {
+    if (this.saveErrorsLogged.has(kind)) return;
+    this.saveErrorsLogged.add(kind);
+    console.warn(`[Game] ${message}`);
+  }
+
+  /** ¿Hay una partida en curso que merezca guardarse sola? */
+  private get inGame(): boolean {
+    return (this._mode === 'play' || this._mode === 'build') && this.sim.state.player.alive;
+  }
+
+  /** Guardado automático con aviso (nuevo día, periódico). Sin almacenamiento ya se avisó en el menú. */
   private autosave(): void {
-    if (this._mode === 'play' || this._mode === 'build') this.saveGame(AUTOSAVE_SLOT);
+    if (this.inGame && this.storageOk) this.saveGame(AUTOSAVE_SLOT);
+  }
+
+  /**
+   * La página se oculta o se cierra: se guarda en la ranura automática sin aviso (nadie lo vería).
+   * «Salir sin guardar» deja el modo en 'menu', así que no escribe nada.
+   */
+  saveOnHide(): void {
+    if (!this.inGame || !this.storageOk) return;
+    const err = this.writeSave(AUTOSAVE_SLOT);
+    if (err !== null) this.logSaveError(err instanceof SaveError ? err.kind : 'hide', err instanceof SaveError ? err.message : `No se pudo guardar al salir: ${String(err)}`);
   }
 
   loadGame(slot: string): boolean {
@@ -207,26 +419,42 @@ export class Game implements GameContext {
 
   /**
    * Instantánea de la partida en curso para conservarla si la página se actualiza en caliente
-   * (publicaciones nuevas en claude.ai). null si no hay partida en marcha.
+   * (gancho opcional `window.claude.hot`; ver main.ts). null si no hay partida en marcha.
    */
-  snapshot(): { state: string; mode: GameMode } | null {
+  snapshot(): { state: string; mode: GameMode; paused: boolean } | null {
     if (this._mode !== 'play' && this._mode !== 'build') return null;
     this.sim.syncRng();
-    return { state: serialize(this.sim.state), mode: this._mode };
+    return { state: serialize(this.sim.state), mode: this._mode, paused: this.paused };
   }
 
-  /** Restaura una instantánea de `snapshot()`. Devuelve false si no es válida. */
-  restoreSnapshot(snap: { state?: unknown } | null | undefined): boolean {
+  /**
+   * Restaura una instantánea de `snapshot()` en su modo (también el de construcción). Tras
+   * republicar no ha habido ningún gesto del jugador, así que la partida vuelve SIEMPRE en pausa
+   * (aunque se guardara en marcha): no corre sola mientras el jugador lee el chat, y «Continuar»
+   * es el clic que devuelve el ratón y el sonido. Devuelve false si no es válida.
+   */
+  restoreSnapshot(snap: { state?: unknown; mode?: unknown; paused?: unknown } | null | undefined): boolean {
     if (!snap || typeof snap.state !== 'string') return false;
     try {
       const st = restoreState(JSON.parse(snap.state));
       this.replaceSim(new Simulation(st, this.bus), 'load');
-      if (!this.sim.state.player.alive) this.setMode('dead');
-      return true;
     } catch (e) {
       console.warn('[Game] no se pudo restaurar la instantánea', e);
       return false;
     }
+    if (!this.sim.state.player.alive) {
+      this.setMode('dead');
+      return true;
+    }
+    if (snap.mode === 'build' && !this.sim.state.player.sleeping) this.setMode('build');
+    this.pause();
+    return true;
+  }
+
+  /** Pausa con el menú de pausa (cierra el panel abierto). */
+  private pause(): void {
+    this.paused = true;
+    this.ui.showPauseMenu();
   }
 
   listSaves(): SaveSlotInfo[] {
@@ -245,6 +473,7 @@ export class Game implements GameContext {
 
   private onResize(): void {
     this.renderer.resize();
+    this.deviceKind = deviceNotice({ coarse: media('(pointer: coarse)'), fine: media('(any-pointer: fine)'), width: this.container.clientWidth || window.innerWidth });
     const w = this.container.clientWidth;
     const h = Math.max(1, this.container.clientHeight);
     for (const cam of [this.player.camera, this.build.camera]) {
@@ -256,24 +485,31 @@ export class Game implements GameContext {
   private handleGlobalKeys(): void {
     const inp = this.input;
     const ui = this.ui;
+    // Se leen en todos los modos: una señal vieja (p. ej. del menú) no debe pausar la partida al empezar.
+    const lockLost = inp.consumeLockLost();
+    const focusLost = inp.consumeFocusLost();
     if (this._mode === 'menu' || this._mode === 'dead') return;
     // Con el ratón capturado, el navegador se queda la tecla Esc: lo detectamos por la pérdida de captura.
-    if (inp.consumeLockLost() && this._mode === 'play' && !ui.panelOpen && !this.paused) {
-      this.paused = true;
-      ui.showPauseMenu();
+    if (lockLost && this._mode === 'play' && !ui.panelOpen && !this.paused) {
+      this.pause();
+      return;
+    }
+    // Sin captura (mirada libre, panel abierto, construcción) un clic fuera del juego no suelta
+    // nada y las teclas dejan de llegar: se pausa al perder el foco para que la partida no siga
+    // sola. Al volver, el clic cae en el menú de pausa, no en la herramienta.
+    if (focusLost && !this.paused) {
+      this.pause();
       return;
     }
     if (inp.pressed('Escape')) {
-      if (this._mode === 'build') {
-        if (!this.build.cancel()) this.setMode('play');
-      } else if (ui.panelOpen) ui.closePanel();
-      else if (this.paused) {
+      // En pausa (también en el modo construcción, tras perder el foco o republicar) Esc la quita.
+      if (this.paused) {
         this.paused = false;
         ui.hideMenus();
-      } else {
-        this.paused = true;
-        ui.showPauseMenu();
-      }
+      } else if (this._mode === 'build') {
+        if (!this.build.cancel()) this.setMode('play');
+      } else if (ui.panelOpen) ui.closePanel();
+      else this.pause();
       return;
     }
     if (this.paused) return;
@@ -301,7 +537,8 @@ export class Game implements GameContext {
 
   private frame(t: number): void {
     requestAnimationFrame((tt) => this.frame(tt));
-    const dt = Math.min(0.1, Math.max(0, (t - this.last) / 1000));
+    const real = Math.max(0, (t - this.last) / 1000);
+    const dt = Math.min(0.1, real);
     this.last = t;
     this.fpsAcc += dt;
     this.fpsFrames++;
@@ -312,10 +549,24 @@ export class Game implements GameContext {
     }
     try {
       this.step(dt);
+      // Guardado periódico en tiempo REAL (el `dt` recortado a 0,1 s contaría de menos por debajo
+      // de 10 fps). Va aquí y no en step(): `cmd.step` de las pruebas no escribe partidas.
+      this.tickAutosave(real);
     } catch (e) {
       console.error('[Game] error en el frame', e);
     }
     this.input.endFrame();
+  }
+
+  /** Suma tiempo real de partida (sin pausa) y guarda cada AUTOSAVE_INTERVAL s. */
+  tickAutosave(realDt: number): void {
+    if (!this.inGame || this.paused) return;
+    // Un salto largo (pestaña oculta, depurador) no cuenta como partida: ya se guardó al ocultarla.
+    this.autosaveClock += Math.min(1, Math.max(0, Number.isFinite(realDt) ? realDt : 0));
+    if (this.autosaveClock >= AUTOSAVE_INTERVAL) {
+      this.autosaveClock = 0;
+      this.autosave();
+    }
   }
 
   /** Un frame completo (también lo usan las pruebas automáticas). */
@@ -332,6 +583,10 @@ export class Game implements GameContext {
         ui.toast('Haz clic en la pantalla para controlar la cámara', 'info');
       }
     } else if (this.input.locked) this.clickHintShown = false;
+    if (this.input.freeLook && !this.freeLookHintShown) {
+      this.freeLookHintShown = true;
+      ui.toast('Sin captura del ratón: lleva el cursor al borde de la pantalla o usa ← → para girar', 'info');
+    }
     if (playing && !this.paused) {
       if (this._mode === 'play') {
         this.player.update(dt);
@@ -341,12 +596,8 @@ export class Game implements GameContext {
         this.build.update(dt);
       }
       this.sim.tick(dt * TIME_SCALE * this.sim.timeScale);
-      this.autosaveTimer += dt;
-      if (this.autosaveTimer > 600) {
-        this.autosaveTimer = 0;
-        this.autosave();
-      }
     }
+    this.updateOverlay();
     const camera = this._mode === 'build' ? this.build.camera : this.player.camera;
     const st = this.sim.state;
     const layout = this.sim.layout;
@@ -362,6 +613,21 @@ export class Game implements GameContext {
     this.renderer.render(camera);
     ui.update(dt);
     this.audio.update(dt);
+  }
+
+  /** Avisos del menú principal y pista del giro por el borde (capa del núcleo). */
+  private updateOverlay(): void {
+    const ov = this.overlay;
+    const lookEdges = this._mode === 'play' && !this.paused && this.input.freeLook && !this.ui.panelOpen && !this.ui.menuOpen;
+    ov.setEdges(lookEdges ? this.player.edgeTurn : null);
+    if (this._mode !== 'menu') {
+      ov.setNotices([]);
+      return;
+    }
+    const kinds: NoticeKind[] = [];
+    if (!this.storageOk) kinds.push('storage');
+    if (this.deviceKind) kinds.push(this.deviceKind);
+    ov.setNotices(kinds);
   }
 
   private registerDebugCommands(): void {

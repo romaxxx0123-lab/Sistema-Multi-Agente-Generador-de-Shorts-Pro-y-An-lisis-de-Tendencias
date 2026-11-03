@@ -17,24 +17,35 @@
  *   --wait <ms>        Espera real antes de capturar (por defecto 300).
  *   --out <png>        Captura (repetible: se toma tras el --eval anterior).
  *   --script <mjs>     Módulo con `export default async (page, helpers) => {}` para escenas complejas.
+ *   --browser-arg <a>  Argumento extra de Chromium (repetible), p. ej. --browser-arg=--disable-3d-apis.
  *   --keep             No cerrar (depuración).
+ * Si el juego no arranca y muestra su pantalla de error (#app[data-fatal], p. ej. sin WebGL), se
+ * avisa y se sigue: la escena puede comprobarla (`__game` no existe).
  * Calidad gráfica: baja por defecto (render por software); usa SHOT_QUALITY=media|alta para otra.
  * Imprime los errores y avisos de consola de la página. Código de salida 2 si hubo errores.
  */
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
 const argv = process.argv.slice(2);
 const steps = [];
-const opts = { seed: '1', size: '1280x720', frames: 5, wait: 300, url: null, query: null, script: null, keep: false };
+// fileURLToPath (y no URL.pathname): rutas con espacios o acentos, y Windows.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const opts = { seed: '1', size: '1280x720', frames: 5, wait: 300, url: null, query: null, script: null, keep: false, browserArgs: [] };
 for (let i = 0; i < argv.length; i++) {
-  const a = argv[i];
-  const next = () => argv[++i];
+  let a = argv[i];
+  let inline = null;
+  const eq = a.indexOf('=');
+  if (a.startsWith('--') && eq > 2) {
+    inline = a.slice(eq + 1);
+    a = a.slice(0, eq);
+  }
+  const next = () => (inline !== null ? inline : argv[++i]);
   switch (a) {
     case '--url': opts.url = next(); break;
     case '--query': opts.query = next(); break;
@@ -45,6 +56,7 @@ for (let i = 0; i < argv.length; i++) {
     case '--eval': steps.push({ eval: next() }); break;
     case '--out': steps.push({ out: next() }); break;
     case '--script': opts.script = next(); break;
+    case '--browser-arg': opts.browserArgs.push(next()); break;
     case '--keep': opts.keep = true; break;
     default: console.error('Opción desconocida', a); process.exit(1);
   }
@@ -54,13 +66,13 @@ let server = null;
 let base = opts.url;
 if (!base) {
   const { createServer } = await import('vite');
-  server = await createServer({ root: resolve(dirname(new URL(import.meta.url).pathname), '..'), server: { port: 0, host: '127.0.0.1', hmr: false }, logLevel: 'error' });
+  server = await createServer({ root, server: { port: 0, host: '127.0.0.1', hmr: false }, logLevel: 'error' });
   await server.listen();
   const addr = server.httpServer.address();
   base = `http://127.0.0.1:${addr.port}/`;
 }
 const [w, h] = opts.size.split('x').map(Number);
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...opts.browserArgs] });
 const page = await browser.newPage({ viewport: { width: w, height: h } });
 let errors = 0;
 page.on('console', (msg) => {
@@ -78,7 +90,9 @@ page.on('pageerror', (err) => {
 });
 const query = opts.query ?? `autostart&seed=${opts.seed}&quality=${process.env.SHOT_QUALITY ?? 'baja'}`;
 await page.goto(`${base}?${query}`, { waitUntil: 'load' });
-await page.waitForFunction(() => !!window.__game, null, { timeout: 30000 });
+await page.waitForFunction(() => !!window.__game || !!document.querySelector('#app[data-fatal]'), null, { timeout: 30000 });
+const fatal = await page.evaluate(() => (window.__game ? null : document.getElementById('app')?.innerText ?? ''));
+if (fatal !== null) console.log(`[arranque] el juego muestra su pantalla de error: ${fatal.replace(/\s+/g, ' ').trim()}`);
 await page.waitForTimeout(500);
 
 const helpers = {
