@@ -57,6 +57,7 @@ import {
 } from './mix';
 import { runAudioSelfTest } from './selftest';
 import { SFX, resolveSfx, type SfxBus, type SfxOpts } from './sfx';
+import { shownTutorialCompleted } from '../sim/tutorial';
 
 /** Avisos → sonido. */
 const NOTIFY_SFX: Record<NotifyKind, string> = { info: 'aviso_info', good: 'aviso_bien', warn: 'aviso_atencion', danger: 'aviso_peligro' };
@@ -173,7 +174,14 @@ export class Audio {
       this.guard(() => this.onNotifyText(e.text));
     });
     bus.on('unlocked', () => this.guard(() => this.cue('fanfarria')));
-    bus.on('tutorialStep', () => this.guard(() => this.cue('tutorial')));
+    // Suena con el «¡Hecho!» del consejo a la vista: no con un paso hecho por adelantado ni con los consejos ocultos.
+    bus.on('tutorialStep', () =>
+      this.guard(() => {
+        const sim = this.ctx.sim;
+        if (this.ctx.settings?.tutorial === false || sim.state.tutorial.dismissed || !shownTutorialCompleted(sim)) return;
+        this.cue('tutorial');
+      }),
+    );
     bus.on('newDay', () =>
       this.guard(() => {
         if (!this.ctx.sim.state.player.sleeping) this.cue('campana', { count: 2 });

@@ -78,23 +78,25 @@ Valores iniciales de equilibrio. Todo el texto visible está en español. Tiempo
 
 ## 4. Tutorial (`tutorial.ts`) — sim-survival
 
-Pasos (de uno en uno, sin bloquear, ≥ 20 min de juego entre pasos; se marcan con `markTutorial`). No son
-estrictamente secuenciales: cada paso tiene un «tiene sentido ahora» y un «es oportuno ahora» (dormir de
-noche, el timón con una decisión pendiente, reparar si hay daños, comer o beber si falta) y los oportunos
-van primero. Los textos describen acciones físicas, no menús.
+- **Ritmo:** de uno en uno, sin bloquear, con ≥ 20 min de juego entre completar el consejo a la vista y mostrar el siguiente. Se marcan con `markTutorial`. Un paso hecho por adelantado, con otro consejo en pantalla, no lo esconde ni lo marca como «¡Hecho!».
+- **Orden:** no son estrictamente secuenciales. Cada paso tiene un «tiene sentido ahora» y un «es oportuno ahora», y los oportunos van primero. Ejemplos de oportuno: dormir al anochecer con sueño (desde las 20 h), de noche o con energía < 40; el timón con una decisión pendiente; reparar si hay daños; comer o beber si falta.
+- **'dormir' es aplazable:** mientras no sea oportuno, solo sale si no queda otro pendiente aplicable.
+- **Textos:** describen acciones físicas y teclas, no menús.
 
 | id | texto | se completa |
 |---|---|---|
 | mover | WASD para moverte, Mayús para correr, Espacio para saltar. | el jugador se aleja 5 m |
 | gancho | Selecciona el gancho (1) y haz clic sobre los restos que flotan junto al barco. | `collectDebris` |
-| comer | Abre el inventario (Tab) y come o bebe algo. | `useItem` de comida/bebida |
+| comer | Elige la comida o la botella de agua en la barra rápida (números o rueda) y pulsa F o clic derecho. | `useItem` de comida/bebida |
+| cuaderno | Abre la mochila con Tab y haz clic derecho sobre la hoja del cuaderno del Albatros (o F en la barra rápida). | `readDocument` o hojas ya leídas |
 | almacen | Guarda lo que no necesites en el almacén (E sobre las estanterías). | mover objetos a un almacén |
 | fabricar | En el banco de trabajo puedes fabricar herramientas: prueba con una caña. | cualquier fabricación |
 | pescar | Con la caña, desde la borda: clic para lanzar y clic cuando pique. | `catchFish` |
 | cocinar | Cocina el pescado en la cocina (necesita leña). | termina un trabajo de cocina |
 | beber | Bebe del depósito de la bodega o rellena botellas allí. | `drinkFromTank` o `fillBottle` |
-| dormir | Por la noche, duerme en tu camarote para recuperar energía. | `sleep` |
+| dormir | Pulsa E sobre la cama: de noche, hasta el amanecer; de día, hasta que estés descansado. | `sleep` |
 | construir | Pulsa B para el modo construcción: amplía el barco. | `placeModule` |
+| mejorar | En el modo construcción (B), la herramienta Mejorar (U)…; añade «Ahora puedes pagar: …». Solo si hay una mejora pagable. | encargar una mejora, o una ya hecha |
 | plantar | Construye un huerto y planta semillas: necesitan agua de los depósitos. | `plant` |
 | timon | Sube al puente: en el timón decides el rumbo y respondes a los avistamientos. | `chooseRoute` o `eventChoice` |
 | reparar | Las tormentas y averías dañan el barco: repara con martillo + kit o llave + pieza. | `repair` |
@@ -214,7 +216,7 @@ Tipos (todos con título, descripción, objetivos y entrada de diario; `worldEve
    superior (2 %/h). Al terminar: fase de daños hasta reparar lo que quede < 50 (o 12 h).
 2. **naufragio** — avistamiento. Opciones en el timón: "Detenerse a rescatar (1 h)" → fondeo 60 min
    y 5–8 restos ricos alrededor (cofre con plano en el guion; 15 % al azar) / "Seguir rumbo". Caduca en
-   120 min. Al rescatarlo todo se leva el ancla.
+   120 min. El rescate dura lo que el fondeo: al levar anclas se cierra con un único aviso, «Levamos anclas y dejamos atrás el pecio… (rescatados n de m restos)». Al rescatarlo todo se leva el ancla en el acto.
 3. **isla** — avistamiento. "Fondear y enviar una expedición (3 h)" (requiere un habitante
    disponible) → 1–2 habitantes fuera; al volver: madera, fruta, fibra, semillas, 25 % plano,
    15 % nuevo habitante, 10 % herido. Alternativa: seguir rumbo.
@@ -390,8 +392,9 @@ Ambiente de mar, viento, lluvia, truenos, crujidos, efectos de herramientas y UI
 
 - Costes (ronda de pruebas 2): el nivel 2 cuesta al menos lo que el módulo (en valor de materiales) y
   tarda al menos su obra; el nivel 3, al menos 1,5 veces el nivel 2 y pide un plano o piezas del
-  taller. Así las mejoras llegan escalonadas con la exploración. El camarote acogedor (4 de tela y 10
-  de madera) se paga con lo del almacén inicial, para presentar la herramienta el primer día.
+  taller. Así las mejoras llegan escalonadas con la exploración. El camarote acogedor (2 de tela y 10
+  de madera) se paga con lo del almacén inicial aunque la primera obra sea un camarote, un colector o un
+  comedor, para presentar la herramienta el primer día.
 - Confort: el del dormitorio con taquillas (3) no pasa del de una cama básica, así que no da más
   descanso, solo ánimo; el comedor no añade sillas; la estufa de la sala común es de adorno (no
   calienta: `warmthEnvironment` solo cuenta la cocina encendida).

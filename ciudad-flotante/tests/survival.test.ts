@@ -2042,7 +2042,7 @@ describe('cuaderno del Albatros: leer hojas', () => {
     expect(st).toMatchObject({ total: STORY_PAGES.length, needed: PAGES_TO_REVEAL, remaining: PAGES_TO_REVEAL, read: [], revealed: false, arrived: false, finalRegion: FINAL_REGION, finalRegionName: 'Puerto Esperanza' });
     expect(st.pages).toHaveLength(7);
     expect(st.pages[0]).toMatchObject({ n: 1, item: 'pagina_1', read: false, aboard: 'mochila', title: null, text: null });
-    expect(st.pages[0]!.hint).toBe('La llevas en la mochila sin leer: clic derecho sobre ella, o F con ella en la barra rápida');
+    expect(st.pages[0]!.hint).toBe('La llevas en la mochila sin leer: abre la mochila (Tab) y haz clic derecho sobre ella, o F con ella en la barra rápida');
     expect(st.pages[2]).toMatchObject({ region: 'sargazos', regionName: 'Mar de los Sargazos', aboard: null });
     expect(st.pages[2]!.hint).toBe('Suele aparecer en el Mar de los Sargazos: en cofres de naufragio, estructuras, islas y mercantes');
     expect(st.summary).toBe('Aún no has leído ninguna hoja del cuaderno del Albatros. Con cinco sabrás cómo llegar a Puerto Esperanza.');

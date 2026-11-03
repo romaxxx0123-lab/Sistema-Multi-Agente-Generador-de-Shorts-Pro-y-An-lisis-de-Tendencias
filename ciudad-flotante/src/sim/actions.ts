@@ -403,7 +403,7 @@ export function storyStatus(sim: Simulation): StoryStatus {
     const aboard = isRead ? null : pageAboard(sim, pg.item);
     let hint: string | null = null;
     if (!isRead) {
-      if (aboard === 'mochila') hint = 'La llevas en la mochila sin leer: clic derecho sobre ella, o F con ella en la barra rápida';
+      if (aboard === 'mochila') hint = 'La llevas en la mochila sin leer: abre la mochila (Tab) y haz clic derecho sobre ella, o F con ella en la barra rápida';
       else if (aboard === 'barco') hint = 'Está a bordo sin leer, en un almacén o en una caja: cógela y léela';
       else if (pg.n === 1) hint = 'Estaba entre las cartas náuticas del puente';
       else hint = `Suele aparecer en ${regionWithArticle(pg.region)}: en cofres de naufragio, estructuras, islas y mercantes`;

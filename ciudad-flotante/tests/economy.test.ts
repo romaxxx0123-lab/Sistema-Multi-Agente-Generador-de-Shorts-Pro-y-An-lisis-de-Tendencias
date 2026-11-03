@@ -2153,12 +2153,12 @@ describe('mejoras de instalaciones', () => {
     give(sim, MATERIALS);
     const cam = build(sim, 'camarote', 1, 6, 3);
     expect(sim.startUpgrade(cam.id).ok).toBe(true);
-    expect(sim.checkDemolishModule(cam.id).refund).toEqual({ madera: 4 + 10, tela: 1 + 4 });
+    expect(sim.checkDemolishModule(cam.id).refund).toEqual({ madera: 4 + 10, tela: 1 + 2 });
     const r = sim.demolish(cam.id);
     expect(r.ok, r.msg).toBe(true);
     const crate = sim.state.crates.find((c) => c.label === 'Restos: Camarote')!;
     expect(countItem(crate.inventory, 'madera')).toBe(14);
-    expect(countItem(crate.inventory, 'tela')).toBe(5);
+    expect(countItem(crate.inventory, 'tela')).toBe(3);
   });
 
   it('textos de mejora con concordancia («Cocina mejorada», «Sala común mejorada»)', () => {

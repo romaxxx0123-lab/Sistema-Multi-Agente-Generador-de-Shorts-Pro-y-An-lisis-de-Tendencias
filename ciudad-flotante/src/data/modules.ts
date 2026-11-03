@@ -674,7 +674,7 @@ const defs: ModuleDef[] = [
  * materiales) y tarda al menos su obra, casi siempre ~1,5 veces; el nivel 3 cuesta el doble o más que
  * el 2 y pide un plano (almacén → casco, depósito → agua, huerto → lámparas de cultivo) o componentes
  * y piezas del taller (generador). Así las mejoras llegan escalonadas con la exploración y no todas el
- * primer día. El camarote acogedor se paga con el almacén inicial: presenta la herramienta Mejorar.
+ * primer día. El camarote acogedor se paga con el almacén inicial aunque la primera obra gaste tela: presenta la herramienta Mejorar.
  * Lo comprueba tests/economy.test.ts («regresiones QA 2 (equilibrio)»).
  */
 const UPGRADES: Record<string, UpgradeDef[]> = {
@@ -716,7 +716,7 @@ const UPGRADES: Record<string, UpgradeDef[]> = {
     { tier: 3, name: 'Huerto abonado', desc: 'Tierra nueva con compost de algas: crece mucho más rápido.', cost: { madera: 20, plastico: 8, placa_metal: 4, fibra: 20 }, buildTime: 90, unlock: 'invernadero', effects: { waterUseMult: 0.6, growthMult: 1.5 } },
   ],
   camarote: [
-    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 4, madera: 10 }, buildTime: 45, effects: { comfort: 5 } },
+    { tier: 2, name: 'Camarote acogedor', desc: 'Colchón de verdad, cortinas y una lámpara de lectura.', cost: { tela: 2, madera: 10 }, buildTime: 45, effects: { comfort: 5 } },
   ],
   dormitorio: [
     { tier: 2, name: 'Dormitorio con taquillas', desc: 'Taquillas y cortinas: cada cual con su rincón. Quien duerme aquí está de mejor ánimo.', cost: { tela: 8, madera: 14 }, buildTime: 70, effects: { comfort: 3 } },
