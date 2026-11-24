@@ -1,0 +1,51 @@
+/* Diseño: HUD de vidrio índigo sobre la ciudad nocturna; neón cian y ámbar de atardecer; tipografía de señalética. */
+:root {
+  --ink: #070a14;
+  --night: #0e1430;
+  --panel: rgba(9, 13, 30, 0.74);
+  --panel-strong: rgba(7, 10, 24, 0.92);
+  --panel-soft: rgba(14, 20, 48, 0.55);
+  --line: rgba(124, 196, 255, 0.2);
+  --line-strong: rgba(124, 196, 255, 0.42);
+  --text: #eaf2ff;
+  --muted: #93a0c4;
+  --dim: #5d6a8f;
+  --cyan: #33e1ff;
+  --amber: #ffb547;
+  --coral: #ff5a5f;
+  --mint: #4dffa6;
+  --violet: #b18cff;
+  --pink: #ff4fa3;
+  --f-logo: 'Monoton', 'Chakra Petch', system-ui, sans-serif;
+  --f-display: 'Chakra Petch', 'Barlow', system-ui, sans-serif;
+  --f-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --radius: 10px;
+  --hud-scale: 1;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--ink); color: var(--text); overflow: hidden; }
+body { font-family: var(--f-body); font-size: 15px; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; touch-action: none; }
+#app { position: fixed; inset: 0; background: var(--ink); }
+canvas#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+#ui { position: absolute; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+/* ------------------------------------------------------------ carga */
+.loading { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(120% 90% at 50% 110%, #1a2a5a 0%, #0b1026 45%, var(--ink) 80%); z-index: 50; transition: opacity .6s ease; }
+.loading.hide { opacity: 0; pointer-events: none; }
+.loading-inner { display: grid; gap: 22px; justify-items: center; width: min(520px, 86vw); }
+.logo { display: flex; flex-direction: column; align-items: center; line-height: .9; }
+.logo-a { font-family: var(--f-display); font-weight: 700; letter-spacing: .62em; font-size: clamp(14px, 2.4vw, 22px); color: var(--amber); padding-left: .62em; text-shadow: 0 0 18px rgba(255, 181, 71, .45); }
+.logo-b { font-family: var(--f-logo); font-size: clamp(54px, 11vw, 112px); color: #c8f6ff; text-shadow: 0 0 6px #fff, 0 0 18px var(--cyan), 0 0 42px var(--cyan), 0 0 90px rgba(51, 225, 255, .55); }
+.loading-bar { width: 100%; height: 4px; background: rgba(255, 255, 255, .08); border-radius: 4px; overflow: hidden; }
+.loading-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--cyan), var(--amber)); box-shadow: 0 0 12px var(--cyan); transition: width .25s ease; }
+.loading-text { font-family: var(--f-display); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); min-height: 1.2em; text-align: center; }
+.loading-error { color: var(--coral); text-transform: none; letter-spacing: 0; font-family: var(--f-body); font-size: 14px; max-width: 46ch; line-height: 1.4; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
