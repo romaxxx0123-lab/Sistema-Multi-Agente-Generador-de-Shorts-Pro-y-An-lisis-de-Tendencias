@@ -1,4 +1,4 @@
-// Punto de entrada de Costa Neón.
+// Punto de entrada de Costa Neón: carga del mundo y arranque del juego.
 import * as THREE from 'three';
 import { Engine } from './core/engine.js';
 import { createWorld } from './world/map.js';
@@ -15,6 +15,7 @@ import { WeatherFX } from './world/weather.js';
 import { PlanarReflection } from './world/reflection.js';
 import { ChunkedInstances } from './world/instancing.js';
 import { U } from './world/shaders.js';
+import { Game } from './game/game.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
@@ -41,86 +42,68 @@ async function boot() {
   engine.scene.fog = new THREE.FogExp2(0x000000, 0.001);
   engine.onQualityChange((q) => { ChunkedInstances.distScale = 0.45 + 0.55 * q.density; });
   engine.setQuality(pickQuality());
-  setProgress(0.08, 'Generando texturas…');
+  setProgress(0.06, 'Generando texturas…');
   await nextFrame();
   const ground = generateGroundTextures(engine.renderer, engine.q.texSize);
   const detail = generateDetailTextures(engine.renderer, 512);
   const lib = new MaterialLib(engine.renderer, ground, detail);
   engine.setMaterialLib(lib);
-  setProgress(0.2, 'Trazando calles de Puerto Índigo…');
+  setProgress(0.18, 'Trazando calles de Puerto Índigo…');
   await nextFrame();
   const world = createWorld();
   const collision = new CollisionWorld(world);
-  setProgress(0.32, 'Encendiendo el cielo…');
+  setProgress(0.3, 'Encendiendo el cielo…');
   await nextFrame();
   const sky = new Sky(engine);
-  setProgress(0.45, 'Levantando edificios…');
+  setProgress(0.42, 'Levantando edificios…');
   await nextFrame();
   const city = new CityRenderer(engine, world, lib);
-  setProgress(0.6, 'Llenando el mar…');
+  setProgress(0.56, 'Llenando el mar…');
   await nextFrame();
   const ocean = new Ocean(engine, lib);
-  setProgress(0.7, 'Plantando palmeras…');
+  setProgress(0.66, 'Plantando palmeras…');
   await nextFrame();
   const vegetation = new Vegetation(engine, world, lib);
-  setProgress(0.8, 'Instalando faroles y semáforos…');
+  setProgress(0.76, 'Instalando faroles y semáforos…');
   await nextFrame();
   const props = new StreetProps(engine, world, lib);
   const landmarks = new Landmarks(engine, world, lib);
   const weather = new WeatherFX(engine, engine.q.density >= 1 ? 6000 : 3000);
   sky.on((ev) => { if (ev.type === 'lightning') weather.strike(engine.camera, ev.distance); });
   const reflection = new PlanarReflection(engine, 0.5);
-  reflection.exclude(...city.flat, ocean.mesh, weather.rain, props.instGroups.lampCones);
+  reflection.exclude(...city.flat, ocean.mesh, weather.rain, ...(props.instGroups.lampCones ? props.instGroups.lampCones.meshes : []));
   engine.reflection = reflection;
-  setProgress(0.92, 'Compilando shaders…');
+  setProgress(0.88, 'Despertando a los vecinos…');
   await nextFrame();
+  const game = new Game({ engine, world, collision, sky, city, ocean, vegetation, props, landmarks, weather, reflection, lib });
+  setProgress(0.95, 'Compilando shaders…');
+  await nextFrame();
+  game.start();
 
-  const cam = engine.camera;
-  cam.position.set(-60, 60, 140);
-  cam.lookAt(0, 20, 0);
-  const state = { t: 0, orbit: true };
-
-  const G = { engine, world, collision, sky, city, ocean, vegetation, props, landmarks, weather, lib, state, U };
+  // Ganchos para pruebas automatizadas
   window.__cn = {
-    G,
+    G: game,
     setCam(x, y, z, tx, ty, tz) {
-      state.orbit = false;
-      cam.position.set(x, y, z);
-      cam.lookAt(tx, ty, tz);
+      game.camRig.startCinematic(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, z), new THREE.Vector3(tx, ty, tz), new THREE.Vector3(tx, ty, tz), 0.01);
+      game.camRig.cine.d = 1e9;
     },
+    freeCam() { game.camRig.stopCinematic(); },
     setTime: (h) => sky.setTime(h),
     setWeather: (id) => sky.setWeather(id, true),
-    info: () => ({ ...(engine.stats || {}), programs: engine.renderer.info.programs.length, frameMs: Math.round(state.frameMs || 0) }),
+    info: () => ({ ...(engine.stats || {}), programs: engine.renderer.info.programs.length, frameMs: Math.round(game.frameMs || 0) }),
+    move(x, y, actions = []) {
+      const v = game.input.virtual;
+      v.active = true;
+      v.move.x = x;
+      v.move.y = y;
+      v.actions = new Set(actions);
+    },
+    look(dx, dy) {
+      game.input.virtual.active = true;
+      game.input.virtual.look.x += dx;
+      game.input.virtual.look.y += dy;
+    },
   };
-
-  let last = performance.now();
-  function frame(now) {
-    state.frameMs = now - last;
-    const dt = Math.min(0.1, (now - last) / 1000);
-    last = now;
-    state.t += dt;
-    U.uTime.value = state.t;
-    if (state.orbit) {
-      const a = state.t * 0.05;
-      cam.position.set(Math.cos(a) * 180, 70, Math.sin(a) * 180);
-      cam.lookAt(0, 25, 0);
-    }
-    sky.update(dt);
-    engine.setMainLight(sky.light.dir, sky.light.color, sky.light.intensity);
-    sky.follow(cam);
-    ocean.update(cam, sky.w.wind);
-    props.update(dt, state.t, sky.nightK, U.uLamps.value, cam.position);
-    vegetation.update(cam.position);
-    landmarks.update(dt, state.t, sky.nightK);
-    weather.update(dt, cam, sky);
-    const p = cam.position;
-    const nearWater = (p.x > 380 || p.z > 400 || p.z < -400 || p.x < -420) && p.y < 160;
-    reflection.enabled = !!engine.q.reflections;
-    reflection.wanted = U.uWet.value > 0.12 || nearWater;
-    engine.render(dt);
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
   setProgress(1, 'Listo');
   setTimeout(() => document.getElementById('loading').classList.add('hide'), 300);
 }

@@ -25,6 +25,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; background: var(--ink); color: var(--text); overflow: hidden; }
 body { font-family: var(--f-body); font-size: 15px; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; touch-action: none; }
 #app { position: fixed; inset: 0; background: var(--ink); }
@@ -49,3 +50,10 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* ------------------------------------------------------------ clic para jugar */
+.click-play { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4, 6, 14, .5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: pointer; z-index: 30; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.click-play-card { display: grid; gap: 10px; justify-items: center; text-align: center; padding: 28px 34px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-strong); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); max-width: 560px; }
+.cp-title { font-family: var(--f-display); font-weight: 700; font-size: 34px; letter-spacing: .18em; text-transform: uppercase; color: var(--text); }
+.cp-sub { font-family: var(--f-display); font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: var(--cyan); }
+.cp-hint { font-size: 14px; color: var(--muted); line-height: 1.5; }
