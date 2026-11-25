@@ -120,7 +120,7 @@ export function validate(model, { ground = 0 } = {}) {
   const lib = model.lib;
   const P = model.placements;
   const errors = [], warnings = [];
-  const label = (p) => `#${p.index} ${p.def.name} ${p.color.name} (paso ${p.step + 1})`;
+  const label = (p) => (p.fig !== undefined ? `minifigura ${p.fig + 1}` : `#${p.index} ${p.def.name} ${p.color.name} (paso ${p.step + 1})`);
 
   // Geometría rotada por pieza+orientación (se comparte entre copias).
   const cache = new Map();

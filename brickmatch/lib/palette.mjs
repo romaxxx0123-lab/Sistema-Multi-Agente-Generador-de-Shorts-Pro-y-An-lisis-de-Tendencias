@@ -17,7 +17,7 @@ export const COLOR_NAMES = [
   'Yellow', 'Orange', 'Bright Light Orange', 'Dark Orange', 'Medium Nougat', 'Flat Silver',
   'Trans-Clear', 'Trans-Light Blue', 'Trans-Dark Blue', 'Trans-Yellow', 'Trans-Orange', 'Trans-Red',
   'Trans-Green', 'Trans-Neon Orange', 'Lavender', 'Magenta', 'Coral', 'Light Aqua', 'Sand Blue',
-  'Dark Purple', 'Trans-Dark Pink',
+  'Dark Purple', 'Trans-Dark Pink', 'Medium Blue',
 ];
 
 const S = [0, -1]; // frente local hacia -z
@@ -76,6 +76,16 @@ export const PARTS = {
   '64644': { box: CELL(40) }, // catalejo
   '87747': { verified: true }, // garra/cuchilla con barra: LDraw y Rebrickable la nombran distinto
   '11211': { front: S }, // ladrillo 1x2 con 2 studs laterales
+  // Set 70751 y parecidos
+  shoji: { ld: '60601', rb: '60601pr0001' }, // vidrio 1x2x2 impreso: se dibuja liso
+  '3679': { box: { min: [-20, 0, -20], max: [20, 8, 20] } }, // tapa de plato giratorio 2x2
+  '3839b': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: S }, // plate 1x2 con manijas al frente
+  '4738b': { box: { min: [-40, 0, -20], max: [40, 32, 20] } }, // cofre: las asas sobresalen a los lados
+  '3957b': { box: { min: [-10, -88, -10], max: [10, 8, 10] } }, // antena
+  '3626c': { box: CELL(24) }, // cabeza de minifigura lisa
+  '2921': { box: CELL(24), front: S }, // ladrillo 1x1 con manija al frente
+  '60897': { box: CELL(8), front: S }, // plate 1x1 con clip vertical al frente
+  '30150': { verified: true }, // cajón con manijas: mismo molde, nombres distintos
 };
 
 // Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.

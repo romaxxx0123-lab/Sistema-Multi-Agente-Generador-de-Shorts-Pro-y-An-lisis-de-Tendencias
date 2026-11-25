@@ -17,6 +17,7 @@ const state = {
   tab: 'sets',
   selected: [],
   showMissing: true,
+  showFigs: true,
   spares: false,
   sort: 'exact',
   maxSize: 0,
@@ -103,6 +104,9 @@ function applyStates() {
       : `Con <b>${esc(state.selected.join(' + '))}</b> armás el modelo completo`;
   }
   stage.setStates(states);
+  // Las minifiguras de prueba se ven con el modelo terminado, no en medio del armado.
+  const lastStep = state.report.counts.steps - 1;
+  stage.setFigs(state.showFigs && !(state.tab === 'steps' && state.step < lastStep));
   $('stage-flag').hidden = !flag;
   $('stage-flag').classList.toggle('miss', miss);
   $('stage-flag').innerHTML = flag;
@@ -177,6 +181,7 @@ function renderBrief() {
       <span class="fact"><b>${num(r.counts.lots)}</b> lotes distintos</span>
       <span class="fact"><b>${num(r.counts.steps)}</b> pasos</span>
       ${check}
+      ${r.figs ? `<span class="fact ${r.figs.ok ? 'ok' : 'err'}">${r.figs.ok ? `Entran <b>${num(r.figs.count)}</b> minifiguras sin chocar` : `${r.figs.errors.length} minifigura(s) no entran`}</span>` : ''}
     </div>`;
 }
 
@@ -437,6 +442,11 @@ function wire() {
     e.currentTarget.setAttribute('aria-pressed', String(stage.showEdges));
   });
   $('tool-fit').addEventListener('click', frame);
+  $('tool-figs').addEventListener('click', (e) => {
+    state.showFigs = !state.showFigs;
+    e.currentTarget.setAttribute('aria-pressed', String(state.showFigs));
+    applyStates();
+  });
   window.addEventListener('hashchange', () => {
     const id = location.hash.slice(1);
     if (id && id !== state.id) loadModel(id);
@@ -470,6 +480,12 @@ async function loadModel(id) {
     await stage.load(await modelText);
     if (state.id !== id) return;
     if (stage.parts.length !== report.placements.length) throw new Error('El modelo 3D y la lista de piezas no coinciden');
+    $('tool-figs').hidden = !report.figs;
+    if (report.figs) {
+      const figText = await fetch(`models/${id}/figs.mpd`).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+      if (state.id !== id) return;
+      if (figText) await stage.loadFigs(figText);
+    }
     frame();
     msg.hidden = true;
     applyStates();
@@ -497,9 +513,10 @@ async function boot() {
     document.documentElement.classList.add('shot');
     stage.resize();
   };
-  api.shot = ({ azimuth, elevation, zoom = 1, step = null, edges = true }) => {
+  api.shot = ({ azimuth, elevation, zoom = 1, step = null, edges = true, figs = true }) => {
     stage.setEdges(edges);
     stage.setStates(state.report.placements.map(([, s]) => (step === null || s <= step ? 'normal' : 'hidden')));
+    stage.setFigs(figs && step === null);
     stage.resize();
     stage.view(azimuth, elevation, zoom);
     stage.renderNow();

@@ -5,6 +5,8 @@ la mayoría de esas piezas para comprarlo y armar tu diseño en vez del oficial.
 
 Proyecto independiente del resto del repo: vive entero en esta carpeta.
 
+![Base Universal Ninja: 573 piezas del set 70751, con 33 minifiguras de prueba](models/base-universal/renders/hero.jpg)
+
 | Pabellón Zen: 285 piezas, 100 % con el set 10315 | Templo Zen Ninjago: 307 piezas, diseño libre | Base Ninja: 111 piezas, 100 % con el set 71826 |
 | --- | --- | --- |
 | ![Pabellón Zen](models/pabellon-zen/renders/hero.jpg) | ![Templo Zen Ninjago](models/templo-zen/renders/hero.jpg) | ![Base Ninja](models/base-ninja/renders/hero.jpg) |
@@ -17,6 +19,8 @@ Proyecto independiente del resto del repo: vive entero en esta carpeta.
    **busca en todos los sets** cuál cubre más piezas.
 3. Lo ves en la mini app: modelo 3D, pasos de armado, lista de piezas y ranking
    de sets. Al elegir un set, el modelo marca en rojo lo que te faltaría.
+4. Si el modelo es para tus minifiguras, se colocan **minifiguras de prueba**:
+   el validador confirma que entran sin chocar y el visor las muestra u oculta.
 
 Cuando ningún set cubre lo suficiente, el diseño se adapta a un set concreto.
 Si el pedido es "con un set barato", se elige primero la caja y se diseña solo
@@ -27,6 +31,11 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `pabellon-zen` (adaptado) | 285 | 10315 Tranquil Garden (1.363 piezas) | 285 de 285, **100 %** |
 | `templo-zen` (diseño libre) | 307 | 71861 The Old Town (4.852 piezas) | 106 de 307, 34,5 % |
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
+| `base-universal` (para 30 minifiguras) | 573 | 70751 Temple of Airjitzu (2.033 piezas) | 573 de 573, **100 %** |
+
+`base-universal` usa como donante un set retirado: el original se consigue
+usado, y es de los más copiados por marcas alternativas, que es la forma barata
+de conseguir las mismas piezas. El segundo mejor set solo cubre el 22 %.
 
 ## Comandos
 
@@ -37,6 +46,7 @@ npm run model -- pabellon-zen    # arma, valida y rankea sets → model.ldr, mod
 npm run viewer                   # construye la mini app en dist/
 npm run serve                    # la abre en http://localhost:4173
 npm run render -- pabellon-zen   # capturas para revisar (hero, lado, frente, atras, arriba, detalle)
+npm run render -- base-universal --no-figs   # lo mismo, sin las minifiguras de prueba
 ```
 
 Herramientas para diseñar:
@@ -52,6 +62,7 @@ node scripts/coverage.mjs pabellon-zen 10315-1     # qué falta con un set y qu�
 node scripts/donors.mjs --theme=ninjago --max=300  # cajas chicas con más pieza de construcción
 node scripts/set-usable.mjs 71826-1            # piezas de construcción de un set que se pueden dibujar
 node scripts/set-colors.mjs 71826-1            # inventario de un set agrupado por color
+node scripts/budget.mjs base-universal 70751-1 --left   # sobregiros y qué queda sin usar en la caja
 node scripts/selftest.mjs                      # pruebas del validador
 ```
 
@@ -78,6 +89,11 @@ export default function build(m, { rect, fill, roofRing }) {
 laterales) y `{ on: otraPieza }` declara uniones que no son por stud (barras,
 vidrios en su marco).
 
+`m.fig(x, y, z, { face: 'S', color: 'Red', hat: '93059' })` para una minifigura
+de prueba sobre dos studs. No entra en la lista de piezas ni en la búsqueda de
+sets: sirve para comprobar cuántas entran y dónde. `meta.order` decide qué
+modelo abre primero la mini app (el más alto).
+
 ## Qué revisa el validador
 
 Trabaja con la geometría real de cada pieza, no con cajas:
@@ -90,6 +106,9 @@ Trabaja con la geometría real de cada pieza, no con cajas:
 - **Existencia**: cada pieza en ese color tiene que haber salido en algún set.
   También avisa si es rara o si el número significa piezas distintas en los
   dos catálogos.
+
+- **Minifiguras de prueba**: cada una tiene que tener los dos pies sobre studs
+  y no tocar nada (ni paredes, ni muebles, ni a otra minifigura).
 
 No calcula resistencia: una pieza sostenida por un solo stud cuenta como unida.
 
@@ -110,7 +129,7 @@ forma y, para los 12 primeros, el mejor segundo set para completar lo que falta.
 ```
 lib/        motor: ldraw (geometría), builder (colocar piezas), validate, catalog, match, palette, helpers
 scripts/    comandos de arriba
-models/     un modelo por carpeta: model.mjs (fuente) + model.ldr, model.mpd, report.json, renders/
+models/     un modelo por carpeta: model.mjs (fuente) + model.ldr, model.mpd, figs.mpd, report.json, renders/
 viewer/     mini app (three.js): page.html + src/
 data/       datos bajados (no se versiona)
 dist/       mini app construida (no se versiona)

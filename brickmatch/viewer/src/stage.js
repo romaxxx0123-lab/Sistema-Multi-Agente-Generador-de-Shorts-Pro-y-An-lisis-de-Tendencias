@@ -53,6 +53,8 @@ export class Stage {
     this.scene.add(this.holder);
 
     this.parts = []; // un Group por pieza colocada, en el orden del modelo
+    this.figRoot = null;
+    this.showFigs = true;
     this.showEdges = true;
     this.autoRotate = false;
     this.variants = new Map();
@@ -101,6 +103,44 @@ export class Stage {
     this._dirty = false;
   }
 
+  // Sombras y acabado del plástico para todo lo que se carga.
+  _tune(root) {
+    root.traverse((c) => {
+      if (!c.isMesh) return;
+      c.castShadow = true;
+      c.receiveShadow = true;
+      BASE.set(c, c.material);
+      for (const m of Array.isArray(c.material) ? c.material : [c.material]) {
+        if (m.transparent) {
+          m.roughness = 0.08;
+          m.envMapIntensity = 1.4;
+        } else if (m.metalness < 0.2) {
+          m.roughness = 0.55;
+        }
+      }
+    });
+  }
+
+  // Capa de minifiguras de prueba (figs.mpd): se superpone al modelo ya cargado.
+  async loadFigs(text) {
+    const loader = new LDrawLoader();
+    loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
+    loader.smoothNormals = true;
+    const root = await new Promise((resolve, reject) => loader.parse(text, resolve, reject));
+    root.rotation.x = Math.PI;
+    root.position.copy(this.root.position);
+    this._tune(root);
+    if (this.figRoot) this.holder.remove(this.figRoot);
+    this.figRoot = root;
+    this.holder.add(root);
+    this.refresh();
+  }
+
+  setFigs(on) {
+    this.showFigs = on;
+    this.refresh();
+  }
+
   // Carga el texto .mpd empaquetado. Devuelve cuando el modelo está en escena.
   async load(text) {
     this.holder.clear();
@@ -112,21 +152,8 @@ export class Stage {
     const root = await new Promise((resolve, reject) => loader.parse(text, resolve, reject));
     root.rotation.x = Math.PI; // LDraw tiene la Y hacia abajo
     this.parts = root.children.filter((c) => c.isGroup);
-    root.traverse((c) => {
-      if (c.isMesh) {
-        c.castShadow = true;
-        c.receiveShadow = true;
-        BASE.set(c, c.material);
-        for (const m of Array.isArray(c.material) ? c.material : [c.material]) {
-          if (m.transparent) {
-            m.roughness = 0.08;
-            m.envMapIntensity = 1.4;
-          } else if (m.metalness < 0.2) {
-            m.roughness = 0.55;
-          }
-        }
-      }
-    });
+    this.figRoot = null;
+    this._tune(root);
     this.root = root;
     this.holder.add(root);
     root.updateMatrixWorld(true);
@@ -261,6 +288,12 @@ export class Stage {
         }
       });
     });
+    if (this.figRoot) {
+      this.figRoot.visible = this.showFigs;
+      this.figRoot.traverse((c) => {
+        if (c.isLineSegments) c.visible = this.showEdges;
+      });
+    }
     this.invalidate();
   }
 }

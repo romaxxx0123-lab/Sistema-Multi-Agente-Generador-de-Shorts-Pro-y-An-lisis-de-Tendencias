@@ -34,8 +34,12 @@ for (const id of fs.readdirSync(path.join(root, 'models')).sort()) {
   fs.mkdirSync(out, { recursive: true });
   fs.copyFileSync(path.join(dir, 'model.mpd'), path.join(out, 'model.mpd'));
   fs.copyFileSync(path.join(dir, 'report.json'), path.join(out, 'report.json'));
-  if (!id.startsWith('_')) index.push({ id, title: report.title, pieces: report.counts.pieces });
+  if (fs.existsSync(path.join(dir, 'figs.mpd'))) fs.copyFileSync(path.join(dir, 'figs.mpd'), path.join(out, 'figs.mpd'));
+  else fs.rmSync(path.join(out, 'figs.mpd'), { force: true });
+  if (!id.startsWith('_')) index.push({ id, title: report.title, pieces: report.counts.pieces, order: report.order || 0 });
 }
+// Primero los modelos más nuevos (meta.order más alto); después por nombre.
+index.sort((a, b) => b.order - a.order || a.id.localeCompare(b.id));
 fs.writeFileSync(path.join(dist, 'models/index.json'), JSON.stringify(index));
 
 const page = fs.readFileSync(path.join(root, 'viewer/page.html'), 'utf8');

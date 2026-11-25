@@ -3,7 +3,7 @@
 //
 // Uso: npm run render -- <id> [--views=hero,lado,frente,atras,arriba,detalle] [--size=1400x1000]
 //      (una vista también puede ser azimut:elevación:zoom, p. ej. --views=-34:22:1.4)
-//                              [--step=N] [--no-edges] [--png] [--out=carpeta]
+//                              [--step=N] [--no-edges] [--no-figs] [--png] [--out=carpeta]
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -70,10 +70,10 @@ const names = (opt.views || 'hero,lado').split(',');
 for (const name of names) {
   const v = VIEWS[name] || name.split(':').map(Number);
   await page.evaluate(
-    ([a, e, z, step, edges]) => window.brickmatch.shot({ azimuth: a, elevation: e, zoom: z, step, edges }),
-    [v[0], v[1], v[2] ?? 1, opt.step !== undefined ? Number(opt.step) : null, !opt['no-edges']],
+    ([a, e, z, step, edges, figs]) => window.brickmatch.shot({ azimuth: a, elevation: e, zoom: z, step, edges, figs }),
+    [v[0], v[1], v[2] ?? 1, opt.step !== undefined ? Number(opt.step) : null, !opt['no-edges'], !opt['no-figs']],
   );
-  const base = `${name.replace(/[^a-z0-9]+/gi, '_')}${opt.step !== undefined ? `_paso${opt.step}` : ''}`;
+  const base = `${name.replace(/[^a-z0-9]+/gi, '_')}${opt.step !== undefined ? `_paso${opt.step}` : ''}${opt['no-figs'] ? '_vacia' : ''}`;
   const file = path.join(outDir, `${base}.${opt.png ? 'png' : 'jpg'}`);
   await page.locator('#stage-canvas').screenshot(opt.png ? { path: file } : { path: file, type: 'jpeg', quality: 88 });
   console.log(file);

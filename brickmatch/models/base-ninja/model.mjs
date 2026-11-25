@@ -5,6 +5,7 @@
 //
 // Grilla: x 0..12 (oeste→este), z 0..10 (frente→fondo), y en plates.
 export const meta = {
+  order: 2,
   title: 'Base Ninja',
   prompt: 'Hacé una base de operaciones Ninjago con un set barato',
   description: 'Torre-pagoda de mando con domo dorado y cuchillas, arena de Spinjitzu, armero con katana y sai, gong y brasero. Diseñada con las piezas del set 71826 Dragon Spinjitzu Battle Pack (186 piezas, USD 19,99 de lista en EE. UU.).',

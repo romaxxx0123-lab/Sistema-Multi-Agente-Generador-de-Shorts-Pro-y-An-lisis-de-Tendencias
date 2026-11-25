@@ -55,6 +55,9 @@ export class Model {
     this.placements = [];
     this.steps = [];
     this.links = []; // conexiones declaradas a mano (clips, barras, encastres)
+    this.props = []; // minifiguras de prueba: no son piezas del modelo
+    this.propLinks = [];
+    this.figs = 0;
     this.step('Inicio');
   }
 
@@ -150,6 +153,31 @@ export class Model {
     this.placements.push(p);
     if (opts.on) this.links.push([p.index, opts.on.index]);
     return p;
+  }
+
+  // Minifigura de prueba parada sobre 2 studs. No entra en la lista de piezas ni
+  // en la búsqueda de sets: sirve para comprobar cuántas entran y verlas en el visor.
+  //   (x, z) = esquina mínima de su huella (2 studs de ancho hacia donde mira)
+  //   y = altura del piso en plates     face: hacia dónde mira ('S' por defecto)
+  //   color: torso y piernas            legs, head, hat, hatColor: opcionales
+  fig(x, y, z, opts = {}) {
+    const { face = 'S', color = 'Red', legs = color, head = 'Yellow', hat = null, hatColor = color } = opts;
+    const R = rotY({ S: 0, W: 1, N: 2, E: 3 }[face]);
+    const side = face === 'E' || face === 'W';
+    const cx = (x + (side ? 0.5 : 1)) * STUD, cz = (z + (side ? 1 : 0.5)) * STUD;
+    const feet = -y * PLATE;
+    const id = this.figs++;
+    const put = (part, col, up) => {
+      const M = R.slice();
+      M[9] = cx; M[10] = feet - up; M[11] = cz;
+      const p = { index: -1, def: this.partDef(part), color: this.colorDef(col), matrix: M, step: 0, note: '', nest: `fig${id}`, fig: id };
+      this.props.push(p);
+      return p;
+    };
+    const parts = [put('3815c01', legs, 40), put('973c01', color, 72), put('3626cp01', head, 96)];
+    if (hat) parts.push(put(hat, hatColor, 96));
+    for (let i = 1; i < parts.length; i++) this.propLinks.push([parts[i], parts[i - 1]]);
+    return parts;
   }
 
   // Declara una unión que no es stud-con-encastre (clip, barra, puerta en marco…).

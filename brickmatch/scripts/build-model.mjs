@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { LDrawLibrary, defaultLibraryRoot } from '../lib/ldraw.mjs';
+import { LDrawLibrary, defaultLibraryRoot, applyPoint } from '../lib/ldraw.mjs';
 import { Catalog, defaultIndexDir } from '../lib/catalog.mjs';
 import { resolvePalette } from '../lib/palette.mjs';
 import { Model } from '../lib/builder.mjs';
@@ -38,6 +38,38 @@ mod.default(model, helpers(model));
 
 // --- validación física ------------------------------------------------------
 const check = validate(model);
+
+// --- minifiguras de prueba: ¿entran sin chocar y bien paradas? ---------------
+let figs = null;
+if (model.props.length) {
+  const N = model.placements.length;
+  model.props.forEach((p, i) => { p.index = N + i; });
+  const both = Object.create(model);
+  both.placements = [...model.placements, ...model.props];
+  both.links = [...model.links, ...model.propLinks.map(([a, b]) => [a.index, b.index])];
+  // Cada pie tiene que caer sobre un stud: eso es lo que la sostiene.
+  const studAt = new Map();
+  const key = (x, y, z) => `${Math.round(x)}|${Math.round(y)}|${Math.round(z)}`;
+  for (const q of model.placements) {
+    for (const st of model.studsOf(q)) if (st.axis[1] < -0.99) studAt.set(key(...st.base), q.index);
+  }
+  const loose = [];
+  for (const p of model.props) {
+    if (p.def.ld !== '3815c01') continue;
+    let feet = 0;
+    for (const side of [-10, 10]) {
+      const f = applyPoint(p.matrix, side, 40, 0);
+      const q = studAt.get(key(...f));
+      if (q === undefined) continue;
+      feet++;
+      both.links.push([p.index, q]);
+    }
+    if (feet < 2) loose.push(`La minifigura ${p.fig + 1} no tiene los dos pies sobre studs (${feet} de 2)`);
+  }
+  const r = validate(both);
+  const errors = [...new Set([...loose, ...r.errors.filter((e) => e.includes('minifigura'))])];
+  figs = { count: model.figs, ok: errors.length === 0, errors };
+}
 
 // --- cada pieza+color tiene que existir de verdad ---------------------------
 const bom = model.bom();
@@ -75,10 +107,11 @@ const lines = model.toLDrawLines();
 const usedColors = [...new Map(model.placements.map((p) => [p.color.ld, p.color])).values()];
 const shade = (hex, f) => '#' + [1, 3, 5].map((i) => Math.round(Math.min(255, parseInt(hex.slice(i, i + 2), 16) * f)).toString(16).padStart(2, '0')).join('').toUpperCase();
 const lum = (hex) => [1, 3, 5].reduce((s, i, k) => s + (parseInt(hex.slice(i, i + 2), 16) / 255) * [0.2126, 0.7152, 0.0722][k], 0);
-const colorLines = usedColors.map((c) => {
+const colorLine = (c) => {
   const edge = lum(c.rgb) < 0.12 ? '#5B6670' : shade(c.rgb, 0.55);
   return `0 !COLOUR ${c.name.replace(/[^A-Za-z0-9]+/g, '_')} CODE ${c.ld} VALUE ${c.rgb.toUpperCase()} EDGE ${edge}${c.trans ? ' ALPHA 150' : ''}${c.finish ? ` ${c.finish}` : ''}`;
-});
+};
+const colorLines = usedColors.map(colorLine);
 const header = [
   `0 ${model.title}`,
   `0 Name: ${id}.ldr`,
@@ -88,6 +121,15 @@ const header = [
 fs.writeFileSync(path.join(dir, 'model.ldr'), [...header, ...lines].join('\n') + '\n');
 const packed = lib.pack(lines, { title: model.title, colorLines });
 fs.writeFileSync(path.join(dir, 'model.mpd'), packed.text);
+// Las minifiguras van en un archivo aparte: el visor las muestra como capa.
+const figFile = path.join(dir, 'figs.mpd');
+if (figs) {
+  const figColors = [...new Map(model.props.map((p) => [p.color.ld, p.color])).values()];
+  const figLines = model.props.map((p) => `1 ${p.color.ld} ${[9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => p.matrix[i]).join(' ')} ${p.def.ld}.dat`);
+  fs.writeFileSync(figFile, lib.pack(figLines, { title: `${model.title} - minifiguras`, colorLines: figColors.map(colorLine) }).text);
+} else if (fs.existsSync(figFile)) {
+  fs.unlinkSync(figFile);
+}
 
 // --- ranking de sets ---------------------------------------------------------
 const lineIndex = new Map(bom.map((b, i) => [`${b.part}|${b.color}`, i]));
@@ -96,6 +138,7 @@ const report = {
   title: model.title,
   description: model.description,
   prompt: meta.prompt || '',
+  order: meta.order || 0,
   generated: new Date().toISOString().slice(0, 10),
   data: { source: catalog.source, date: catalog.dataDate, setsSearched: catalog.sets.length },
   counts: { pieces: model.placements.length, lots: bom.length, steps: model.steps.length },
@@ -107,6 +150,7 @@ const report = {
     qty: b.qty, sets: b.sets, lastYear: b.lastYear,
   })),
   validation: { ok: check.ok, errors: check.errors, warnings: check.warnings, notes, stats: check.stats },
+  figs,
   sets: null,
 };
 if (!flags.has('--no-sets')) report.sets = matchSets(catalog, report.bom);
@@ -122,7 +166,9 @@ const show = (title, list, max) => {
   for (const e of list.slice(0, max)) console.log(`  - ${e}`);
   if (list.length > max) console.log(`  … y ${list.length - max} más`);
 };
+if (figs) console.log(`Minifiguras de prueba: ${figs.count} · ${figs.ok ? 'todas entran sin chocar' : `${figs.errors.length} problema(s)`}`);
 show('ERRORES', check.errors, flags.has('--quiet') ? 12 : 60);
+if (figs) show('MINIFIGURAS', figs.errors, 30);
 show('AVISOS', check.warnings, 20);
 show('NOTAS', notes, 20);
 if (report.sets) {
@@ -132,4 +178,4 @@ if (report.sets) {
     console.log(`  ${pct(st.exact)} exacto ${pct(st.shape)} forma  ${st.num.padEnd(10)} ${String(st.year)} ${String(st.parts).padStart(5)} pzs  ${st.name}  [${st.theme}]`);
   }
 }
-process.exit(check.ok ? 0 : 2);
+process.exit(check.ok && (!figs || figs.ok) ? 0 : 2);
