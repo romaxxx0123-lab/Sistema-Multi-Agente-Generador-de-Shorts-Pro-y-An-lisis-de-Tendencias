@@ -138,6 +138,10 @@ def greenhouse(C, G):
     # parabrisas y luneta (vista superior, sólo caras del techo)
     topf = lambda f: f.material_index in (M_PAINT, M_FRAME, M_GLASS) and C.st(f)[1] > 6.0 - 1e-4 and C.normal(f).z > 0.05
     dt = G.get('pillar_frame_t', 0.03)
+    if G.get('ws_space') != 'front':
+        # el borde inferior del parabrisas nunca pasa por delante del pie del pilar A (si no, toma caras del capó)
+        n = len(G['ws_poly']) // 2
+        G = dict(G, ws_poly=G['ws_poly'][:n] + [(x, max(y, a)) for (x, y) in G['ws_poly'][n:]])
     if G.get('ws_space') == 'front':
         # parabrisas casi vertical (furgón): se corta en vista frontal sobre las caras que miran adelante
         fr = Space('front')

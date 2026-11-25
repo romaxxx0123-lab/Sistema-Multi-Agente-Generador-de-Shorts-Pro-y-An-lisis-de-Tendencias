@@ -162,3 +162,93 @@ def mirror_obj(ob):
     o2 = bpy.data.objects.new(ob.name + '_L', me)
     bpy.context.scene.collection.objects.link(o2)
     return o2
+
+
+def sweep(name, path, normals, profile, matname, closed=False, cap=True, smooth=True):
+    """Barre un perfil 2D [(a, b)] a lo largo de un camino 3D: a sobre el costado (tangente × normal),
+    b sobre la normal (hacia afuera). Sirve para marcos de parrilla, barras con espesor y guías de luz."""
+    import bmesh as _bm
+    n = len(path)
+    m = len(profile)
+    if n < 2:
+        return None
+    verts, faces = [], []
+    for k in range(n):
+        if closed:
+            a, b = path[(k - 1) % n], path[(k + 1) % n]
+        else:
+            a, b = path[max(0, k - 1)], path[min(n - 1, k + 1)]
+        t = (b - a)
+        if t.length < 1e-9:
+            t = Vector((1, 0, 0))
+        t.normalize()
+        nn = Vector(normals[k]).normalized()
+        s = t.cross(nn)
+        if s.length < 1e-9:
+            s = t.orthogonal()
+        s.normalize()
+        nn = s.cross(t).normalized()
+        for (pa, pb) in profile:
+            verts.append(path[k] + s * pa + nn * pb)
+    segs = n if closed else n - 1
+    for k in range(segs):
+        k2 = (k + 1) % n
+        for j in range(m):
+            j2 = (j + 1) % m
+            faces.append((k * m + j, k2 * m + j, k2 * m + j2, k * m + j2))
+    if cap and not closed:
+        faces.append(tuple(range(m - 1, -1, -1)))
+        faces.append(tuple((n - 1) * m + j for j in range(m)))
+    ob = obj_from(name, verts, faces, matname, smooth)
+    bm = _bm.new()
+    bm.from_mesh(ob.data)
+    _bm.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(ob.data)
+    bm.free()
+    ob.data.use_auto_smooth = True
+    ob.data.auto_smooth_angle = math.radians(50)
+    return ob
+
+
+def rrect(w, h, r=0.3, n=3):
+    """Perfil de rectángulo redondeado (ancho w sobre el costado, alto h sobre la normal, base en 0)."""
+    rr = min(w, h) * r
+    pts = []
+    corners = [(w / 2 - rr, h - rr, 0.0), (-w / 2 + rr, h - rr, math.pi / 2), (-w / 2 + rr, rr, math.pi), (w / 2 - rr, rr, 1.5 * math.pi)]
+    for (cx, cy, a0) in corners:
+        for i in range(n + 1):
+            a = a0 + (math.pi / 2) * i / n
+            pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    return pts
+
+
+def cap_mesh(name, c, axis, radius, height, matname, rings=6, segs=28):
+    """Casquete esférico (lente de proyector): base de radio 'radius' en c, abombado 'height' sobre el eje."""
+    axis = Vector(axis).normalized()
+    u = axis.orthogonal().normalized()
+    v = axis.cross(u).normalized()
+    R = (radius * radius + height * height) / (2 * height)
+    a_max = math.asin(min(1.0, radius / R))
+    verts = []
+    for i in range(rings + 1):
+        a = a_max * (1 - i / rings)
+        r = R * math.sin(a)
+        h = R * math.cos(a) - (R - height)
+        for j in range(segs):
+            phi = 2 * math.pi * j / segs
+            verts.append(c + (u * math.cos(phi) + v * math.sin(phi)) * r + axis * h)
+    faces = []
+    for i in range(rings):
+        for j in range(segs):
+            j2 = (j + 1) % segs
+            faces.append((i * segs + j, i * segs + j2, (i + 1) * segs + j2, (i + 1) * segs + j))
+    ob = obj_from(name, verts, faces, matname)
+    import bmesh as _bm
+    bm = _bm.new()
+    bm.from_mesh(ob.data)
+    for f in bm.faces:
+        if f.normal.dot(f.calc_center_median() - (c - axis * R)) < 0:
+            f.normal_flip()
+    bm.to_mesh(ob.data)
+    bm.free()
+    return ob

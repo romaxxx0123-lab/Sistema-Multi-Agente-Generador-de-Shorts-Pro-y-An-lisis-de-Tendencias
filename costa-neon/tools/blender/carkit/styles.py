@@ -128,12 +128,14 @@ def head_quad(D, body, clean_bvh, h):
         fr = surface(clean_bvh, body, 'front', x, z, mirror_half=True)
         if fr is None:
             continue
-        fr = Frame(fr.o - fr.n * 0.03, Vector((0, 1, 0.05)))
-        objs += P.cylinder('quad_trim', fr.o + fr.n * 0.012, fr.o - fr.n * 0.01, r * 1.18, r * 1.12, 'chrome', 32, False, False)
-        objs += bowl('head_bowl', fr, r, r * 0.4, 0.0, 0.06)
-        objs += P.cylinder('head_bulb', fr.o - fr.n * 0.035, fr.o - fr.n * 0.02, r * 0.3, r * 0.3, 'inner', 20, False, True, 'head')
-        # lente de vidrio con domo apenas abombado
-        objs += P.cylinder('quad_lens', fr.o + fr.n * 0.002, fr.o + fr.n * 0.008, r * 1.0, r * 0.86, 'lens', 32, False, True)
+        ax = Vector((0, 1, 0.04)).normalized()
+        c = fr.o - fr.n * 0.03
+        # aro cromado con volumen, reflector parabólico, lámpara y lente de vidrio abombada
+        ring = [c + (Vector((1, 0, 0)) * math.cos(a) + Vector((0, 0, 1)) * math.sin(a)) * (r * 1.12) for a in [2 * math.pi * i / 36 for i in range(36)]]
+        objs.append(P.sweep('quad_ring', ring, [ax] * len(ring), P.rrect(0.012, 0.012, 0.45, 3), 'chrome', closed=True))
+        objs += P.cylinder('head_bowl', c, c - ax * (r * 1.1), r, r * 0.35, 'refl', 32, False, True, 'inner')
+        objs += P.cylinder('head_bulb', c - ax * (r * 0.7), c - ax * (r * 0.45), r * 0.22, r * 0.18, 'inner', 16, False, True, 'head')
+        objs.append(P.cap_mesh('quad_lens', c, ax, r * 1.02, r * 0.28, 'lens'))
     return objs
 
 
@@ -483,35 +485,6 @@ def tail_style(D, body, bvh, tl_list, style):
 
 
 # ------------------------------------------------------------------ espejos
-def mirror_style(F, base, style):
-    """Carcasa del espejo según estilo. base: punto de anclaje sobre la puerta (lado derecho)."""
-    objs = []
-    if style == 'truck':
-        c = Vector((base.x + 0.17, base.y - 0.03, base.z + 0.10))
-        vs, fs = P.superellipsoid(0.075, 0.06, 0.15, 0.25, 24, 14, c)
-        objs.append(P.obj_from('mirror_house', vs, fs, 'trim'))
-        gv, gf = P.superellipsoid(0.066, 0.002, 0.135, 0.2, 20, 6, (c.x, c.y - 0.061, c.z))
-        objs.append(P.obj_from('mirror_glass', gv, gf, 'chrome'))
-        for dz in (-0.07, 0.07):
-            objs.append(P.tube('mirror_arm', [Vector((base.x, base.y, base.z + 0.04 + dz * 0.3)), Vector((c.x - 0.06, c.y, c.z + dz))], 0.012, 'trim', 8))
-        bv, bf = P.superellipsoid(0.05, 0.01, 0.008, 0.5, 14, 6, (c.x + 0.01, c.y + 0.055, c.z - 0.13))
-        objs.append(P.obj_from('blink_mirror', bv, bf, 'blink'))
-        return objs
-    if style == 'sport':
-        c = Vector((base.x + 0.12, base.y - 0.05, base.z + 0.06))
-        vs, fs = P.superellipsoid(0.085, 0.045, 0.05, 0.5, 24, 14, c)
-        vs = [(x, (y if y > c.y - 0.02 else c.y - 0.02) + (x - c.x) * 0.18, z) for (x, y, z) in vs]
-        objs.append(P.obj_from('mirror_house', vs, fs, F.get('mirror_mat', 'paint')))
-        gv, gf = P.superellipsoid(0.075, 0.002, 0.04, 0.4, 20, 6, (c.x, c.y - 0.021, c.z))
-        gv = [(x, y + (x - c.x) * 0.18, z) for (x, y, z) in gv]
-        objs.append(P.obj_from('mirror_glass', gv, gf, 'chrome'))
-        objs.append(P.tube('mirror_arm', [Vector((base.x - 0.01, base.y + 0.02, base.z + 0.01)), Vector((c.x - 0.05, c.y + 0.02, c.z - 0.02))], 0.012, 'trim_gloss', 8))
-        bv, bf = P.superellipsoid(0.05, 0.01, 0.006, 0.5, 14, 6, (c.x + 0.015, c.y + 0.038, c.z - 0.02))
-        objs.append(P.obj_from('blink_mirror', bv, bf, 'blink'))
-        return objs
-    return None
-
-
 # ------------------------------------------------------------------ agregados
 def fog_lamps(D, body, clean_bvh, fg):
     objs = []

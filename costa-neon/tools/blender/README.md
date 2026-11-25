@@ -14,9 +14,18 @@ Nada se dibuja a mano: el diseño de cada modelo son tablas de medidas reales en
 3. **Carrocería** (`carkit/shell.py`, `carkit/features.py`): arcos de rueda con pestaña, vidrios hundidos
    con marco, pilares, juntas de paneles en V, ópticas y parrilla con profundidad real, bolsillos de
    manijas, nicho de patente, difusor y escapes.
-4. **Piezas** (`carkit/dress.py`): proyectores, línea LED, intermitentes, firma de los pilotos, lamas de
-   parrilla, espejos con repetidor, manijas, limpiaparabrisas, antena, emblemas, pasarruedas y agregados
-   de variantes (cartel de taxi, barra de luces, defensa).
+4. **Piezas** (`carkit/dress.py` reparte; las piezas finas viven en módulos propios):
+   - `carkit/lamps.py`: ópticas como conjuntos reales ubicados con coordenadas de plano frontal/trasero en
+     metros (como un plano de taller): carcasa oscura con profundidad bajo una lente clara, proyectores
+     (bisel cromado, barril, disco que brilla y lente abombada), reflectores parabólicos, guías de luz LED
+     barridas en 3D, giro ámbar, marcha atrás y molduras.
+   - `carkit/grilles.py`: parrillas y tomas en 3D: marco con volumen sobre el borde del corte, barras con
+     sección y profundidad, mallas de panal o rombos con paredes reales y travesaños.
+   - `carkit/mirrors.py`: espejos con carcasa en gota orientada hacia el conductor, espejo hundido dentro
+     de un borde fino, pie corto, brazo aerodinámico o brazos de utilitario con espejo partido, y repetidor.
+   - `carkit/styles.py`: emblemas, ópticas clásicas (redondas, cuádruples), labio, ganchos, antinieblas.
+   - Además: manijas, limpiaparabrisas, antena, pasarruedas y agregados de variantes (cartel de taxi,
+     barra de luces, defensa).
 5. **Interior** (`carkit/interior.py`): carcasa interna, butacas, banqueta, tablero con pantalla, volante,
    consola, piso y bandeja.
 6. **Exportación** (`carkit/export.py`): oclusión ambiental horneada por vértice con Cycles, un nodo por rol
@@ -35,3 +44,6 @@ cp /tmp/sedan.json assets/cars/sedan.json
 ```
 
 Las variantes (`taxi`, `patrulla`) sólo exportan sus agregados; el juego los suma a una copia del sedán.
+
+Vistas de control útiles además de las generales: `fr34`, `rr34`, `face` y `lamp` (trompa y faro),
+`tail` (cola), `mirror` y `mirror_r` (espejo desde adelante y desde atrás); se calculan para cada modelo.

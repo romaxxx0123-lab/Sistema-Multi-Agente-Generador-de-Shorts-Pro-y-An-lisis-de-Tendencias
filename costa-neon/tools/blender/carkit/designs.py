@@ -960,3 +960,345 @@ SUPERAUTO['features']['taillights'] = [
     dict(poly=[(44, 0.805), (28, 0.805), (12, 0.795), (10, 0.76), (14, 0.745), (44, 0.75)], depth=0.03),
     dict(poly=[(45.5, 0.75), (45.5, 0.805), (91, 0.805), (91, 0.763), (60, 0.76)], depth=0.03),
 ]
+
+# ---------------------------------------------------------------- caras como conjuntos reales (v3)
+# Delta: faros grandes bajo la línea del capó que tocan las esquinas de la parrilla; dos proyectores,
+# guía de luz en L, giro ámbar arriba afuera, moldura cromada; parrilla con marco cromado y barras 3D;
+# toma inferior de panal con marco negro brillante; pilotos con guías de luz en C.
+F = SEDAN['features']
+F.update(
+    headlight=dict(
+        style='assembly', depth=0.09, round=0.16,
+        top=[(72, 0.703), (60, 0.716), (48, 0.732), (36, 0.75), (24, 0.763), (14, 0.772), (11, 0.77)],
+        bottom=[(72, 0.598), (60, 0.615), (48, 0.638), (36, 0.668), (24, 0.70), (14, 0.735), (11, 0.752)],
+        projectors=[(0.12, 0.5, 0.027), (0.33, 0.52, 0.023)],
+        drl=[[(0.03, 0.86), (0.03, 0.16), (0.3, 0.13), (0.6, 0.16), (0.9, 0.34)]],
+        signal=[[(0.55, 0.8), (0.93, 0.66)]],
+        chrome=[[(0.05, 0.93), (0.5, 0.93)]],
+        bezels=[([(0.22, 0.12), (0.22, 0.9)], 0.008)],
+    ),
+    grille=dict(
+        assembly=True, poly=[(-0.02, 0.585), (0.205, 0.585), (0.33, 0.56), (0.40, 0.50), (0.41, 0.445), (0.37, 0.42), (-0.02, 0.42)],
+        depth=0.09, frame=dict(w=0.022, d=0.013, mat='chrome'), insert='hbars', count=5, bar=0.011, bar_d=0.02,
+        bar_mat='chrome', inset=0.014, mesh_behind=True, pitch=0.022,
+    ),
+    intake=dict(
+        assembly=True, poly=[(-0.02, 0.36), (0.47, 0.36), (0.56, 0.33), (0.58, 0.29), (0.53, 0.262), (-0.02, 0.262)],
+        depth=0.07, frame=dict(w=0.012, d=0.008, mat='trim_gloss'), insert='honeycomb', pitch=0.03, inset=0.012,
+    ),
+    taillamps=[
+        dict(depth=0.05, round=0.2,
+             top=[(56, 0.985), (44, 0.982), (30, 0.972), (18, 0.958), (13, 0.944)],
+             bottom=[(56, 0.88), (44, 0.882), (30, 0.888), (18, 0.905), (13, 0.918)],
+             pipes=[[(0.02, 0.8), (0.5, 0.82), (0.95, 0.6)], [(0.02, 0.2), (0.6, 0.22)], [(0.02, 0.2), (0.02, 0.8)]],
+             blocks=[[(0.12, 0.5), (0.5, 0.5)]], block_w=0.022,
+             reverse=[[(0.62, 0.3), (0.82, 0.32)]], signal=[[(0.62, 0.62), (0.85, 0.55)]]),
+        dict(depth=0.04, round=0.25,
+             top=[(91, 0.966), (75, 0.97), (62, 0.978), (58.5, 0.98)],
+             bottom=[(91, 0.944), (75, 0.946), (62, 0.92), (58.5, 0.88)],
+             pipes=[[(0.0, 0.5), (0.7, 0.5), (0.95, 0.75)]]),
+    ],
+)
+F.pop('taillights', None)
+# revisión v3: la junta del baúl cruzaba el nicho de la patente; tomas laterales con aletas
+SEDAN['features']['gaps'][-1] = ('rearc', [(57.5, 1.05), (57.5, 0.875), (52, 0.80), (47.5, 0.72), (48, 0.665), (52, 0.65), (62, 0.645), (91, 0.643)])
+SEDAN['features']['side_intakes'] = dict(SEDAN['features']['side_intakes'], fins=3)
+SEDAN['features']['gaps'][-1] = ('rearc', [(57.5, 1.05), (57.5, 0.878), (50, 0.866), (44, 0.86), (43.5, 0.70), (46, 0.655), (55, 0.645), (91, 0.643)])
+
+# ---------------------------------------------------------------- v3: el resto de las caras como piezas reales
+# Pulga: faro redondo (proyector + aro LED + giro abajo), ranura de panal con marco cromado, sonrisa de panal,
+# pilotos redondos con aro rojo.
+F = COMPACTO['features']
+F.update(
+    headlight=dict(style='assembly', units=[dict(
+        ellipse=((40.0, 0.665), 0.085, 0.085), depth=0.075,
+        projectors=[(0.5, 0.52, 0.03)], halos=[(0.5, 0.52, 0.066, 'head')],
+        signal=[[(0.3, 0.14), (0.7, 0.14)]], signal_w=0.012)]),
+    grille=dict(assembly=True, poly=F['grille']['poly'], depth=0.06, frame=dict(w=0.012, d=0.008, mat='chrome'),
+                insert='honeycomb', pitch=0.022, cell_d=0.014, inset=0.01),
+    intake=dict(assembly=True, poly=F['intake']['poly'], depth=0.06, frame=dict(w=0.012, d=0.008, mat='trim_gloss'),
+                insert='honeycomb', pitch=0.028, inset=0.01),
+    taillamps=[dict(ellipse=((19.0, 0.925), 0.058, 0.058), depth=0.045, rings=[(0.5, 0.5, 0.042)])],
+)
+F.pop('taillights', None)
+
+# Cóndor: faros partidos (línea diurna arriba, módulo con dos proyectores abajo), parrilla de barras
+# verticales con marco cromado grueso, toma de rombos, pilotos verticales que suben por el pilar.
+F = SUV['features']
+F.update(
+    headlight=dict(style='assembly', units=[
+        dict(top=[(60, 0.93), (40, 0.937), (24, 0.948), (17, 0.948)], bottom=[(60, 0.915), (40, 0.921), (24, 0.932), (17, 0.934)],
+             depth=0.05, round=0.3, drl=[[(0.01, 0.5), (0.8, 0.5)]], drl_r=0.0045, signal=[[(0.82, 0.5), (0.99, 0.5)]], signal_w=0.01),
+        dict(top=[(58, 0.895), (40, 0.90), (27, 0.905)], bottom=[(58, 0.835), (40, 0.84), (27, 0.845)], depth=0.08, round=0.15,
+             projectors=[(0.25, 0.5, 0.021), (0.64, 0.5, 0.021)], chrome=[[(0.03, 0.12), (0.97, 0.12)]],
+             bezels=[([(0.45, 0.1), (0.45, 0.9)], 0.008)]),
+    ]),
+    grille=dict(assembly=True, poly=SUV['features']['grille']['poly'], depth=0.10, frame=dict(w=0.03, d=0.018, mat='chrome'),
+                insert='vbars', pitch=0.045, bar=0.014, bar_d=0.025, bar_mat='chrome', inset=0.016),
+    intake=dict(assembly=True, poly=SUV['features']['intake']['poly'], depth=0.07, frame=dict(w=0.012, d=0.008, mat='trim_gloss'),
+                insert='mesh', pitch=0.03, inset=0.01),
+    taillamps=[dict(top=[(26, 1.33), (10, 1.33), (6, 1.28)], bottom=[(26, 0.95), (10, 0.95), (6, 0.97)], depth=0.05, round=0.2,
+                    pipes=[[(0.15, 0.06), (0.15, 0.94), (0.85, 0.94)], [(0.85, 0.06), (0.15, 0.06)]],
+                    blocks=[[(0.25, 0.32), (0.75, 0.32)], [(0.25, 0.47), (0.75, 0.47)], [(0.25, 0.62), (0.75, 0.62)], [(0.25, 0.77), (0.75, 0.77)]],
+                    block_w=0.014, reverse=[[(0.3, 0.16), (0.7, 0.16)]], signal=[[(0.3, 0.86), (0.7, 0.86)]])],
+)
+F.pop('taillights', None)
+
+# Carga: faro rectangular de utilitario con dos reflectores parabólicos y giro vertical, parrilla negra de tres
+# barras gruesas, pilotos verticales apilados (rojo, ámbar, blanco).
+F = FURGON['features']
+F.update(
+    headlight=dict(style='assembly', units=[dict(
+        top=[(56, 0.955), (36, 0.965), (22, 0.975)], bottom=[(56, 0.84), (36, 0.845), (22, 0.845)], depth=0.09, round=0.12,
+        reflectors=[(0.28, 0.6, 0.034), (0.6, 0.6, 0.03)], drl=[[(0.05, 0.16), (0.76, 0.16)]],
+        signal=[[(0.88, 0.15), (0.88, 0.88)]], signal_w=0.03, chrome=[[(0.05, 0.92), (0.76, 0.92)]])]),
+    grille=dict(assembly=True, poly=FURGON['features']['grille']['poly'], depth=0.10, frame=dict(w=0.02, d=0.012, mat='trim'),
+                insert='hbars', count=3, bar=0.034, bar_d=0.03, bar_mat='trim', inset=0.012),
+    intake=dict(assembly=True, poly=FURGON['features']['intake']['poly'], depth=0.07, insert='mesh', pitch=0.032, inset=0.01),
+    taillamps=[dict(top=[(12, 1.30), (5, 1.30), (3, 1.25)], bottom=[(12, 0.70), (5, 0.70), (3, 0.72)], depth=0.05, round=0.12,
+                    blocks=[[(0.5, 0.64), (0.5, 0.95)]], block_w=0.05, signal=[[(0.5, 0.38), (0.5, 0.56)]], signal_w=0.05,
+                    reverse=[[(0.5, 0.07), (0.5, 0.3)]], reverse_w=0.05)],
+)
+F.pop('taillights', None)
+
+# Ranchera: firma en C alrededor de tres proyectores, parrilla gigante con marco cromado y travesaño grueso,
+# panal detrás, toma de panal, pilotos verticales con C.
+F = PICKUP['features']
+F.update(
+    headlight=dict(style='assembly', units=[dict(
+        top=[(58, 1.012), (40, 1.022), (25, 1.032), (18, 1.032)], bottom=[(58, 0.932), (40, 0.94), (25, 0.945), (18, 0.95)],
+        depth=0.09, round=0.15, projectors=[(0.22, 0.5, 0.02), (0.42, 0.5, 0.02), (0.62, 0.5, 0.02)],
+        drl=[[(0.85, 0.88), (0.08, 0.88), (0.04, 0.6), (0.04, 0.4), (0.08, 0.12), (0.85, 0.12)]],
+        signal=[[(0.92, 0.3), (0.92, 0.7)]], signal_w=0.02)]),
+    grille=dict(assembly=True, poly=PICKUP['features']['grille']['poly'], depth=0.12, frame=dict(w=0.045, d=0.025, mat='chrome'),
+                insert='honeycomb', pitch=0.034, cell_d=0.02, inset=0.02, crossbars=[(0.80, 0.05, 0.03, 'chrome')]),
+    intake=dict(assembly=True, poly=PICKUP['features']['intake']['poly'], depth=0.07, frame=dict(w=0.012, d=0.008, mat='trim_gloss'),
+                insert='honeycomb', pitch=0.03, inset=0.01),
+    taillamps=[dict(top=[(16, 1.15), (8, 1.15), (5, 1.10)], bottom=[(16, 0.84), (8, 0.84), (5, 0.86)], depth=0.05, round=0.15,
+                    pipes=[[(0.85, 0.94), (0.2, 0.94), (0.12, 0.8), (0.12, 0.2), (0.2, 0.06), (0.85, 0.06)]],
+                    blocks=[[(0.35, 0.7), (0.8, 0.7)], [(0.35, 0.56), (0.8, 0.56)]], block_w=0.018,
+                    reverse=[[(0.35, 0.36), (0.8, 0.36)]], signal=[[(0.35, 0.2), (0.8, 0.2)]])],
+)
+F.pop('taillights', None)
+
+# Bravo: parrilla negra de malla con marco cromado y cuatro ópticas redondas reales adentro; panel trasero
+# negro de punta a punta con tres focos rectangulares por lado.
+F = MUSCLE['features']
+F.update(
+    grille=dict(assembly=True, poly=MUSCLE['features']['grille']['poly'], depth=0.10, frame=dict(w=0.016, d=0.01, mat='chrome'),
+                insert='mesh', pitch=0.028, cell_d=0.016, inset=0.014),
+    taillamps=[dict(top=[(91, 0.945), (40, 0.945), (16, 0.935), (14, 0.90)], bottom=[(91, 0.86), (40, 0.86), (16, 0.865), (14, 0.88)],
+                    depth=0.04, round=0.1, dark=True,
+                    blocks=[[(0.04, 0.5), (0.24, 0.5)], [(0.36, 0.5), (0.56, 0.5)], [(0.68, 0.5), (0.88, 0.5)]], block_w=0.05,
+                    signal=[[(0.93, 0.5), (0.985, 0.5)]], signal_w=0.04,
+                    bezels=[([(0.0, 0.04), (1.0, 0.04)], 0.006)], bezel_mat='chrome')],
+)
+F.pop('taillights', None)
+
+# Rayo: faro ovalado con proyector grande, aro de luz y línea diurna inferior; boca ovalada con marco cromado y
+# malla de rombos; pilotos ovalados con guía de luz en anillo.
+F = DEPORTIVO['features']
+F.update(
+    headlight=dict(style='assembly', units=[dict(
+        ellipse=((40.0, 0.62), 0.12, 0.042, -0.12), depth=0.07,
+        projectors=[(0.38, 0.52, 0.022)], halos=[(0.38, 0.52, 0.032, 'head')],
+        drl=[[(0.6, 0.22), (0.85, 0.3), (0.96, 0.5)]], signal=[[(0.62, 0.78), (0.9, 0.7)]], signal_w=0.01)]),
+    grille=dict(assembly=True, poly=DEPORTIVO['features']['grille']['poly'], depth=0.09, frame=dict(w=0.012, d=0.008, mat='chrome'),
+                insert='mesh', pitch=0.026, cell_d=0.015, inset=0.01),
+    taillamps=[dict(ellipse=((31.0, 0.893), 0.135, 0.05), depth=0.045,
+                    pipes=[[(0.06, 0.5), (0.25, 0.86), (0.75, 0.86), (0.94, 0.5), (0.75, 0.14), (0.25, 0.14), (0.06, 0.5)]],
+                    blocks=[[(0.3, 0.5), (0.7, 0.5)]], block_w=0.02)],
+)
+F.pop('taillights', None)
+
+# Vortex: ranura finísima con guía de luz + colmillo de luz diurna debajo, tomas de panal 3D con marco,
+# aletas en las tomas de las esquinas, barra de luz trasera.
+F = SUPERAUTO['features']
+F.update(
+    headlight=dict(style='assembly', units=[
+        dict(top=[(64, 0.576), (46, 0.585), (28, 0.598), (18, 0.60)], bottom=[(64, 0.562), (46, 0.569), (28, 0.584), (18, 0.588)],
+             depth=0.04, round=0.4, drl=[[(0.02, 0.5), (0.98, 0.5)]], drl_r=0.0035),
+        dict(top=[(27, 0.575), (21, 0.578)], bottom=[(27, 0.50), (21, 0.515)], depth=0.04, round=0.3,
+             drl=[[(0.5, 0.9), (0.5, 0.1)]], drl_r=0.004, signal=[[(0.2, 0.9), (0.8, 0.9)]], signal_w=0.006),
+    ]),
+    grille=dict(assembly=True, poly=SUPERAUTO['features']['grille']['poly'], depth=0.12, frame=dict(w=0.012, d=0.008, mat='trim_gloss'),
+                insert='honeycomb', pitch=0.026, cell_d=0.016, inset=0.012),
+    side_intakes=dict(SUPERAUTO['features']['side_intakes'], fins=4),
+    taillamps=[
+        dict(top=[(44, 0.805), (28, 0.805), (12, 0.795)], bottom=[(44, 0.75), (28, 0.75), (12, 0.765)], depth=0.03, round=0.3,
+             pipes=[[(0.02, 0.5), (0.98, 0.5)]], pipe_r=0.006),
+        dict(top=[(91, 0.805), (60, 0.805), (45.5, 0.805)], bottom=[(91, 0.763), (60, 0.76), (45.5, 0.75)], depth=0.03, round=0.3,
+             pipes=[[(0.0, 0.5), (0.98, 0.5)]], pipe_r=0.006),
+    ],
+)
+F.pop('taillights', None)
+
+# ---------------------------------------------------------------- v4: frente del sedán con medidas de un sedán real
+# Referencia: sedán mediano real (≈4,9 m): borde del capó a ~0,79 m, faros de ~15 cm de alto a 2 cm del capó,
+# parrilla entre y debajo de los faros (sus esquinas superiores tocan los faros), tomas de antiniebla en las
+# esquinas del paragolpes, labio inferior a ~0,24 m. Coordenadas de plano: vista frontal (x desde el eje, z).
+SEDAN['zc'] = [[2.30, 0.785], [2.25, 0.80], [2.15, 0.815], [2.0, 0.83], [1.84, 0.843], [1.60, 0.862], [1.30, 0.882],
+               [1.05, 0.898], [0.90, 0.908], [0.80, 0.916], [0.74, 0.925], [0.70, 0.945], [0.67, 0.962], [0.55, 1.016],
+               [0.30, 1.136], [0.05, 1.264], [-0.12, 1.338], [-0.20, 1.373], [-0.26, 1.394], [-0.37, 1.416], [-0.62, 1.436],
+               [-0.87, 1.441], [-1.10, 1.433], [-1.28, 1.416], [-1.40, 1.398], [-1.48, 1.380], [-1.56, 1.350], [-1.68, 1.290],
+               [-1.83, 1.193], [-1.93, 1.118], [-1.98, 1.080], [-2.01, 1.062], [-2.06, 1.055], [-2.20, 1.056], [-2.34, 1.060],
+               [-2.42, 1.062], [-2.47, 1.058]]
+SEDAN['z'][5] = [[1.84, 0.855], [1.5, 0.875], [1.15, 0.895], [0.9, 0.91], [0.70, 0.935], [0.55, 0.96], [0.40, 0.975],
+                 [0.1, 0.99], [-0.4, 1.004], [-0.9, 1.018], [-1.4, 1.032], [-1.8, 1.042], [-2.15, 1.04]]
+SEDAN['front'] = dict(
+    rf={1: 0.38, 2: 0.50, 3: 0.53, 4: 0.515, 5: 0.455, 6: 0.40},
+    z={1: 0.215, 2: 0.235, 3: 0.40, 4: 0.60, 5: 0.785},
+    n={1: 2.8, 2: 3.4, 3: 3.6, 4: 3.6, 5: 3.2, 6: 2.8},
+    bulge={2: 4.0, 3: 3.0, 4: 2.0, 5: 6.0},
+    crease={2: 1.0, 3: 0.4, 4: 0.5, 5: 0.9, 6: 0.4},
+    tan_e={1: 8.0},
+)
+F = SEDAN['features']
+F.update(
+    headlight=dict(style='assembly', units=[dict(
+        top_xz=[(0.40, 0.795), (0.55, 0.808), (0.70, 0.82), (0.80, 0.828), (0.845, 0.826)],
+        bottom_xz=[(0.40, 0.64), (0.55, 0.665), (0.70, 0.71), (0.80, 0.755), (0.845, 0.79)],
+        depth=0.10, round=0.14,
+        projectors=[(0.15, 0.5, 0.032), (0.38, 0.55, 0.026)],
+        drl=[[(0.02, 0.9), (0.02, 0.12), (0.4, 0.1), (0.75, 0.2), (0.95, 0.45)]],
+        signal=[[(0.55, 0.85), (0.95, 0.7)]], signal_w=0.014,
+        chrome=[[(0.04, 0.95), (0.5, 0.94)]],
+        bezels=[([(0.27, 0.1), (0.27, 0.92)], 0.008)])]),
+    grille=dict(
+        assembly=True, poly=[(-0.02, 0.735), (0.30, 0.735), (0.385, 0.70), (0.41, 0.62), (0.44, 0.50), (0.42, 0.42), (0.36, 0.385), (-0.02, 0.385)],
+        depth=0.10, frame=dict(w=0.024, d=0.014, mat='chrome'), insert='hbars', count=6, bar=0.012, bar_d=0.022,
+        bar_mat='chrome', inset=0.016, mesh_behind=True, pitch=0.022, slats=None),
+    intake=dict(
+        assembly=True, poly=[(-0.02, 0.33), (0.50, 0.33), (0.58, 0.30), (0.58, 0.255), (0.52, 0.24), (-0.02, 0.24)],
+        depth=0.07, frame=dict(w=0.012, d=0.008, mat='trim_gloss'), insert='honeycomb', pitch=0.028, inset=0.012),
+    side_intakes=dict(xz=True, poly=[(0.60, 0.47), (0.74, 0.47), (0.79, 0.42), (0.78, 0.32), (0.70, 0.30), (0.60, 0.33)], depth=0.06, fins=3),
+    plate_front_z=0.445, badge_front_z=0.66, chin_z=0.235,
+)
+# arista del capó nítida (sin "párpado" sobre los faros) y 3,5 cm de chapa entre capó y faro
+SEDAN['front']['bulge'] = {2: 4.0, 3: 3.0, 4: 1.0, 5: 3.0}
+SEDAN['front']['crease'] = {2: 1.0, 3: 0.4, 4: 0.6, 5: 1.0, 6: 0.6}
+SEDAN['features']['headlight']['units'][0]['top_xz'] = [(0.40, 0.78), (0.55, 0.792), (0.70, 0.805), (0.80, 0.812), (0.845, 0.81)]
+
+# ---------------------------------------------------------------- v4: el resto con medidas de vehículos reales
+# Pulga — hatchback urbano real (~4,05 m): capó a ~0,74 m, faros redondos de ~18 cm a 3 cm del capó,
+# ranura superior entre faros, parrilla inferior grande de panal ("sonrisa"), antinieblas en las esquinas.
+COMPACTO['zc'] = [[2.00, 0.75], [1.95, 0.765], [1.85, 0.78], [1.64, 0.80], [1.40, 0.82], [1.10, 0.845], [0.85, 0.868],
+                  [0.72, 0.884], [0.66, 0.90], [0.62, 0.93], [0.59, 0.95]] + [p for p in COMPACTO['zc'] if p[0] < 0.59]
+COMPACTO['z'][5] = [[1.64, 0.80], [1.3, 0.825], [0.9, 0.855], [0.70, 0.885], [0.55, 0.935], [0.42, 0.965], [0.1, 0.985],
+                    [-0.4, 1.0], [-0.9, 1.018], [-1.3, 1.035], [-1.50, 1.04]]
+COMPACTO['front'].update(rf={1: 0.30, 2: 0.41, 3: 0.44, 4: 0.425, 5: 0.37, 6: 0.31}, z={1: 0.22, 2: 0.24, 3: 0.39, 4: 0.56, 5: 0.74},
+                         bulge={2: 4.0, 3: 4.0, 4: 2.0, 5: 4.0}, crease={2: 1.0, 3: 0.3, 4: 0.5, 5: 1.0, 6: 0.5})
+F = COMPACTO['features']
+F['headlight']['units'][0].pop('ellipse', None)
+F['headlight']['units'][0]['ellipse_xz'] = ((0.62, 0.65), 0.088, 0.088)
+F['grille']['poly'] = [(-0.02, 0.69), (0.24, 0.69), (0.29, 0.67), (0.30, 0.635), (0.27, 0.61), (-0.02, 0.61)]
+F['intake']['poly'] = [(-0.02, 0.50), (0.32, 0.50), (0.44, 0.47), (0.50, 0.41), (0.48, 0.35), (0.40, 0.31), (0.26, 0.29), (-0.02, 0.29)]
+F['fogs'] = dict(xz=True, lamps=[((0.64, 0.37), 0.033)])
+F.update(badge_front_z=0.65, plate_front_z=0.395, chin_z=0.25)
+
+# Cóndor — SUV mediano real (~4,8 m, 1,73 m): capó a ~1,0 m, línea diurna fina bajo el capó y módulo de
+# proyectores debajo, parrilla alta entre los faros, antinieblas y cubrecárter.
+SUV['zc'] = [[2.28, 0.99], [2.22, 1.01], [2.10, 1.03], [1.86, 1.05], [1.5, 1.08], [1.1, 1.105], [0.88, 1.12], [0.82, 1.13],
+             [0.78, 1.145], [0.75, 1.165]] + [p for p in SUV['zc'] if p[0] < 0.75]
+SUV['z'][5] = [[1.86, 1.06], [1.4, 1.09], [1.0, 1.11], [0.82, 1.125], [0.70, 1.14], [0.55, 1.15], [0.2, 1.155],
+               [-0.5, 1.16], [-1.2, 1.165], [-1.86, 1.17]]
+SUV['front'].update(z={1: 0.30, 2: 0.33, 3: 0.58, 4: 0.86, 5: 1.0}, bulge={2: 4.0, 3: 3.0, 4: 2.0, 5: 5.0},
+                    crease={2: 1.0, 3: 0.5, 4: 0.6, 5: 1.0, 6: 0.5})
+F = SUV['features']
+F['headlight'] = dict(style='assembly', units=[
+    dict(top_xz=[(0.44, 0.978), (0.60, 0.985), (0.76, 0.995), (0.86, 1.0)], bottom_xz=[(0.44, 0.962), (0.60, 0.969), (0.76, 0.978), (0.86, 0.984)],
+         depth=0.05, round=0.3, drl=[[(0.01, 0.5), (0.8, 0.5)]], drl_r=0.0045, signal=[[(0.82, 0.5), (0.99, 0.5)]], signal_w=0.01),
+    dict(top_xz=[(0.46, 0.94), (0.64, 0.945), (0.82, 0.955)], bottom_xz=[(0.46, 0.865), (0.64, 0.87), (0.82, 0.885)], depth=0.08, round=0.15,
+         projectors=[(0.25, 0.5, 0.022), (0.64, 0.5, 0.022)], chrome=[[(0.03, 0.12), (0.97, 0.12)]], bezels=[([(0.45, 0.1), (0.45, 0.9)], 0.008)]),
+])
+F['grille'].update(poly=[(-0.02, 0.955), (0.36, 0.955), (0.43, 0.92), (0.45, 0.80), (0.44, 0.62), (0.40, 0.57), (-0.02, 0.57)])
+F['fogs'] = dict(xz=True, lamps=[((0.70, 0.52), 0.036)])
+F.update(badge_front_z=0.80, plate_front_z=0.46)
+
+# Ranchera — pickup real: capó a ~1,12 m, parrilla enorme hasta el borde del capó, faros en sus esquinas
+# superiores (12 cm), paragolpes cromado con toma, antinieblas y ganchos.
+PICKUP['zc'] = [[2.56, 1.10], [2.50, 1.125], [2.30, 1.145], [2.04, 1.165], [1.6, 1.19], [1.2, 1.21], [1.06, 1.22], [1.02, 1.235],
+                [0.99, 1.255]] + [p for p in PICKUP['zc'] if p[0] < 0.99]
+PICKUP['z'][5] = [[2.04, 1.17], [1.5, 1.20], [1.1, 1.215], [0.98, 1.225], [0.8, 1.235], [0.0, 1.24], [-1.02, 1.24],
+                  [-1.10, 1.18], [-2.10, 1.18]]
+PICKUP['front'].update(z={1: 0.32, 2: 0.36, 3: 0.62, 4: 0.95, 5: 1.12}, bulge={2: 3.0, 3: 2.0, 4: 1.0, 5: 4.0},
+                       crease={2: 1.0, 3: 0.6, 4: 0.6, 5: 1.0, 6: 0.5})
+F = PICKUP['features']
+F['headlight']['units'][0].pop('top', None)
+F['headlight']['units'][0].pop('bottom', None)
+F['headlight']['units'][0].update(top_xz=[(0.50, 1.09), (0.66, 1.098), (0.80, 1.106), (0.87, 1.108)],
+                                  bottom_xz=[(0.50, 0.97), (0.66, 0.978), (0.80, 0.99), (0.87, 1.0)])
+F['grille'].update(poly=[(-0.02, 1.08), (0.44, 1.08), (0.50, 1.05), (0.52, 0.95), (0.52, 0.70), (0.48, 0.64), (-0.02, 0.64)],
+                   crossbars=[(0.86, 0.05, 0.03, 'chrome')])
+F['fogs'] = dict(xz=True, lamps=[((0.70, 0.52), 0.035)])
+F.update(badge_front_z=0.86, plate_front_z=0.50)
+
+# Carga — furgón real: capó corto a ~1,06 m, faros altos (17 cm), parrilla negra entre los faros.
+FURGON['zc'] = [[2.58, 1.04], [2.52, 1.06], [2.35, 1.09], [2.06, 1.12], [1.90, 1.15], [1.82, 1.175], [1.78, 1.21]] + [p for p in FURGON['zc'] if p[0] < 1.78]
+FURGON['z'][5] = [[2.06, 1.13], [1.85, 1.18], [1.78, 1.21], [1.6, 1.225], [1.0, 1.24], [0.0, 1.25], [-2.10, 1.26]]
+FURGON['front'].update(z={1: 0.30, 2: 0.34, 3: 0.58, 4: 0.90, 5: 1.06}, bulge={2: 3.0, 3: 3.0, 4: 2.0, 5: 5.0},
+                       crease={2: 1.0, 3: 0.4, 4: 0.6, 5: 1.0, 6: 0.4})
+F = FURGON['features']
+F['headlight']['units'][0].pop('top', None)
+F['headlight']['units'][0].pop('bottom', None)
+F['headlight']['units'][0].update(top_xz=[(0.55, 1.03), (0.72, 1.04), (0.88, 1.055)], bottom_xz=[(0.55, 0.86), (0.72, 0.865), (0.88, 0.88)])
+F['grille'].update(poly=[(-0.02, 1.0), (0.50, 1.0), (0.53, 0.97), (0.53, 0.70), (0.50, 0.66), (-0.02, 0.66)])
+F.update(badge_front_z=0.84, plate_front_z=0.50)
+
+# Bravo — muscle real: frente alto y vertical (capó a ~0,80 m), parrilla negra de punta a punta con las
+# cuatro ópticas redondas adentro, toma inferior ancha.
+MUSCLE['zc'] = [[2.38, 0.79], [2.32, 0.805], [2.15, 0.825], [1.84, 0.85], [1.4, 0.88], [1.0, 0.90], [0.7, 0.915], [0.52, 0.925]] + \
+               [p for p in MUSCLE['zc'] if p[0] < 0.52]
+MUSCLE['z'][5] = [[1.84, 0.88], [1.4, 0.895], [1.0, 0.905], [0.6, 0.915], [0.42, 0.925], [0.2, 0.93], [-0.4, 0.945],
+                  [-1.0, 0.965], [-1.5, 0.985], [-1.86, 0.995]]
+MUSCLE['front'].update(rf={1: 0.42, 2: 0.55, 3: 0.585, 4: 0.57, 5: 0.53, 6: 0.46}, z={1: 0.19, 2: 0.22, 3: 0.42, 4: 0.64, 5: 0.80},
+                       bulge={2: 2.0, 3: 2.0, 4: 1.0, 5: 4.0}, crease={2: 1.0, 3: 0.6, 4: 0.7, 5: 1.0, 6: 0.5})
+F = MUSCLE['features']
+F['headlight'] = dict(style='quad', lamps=[((0.46, 0.67), 0.055), ((0.60, 0.67), 0.055)])
+F['grille'].update(poly=[(-0.02, 0.765), (0.64, 0.765), (0.70, 0.745), (0.72, 0.68), (0.70, 0.60), (0.64, 0.575), (-0.02, 0.575)])
+F['intake'] = dict(F['intake'], poly=[(-0.02, 0.44), (0.55, 0.44), (0.64, 0.40), (0.65, 0.33), (0.60, 0.30), (-0.02, 0.30)])
+F.update(amber_front=[(0.58, 0.52)], badge_front_z=0.67, plate_front_z=0.50)
+
+# revisión v7: faros del GT de tamaño real (barridos, ~35×12 cm) y frente más definido; superauto sin torpedo negro
+# (cabina adelantada: el parabrisas apoya directo en el capó) y sin el "colmillo" que se leía como una letra.
+DEPORTIVO['front'].update(bulge={2: 3.0, 3: 4.0, 4: 2.0, 5: 6.0}, crease={2: 1.0, 3: 0.5, 4: 0.6, 5: 1.0, 6: 0.4})
+DEPORTIVO['features']['headlight'] = dict(style='assembly', units=[dict(
+    top_xz=[(0.45, 0.65), (0.58, 0.662), (0.72, 0.68), (0.82, 0.695), (0.85, 0.694)],
+    bottom_xz=[(0.45, 0.588), (0.58, 0.60), (0.72, 0.625), (0.82, 0.66), (0.85, 0.68)],
+    depth=0.08, round=0.3,
+    projectors=[(0.2, 0.5, 0.026)], halos=[(0.2, 0.5, 0.038, 'head')],
+    drl=[[(0.38, 0.18), (0.7, 0.22), (0.95, 0.45)]], signal=[[(0.45, 0.8), (0.9, 0.72)]], signal_w=0.01)])
+SUPERAUTO['features'].pop('cowl', None)
+SUPERAUTO['features']['headlight']['units'] = SUPERAUTO['features']['headlight']['units'][:1]
+# el parabrisas del superauto arranca donde la superficie ya sube (si no, su borde inferior queda plano como el capó)
+SUPERAUTO['greenhouse']['ws_poly'] = band(-0.02, 0.95, lambda x: -0.08 - 0.02 * (x / 0.60) ** 2, lambda x: 0.80 - 0.10 * (x / 0.78) ** 2)
+
+# superauto: guardabarros delanteros reales. Antes la chapa sobre la rueda quedaba a la altura del arco y el
+# pasarruedas asomaba por arriba (manchas negras). Ahora la corona del guardabarros pasa ~6 cm por encima del
+# arco y el capó queda hundido entre los dos guardabarros, como en un superdeportivo de motor central.
+SUPERAUTO['zc'] = [[2.26, 0.60], [2.20, 0.625], [2.05, 0.66], [1.75, 0.705], [1.4, 0.745], [1.1, 0.775], [0.95, 0.79],
+                   [0.90, 0.795]] + [p for p in SUPERAUTO['zc'] if p[0] <= 0.86]
+SUPERAUTO['camber'] = [[2.3, 0.0], [2.05, -0.02], [1.75, -0.045], [1.40, -0.056], [1.15, -0.05], [1.0, -0.03], [0.93, 0.0]] + \
+                      [p for p in SUPERAUTO['camber'] if p[0] <= 0.88]
+SUPERAUTO['z'][5] = [[1.75, 0.735], [1.5, 0.785], [1.35, 0.80], [1.15, 0.80], [1.0, 0.797], [0.88, 0.80]] + \
+                    [p for p in SUPERAUTO['z'][5] if p[0] <= 0.60]
+
+# espejos: el compacto lleva espejos normales algo más chicos; el SUV, más grandes
+COMPACTO['features'].update(mirror='standard', mirror_size=0.92)
+SUV['features'].update(mirror='standard', mirror_size=1.12)
+
+# colas: el GT tenía dos pilotos diminutos en el medio de una cola vacía; ahora ópticas barridas de ~55 cm que
+# envuelven la esquina (como un GT real), con doble guía de luz, freno y marcha atrás. El SUV tenía una
+# "escalera" de barras: ahora una guía en C abierta hacia afuera, freno arriba, giro ámbar y marcha atrás abajo.
+DEPORTIVO['features']['taillamps'] = [dict(
+    top_xz=[(0.28, 0.935), (0.48, 0.936), (0.66, 0.932), (0.79, 0.924), (0.86, 0.912)],
+    bottom_xz=[(0.28, 0.878), (0.48, 0.874), (0.66, 0.869), (0.79, 0.866), (0.86, 0.876)],
+    depth=0.05, round=0.3,
+    pipes=[[(0.02, 0.74), (0.97, 0.74)], [(0.02, 0.28), (0.82, 0.28), (0.96, 0.46)]], pipe_r=0.005,
+    blocks=[[(0.08, 0.51), (0.52, 0.51)]], block_w=0.012,
+    reverse=[[(0.58, 0.51), (0.80, 0.51)]], reverse_w=0.012)]
+SUV['features']['taillamps'][0].update(
+    pipes=[[(0.86, 0.92), (0.14, 0.92), (0.14, 0.08), (0.86, 0.08)]],
+    blocks=[[(0.30, 0.74), (0.78, 0.74)]], block_w=0.04,
+    signal=[[(0.30, 0.50), (0.78, 0.50)]], signal_w=0.022,
+    reverse=[[(0.30, 0.27), (0.78, 0.27)]], reverse_w=0.03)

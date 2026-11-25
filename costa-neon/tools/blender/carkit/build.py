@@ -9,6 +9,7 @@ from .shell import M_PAINT, M_UNDER, M_GLASS, M_FRAME, M_TRIM, M_CHROME, M_GAP
 from . import features as ft
 from .features import M_LENS, M_HEAD, M_TAIL, M_BLINK, M_REFL, M_INNER, M_ALU
 from . import styles as ST
+from . import lamps as LM
 from mathutils.bvhtree import BVHTree
 
 MAT_NAMES = shell.MAT_NAMES + ft.EXTRA_MATS
@@ -71,27 +72,42 @@ def build_body(D, log=print):
     if 'headlight' in F:
         h = F['headlight']
         style = h.get('style', 'slim')
-        polys = []
+        polys = []  # (contorno, profundidad)
+        hd = h.get('depth', 0.08)
         if style == 'round':
             for c, r in h['lamps']:
-                polys.append(ST.ellipse_poly(cbvh, body, 'frontc', c, r, r, 0.0, 36))
+                polys.append((ST.ellipse_poly(cbvh, body, 'frontc', c, r, r, 0.0, 36), hd))
         elif style == 'oval':
-            polys.append(ST.ellipse_poly(cbvh, body, 'frontc', h['center'], h['rx'], h['rz'], h.get('rot', 0.0), 40))
+            polys.append((ST.ellipse_poly(cbvh, body, 'frontc', h['center'], h['rx'], h['rz'], h.get('rot', 0.0), 40), hd))
+        elif style == 'assembly':
+            for u in LM.units(h):
+                LM.resolve(u, cbvh, body, 'frontc')
+                ol = LM.outline(u)
+                polys.append((ol if '_poly' in u else ft.densify(ft.rounded_poly(ol, u.get('round', 0.18), 4), 1.2), u.get('depth', hd)))
         elif style != 'quad':
-            polys.append(ft.densify(ft.rounded_poly(h['poly'], h.get('round', 0.2)), 1.5))
+            polys.append((ft.densify(ft.rounded_poly(h['poly'], h.get('round', 0.2)), 1.5), hd))
             if 'poly2' in h:
-                polys.append(ft.densify(ft.rounded_poly(h['poly2'], h.get('round', 0.2)), 1.5))
-        info['openings']['head'] = [ft.opening(C, 'frontc', pl, h['depth'], M_INNER, M_INNER, M_LENS, 0.0015, 0.1)
-                                    for pl in polys if pl]
+                polys.append((ft.densify(ft.rounded_poly(h['poly2'], h.get('round', 0.2)), 1.5), hd))
+        info['openings']['head'] = [ft.opening(C, 'frontc', pl, dp, M_INNER, M_INNER, M_LENS, 0.0015, 0.1)
+                                    for (pl, dp) in polys if pl]
     # antinieblas redondos
     if 'fogs' in F:
         fg = F['fogs']
+        if fg.get('xz') and not fg.get('_conv'):
+            fg['lamps'] = [(LM.xz_to_fan(cbvh, body, 'frontc', [c])[0], r) for (c, r) in fg['lamps']]
+            fg['_conv'] = True
         for c, r in fg['lamps']:
             pl = ST.ellipse_poly(cbvh, body, fg.get('kind', 'frontc'), c, r * 1.25, r * 1.25, 0.0, 28)
             if pl:
                 ft.opening(C, fg.get('kind', 'frontc'), pl, 0.05, M_INNER, M_INNER, None, 0, 0.1, mats=(M_PAINT, M_TRIM))
     # pilotos: lente ahumada, interior rojo (se enciende al frenar)
     info['openings']['tail'] = []
+    for tl in F.get('taillamps', []):
+        LM.resolve(tl, cbvh, body, 'rearc')
+        ol = LM.outline(tl)
+        poly = ol if '_poly' in tl else ft.densify(ft.rounded_poly(ol, tl.get('round', 0.2), 4), 1.2)
+        wall = M_INNER if tl.get('dark') else M_TAIL
+        info['openings']['tail'].append(ft.opening(C, 'rearc', poly, tl.get('depth', 0.05), wall, M_INNER, M_LENS, 0.0015, 0.08))
     for tl in F.get('taillights', []):
         if 'ellipse' in tl:
             c, rx, rz = tl['ellipse']
@@ -113,6 +129,10 @@ def build_body(D, log=print):
         info['openings']['intake'] = ft.opening(C, 'front', poly, g['depth'], M_TRIM, M_TRIM, None, 0, 0.06)
     if 'side_intakes' in F:
         g = F['side_intakes']
+        if g.get('xz') and not g.get('_conv'):
+            # definida en vista frontal: se pasa al espacio del abanico
+            g['poly'] = LM.xz_to_fan(cbvh, body, 'frontc', g['poly'])
+            g['_conv'] = True
         poly = ft.densify(ft.rounded_poly(g['poly'], 0.3), 1.0)
         info['openings']['side_intake'] = ft.opening(C, 'frontc', poly, g['depth'], M_TRIM, M_TRIM, None, 0, 0.08)
     # labio inferior delantero y difusor trasero en plástico negro

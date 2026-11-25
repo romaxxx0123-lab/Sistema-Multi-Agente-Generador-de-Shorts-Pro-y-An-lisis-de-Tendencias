@@ -117,5 +117,19 @@ else:
             bpy.context.active_object.data.materials.append(rim)
     tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in bpy.context.scene.objects if o.type == 'MESH' and not o.name.startswith(('Cylinder', 'preview')))
     print('triángulos del auto', tris)
+    # vistas de detalle ajustadas al tamaño de cada modelo
+    yf = D['y_fc'] + D['front']['rf'][3]
+    yr = D['y_rc'] - D['rear']['rf'][3]
+    zf = D['front']['z'][4] + 0.04
+    zr = D['rear']['z'][4] + 0.02
+    pv.VIEWS['face'] = ((1.3, yf + 1.95, zf + 0.3), 50, (0.28, yf - 0.15, zf - 0.05))
+    pv.VIEWS['lamp'] = ((1.4, yf + 1.15, zf + 0.15), 55, (0.6, yf - 0.2, zf + 0.02))
+    pv.VIEWS['tail'] = ((-1.25, yr - 1.45, zr + 0.18), 55, (-0.45, yr + 0.12, zr))
+    s0, s1 = D['features'].get('sail', (0.42, 0.54))
+    ym = (s0 + s1) / 2
+    zm = info['body'].z[5](ym) + 0.1
+    rm = info['body'].r[4](ym) + 0.1
+    pv.VIEWS['mirror'] = ((rm + 0.75, ym + 0.85, zm + 0.3), 45, (rm, ym, zm))
+    pv.VIEWS['mirror_r'] = ((rm + 0.55, ym - 0.95, zm + 0.25), 45, (rm, ym, zm))
     cam = pv.setup(res=(800, 450) if len(views) > 4 or light == 'studio_small' else (960, 540), samples=28 if light == 'studio_small' else 40, studio=light.startswith('studio'))
     pv.shoot(cam, out, {k: pv.VIEWS[k] for k in views})
