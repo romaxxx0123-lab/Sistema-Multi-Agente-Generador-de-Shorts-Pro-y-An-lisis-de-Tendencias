@@ -117,8 +117,12 @@ def opening(C, kind, poly, depth=0.06, wall=M_TRIM, back=M_TRIM, lens=None, lens
         a = n.length
         cen += C.center(g) * a
         area += a
-    nrm.normalize()
     cen /= max(area, 1e-12)
+    if any(abs(v[C.lp][0]) < 1e-6 for g in faces for v in g.verts):
+        # la región cruza el eje: su normal y su centro reales están sobre el plano de simetría
+        nrm.x = 0.0
+        cen.x = 0.0
+    nrm.normalize()
     out = {'normal': nrm, 'center': cen, 'faces': []}
     if lens is not None:
         dup = bmesh.ops.duplicate(C.bm, geom=faces)
@@ -127,7 +131,9 @@ def opening(C, kind, poly, depth=0.06, wall=M_TRIM, back=M_TRIM, lens=None, lens
             g.material_index = lens
         push(C, lf, -lens_lift)
         out['lens'] = lf
-    bnd = boundary_edges(faces)
+    # los bordes sobre el plano de simetría no llevan pared (la otra mitad continúa la abertura)
+    on_plane = lambda e: abs(e.verts[0][C.lp][0]) < 1e-6 and abs(e.verts[1][C.lp][0]) < 1e-6
+    bnd = [e for e in boundary_edges(faces) if not on_plane(e)]
     bmesh.ops.delete(C.bm, geom=faces, context='FACES_ONLY')
     bnd = [e for e in bnd if e.is_valid]
     ext = bmesh.ops.extrude_edge_only(C.bm, edges=bnd)
@@ -142,6 +148,13 @@ def opening(C, kind, poly, depth=0.06, wall=M_TRIM, back=M_TRIM, lens=None, lens
         g.smooth = False
     nvs = set(nv)
     loop = [e for e in C.bm.edges if e.verts[0] in nvs and e.verts[1] in nvs]
+    # abertura cortada por el eje: la cadena del fondo queda abierta; se cierra sobre el plano
+    ends = [v for v in nv if sum(1 for e in v.link_edges if e in set(loop)) == 1]
+    if len(ends) == 2:
+        try:
+            loop.append(C.bm.edges.new(ends))
+        except ValueError:
+            pass
     backs = []
     try:
         res = bmesh.ops.contextual_create(C.bm, geom=loop)
@@ -160,9 +173,31 @@ def opening(C, kind, poly, depth=0.06, wall=M_TRIM, back=M_TRIM, lens=None, lens
     return out
 
 
-def recess(C, kind, poly, depth=0.012, mat=None, mats=(M_PAINT,), wall=0.003):
-    """Hueco poco profundo (bolsillo de manija, nicho de patente): anillo de paredes + fondo hundido."""
-    faces = region(C, kind, poly, mat if mat is not None else M_PAINT, mats)
-    inset(C, faces, wall, 0.0, None)
+def shrink(poly, d, sym=False):
+    """Contorno interior a distancia d (escala por eje respecto del centro de la caja).
+    sym: el contorno es la mitad derecha de una figura simétrica en u = 0 (no se achica del lado del eje)."""
+    us = [p[0] for p in poly]
+    vs = [p[1] for p in poly]
+    cu, cv = (min(us) + max(us)) / 2, (min(vs) + max(vs)) / 2
+    hu, hv = (max(us) - min(us)) / 2, (max(vs) - min(vs)) / 2
+    if sym and min(us) <= 0.0:
+        cu, hu = 0.0, max(abs(u) for u in us)
+    ku = max(0.05, (hu - d) / hu) if hu > 1e-9 else 1.0
+    kv = max(0.05, (hv - d) / hv) if hv > 1e-9 else 1.0
+    return [(cu + (u - cu) * ku, cv + (v - cv) * kv) for (u, v) in poly]
+
+
+def recess(C, kind, poly, depth=0.012, mat=None, mats=(M_PAINT,), wall=0.004):
+    """Hueco poco profundo (bolsillo de manija, nicho de patente): dos cortes exactos (contorno y contorno
+    interior); el interior se hunde y el anillo queda como pared inclinada. Sin inset: limpio en el eje."""
+    sp = Space(SPACE_OF[kind], C.body)
+    f = flt(C, kind, mats)
+    cut(C, sp, poly, True, f)
+    inner = shrink(poly, wall)
+    cut(C, sp, inner, True, f)
+    faces = select(C, sp, inner, f)
+    if mat is not None:
+        for g in select(C, sp, poly, f):
+            g.material_index = mat
     push(C, faces, depth)
     return faces

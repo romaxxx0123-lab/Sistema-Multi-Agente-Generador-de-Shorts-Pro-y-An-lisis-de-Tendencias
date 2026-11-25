@@ -15,7 +15,7 @@ const STYLES = {
 };
 
 export const MODELS = {
-  compacto: { name: 'Pulga 1.4', style: 'hatch', L: 3.9, W: 1.72, H: 1.5, wb: 2.45, wr: 0.3, clear: 0.15, mass: 1050, accel: 8.6, top: 42, grip: 9, steer: 0.62, brake: 18, hp: 800, engine: 'car', price: 9500, cls: 'Compacto', doors: [0.95, -0.05] },
+  compacto: { name: 'Pulga 1.4', style: 'hatch', L: 4.05, W: 1.76, H: 1.46, wb: 2.56, wr: 0.31, clear: 0.15, mass: 1050, accel: 8.6, top: 42, grip: 9, steer: 0.62, brake: 18, hp: 800, engine: 'car', price: 9500, cls: 'Compacto', doors: [0.95, -0.05] },
   sedan: { name: 'Delta GL', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1400, accel: 9.6, top: 47, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 18000, cls: 'Sedán', doors: [1.05, 0.0, -1.0] },
   taxi: { name: 'Delta Taxi', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1420, accel: 9.6, top: 46, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 15000, cls: 'Servicio', fixedColor: 0xf2bf0a, roofSign: true, doors: [1.05, 0.0, -1.0] },
   patrulla: { name: 'Interceptor', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1650, accel: 13.5, top: 64, grip: 10.5, steer: 0.6, brake: 23, hp: 1500, engine: 'sports', price: 0, cls: 'Emergencia', fixedColor: 0xf4f4f2, livery: 'police', lightbar: true, pushbar: true, doors: [1.05, 0.0, -1.0] },

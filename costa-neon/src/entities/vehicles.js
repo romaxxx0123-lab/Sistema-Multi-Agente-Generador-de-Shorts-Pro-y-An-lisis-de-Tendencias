@@ -455,7 +455,7 @@ class VehicleRenderer {
     lib.register(glassMat, {
       key: 'vglass_' + id,
       lamps: true,
-      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.42 : 0.3 }, uGlassMax: { value: 0.97 } },
+      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.55 : 0.46 }, uGlassMax: { value: 0.97 } },
       vertexHead: GLASS_VHEAD, vertexBegin: PAINT_BEGIN, fragHead: GLASS_FHEAD, fragPostLights: LAMPS_POST, fragOutput: GLASS_OUT,
     });
     // lente clara de las ópticas: casi transparente, deja ver reflectores y LEDs

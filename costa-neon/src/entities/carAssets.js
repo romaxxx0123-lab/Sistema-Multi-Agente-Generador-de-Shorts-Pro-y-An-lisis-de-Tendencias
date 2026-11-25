@@ -7,11 +7,14 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import sedanGlb from '../../assets/cars/sedan.glb';
 import sedanMeta from '../../assets/cars/sedan.json';
 import taxiGlb from '../../assets/cars/taxi.glb';
+import compactoGlb from '../../assets/cars/compacto.glb';
+import compactoMeta from '../../assets/cars/compacto.json';
 import patrullaGlb from '../../assets/cars/patrulla.glb';
 
 // base: el modelo comparte la carrocería de otro y el glb sólo trae los agregados (cartel, barra de luces…)
 const SOURCES = {
   sedan: { glb: sedanGlb, meta: sedanMeta },
+  compacto: { glb: compactoGlb, meta: compactoMeta },
   taxi: { glb: taxiGlb, meta: sedanMeta, base: 'sedan' },
   patrulla: { glb: patrullaGlb, meta: sedanMeta, base: 'sedan' },
 };

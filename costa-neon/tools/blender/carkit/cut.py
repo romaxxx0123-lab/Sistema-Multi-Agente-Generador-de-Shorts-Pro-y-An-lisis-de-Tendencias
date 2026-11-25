@@ -100,6 +100,9 @@ class Ctx:
         return fparams(f, self.ls, self.lt)
 
     def setco(self, v, co):
+        # los vértices sobre el plano de simetría no se despegan de él (si no, queda una ranura al espejar)
+        if abs(v[self.lp][0]) < 1e-6:
+            co = Vector((0.0, co[1], co[2]))
         v.co = co
         v[self.lp] = co
 

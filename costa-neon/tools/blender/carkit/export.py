@@ -214,7 +214,8 @@ def meta_for(D, info, imeta, bm):
               for sz in (1, -1) for sx in (1, -1)]
     plates = []
     zf = F.get('plate_front_z', 0.47)
-    loc, n, i, d = BVHTree.FromBMesh(info['clean']).ray_cast(Vector((0, 4, zf)), Vector((0, -1, 0)), 10)
+    # la superficie limpia es media malla: el rayo va apenas al costado del eje para no colarse por su borde
+    loc, n, i, d = BVHTree.FromBMesh(info['clean']).ray_cast(Vector((0.003, 4, zf)), Vector((0, -1, 0)), 10)
     if loc is not None:
         plates.append({'x': 0.0, 'y': round(loc.z, 4), 'z': round(loc.y + 0.014, 4), 'front': True})
     if 'plate_rear' in F:

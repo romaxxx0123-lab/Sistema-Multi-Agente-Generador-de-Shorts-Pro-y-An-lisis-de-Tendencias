@@ -76,6 +76,36 @@ def glass_region(C, space, poly, ffilter, frame=0.018, recess=0.008):
     return faces, fr
 
 
+def glass_cut(C, space, poly, ffilter, frame=0.02, recess=0.008, t_frames=()):
+    """Vidrio con marco por cortes exactos (sin inset): contorno, contorno interior y franjas de la banda
+    (t_frames: [(ta, tb)] a lo largo de los pilares). El vidrio se hunde; el marco queda como chaflán."""
+    from .features import shrink
+    from .cut import point_in_poly
+    cut(C, space, poly, True, ffilter)
+    inner = shrink(poly, frame, sym=space.kind in ('top', 'front'))
+    cut(C, space, inner, True, ffilter)
+    inside = lambda f: ffilter(f) and point_in_poly(C.center2(space, f), poly)
+    par = Space('param')
+    for (ta, tb) in t_frames:
+        ss = [C.st(f)[0] for f in C.bm.faces if inside(f)]
+        if ss:
+            cut(C, par, [(min(ss) - 1.0, tb), (max(ss) + 1.0, tb)], False, inside)
+    glass, frm = [], []
+    for f in C.bm.faces:
+        if not inside(f):
+            continue
+        t = C.st(f)[1]
+        in_band = any(min(ta, tb) < t < max(ta, tb) for (ta, tb) in t_frames)
+        if point_in_poly(C.center2(space, f), inner) and not in_band:
+            glass.append(f)
+            f.material_index = M_GLASS
+        else:
+            frm.append(f)
+            f.material_index = M_FRAME
+    push(C, glass, recess)
+    return glass, frm
+
+
 def greenhouse(C, G):
     """Ventanillas laterales, parabrisas y luneta según el diseño G (en espacio de parámetros / planta)."""
     par = Space('param')
@@ -90,15 +120,31 @@ def greenhouse(C, G):
     rear = [(c0, 5.0), (b0, 5.0), (b0, 6.0), (c1, 6.0)]
     out['side_f'] = glass_region(C, par, front, band)
     out['side_r'] = glass_region(C, par, rear, band)
+    if 'quarter' in G:
+        # ventanilla fija detrás de la puerta trasera (con pilar negro entre ambas)
+        q = G['quarter']
+        out['quarter'] = glass_region(C, par, q, band)
+        cp = [(c0 - 0.0001, 5.0), (q[0][0], 5.0), (q[3][0], 6.0), (c1 - 0.0001, 6.0)]
+        cut(C, par, cp, True, band)
+        for f in select(C, par, cp, band):
+            if f.material_index == M_PAINT:
+                f.material_index = M_TRIM
     # pilar B negro brillante
     pil = [(b0, 5.0), (b1, 5.0), (b1, 6.0), (b0, 6.0)]
     cut(C, par, pil, True, band)
     for f in select(C, par, pil, band):
         f.material_index = M_TRIM
     # parabrisas y luneta (vista superior, sólo caras del techo)
-    topf = lambda f: C.st(f)[1] > 6.0 - 1e-4 and C.normal(f).z > 0.05
-    out['ws'] = glass_region(C, top, G['ws_poly'], topf, G.get('ws_frame', 0.022))
-    out['rw'] = glass_region(C, top, G['rw_poly'], topf, G.get('rw_frame', 0.022))
+    topf = lambda f: f.material_index in (M_PAINT, M_FRAME, M_GLASS) and C.st(f)[1] > 6.0 - 1e-4 and C.normal(f).z > 0.05
+    dt = G.get('pillar_frame_t', 0.03)
+    out['ws'] = glass_cut(C, top, G['ws_poly'], topf, G.get('ws_frame', 0.022), 0.008, [(6.0, 6.0 + dt)])
+    if G.get('rw_kind', 'top') == 'top':
+        out['rw'] = glass_cut(C, top, G['rw_poly'], topf, G.get('rw_frame', 0.022), 0.008, [(6.0, 6.0 + dt)])
+    else:
+        # portón (hatch): la luneta está en la banda P5-P6 de la cola, se corta en vista trasera
+        rear = Space('front')
+        rb = lambda f: f.material_index in (M_PAINT, M_FRAME, M_GLASS) and 4.999 < C.st(f)[1] < 6.001 and C.normal(f).y < -0.02 and C.center(f).y < C.body.y_rc + 0.05
+        out['rw'] = glass_cut(C, rear, G['rw_poly'], rb, G.get('rw_frame', 0.02), 0.008, [(5.0, 5.0 + G.get('belt_frame_t', 0.06))])
     return out
 
 

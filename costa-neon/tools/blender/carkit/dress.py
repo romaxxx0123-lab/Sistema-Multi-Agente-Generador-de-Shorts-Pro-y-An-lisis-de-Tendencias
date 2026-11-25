@@ -274,9 +274,10 @@ def antenna(D, info, bvh):
 
 def badges(D, info, bvh, clean_bvh):
     objs = []
-    loc, nrm = P.ray(clean_bvh, (0.0, 4.0, 0.51), (0, -1, 0))
+    zb = D['features'].get('badge_front_z', 0.51)
+    loc, nrm = P.ray(clean_bvh, (0.003, 4.0, zb), (0, -1, 0))
     if loc is not None:
-        c = loc + Vector((0, 0.004, 0))
+        c = Vector((0.0, loc.y + 0.004, loc.z))
         objs += P.cylinder('badge_f', c - Vector((0, 0.012, 0)), c, 0.042, 0.04, 'chrome', 28, False, True)
     loc, nrm = P.ray(bvh, (0.0, -4.0, 0.875), (0, 1, 0))
     if loc is not None:
@@ -352,7 +353,7 @@ def lightbar(D, info, bvh):
 
 def pushbar(D, info, clean_bvh):
     F = D['features']
-    loc, nrm = P.ray(clean_bvh, (0.0, 4.0, 0.42), (0, -1, 0))
+    loc, nrm = P.ray(clean_bvh, (0.003, 4.0, 0.42), (0, -1, 0))
     if loc is None:
         return []
     y = loc.y + 0.11
