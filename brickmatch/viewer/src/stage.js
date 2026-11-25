@@ -122,7 +122,7 @@ export class Stage {
             m.roughness = 0.08;
             m.envMapIntensity = 1.4;
           } else if (m.metalness < 0.2) {
-            m.roughness = 0.34;
+            m.roughness = 0.55;
           }
         }
       }
@@ -136,6 +136,17 @@ export class Stage {
     root.position.set(-center.x, -box.min.y, -center.z);
     root.updateMatrixWorld(true);
     this.box = new THREE.Box3().setFromObject(root);
+    // Esquinas de la caja de cada pieza: sirven para encuadrar ajustado a la silueta.
+    this.fitPoints = [];
+    const partBox = new THREE.Box3();
+    for (const part of this.parts) {
+      partBox.setFromObject(part);
+      for (const x of [partBox.min.x, partBox.max.x]) {
+        for (const y of [partBox.min.y, partBox.max.y]) {
+          for (const z of [partBox.min.z, partBox.max.z]) this.fitPoints.push(new THREE.Vector3(x, y, z));
+        }
+      }
+    }
     this.size = this.box.getSize(new THREE.Vector3());
     this.radius = this.size.length() / 2;
 
@@ -151,7 +162,7 @@ export class Stage {
     cam.updateProjectionMatrix();
     this.fill.position.set(-r * 1.8, r * 0.8, r * 0.4);
 
-    this.controls.target.set(0, this.size.y * 0.42, 0);
+    this.center = new THREE.Vector3(0, this.size.y * 0.5, 0);
     this.controls.minDistance = r * 0.35;
     this.controls.maxDistance = r * 9;
     this.view(-32, 24);
@@ -161,13 +172,43 @@ export class Stage {
   }
 
   // Encuadra el modelo desde un azimut/elevación (grados). El frente está en azimut 0.
-  view(azimuth, elevation, zoom = 1) {
-    const fov = (this.camera.fov * Math.PI) / 180;
-    const fit = this.radius / Math.sin(Math.min(fov, 2 * Math.atan(Math.tan(fov / 2) * this.camera.aspect)) / 2);
-    const d = (fit * 1.02) / zoom;
+  // Busca la distancia justa y centra la silueta: como la perspectiva agranda lo
+  // que está cerca, el centro de la caja no es el centro de lo que se ve.
+  // padBottom: píxeles de abajo que tapa la botonera y hay que dejar libres.
+  view(azimuth, elevation, zoom = 1, padBottom = 0) {
     const a = (azimuth * Math.PI) / 180, e = (elevation * Math.PI) / 180;
-    const t = this.controls.target;
-    this.camera.position.set(t.x + d * Math.sin(a) * Math.cos(e), t.y + d * Math.sin(e), t.z + d * Math.cos(a) * Math.cos(e));
+    const dir = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+    const right = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
+    const up = new THREE.Vector3().crossVectors(dir, right);
+    const t = this.controls.target.copy(this.center);
+    const tanFull = Math.tan((this.camera.fov * Math.PI) / 360);
+    const tanH = tanFull * this.camera.aspect;
+    const pad = Math.min(0.3, padBottom / (this.canvas.clientHeight || 1));
+    const tanV = tanFull * (1 - pad);
+    const p = new THREE.Vector3();
+    let d = 1;
+    for (let pass = 0; pass < 8; pass++) {
+      d = 1;
+      for (const corner of this.fitPoints) {
+        p.copy(corner).sub(t);
+        const depth = p.dot(dir);
+        d = Math.max(d, depth + Math.abs(p.dot(right)) / tanH, depth + Math.abs(p.dot(up)) / tanV);
+      }
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const corner of this.fitPoints) {
+        p.copy(corner).sub(t);
+        const w = d - p.dot(dir);
+        const sx = p.dot(right) / (w * tanH), sy = p.dot(up) / (w * tanV);
+        x0 = Math.min(x0, sx); x1 = Math.max(x1, sx);
+        y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+      }
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      if (Math.abs(cx) < 0.003 && Math.abs(cy) < 0.003) break;
+      t.addScaledVector(right, cx * d * tanH).addScaledVector(up, cy * d * tanV);
+    }
+    d = (d * 1.1) / zoom;
+    t.addScaledVector(up, -pad * d * tanFull);
+    this.camera.position.copy(t).addScaledVector(dir, d);
     this.camera.lookAt(t);
     this.controls.update();
     this.invalidate();

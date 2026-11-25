@@ -17,6 +17,7 @@ export const COLOR_NAMES = [
   'Yellow', 'Orange', 'Bright Light Orange', 'Dark Orange', 'Medium Nougat', 'Flat Silver',
   'Trans-Clear', 'Trans-Light Blue', 'Trans-Dark Blue', 'Trans-Yellow', 'Trans-Orange', 'Trans-Red',
   'Trans-Green', 'Trans-Neon Orange', 'Lavender', 'Magenta', 'Coral', 'Light Aqua', 'Sand Blue',
+  'Dark Purple', 'Trans-Dark Pink',
 ];
 
 const S = [0, -1]; // frente local hacia -z
@@ -63,13 +64,25 @@ export const PARTS = {
   '28598': { box: { min: [-20, 0, -20], max: [20, 72, 20] } }, // cono dentado 2x2x3 (pino)
   '20482': { box: CELL(8) }, // tile redondo con perno
   '32606': { box: { min: [-10, -16, -10], max: [10, 0, 10] } }, // flor de 7 pétalos
+  // Set 71826 y parecidos
+  '15672': { box: { min: [-10, 0, -20], max: [10, 8, 20] }, front: S }, // plate 1x2 con rampa: el frente es el lado bajo
+  '11476': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: S }, // plate 1x2 con clip al frente
+  '99207': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: S }, // escuadra 1x2 - 2x2 hacia arriba
+  '15207': { front: [0, 1] }, // panel 1x4x1: el frente es la pared
+  '4865b': { front: [0, 1] }, // panel 1x2x1
+  '3660': { front: S }, // pendiente invertida 2x2: el frente es el voladizo
+  '70681': { box: { min: [-10, 0, -50], max: [10, 16, 10] }, front: S }, // curva 1x3 de alero: encastra arriba y cuelga 1 plate hacia el frente
+  '30136': { box: { min: [-20, 0, -10], max: [20, 24, 10] } }, // ladrillo tronco 1x2
+  '64644': { box: CELL(40) }, // catalejo
+  '87747': { verified: true }, // garra/cuchilla con barra: LDraw y Rebrickable la nombran distinto
+  '11211': { front: S }, // ladrillo 1x2 con 2 studs laterales
 };
 
 // Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.
 export const CORNER = { SE: 0, SW: 1, NW: 2, NE: 3 };
 
 // Colores cuyo nombre en LDraw no coincide con el de Rebrickable: código LDraw a mano.
-const LD_CODE = { 'Flat Silver': 179 };
+const LD_CODE = { 'Flat Silver': 179, 'Dark Purple': 85 };
 
 const norm = (s) => s.toLowerCase().replace(/grey/g, 'gray').replace(/[^a-z0-9]/g, '');
 

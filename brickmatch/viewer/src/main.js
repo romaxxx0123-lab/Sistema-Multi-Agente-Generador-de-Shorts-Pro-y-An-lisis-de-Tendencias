@@ -436,7 +436,7 @@ function wire() {
     stage.setEdges(!stage.showEdges);
     e.currentTarget.setAttribute('aria-pressed', String(stage.showEdges));
   });
-  $('tool-fit').addEventListener('click', () => stage.view(-34, 22, 1.3));
+  $('tool-fit').addEventListener('click', frame);
   window.addEventListener('hashchange', () => {
     const id = location.hash.slice(1);
     if (id && id !== state.id) loadModel(id);
@@ -470,7 +470,7 @@ async function loadModel(id) {
     await stage.load(await modelText);
     if (state.id !== id) return;
     if (stage.parts.length !== report.placements.length) throw new Error('El modelo 3D y la lista de piezas no coinciden');
-    stage.view(-34, 22, 1.3);
+    frame();
     msg.hidden = true;
     applyStates();
     startThumbs();
@@ -480,6 +480,12 @@ async function loadModel(id) {
     msg.textContent = `No se pudo cargar: ${e.message}`;
     api.status = `error: ${e.message}`;
   }
+}
+
+// Vista de siempre, dejando libre la franja que tapan los botones del visor.
+function frame() {
+  const tools = document.querySelector('.stage-tools');
+  stage.view(-34, 22, 1, tools && tools.offsetParent ? tools.offsetHeight + 20 : 0);
 }
 
 async function boot() {

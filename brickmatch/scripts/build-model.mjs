@@ -55,7 +55,7 @@ for (const b of bom) {
   b.lastYear = st.maxYear;
   // Mismo número en LDraw y en Rebrickable no garantiza que sea la misma pieza.
   const ld = lib.description(`${b.ld}.dat`) || '';
-  if (!ld.startsWith('~')) {
+  if (!ld.startsWith('~') && !(palette.parts[b.ld] && palette.parts[b.ld].verified)) {
     const words = (t) => new Set(t.toLowerCase().replace(/sloped/g, 'slope').split(/[^a-z]+/).filter((w) => w.length >= 3 && !['with', 'without', 'and', 'for', 'the', 'special'].includes(w)));
     const a = words(ld), c = words(part.name);
     if (![...a].some((w) => c.has(w))) notes.push(`Revisar identidad de ${b.part}: en LDraw es "${ld}" y en Rebrickable "${part.name}"`);

@@ -5,9 +5,9 @@ la mayoría de esas piezas para comprarlo y armar tu diseño en vez del oficial.
 
 Proyecto independiente del resto del repo: vive entero en esta carpeta.
 
-| Pabellón Zen: 285 piezas, 100 % con el set 10315 | Templo Zen Ninjago: 307 piezas, diseño libre |
-| --- | --- |
-| ![Pabellón Zen](models/pabellon-zen/renders/hero.jpg) | ![Templo Zen Ninjago](models/templo-zen/renders/hero.jpg) |
+| Pabellón Zen: 285 piezas, 100 % con el set 10315 | Templo Zen Ninjago: 307 piezas, diseño libre | Base Ninja: 111 piezas, 100 % con el set 71826 |
+| --- | --- | --- |
+| ![Pabellón Zen](models/pabellon-zen/renders/hero.jpg) | ![Templo Zen Ninjago](models/templo-zen/renders/hero.jpg) | ![Base Ninja](models/base-ninja/renders/hero.jpg) |
 
 ## Cómo se usa
 
@@ -19,12 +19,14 @@ Proyecto independiente del resto del repo: vive entero en esta carpeta.
    de sets. Al elegir un set, el modelo marca en rojo lo que te faltaría.
 
 Cuando ningún set cubre lo suficiente, el diseño se adapta a un set concreto.
-Los dos modelos de ejemplo muestran la diferencia:
+Si el pedido es "con un set barato", se elige primero la caja y se diseña solo
+con lo que trae. Los modelos de ejemplo muestran la diferencia:
 
 | Modelo | Piezas | Mejor set | Cobertura exacta |
 | --- | --- | --- | --- |
 | `pabellon-zen` (adaptado) | 285 | 10315 Tranquil Garden (1.363 piezas) | 285 de 285, **100 %** |
 | `templo-zen` (diseño libre) | 307 | 71861 The Old Town (4.852 piezas) | 106 de 307, 34,5 % |
+| `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 
 ## Comandos
 
@@ -47,6 +49,9 @@ node scripts/set-summary.mjs 10315-1           # inventario de un set, por categ
 node scripts/who-has.mjs 3675 4 --max=3000     # qué sets traen más de una pieza
 node scripts/coverage.mjs templo-zen --max=2500    # ranking filtrado por tamaño
 node scripts/coverage.mjs pabellon-zen 10315-1     # qué falta con un set y qué alternativas trae
+node scripts/donors.mjs --theme=ninjago --max=300  # cajas chicas con más pieza de construcción
+node scripts/set-usable.mjs 71826-1            # piezas de construcción de un set que se pueden dibujar
+node scripts/set-colors.mjs 71826-1            # inventario de un set agrupado por color
 node scripts/selftest.mjs                      # pruebas del validador
 ```
 
@@ -118,7 +123,8 @@ dist/       mini app construida (no se versiona)
 - La librería de piezas 3D es la edición 2023-03 de LDraw (la del paquete de
   Ubuntu): no hay piezas posteriores. Con `LDRAW_DIR` se puede apuntar a una más nueva.
 - Las piezas impresas se dibujan sin el dibujo; los modelos de ejemplo no usan ninguna.
-- La base de sets no trae precios ni disponibilidad en tiendas.
+- La base de sets no trae precios ni disponibilidad en tiendas: el precio de un
+  set candidato se busca aparte y `donors.mjs` usa el tamaño de la caja como guía.
 
 ## Datos y créditos
 

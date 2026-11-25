@@ -21,12 +21,12 @@ if (!id) {
 }
 
 export const VIEWS = {
-  hero: [-34, 22, 1.35],
-  lado: [40, 20, 1.35],
-  frente: [0, 12, 1.35],
-  atras: [150, 24, 1.35],
-  arriba: [-20, 58, 1.25],
-  detalle: [-14, 10, 2.2],
+  hero: [-34, 22, 1],
+  lado: [40, 20, 1],
+  frente: [0, 12, 1],
+  atras: [150, 24, 1],
+  arriba: [-20, 58, 1],
+  detalle: [-14, 10, 1.7],
 };
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.mpd': 'text/plain', '.png': 'image/png' };
