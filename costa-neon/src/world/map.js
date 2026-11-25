@@ -202,6 +202,7 @@ export class World {
     this.blocks = [];
     this.nodes = [];
     this.parking = [];
+    this.driveways = [];
     this.cassettes = [];
     this.races = [];
     this.pedZones = [];
@@ -798,6 +799,15 @@ export class World {
       // zona de ingreso vehicular sobre la calle adyacente
       p.drive = { x: ex + Math.sin(faceYaw) * 7, z: ez + Math.cos(faceYaw) * 7 };
     }
+    if (poi.kind === 'safehouse') {
+      // Cochera lateral: el auto personal queda junto al edificio con la trompa hacia la calle.
+      // A 24,5 m del centro de la cuadra cae entre el farol de los 20 m y la esquina.
+      const fx = Math.sin(faceYaw), fz = Math.cos(faceYaw);
+      const sx = Math.cos(faceYaw), sz = -Math.sin(faceYaw);
+      const inset = SIDEWALK - 2 + 2.7;
+      p.garage = { x: ex + sx * 24.5 - fx * inset, z: ez + sz * 24.5 - fz * inset, yaw: faceYaw };
+      this.driveways.push({ x: p.garage.x, z: p.garage.z, fx, fz });
+    }
     this.pois.push(p);
     // Relleno del resto de la manzana
     const back = { ...I };
@@ -883,6 +893,7 @@ export class World {
           if (lx > 488 && lx < 560 && !isBridge && !(vertical)) {
             /* tramo del acceso al puente por la playa: ok */
           }
+          if (this.inDriveway(lx, lz)) continue;
           // Costanera: del lado este sólo hay paseo
           this.lamps.push({ x: lx, z: lz, yaw: vertical ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : side > 0 ? Math.PI : 0, bridge: isBridge, id: this.lamps.length });
           // hidrantes y cestos ocasionales
@@ -923,6 +934,10 @@ export class World {
       if (hasW) this.tlights.push({ x: n.x - 9.6, z: n.z + 9.6, node: n.id, axis: 'ew', yaw: -Math.PI / 2, armDir: 'z-' });
     }
     for (const t of this.tlights) this.colliders.push({ kind: 'cyl', x: t.x, z: t.z, r: 0.22, minY: -1, maxY: 7, type: 'pole' });
+    // La salida de las cocheras queda libre (árboles, cestos, hidrantes, bancos)
+    const clear = (o) => !this.inDriveway(o.x, o.z);
+    this.trees = this.trees.filter(clear);
+    for (const k of ['hydrants', 'bins', 'benches', 'planters', 'bollards']) this.props[k] = this.props[k].filter(clear);
     for (const p of this.props.shelters) {
       const along = Math.abs(Math.sin(p.yaw)) > 0.5; // refugio alineado a calle N-S
       const hw = along ? 0.8 : 2.2, hd = along ? 2.2 : 0.8;
@@ -1165,6 +1180,22 @@ export class World {
     if (!rp || rp.dist > 26) return '';
     const e = rp.a.nb.find((n) => n.node === rp.b.id);
     return e ? e.name : '';
+  }
+
+  /** ¿(x,z) obstruye la salida de una cochera (desde el auto hasta la calle)? */
+  inDriveway(x, z) {
+    for (const d of this.driveways) {
+      const dx = x - d.x, dz = z - d.z;
+      const a = dx * d.fx + dz * d.fz;
+      const l = Math.abs(dx * d.fz - dz * d.fx);
+      if (a > -3 && a < 9 && l < 3.2) return true;
+    }
+    return false;
+  }
+
+  /** ¿Calzada asfaltada en (x,z)? */
+  isRoad(x, z) {
+    return isRoad(x, z);
   }
 
   /** Posición de un punto de interés por id. */

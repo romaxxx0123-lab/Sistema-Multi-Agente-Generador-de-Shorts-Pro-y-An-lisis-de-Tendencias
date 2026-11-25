@@ -57,3 +57,41 @@ button { font: inherit; color: inherit; }
 .cp-title { font-family: var(--f-display); font-weight: 700; font-size: 34px; letter-spacing: .18em; text-transform: uppercase; color: var(--text); }
 .cp-sub { font-family: var(--f-display); font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: var(--cyan); }
 .cp-hint { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+/* ------------------------------------------------------------ HUD de vehículo */
+.vhud { position: absolute; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); width: 150px; display: grid; gap: 8px; justify-items: center; pointer-events: none; transform: scale(var(--hud-scale)); transform-origin: bottom right; }
+.vhud-gauge { position: relative; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 50% 45%, rgba(14, 20, 48, .82), rgba(5, 8, 20, .9)); box-shadow: 0 8px 30px rgba(0, 0, 0, .45), inset 0 0 0 1px var(--line); }
+.vhud-gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.vh-track, .vh-fill { fill: none; stroke-width: 7; stroke-linecap: round; }
+.vh-track { stroke: rgba(234, 242, 255, .1); }
+.vh-fill { stroke: var(--cyan); stroke-dasharray: 251.3; stroke-dashoffset: 251.3; filter: drop-shadow(0 0 6px rgba(51, 225, 255, .7)); transition: stroke .2s; }
+.vh-fill.hot { stroke: var(--pink); filter: drop-shadow(0 0 8px rgba(255, 79, 163, .9)); }
+.vh-speed { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.vh-num { font-family: var(--f-display); font-weight: 700; font-size: 40px; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.vh-unit { font-family: var(--f-display); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+.vh-gear { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-family: var(--f-display); font-weight: 700; font-size: 15px; color: var(--amber); background: rgba(255, 181, 71, .12); border: 1px solid rgba(255, 181, 71, .35); border-radius: 6px; padding: 1px 8px; }
+.vh-bars { display: grid; gap: 5px; width: 120px; }
+.vh-bar { height: 5px; border-radius: 3px; background: rgba(234, 242, 255, .12); overflow: hidden; }
+.vh-bar i { display: block; height: 100%; width: 100%; background: var(--mint); transition: width .2s; }
+.vh-bar.low i { background: var(--coral); }
+.vh-nitro i { background: linear-gradient(90deg, var(--cyan), var(--pink)); }
+.vh-toast { position: absolute; right: calc(22px + env(safe-area-inset-right, 0px)); bottom: calc(205px + env(safe-area-inset-bottom, 0px)); text-align: right; pointer-events: none; animation: vt-in .35s ease; }
+.vt-name { font-family: var(--f-display); font-weight: 700; font-size: 24px; letter-spacing: .06em; text-transform: uppercase; color: var(--text); text-shadow: 0 2px 12px rgba(0, 0, 0, .7); }
+.vt-cls { font-family: var(--f-display); font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: var(--amber); text-shadow: 0 2px 10px rgba(0, 0, 0, .7); }
+@keyframes vt-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.radio-toast { position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); text-align: center; padding: 10px 18px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); pointer-events: none; animation: vt-in .3s ease; max-width: min(520px, calc(100vw - 32px)); }
+.rt-st { font-family: var(--f-display); font-weight: 700; font-size: 18px; letter-spacing: .1em; color: var(--text); display: flex; gap: 8px; align-items: center; justify-content: center; }
+.rt-fq { color: var(--st, var(--cyan)); font-weight: 600; }
+.rt-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--st, var(--cyan)); box-shadow: 0 0 10px var(--st, var(--cyan)); }
+.rt-song { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* ------------------------------------------------------------ fuera de combate */
+.death-screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 25; padding: 0 16px; text-align: center; }
+.death-screen::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: clamp(120px, 22vh, 190px); transform: translateY(-50%); background: linear-gradient(90deg, transparent, rgba(5, 3, 8, .62) 18%, rgba(5, 3, 8, .62) 82%, transparent); opacity: 0; }
+.death-screen.show::before { animation: ds-fade .8s ease .2s forwards; }
+.ds-title { position: relative; font-family: var(--f-display); font-weight: 700; font-size: clamp(30px, 6.4vw, 84px); letter-spacing: .12em; color: #ff4a4f; text-shadow: 0 0 28px rgba(255, 50, 60, .55), 0 3px 0 rgba(0, 0, 0, .55); opacity: 0; }
+.death-screen.show .ds-title { animation: ds-in 1.5s cubic-bezier(.2, .8, .2, 1) .35s forwards; }
+.ds-sub { position: relative; margin-top: 10px; font-family: var(--f-display); font-size: clamp(13px, 1.8vw, 18px); letter-spacing: .14em; text-transform: uppercase; color: var(--text); opacity: 0; }
+.death-screen.show .ds-sub { animation: ds-fade 1s ease 1.7s forwards; }
+@keyframes ds-in { 0% { opacity: 0; transform: scale(1.3); filter: blur(8px); } 55% { opacity: 1; filter: blur(0); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes ds-fade { to { opacity: .92; } }

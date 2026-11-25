@@ -237,6 +237,12 @@ class Radio {
     }
   }
 
+  /** Volumen de la radio de un auto escuchada desde afuera (k: 0..1 según la distancia). */
+  setOutsideLevel(k) {
+    if (!this.ctx || this.mode !== 'outside' || this.current < 0) return;
+    this.out.gain.setTargetAtTime(0.32 * Math.max(0, Math.min(1, k)), this.ctx.currentTime, 0.12);
+  }
+
   available() {
     return this.stations.map((s, i) => i).filter((i) => !this.locked.has(this.stations[i].id));
   }

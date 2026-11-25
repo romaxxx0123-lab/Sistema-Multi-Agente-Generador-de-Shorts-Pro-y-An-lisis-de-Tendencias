@@ -4,6 +4,7 @@ import { clamp, damp, dampAngle, lerp, angleDiff, valueNoise2 } from './utils.js
 import { WATER_LEVEL } from '../world/map.js';
 
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _pivot = new THREE.Vector3(), _desired = new THREE.Vector3(), _look = new THREE.Vector3();
+const _e2 = new THREE.Euler(), _qa = new THREE.Quaternion();
 
 export class CameraRig {
   constructor(engine, collision, world) {
@@ -151,12 +152,12 @@ export class CameraRig {
         this.pitch = damp(this.pitch, v.air ? 0.3 : 0.18, 1.5, dt);
       }
       const L = v.length || 4.5, Hh = v.height || 1.5;
-      if (this.vehZoom === 2 && !v.noHood) {
-        // cámara de capó
-        const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
-        cam.position.set(v.pos.x + fx * (L * 0.12), v.pos.y + Hh * 0.82, v.pos.z + fz * (L * 0.12));
-        _look.set(cam.position.x + Math.sin(this.yaw) * 10, cam.position.y - 0.5 + this.pitch * -3, cam.position.z + Math.cos(this.yaw) * 10);
-        cam.lookAt(_look);
+      if (this.vehZoom === 2 && !v.noHood && v.eye && v.quat) {
+        // cámara interior: ojos del conductor, sigue cabeceo y rolido del auto
+        cam.position.copy(v.eye);
+        const yawRel = angleDiff(v.yaw, this.yaw);
+        _e2.set(-this.pitch * 0.5 + 0.02, Math.PI + yawRel, 0, 'YXZ');
+        cam.quaternion.copy(v.quat).multiply(_qa.setFromEuler(_e2));
       } else {
         const dist = (this.vehZoom === 1 ? 1.45 : 1) * (4.6 + L * 0.55) + (v.extraDist || 0);
         this.dist = damp(this.dist, dist, 4, dt);
@@ -178,7 +179,8 @@ export class CameraRig {
         cam.lookAt(_look);
       }
       const spd = Math.abs(v.speed);
-      this.fov = damp(this.fov, this.baseFov + Math.min(16, spd * 0.22) + (v.nitro ? 9 : 0), 3, dt);
+      const interior = this.vehZoom === 2 && !v.noHood && v.eye;
+      this.fov = damp(this.fov, (interior ? 70 : this.baseFov) + Math.min(interior ? 8 : 16, spd * 0.22) + (v.nitro ? 9 : 0), 3, dt);
     }
     // Temblor
     if (this.trauma > 0) {

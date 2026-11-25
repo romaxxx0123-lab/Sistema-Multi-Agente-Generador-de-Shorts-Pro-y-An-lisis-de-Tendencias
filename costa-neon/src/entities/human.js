@@ -590,7 +590,7 @@ export class Human {
     let hipBob = 0, hipSway = 0, rootPitch = 0, rootRoll = 0, rootY = 0, rootZ = 0;
     const st = a.state;
     const sp = a.speed;
-    if (st === 'walk' || st === 'run' || st === 'sprint' || st === 'idle' || st === 'crouch') {
+    if (st === 'walk' || st === 'run' || st === 'sprint' || st === 'idle' || st === 'crouch' || st === 'getup') {
       const moving = sp > 0.15;
       const run = clamp((sp - 2.2) / 3.0, 0, 1);
       const sprint = clamp((sp - 5.5) / 2.0, 0, 1);
@@ -607,7 +607,7 @@ export class Human {
       const kneeBase = lerp(0.08, 0.25, run) * amp;
       const kneeL = kneeBase + Math.max(0, -c) * lerp(0.9, 1.7, run) * amp + Math.max(0, s) * 0.15 * amp;
       const kneeR = kneeBase + Math.max(0, c) * lerp(0.9, 1.7, run) * amp + Math.max(0, -s) * 0.15 * amp;
-      let crouch = st === 'crouch' ? 1 : 0;
+      let crouch = st === 'crouch' ? 1 : st === 'getup' ? 0.8 : 0;
       this._set(B.thighL, thighL - crouch * 0.9, 0, 0.02);
       this._set(B.thighR, thighR - crouch * 0.9, 0, -0.02);
       this._set(B.shinL, kneeL + crouch * 1.4, 0, 0);
@@ -687,7 +687,7 @@ export class Human {
         this._set(B.spine, -0.05, 0, 0);
       }
       rootY = st === 'sit' ? -0.42 : 0;
-    } else if (st === 'dead') {
+    } else if (st === 'dead' || st === 'down') {
       const v = a.deadPose;
       rootPitch = v < 0.5 ? -Math.PI / 2 : Math.PI / 2;
       rootY = 0.11;
@@ -794,7 +794,7 @@ export class Human {
     _e.set(rootPitch, 0, rootRoll, 'YXZ');
     T[B.root].setFromEuler(_e);
     // Mezcla
-    const k = 1 - Math.exp(-dt * (st === 'dead' ? 6 : st === 'ragdoll' ? 18 : 14));
+    const k = 1 - Math.exp(-dt * (st === 'dead' || st === 'down' ? 6 : st === 'ragdoll' ? 18 : st === 'getup' ? 4 : 14));
     for (let i = 0; i < this.bones.length; i++) this.bones[i].quaternion.slerp(T[i], k);
     const hips = this.bones[B.hips];
     const restH = this.rest[B.hips];

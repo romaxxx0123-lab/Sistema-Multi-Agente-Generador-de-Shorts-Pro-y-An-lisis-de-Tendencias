@@ -103,6 +103,30 @@ async function boot() {
       game.input.virtual.look.x += dx;
       game.input.virtual.look.y += dy;
     },
+    drive(throttle = 0, brake = 0, steer = 0, actions = []) {
+      const v = game.input.virtual;
+      v.active = true;
+      v.throttle = throttle;
+      v.brake = brake;
+      v.steer = steer;
+      v.actions = new Set(actions);
+    },
+    teleport(x, z, yaw = 0) { game.player.teleport(x, z, yaw); game.camRig.yaw = yaw; },
+    spawnCar(id, dist = 6, opts = {}) {
+      const p = game.player;
+      const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+      return game.vehicles.spawn(id, p.pos.x + fx * dist, p.pos.z + fz * dist, opts.yaw ?? p.yaw + Math.PI / 2, opts);
+    },
+    vehicleInfo() {
+      const v = game.player.vehicle;
+      const p = game.player;
+      return {
+        inVehicle: !!v, model: v && v.modelId, speed: v ? +(v.speed * 3.6).toFixed(1) : 0, gear: v && v.gear,
+        pos: [+p.pos.x.toFixed(1), +p.pos.y.toFixed(2), +p.pos.z.toFixed(1)], health: Math.round(p.health), dead: p.dead,
+        knock: p.knock && p.knock.phase, vehicles: game.vehicles.list.length, traffic: game.traffic.cars.length,
+        entering: !!game.enterState, exiting: !!game.exitState,
+      };
+    },
   };
   setProgress(1, 'Listo');
   setTimeout(() => document.getElementById('loading').classList.add('hide'), 300);

@@ -655,7 +655,8 @@ export class StreetProps {
     this.screenTex.needsUpdate = true;
   }
 
-  update(dt, t, nightK, lampsOn, camPos) {
+  /** t: reloj visual (animaciones). signalT: reloj del juego que también usa el tránsito para los semáforos. */
+  update(dt, t, nightK, lampsOn, camPos, signalT = t) {
     if (camPos) for (const c of this.chunked) c.update(camPos);
     // Faroles
     const k = lampsOn;
@@ -681,7 +682,7 @@ export class StreetProps {
       const list = w.tlights;
       for (let i = 0; i < list.length; i++) {
         const tl = list[i];
-        const st = w.lightState(w.nodes[tl.node], tl.axis, t);
+        const st = w.lightState(w.nodes[tl.node], tl.axis, signalT);
         if (st === this.sigState[i]) continue;
         this.sigState[i] = st;
         changed = true;

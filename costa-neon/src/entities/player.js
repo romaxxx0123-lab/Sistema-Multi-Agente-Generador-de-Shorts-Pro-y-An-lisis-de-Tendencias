@@ -1,8 +1,8 @@
 // Jugador a pie: movimiento, salto, sprint con estamina, natación, colisiones y salud.
 import * as THREE from 'three';
-import { clamp, damp, dampAngle, angleDiff } from '../core/utils.js';
+import { clamp, damp, dampAngle, angleDiff, wrapAngle } from '../core/utils.js';
 import { WATER_LEVEL } from '../world/map.js';
-import { Human } from './human.js';
+import { Human, BONES } from './human.js';
 
 const GRAVITY = 24;
 const RADIUS = 0.32;
@@ -11,6 +11,7 @@ export class Player {
   constructor(game, appearance) {
     this.game = game;
     this.human = new Human(game.humanFactory, appearance);
+    this.human.object.rotation.order = 'YXZ';
     game.engine.scene.add(this.human.object);
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
@@ -33,6 +34,7 @@ export class Player {
     this.time = 0;
     this.vehicle = null;
     this.frozen = false;
+    this.knock = null; // derribo: { phase: 'fly'|'down'|'getup', t, tumble, tumbleV, bounces }
     this.stepPhase = 0;
     this.stats = { walked: 0, swum: 0, jumps: 0, falls: 0 };
     this.listeners = new Set();
@@ -52,8 +54,9 @@ export class Player {
     this.pos.set(spot.x, y != null ? y : col.surfaceBelow(spot.x, spot.z, 50), spot.z);
     this.vel.set(0, 0, 0);
     this.yaw = yaw;
+    this.onGround = true;
     this.human.object.position.copy(this.pos);
-    this.human.object.rotation.y = yaw;
+    this.human.object.rotation.set(0, yaw, 0);
   }
 
   heal(amount) {
@@ -84,17 +87,137 @@ export class Player {
   die(source) {
     if (this.dead) return;
     this.dead = true;
-    this.human.anim.state = 'dead';
-    this.human.anim.deadPose = Math.random();
+    this.aiming = false;
+    this.sprinting = false;
+    // en el aire sigue volando; la pose final se fija al tocar el suelo
+    if (!this.knock || this.knock.phase !== 'fly') {
+      this.human.anim.state = 'dead';
+      this.human.anim.deadPose = Math.random();
+    }
     this.emit({ type: 'death', source });
   }
 
   revive(x, z, yaw = 0) {
     this.dead = false;
+    this.knock = null;
     this.health = this.maxHealth;
     this.stamina = this.staminaMax;
+    this.swimming = false;
+    this.crouch = false;
     this.human.anim.state = 'idle';
     this.teleport(x, z, yaw);
+  }
+
+  /** Atropello: sale despedido según la velocidad del vehículo, cae y se levanta si sigue vivo. */
+  onVehicleHit(v, speed, dir) {
+    if (this.vehicle) return;
+    if (this.knock && this.knock.phase === 'fly' && this.knock.t < 0.5) return; // mismo impacto
+    const d = dir && dir.lengthSq() > 1e-6 ? dir.clone().normalize() : new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
+    this.knockdown(d.x * speed * 0.72, Math.min(10.5, 2.4 + speed * 0.32), d.z * speed * 0.72);
+    const dmg = Math.max(0, (speed - 3) * 4.4) + Math.max(0, speed - 14) * 4;
+    this.emit({ type: 'hit', vehicle: v, speed });
+    this.takeDamage(dmg, v.driver === 'player' ? 'player' : 'atropello');
+  }
+
+  /** Derribo genérico (atropello, salto desde un vehículo en marcha, onda expansiva). */
+  knockdown(vx, vy, vz) {
+    if (this.vehicle) return;
+    this.vel.set(vx, vy, vz);
+    this.onGround = false;
+    this.swimming = false;
+    this.crouch = false;
+    this.aiming = false;
+    this.sprinting = false;
+    const hs = Math.hypot(vx, vz);
+    // la dirección del giro sigue al empuje relativo a hacia dónde mira
+    const facing = Math.sin(this.yaw) * vx + Math.cos(this.yaw) * vz;
+    this.knock = { phase: 'fly', t: 0, tumble: 0, tumbleV: (hs * 0.75 + 2.5) * (facing >= 0 ? 1 : -1), bounces: 0, downT: 0 };
+    this.human.anim.state = 'ragdoll';
+  }
+
+  /** Física del cuerpo derribado (también la del cuerpo sin vida). */
+  _updateKnock(dt) {
+    const k = this.knock;
+    const h = this.human;
+    const col = this.game.collision;
+    k.t += dt;
+    if (!this.onGround) this.vel.y -= GRAVITY * dt;
+    const res = col.resolveCircle(this.pos.x + this.vel.x * dt, this.pos.z + this.vel.z * dt, RADIUS, this.pos.y + 0.25, this.pos.y + 1.3);
+    if (res.hit) {
+      const vn = this.vel.x * res.nx + this.vel.z * res.nz;
+      if (vn < 0) {
+        if (vn < -7) this.takeDamage((-vn - 7) * 3.2, 'golpe');
+        this.vel.x = (this.vel.x - 1.5 * vn * res.nx) * 0.45;
+        this.vel.z = (this.vel.z - 1.5 * vn * res.nz) * 0.45;
+        k.tumbleV *= -0.5;
+      }
+    }
+    if (this.game.pushOutOfDynamic) this.game.pushOutOfDynamic(res, RADIUS, this);
+    this.pos.x = res.x;
+    this.pos.z = res.z;
+    this.pos.y += this.vel.y * dt;
+    const gy = col.surfaceBelow(this.pos.x, this.pos.z, this.pos.y + 0.6);
+    // al agua: se recupera nadando
+    if (!this.dead && WATER_LEVEL - gy > 1.35 && this.pos.y < WATER_LEVEL - 0.3) {
+      this.knock = null;
+      this.swimming = true;
+      this.vel.set(this.vel.x * 0.25, 0, this.vel.z * 0.25);
+      h.object.rotation.set(0, this.yaw, 0);
+      this.emit({ type: 'splash' });
+      return;
+    }
+    if (this.pos.y <= gy) {
+      const impact = -this.vel.y;
+      this.pos.y = gy;
+      if (!this.onGround) {
+        if (impact > 3) this.emit({ type: 'land', hard: impact > 9 });
+        if (impact > 14) this.takeDamage((impact - 14) * 6, 'caída');
+        if (impact > 5 && k.bounces < 1) {
+          this.vel.y = impact * 0.22;
+          k.bounces++;
+        } else {
+          this.vel.y = 0;
+          this.onGround = true;
+        }
+      }
+      const f = Math.exp(-dt * (k.phase === 'fly' ? 3.5 : 7));
+      this.vel.x *= f;
+      this.vel.z *= f;
+    } else if (this.pos.y - gy > 0.05) this.onGround = false;
+    const hs = Math.hypot(this.vel.x, this.vel.z);
+    if (k.phase === 'fly') {
+      k.tumble += k.tumbleV * dt;
+      if (this.onGround && (k.t > 0.25 || hs < 2)) {
+        // pose final según cómo quedó el cuerpo (boca arriba / boca abajo)
+        const a = wrapAngle(k.tumble);
+        const faceDown = a > 0;
+        h.anim.deadPose = faceDown ? 0.5 + Math.random() * 0.5 : Math.random() * 0.5;
+        h.anim.state = this.dead ? 'dead' : 'down';
+        const r = faceDown ? Math.PI / 2 : -Math.PI / 2;
+        h.bones[BONES.root].quaternion.setFromEuler(new THREE.Euler(r, 0, 0, 'YXZ'));
+        k.tumble = wrapAngle(a - r);
+        k.phase = 'down';
+        k.downT = 0;
+      }
+    } else {
+      k.tumble = damp(k.tumble, 0, 9, dt);
+      if (k.phase === 'down' && this.onGround && hs < 0.6) {
+        k.downT += dt;
+        if (!this.dead && k.downT > 1.4) {
+          k.phase = 'getup';
+          k.t = 0;
+          h.anim.state = 'getup';
+          this.emit({ type: 'getup' });
+        }
+      } else if (k.phase === 'getup' && k.t > 0.9) {
+        this.knock = null;
+        h.anim.state = 'idle';
+      }
+    }
+    if (this.vel.x * this.vel.x + this.vel.z * this.vel.z > 4 && k.phase === 'fly') this.yaw = dampAngle(this.yaw, Math.atan2(this.vel.x, this.vel.z), 3, dt);
+    h.object.position.copy(this.pos);
+    h.object.rotation.set(this.knock ? k.tumble : 0, this.yaw, 0);
+    h.animate(dt);
   }
 
   /** Avance del jugador a pie. cam = CameraRig. */
@@ -102,7 +225,14 @@ export class Player {
     this.time += dt;
     const h = this.human;
     if (this.vehicle) return;
+    if (this.knock) return this._updateKnock(dt);
     if (this.dead) {
+      // cuerpo sin vida: cae hasta el suelo
+      if (!this.onGround || this.pos.y > this.game.collision.surfaceBelow(this.pos.x, this.pos.z, this.pos.y + 0.6) + 0.02) {
+        this.knock = { phase: 'down', t: 0, tumble: 0, tumbleV: 0, bounces: 1, downT: 0 };
+        this.onGround = false;
+        return this._updateKnock(dt);
+      }
       h.animate(dt);
       return;
     }
@@ -228,7 +358,7 @@ export class Player {
       if (Math.floor(this.stepPhase / Math.PI) !== prev) this.emit({ type: 'step', speed: hs, wading: this.wading });
     }
     h.object.position.copy(this.pos);
-    h.object.rotation.y = this.yaw;
+    h.object.rotation.set(0, this.yaw, 0);
     h.animate(dt);
   }
 
