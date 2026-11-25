@@ -52,6 +52,8 @@ function interp(points, zn) {
   return P[P.length - 1][1];
 }
 
+const FLARE = { muscle: 0.05, sports: 0.045, super: 0.05, suv: 0.035, pickup: 0.035, sedan: 0.02, hatch: 0.025, van: 0.01 };
+
 const smooth = (a, b, x) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -184,14 +186,15 @@ export function buildCar(spec) {
     const hw = hwAt(zn, yB) * (1 - endR * endR * 0.12);
     const c = inCabin(zn) * smooth(0.1, 0.25, yt - yB);
     const tw = hw * S.tumble;
-    const cabinPts = [
-      [0, yb], [hw * 0.9, yb], [hw, yb + 0.1], [hw * 1.01, (yb + yB) / 2], [hw * 0.985, yB],
-      [tw * 1.04, yB + (yt - yB) * 0.55], [tw, yt - 0.055], [tw * 0.55, yt - 0.008], [0, yt],
-    ];
-    const flatPts = [
-      [0, yb], [hw * 0.9, yb], [hw, yb + 0.1], [hw * 1.01, (yb + yB) / 2], [hw * 0.985, yB],
-      [hw * 0.965, Math.min(yt, yB) - 0.0 + (yt - yB) * 0.3], [hw * 0.9, yt - 0.03], [hw * 0.5, yt - 0.005], [0, yt],
-    ];
+    // guardabarros ensanchados sobre las ruedas (más marcados en deportivos y todoterrenos)
+    let flare = 0;
+    for (const wz of wheelZ) flare = Math.max(flare, Math.exp(-Math.pow((z - wz) / (arch * 1.15), 2) * 2));
+    flare *= FLARE[spec.style] ?? 0.02;
+    // línea de hombro: el punto más ancho del lateral queda alto, marcando un reflejo a lo largo
+    const sh = yb + (yB - yb) * 0.64;
+    const low = [[0, yb], [hw * 0.9 * (1 + flare * 0.5), yb], [hw * 0.985 * (1 + flare), yb + 0.1], [hw * 1.013 * (1 + flare * 0.9), sh], [hw * 0.982 * (1 + flare * 0.25), yB]];
+    const cabinPts = [...low, [tw * 1.04, yB + (yt - yB) * 0.55], [tw, yt - 0.055], [tw * 0.55, yt - 0.008], [0, yt]];
+    const flatPts = [...low, [hw * 0.965, Math.min(yt, yB) - 0.0 + (yt - yB) * 0.3], [hw * 0.9, yt - 0.03], [hw * 0.5, yt - 0.005], [0, yt]];
     const pts = cabinPts.map((p, k) => [p[0] * c + flatPts[k][0] * (1 - c), p[1] * c + flatPts[k][1] * (1 - c)]);
     rings.push({ zn, z, pts, c, yb, yB, yt, hw });
   }
@@ -352,6 +355,7 @@ export function buildCar(spec) {
   trimParts.push(...interiorParts);
   const chromeParts = [];
   const headParts = [];
+  const blinkL = [], blinkR = [];
   const tailParts = [];
   const extraParts = [];
   const r0 = rings[NZ], rEnd = rings[0];
@@ -390,6 +394,9 @@ export function buildCar(spec) {
     }
     addBox(headParts, hW * 0.86, 0.014, 0.012, hx, hy - hH * 0.36, hzz + 0.045, tilt, s * -0.12);
     glassBox(hW + 0.015, hH + 0.012, 0.016, hx, hy, hzz + 0.052, tilt, s * -0.12);
+    // intermitente delantero (ámbar) en el extremo exterior del faro, envolviendo la esquina
+    const bl = s > 0 ? blinkL : blinkR;
+    addBox(bl, 0.07, hH * 0.55, 0.06, hx + s * (hW * 0.5 + 0.02), hy - hH * 0.1, hzz + 0.01, tilt, s * -0.35);
     // --- piloto trasero: bloque emisivo principal, segmento interior y reflector de marcha atrás
     const rearY = yAt(-0.97);
     const hwR = hwAt(-0.97, rearY);
@@ -409,6 +416,8 @@ export function buildCar(spec) {
     } else addBox(tailParts, tW, tH, 0.06, tx, ty, tz);
     addBox(chromeParts, van ? 0.1 : 0.09, van ? 0.08 : 0.05, 0.03, tx - s * (van ? 0 : tW * 0.28), ty - (van ? tH * 0.36 : tH * 0.15), tz - 0.022);
     glassBox(tW + 0.012, tH + 0.012, 0.012, tx, ty, tz - 0.034);
+    // intermitente trasero dentro del grupo óptico (extremo exterior)
+    addBox(s > 0 ? blinkL : blinkR, van ? 0.11 : tW * 0.2, van ? 0.09 : tH * 0.5, 0.05, tx + s * (van ? 0 : tW * 0.38), ty + (van ? tH * 0.36 : -tH * 0.05), tz - 0.012);
     // --- espejo: brazo, carcasa del color del auto y vidrio
     const mz = (S.ws[0] - 0.035) * hz;
     const my = beltAt(S.ws[0]) + 0.075;
@@ -478,12 +487,11 @@ export function buildCar(spec) {
   addBox(trimParts, W * 0.44, 0.15, 0.04, 0, gy, hz * 0.985);
   for (let k = 0; k < 4; k++) addBox(chromeParts, W * 0.42, 0.012, 0.02, 0, gy - 0.055 + k * 0.037, hz * 0.985 + 0.022);
   addBox(trimParts, W * 0.56, 0.07, 0.04, 0, clear + 0.12, hz * 0.975);
-  const plate = new THREE.BoxGeometry(0.42, 0.11, 0.02);
-  plate.translate(0, clear + 0.22, hz + 0.005);
-  trimParts.push(tint(plate.toNonIndexed(), 0xe8e8e2));
-  const plate2 = new THREE.BoxGeometry(0.42, 0.11, 0.02);
-  plate2.translate(0, yAt(-0.98) - 0.25, -hz - 0.005);
-  trimParts.push(tint(plate2.toNonIndexed(), 0xe8e8e2));
+  // portapatentes (la patente con su número es una instancia aparte con textura)
+  const plateF = { x: 0, y: clear + 0.22, z: hz + 0.012, front: true };
+  const plateR = { x: 0, y: yAt(-0.98) - 0.25, z: -hz - 0.012, front: false };
+  addBox(trimParts, 0.45, 0.13, 0.016, 0, plateF.y, hz + 0.002);
+  addBox(trimParts, 0.45, 0.13, 0.016, 0, plateR.y, -hz - 0.002);
   // Extras por estilo
   if (S.spoiler) {
     const sy = yAt(-0.9) + 0.18;
@@ -538,6 +546,9 @@ export function buildCar(spec) {
     noHood: false,
     // líneas de capó y baúl para el shader: [inicio capó z, fin baúl z, x de la línea, límite z]
     hood: [S.ws[0] * hz, S.cargo || S.bed ? -99 : S.rw[1] * hz, W * 0.355, hz * 0.94],
+    plates: [plateF, plateR],
+    blinkL: mergeOrEmpty(blinkL),
+    blinkR: mergeOrEmpty(blinkR),
   };
 }
 
@@ -570,6 +581,11 @@ export function buildBike(spec) {
   addCyl(chrome, 0.045, 0.7, 0.16, 0.38, -0.35, 'z', 8);
   addBox(head, 0.14, 0.1, 0.06, 0, 0.94, 0.84);
   addBox(tail, 0.12, 0.05, 0.05, 0, 0.83, -0.88);
+  const bL = [], bR = [];
+  for (const sx of [-1, 1]) {
+    addBox(sx > 0 ? bL : bR, 0.05, 0.035, 0.05, sx * 0.13, 0.93, 0.8);
+    addBox(sx > 0 ? bL : bR, 0.05, 0.035, 0.05, sx * 0.12, 0.8, -0.86);
+  }
   const wheels = [{ x: 0, y: r, z: wb / 2, r, w: 0.13, front: true, side: 0 }, { x: 0, y: r, z: -wb / 2, r, w: 0.16, front: false, side: 0 }];
   const paintGeo = mergeOrEmpty(paint), trimGeo = mergeOrEmpty(trim.map((g) => tint(g, 0x1a1b1d)));
   bakeAOBike(paintGeo, wheels);
@@ -577,6 +593,8 @@ export function buildBike(spec) {
   return {
     paint: paintGeo, trim: trimGeo, glass: null, chrome: mergeOrEmpty(chrome),
     head: mergeOrEmpty(head), tail: mergeOrEmpty(tail), extra: null,
+    blinkL: mergeOrEmpty(bL), blinkR: mergeOrEmpty(bR),
+    plates: [{ x: 0, y: 0.62, z: -0.95, front: false, small: true }],
     wheels,
     seat: { x: 0, hip: 0.9, z: -0.22 },
     height: 1.1,

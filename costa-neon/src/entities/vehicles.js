@@ -221,6 +221,42 @@ const GLASS_OUT = /* glsl */ `
 }
 `;
 
+// Patentes ficticias de Puerto Índigo: atlas de 4×8 placas con números distintos
+const PLATE_COLS = 4, PLATE_ROWS = 8;
+function makePlateAtlas() {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 512;
+  const g = c.getContext('2d');
+  const L = 'ABCDEFGHJKLMNPRSTUVWXYZ';
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let r = 0; r < PLATE_ROWS; r++)
+    for (let k = 0; k < PLATE_COLS; k++) {
+      const x = k * 256, y = r * 64;
+      g.fillStyle = '#f1f2ee';
+      g.fillRect(x + 2, y + 2, 252, 60);
+      g.strokeStyle = '#1b1d22';
+      g.lineWidth = 3;
+      g.strokeRect(x + 5, y + 5, 246, 54);
+      g.fillStyle = '#1d3f8f';
+      g.fillRect(x + 7, y + 7, 242, 12);
+      g.fillStyle = '#f4f6ff';
+      g.font = 'bold 10px Arial, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('PUERTO ÍNDIGO', x + 128, y + 13.5);
+      const txt = L[(rnd() * L.length) | 0] + L[(rnd() * L.length) | 0] + ' ' + String(100 + ((rnd() * 900) | 0)) + ' ' + L[(rnd() * L.length) | 0] + L[(rnd() * L.length) | 0];
+      g.fillStyle = '#16181c';
+      g.font = 'bold 33px "Arial Narrow", Arial, sans-serif';
+      g.fillText(txt, x + 128, y + 41);
+    }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 function makeBeamTexture() {
   const c = document.createElement('canvas');
   c.width = 64;
@@ -254,6 +290,25 @@ class VehicleRenderer {
     this.headMat = basic('vhead');
     this.tailMat = basic('vtail');
     this.extraMat = basic('vextra');
+    this.blinkMat = basic('vblink');
+    // patentes: atlas + índice por instancia
+    this.plateMat = lib.standard({ map: makePlateAtlas(), roughness: 0.42, metalness: 0.25 }, {
+      key: 'vplate',
+      vertexHead: 'attribute float aPlate;',
+      vertexWorld: `vMapUv = (uv + vec2(mod(aPlate, ${PLATE_COLS}.0), ${PLATE_ROWS - 1}.0 - floor(aPlate / ${PLATE_COLS}.0))) / vec2(${PLATE_COLS}.0, ${PLATE_ROWS}.0);`,
+    });
+    const maxPlates = Object.values(CAPACITY).reduce((s, c) => s + c * 2, 0);
+    const plateGeo = new THREE.PlaneGeometry(0.42, 0.11);
+    this.plateIdx = new Float32Array(maxPlates);
+    plateGeo.setAttribute('aPlate', new THREE.InstancedBufferAttribute(this.plateIdx, 1).setUsage(THREE.DynamicDrawUsage));
+    this.plates = new THREE.InstancedMesh(plateGeo, this.plateMat, maxPlates);
+    for (let i = 0; i < maxPlates; i++) this.plates.setMatrixAt(i, ZERO);
+    this.plates.frustumCulled = false;
+    this.plates.receiveShadow = true;
+    this.plates.count = 0;
+    setDynamic(this.plates);
+    this.group.add(this.plates);
+    this.plateSlots = new Array(maxPlates).fill(null);
     const wheel = buildWheel();
     // caucho: gris muy oscuro (no negro puro), mate con leve brillo en el flanco
     this.tireMat = lib.standard({ color: 0x1e1e20, roughness: 0.86, metalness: 0 }, { key: 'tire' });
@@ -309,7 +364,7 @@ class VehicleRenderer {
   /** Mapa de entorno de todos los materiales de vehículos (sonda de reflejos, o null = cielo). */
   setEnvMap(tex) {
     this.envMap = tex;
-    const mats = [this.chromeMat, this.tireMat, this.rimMat, this.caliperMat, this.trimMat, this.glassMat];
+    const mats = [this.chromeMat, this.tireMat, this.rimMat, this.caliperMat, this.trimMat, this.glassMat, this.plateMat];
     for (const m of Object.values(this.models)) {
       for (const p of Object.values(m.parts)) mats.push(p.material);
     }
@@ -358,7 +413,7 @@ class VehicleRenderer {
       mesh.receiveShadow = true;
       mesh.count = 0;
       for (let i = 0; i < cap; i++) mesh.setMatrixAt(i, ZERO);
-      if (name === 'paint' || name === 'head' || name === 'tail' || name === 'extra' || name === 'barR' || name === 'barB') mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
+      if (name === 'paint' || name === 'head' || name === 'tail' || name === 'extra' || name === 'barR' || name === 'barB' || name === 'blinkL' || name === 'blinkR') mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
       setDynamic(mesh);
       this.group.add(mesh);
       parts[name] = mesh;
@@ -381,6 +436,8 @@ class VehicleRenderer {
     mk('chrome', geo.chrome, this.chromeMat, false);
     mk('head', geo.head, this.headMat, false);
     mk('tail', geo.tail, this.tailMat, false);
+    mk('blinkL', geo.blinkL, this.blinkMat, false);
+    mk('blinkR', geo.blinkR, this.blinkMat, false);
     if (spec.lightbar && geo.extra) {
       // dividir barra en rojo (izq) y azul (der)
       const pos = geo.extra.attributes.position;
@@ -433,6 +490,16 @@ class VehicleRenderer {
     }
     this.rims.instanceColor.needsUpdate = true;
     this.calipers.instanceColor.needsUpdate = true;
+    v.plateSlots = [];
+    for (let k = 0; k < (m.geo.plates || []).length; k++) {
+      const ps = this.plateSlots.indexOf(null);
+      if (ps < 0) break;
+      this.plateSlots[ps] = v;
+      v.plateSlots.push(ps);
+      this.plateIdx[ps] = v.plateNo;
+      this.plates.count = Math.max(this.plates.count, ps + 1);
+    }
+    this.plates.geometry.attributes.aPlate.needsUpdate = true;
     this.setColor(v, v.color);
     return true;
   }
@@ -454,6 +521,11 @@ class VehicleRenderer {
     this.tires.instanceMatrix.needsUpdate = true;
     this.rims.instanceMatrix.needsUpdate = true;
     this.calipers.instanceMatrix.needsUpdate = true;
+    for (const ps of v.plateSlots || []) {
+      this.plates.setMatrixAt(ps, ZERO);
+      this.plateSlots[ps] = null;
+    }
+    this.plates.instanceMatrix.needsUpdate = true;
     v.render = null;
   }
 
@@ -501,6 +573,30 @@ class VehicleRenderer {
         const tk = alarm ? 4 : v.braking && on ? 5 : on ? (lightsNeeded ? 1.6 : 0.5) : 0.15;
         tail.setColorAt(v.slot, _v.set(tk, tk * 0.06, tk * 0.05));
         tail.instanceColor.needsUpdate = true;
+      }
+      // intermitentes: giro anunciado por la IA o balizas
+      if (m.parts.blinkL) {
+        const ph = Math.floor(performance.now() / 385) % 2 === 0;
+        const lOn = !v.destroyed && ph && (v.blink === 'left' || v.hazard || (alarm && v.alarmT > 0));
+        const rOn = !v.destroyed && ph && (v.blink === 'right' || v.hazard || (alarm && v.alarmT > 0));
+        const dim = 0.14;
+        m.parts.blinkL.setColorAt(v.slot, _v.set(1, 0.5, 0.06).multiplyScalar(lOn ? 5.5 : dim));
+        m.parts.blinkR.setColorAt(v.slot, _v.set(1, 0.5, 0.06).multiplyScalar(rOn ? 5.5 : dim));
+        m.parts.blinkL.instanceColor.needsUpdate = true;
+        m.parts.blinkR.instanceColor.needsUpdate = true;
+      }
+      // patentes
+      const PL = m.geo.plates || [];
+      for (let k = 0; k < (v.plateSlots || []).length; k++) {
+        const ps = v.plateSlots[k];
+        if (!visible) {
+          this.plates.setMatrixAt(ps, ZERO);
+          continue;
+        }
+        const pl = PL[k];
+        _q2.setFromAxisAngle(_v.set(0, 1, 0), pl.front ? 0 : Math.PI);
+        _m2.compose(_p.set(pl.x, pl.y, pl.z), _q2, _s.set(pl.small ? 0.55 : 1, pl.small ? 0.8 : 1, 1)).premultiply(_m);
+        this.plates.setMatrixAt(ps, _m2);
       }
       if (m.parts.extra) {
         const ek = v.modelId === 'taxi' ? (on ? (lightsNeeded ? 3.2 : 1.2) : 0.3) : 1;
@@ -566,6 +662,7 @@ class VehicleRenderer {
     this.tires.instanceMatrix.needsUpdate = true;
     this.rims.instanceMatrix.needsUpdate = true;
     this.calipers.instanceMatrix.needsUpdate = true;
+    this.plates.instanceMatrix.needsUpdate = true;
     this.beams.count = beamN;
     this.beams.instanceMatrix.needsUpdate = true;
     this.beamMat.opacity = 0.32 * Math.max(nightK, U.uWet.value * 0.5);
@@ -654,6 +751,9 @@ export class Vehicle {
     const r = Math.random();
     this.dirt = opts.dirt ?? (st === 'van' || st === 'pickup' ? 0.35 + r * 0.55 : r < 0.55 ? r * 0.25 : r < 0.9 ? 0.2 + r * 0.3 : 0.6 + r * 0.35);
     this.persistent = !!opts.persistent;
+    this.plateNo = opts.plateNo ?? (Math.random() * PLATE_COLS * PLATE_ROWS) | 0;
+    this.blink = null;
+    this.hazard = false;
     this.parked = !!opts.parked;
     this.isPolice = modelId === 'patrulla';
     this.sunk = false;
@@ -1303,6 +1403,20 @@ export class VehicleManager {
       } else {
         game.effects.skids.break(v.id * 4);
         game.effects.skids.break(v.id * 4 + 1);
+      }
+      // rocío de agua detrás de las ruedas con el asfalto mojado
+      const wet = U.uWet.value;
+      const absSp = Math.abs(v.speed);
+      if (wet > 0.35 && absSp > 7 && v.onGround && !v.inWater) {
+        const dc = v.pos.distanceTo(game.engine.camera.position);
+        const rate = (absSp - 6) * 0.9 * (wet - 0.3) * (v.spec.bike ? 0.5 : 1);
+        if (dc < 90 && Math.random() < rate * dt * 6) {
+          const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw), lx = Math.cos(v.yaw), lz = -Math.sin(v.yaw);
+          const hl = v.spec.wb / 2 + 0.25, hw = v.spec.bike ? 0 : v.width / 2 - 0.2;
+          for (const sgn of v.spec.bike ? [0] : [1, -1]) {
+            game.effects.emit('spray', { x: v.pos.x - fx * hl + lx * sgn * hw, y: v.groundY + 0.25, z: v.pos.z - fz * hl + lz * sgn * hw }, { vel: { x: v.vel.x, y: 0, z: v.vel.z }, floor: v.groundY, k: Math.min(1, absSp / 30) });
+          }
+        }
       }
       if (v.nitroOn && Math.random() < 0.6) {
         const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);

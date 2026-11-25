@@ -325,6 +325,12 @@ export class Effects {
           this.smoke.add({ ...base, vx: vx0 + rand.range(-2.5, 2.5), vy: rand.range(2, 5.5), vz: vz0 + rand.range(-2.5, 2.5), max: rand.range(0.6, 1.1), s0: 0.25, s1: 0.9, r: c, g: c, b: c, a0: 0.6, drag: 0.6, grav: -9.8, floor: opts.floor });
           break;
         }
+        case 'spray': {
+          // rocío de neumáticos sobre asfalto mojado: neblina baja que se abre y se queda atrás
+          const c = 0.78 * light;
+          this.smoke.add({ ...base, vx: vx0 * 0.35 + rand.range(-0.8, 0.8), vy: rand.range(0.4, 1.4), vz: vz0 * 0.35 + rand.range(-0.8, 0.8), max: rand.range(0.5, 0.9), s0: 0.35, s1: 1.9, r: c, g: c * 1.01, b: c * 1.04, a0: 0.16 + (opts.k || 0) * 0.14, drag: 2.2, grav: -1.5, floor: opts.floor });
+          break;
+        }
         case 'water': {
           const c = 0.92 * light;
           this.smoke.add({ ...base, vx: vx0 + rand.range(-0.6, 0.6), vy: rand.range(7, 10), vz: vz0 + rand.range(-0.6, 0.6), max: rand.range(1, 1.5), s0: 0.15, s1: 0.6, r: c, g: c, b: c, a0: 0.55, drag: 0.3, grav: -9.8, floor: opts.floor });

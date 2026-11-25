@@ -200,6 +200,10 @@ export class LaneDriver {
         this.nextChoice = null;
       }
     }
+    // intermitente: anuncia el giro ~35 m antes y lo mantiene durante la curva
+    if (this.phase === 'turn') v.blink = this.turn.kind === 'left' ? 'left' : this.turn.kind === 'right' ? 'right' : null;
+    else if (this.nextChoice && remaining < 35) v.blink = this.nextChoice.kind === 'left' ? 'left' : this.nextChoice.kind === 'right' ? 'right' : null;
+    else v.blink = null;
     // aplicar al vehículo (con la transición suave al reincorporarse al carril)
     if (this.offX || this.offZ || this.offYaw) {
       const k = Math.exp(-dt * 1.6);
