@@ -92,6 +92,13 @@ export const PARTS = {
   '3741': { box: CELL(16) }, // tallo de flor (junco)
   '93274': { box: { min: [-40, 0, -10], max: [40, 8, 10] }, front: S }, // escuadra 1x2 - 2x4: la cara con studs cuelga al frente
   '30150': { verified: true }, // cajón con manijas: mismo molde, nombres distintos
+  '4218': { ld: '4218b', rb: '4218' }, // persiana de portón: LDraw la llama 4218b
+  '87617': { box: { min: [-10, -90, -10], max: [10, 14, 10] }, front: S }, // columna redonda 1x1x4⅓: la manija sale al frente
+  '6134': { box: { min: [-20, 0, -10], max: [20, 16, 10] } }, // tapa de bisagra 2x2: se coloca por la fila de la bisagra
+  '4510': { box: { min: [-80, 0, -10], max: [80, 8, 10] }, front: S }, // plate 1x8 con riel: el riel sale al frente
+  '6232': { box: { min: [-20, 0, -20], max: [20, 24, 20] }, front: [1, 0] }, // ladrillo 2x2 con perno: el frente es el perno
+  '3899': { box: CELL(24) }, // taza: el asa sobresale
+  '61252': { box: CELL(8), front: S }, // plate 1x1 con clip horizontal al frente
 };
 
 // Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.

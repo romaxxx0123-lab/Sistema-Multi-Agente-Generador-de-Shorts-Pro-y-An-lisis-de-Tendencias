@@ -16,6 +16,31 @@ const C = {
 const G = 1; // nivel del patio (arriba de las placas del suelo)
 const U = 20; // nivel de la planta alta
 
+// Torre de vigía: fuste de n ladrillos 2x2 y plataforma techada de 6x6.
+// (x, z) = esquina mínima de la plataforma; y = base del fuste.
+export function watchtower(m, { rect }, x, y, z, n) {
+  for (let i = 0; i < n; i++) m.add('90258', C.stone, x + 2, y + 3 * i, z + 2);
+  const P = y + 3 * n;
+  m.add('3660', C.dark, x + 2, P - 3, z, { face: 'S' });
+  m.add('3660', C.dark, x + 2, P - 3, z + 4, { face: 'N' });
+  m.add('3660', C.red, x, P - 3, z + 2, { face: 'W' });
+  m.add('3660', C.red, x + 4, P - 3, z + 2, { face: 'E' });
+  rect('plate', C.roof, x, P, z, 6, 6);
+  for (const [dx, dz] of [[0, 0], [5, 0], [0, 5], [5, 5]]) m.add('3062b', C.red, x + dx, P + 1, z + dz);
+  rect('plate', C.red, x, P + 4, z, 1, 6);
+  rect('plate', C.red, x + 5, P + 4, z, 1, 6);
+  rect('plate', C.red, x, P + 5, z, 6, 1);
+  rect('plate', C.red, x, P + 5, z + 5, 6, 1);
+  m.add('2454b', C.floor, x + 1, P + 1, z + 3, { rot: 1 });
+  m.add('2454b', C.floor, x + 4, P + 1, z + 3, { rot: 1 });
+  rect('plate', C.roof, x, P + 16, z, 6, 6);
+  m.add('30503', C.roof, x - 1, P + 17, z - 1, { rot: 1 });
+  m.add('30503', C.roof, x + 3, P + 17, z - 1, { rot: 0 });
+  m.add('30503', C.roof, x - 1, P + 17, z + 3, { rot: 2 });
+  m.add('30503', C.roof, x + 3, P + 17, z + 3, { rot: 3 });
+  return P;
+}
+
 // opts.fortress: la Fortaleza Ninja reutiliza esta base y cambia algunas cosas.
 export default function build(m, { rect, row, fill }, opts = {}) {
   const F = !!opts.fortress;
@@ -291,34 +316,19 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   rect('plate', C.roof, 18, G + 18, 2, 12, 1);
   for (const x of [18, 22, 26]) m.add('3299', C.roof, x, G + 19, 1);
 
-  m.step('Cerca del frente');
-  for (const x of [6, 10, 14, 30, 34, 38, 42]) {
-    m.add('3701', C.wood, x, G, 0);
-    rect('plate', C.ground, x, G + 3, 0, 2, 2);
-    rect('plate', C.ground, x + 2, G + 3, 0, 2, 2);
-    m.add('3299', C.roof, x, G + 4, 0);
-  }
+  // En la fortaleza la cerca y la torre de vigía pasan al muro exterior.
+  if (!F) {
+    m.step('Cerca del frente');
+    for (const x of [6, 10, 14, 30, 34, 38, 42]) {
+      m.add('3701', C.wood, x, G, 0);
+      rect('plate', C.ground, x, G + 3, 0, 2, 2);
+      rect('plate', C.ground, x + 2, G + 3, 0, 2, 2);
+      m.add('3299', C.roof, x, G + 4, 0);
+    }
 
-  m.step('Torre de vigía');
-  stack('90258', C.stone, 2, G, 2, 7, 3);
-  const P = G + 21;
-  m.add('3660', C.dark, 2, P - 3, 0, { face: 'S' });
-  m.add('3660', C.dark, 2, P - 3, 4, { face: 'N' });
-  m.add('3660', C.red, 0, P - 3, 2, { face: 'W' });
-  m.add('3660', C.red, 4, P - 3, 2, { face: 'E' });
-  rect('plate', C.roof, 0, P, 0, 6, 6);
-  for (const [x, z] of [[0, 0], [5, 0], [0, 5], [5, 5]]) m.add('3062b', C.red, x, P + 1, z);
-  rect('plate', C.red, 0, P + 4, 0, 1, 6);
-  rect('plate', C.red, 5, P + 4, 0, 1, 6);
-  rect('plate', C.red, 0, P + 5, 0, 6, 1);
-  rect('plate', C.red, 0, P + 5, 5, 6, 1);
-  m.add('2454b', C.floor, 1, P + 1, 3, { rot: 1 });
-  m.add('2454b', C.floor, 4, P + 1, 3, { rot: 1 });
-  rect('plate', C.roof, 0, P + 16, 0, 6, 6);
-  m.add('30503', C.roof, -1, P + 17, -1, { rot: 1 });
-  m.add('30503', C.roof, 3, P + 17, -1, { rot: 0 });
-  m.add('30503', C.roof, -1, P + 17, 3, { rot: 2 });
-  m.add('30503', C.roof, 3, P + 17, 3, { rot: 3 });
+    m.step('Torre de vigía');
+    watchtower(m, { rect }, 0, G, 0, 7);
+  }
 
   m.step('Ring de combate');
   m.add('48092', 'Medium Nougat', 8, G, 6, { rot: 0 });

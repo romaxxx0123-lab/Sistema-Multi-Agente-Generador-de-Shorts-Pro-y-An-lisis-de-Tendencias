@@ -59,6 +59,8 @@ if (model.props.length) {
     let feet = 0;
     for (const side of [-10, 10]) {
       const f = applyPoint(p.matrix, side, 40, 0);
+      // Sobre la mesa no hay studs: parada en el piso también vale.
+      if (Math.abs(f[1]) < 0.6) { feet++; continue; }
       const q = studAt.get(key(...f));
       if (q === undefined) continue;
       feet++;
@@ -67,8 +69,11 @@ if (model.props.length) {
     if (feet < 2) loose.push(`La minifigura ${p.fig + 1} no tiene los dos pies sobre studs (${feet} de 2)`);
   }
   const r = validate(both);
-  const errors = [...new Set([...loose, ...r.errors.filter((e) => e.includes('minifigura'))])];
-  figs = { count: model.figs, ok: errors.length === 0, errors };
+  const labels = ['minifigura', ...model.envelopes.map((v) => v.label)];
+  const errors = [...new Set([...loose, ...r.errors.filter((e) => labels.some((l) => e.includes(l)))])];
+  // Medidas de los volúmenes de prueba en centímetros (1 stud = 0,8 cm; 1 plate = 0,32 cm).
+  const volumes = model.envelopes.map((v) => ({ label: v.label, cm: [v.d * 0.8, v.w * 0.8, v.h * 0.32].map((n) => Math.round(n * 10) / 10) }));
+  figs = { count: model.figs, ok: errors.length === 0, errors, volumes };
 }
 
 // --- cada pieza+color tiene que existir de verdad ---------------------------
@@ -133,6 +138,16 @@ if (figs) {
 
 // --- ranking de sets ---------------------------------------------------------
 const lineIndex = new Map(bom.map((b, i) => [`${b.part}|${b.color}`, i]));
+// Medidas del modelo armado, en centímetros (1 LDU = 0,4 mm): ancho, fondo y alto.
+const ext = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+for (const p of model.placements) {
+  const b = model.boxOf(p);
+  for (let k = 0; k < 3; k++) {
+    ext.min[k] = Math.min(ext.min[k], b.min[k]);
+    ext.max[k] = Math.max(ext.max[k], b.max[k]);
+  }
+}
+const sizeCm = [0, 2, 1].map((k) => Math.round((ext.max[k] - ext.min[k]) * 0.04));
 const report = {
   id,
   title: model.title,
@@ -142,6 +157,7 @@ const report = {
   generated: new Date().toISOString().slice(0, 10),
   data: { source: catalog.source, date: catalog.dataDate, setsSearched: catalog.sets.length },
   counts: { pieces: model.placements.length, lots: bom.length, steps: model.steps.length },
+  size: sizeCm,
   steps: model.steps,
   placements: model.placements.map((p) => [lineIndex.get(`${p.def.rb}|${p.color.rb}`), p.step]),
   bom: bom.map((b) => ({
@@ -153,7 +169,7 @@ const report = {
   figs,
   sets: null,
 };
-if (!flags.has('--no-sets')) report.sets = matchSets(catalog, report.bom);
+if (!flags.has('--no-sets')) report.sets = matchSets(catalog, report.bom, { copies: meta.copies || 1 });
 fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report));
 
 // --- resumen -----------------------------------------------------------------
@@ -172,7 +188,7 @@ if (figs) show('MINIFIGURAS', figs.errors, 30);
 show('AVISOS', check.warnings, 20);
 show('NOTAS', notes, 20);
 if (report.sets) {
-  console.log(`\nMejores sets (de ${report.data.setsSearched} revisados, datos al ${report.data.date}):`);
+  console.log(`\nMejores sets (de ${report.data.setsSearched} revisados, datos al ${report.data.date})${report.sets.copies > 1 ? `, comprando ${report.sets.copies} cajas iguales` : ''}:`);
   for (const st of report.sets.list.slice(0, 12)) {
     const pct = (n) => `${((n / report.counts.pieces) * 100).toFixed(1)}%`.padStart(6);
     console.log(`  ${pct(st.exact)} exacto ${pct(st.shape)} forma  ${st.num.padEnd(10)} ${String(st.year)} ${String(st.parts).padStart(5)} pzs  ${st.name}  [${st.theme}]`);

@@ -55,6 +55,8 @@ export class Stage {
     this.parts = []; // un Group por pieza colocada, en el orden del modelo
     this.figRoot = null;
     this.showFigs = true;
+    this.volumes = [];
+    this.showVolumes = true;
     this.showEdges = true;
     this.autoRotate = false;
     this.variants = new Map();
@@ -122,7 +124,9 @@ export class Stage {
   }
 
   // Capa de minifiguras de prueba (figs.mpd): se superpone al modelo ya cargado.
-  async loadFigs(text) {
+  // Las últimas `volumes` piezas son volúmenes de prueba (un vehículo): se
+  // dibujan como una caja de vidrio apenas visible, con sus aristas.
+  async loadFigs(text, volumes = 0) {
     const loader = new LDrawLoader();
     loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
     loader.smoothNormals = true;
@@ -130,6 +134,22 @@ export class Stage {
     root.rotation.x = Math.PI;
     root.position.copy(this.root.position);
     this._tune(root);
+    // El cargador funde las cajas (primitivas) en la malla propia del archivo;
+    // las minifiguras, en cambio, quedan cada una en su grupo.
+    this.volumes = volumes ? root.children.filter((c) => !c.isGroup) : [];
+    const glass = new THREE.MeshBasicMaterial({ color: 0x6fb7d9, transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide });
+    const edge = new THREE.LineBasicMaterial({ color: 0x2f7ea6 });
+    for (const c of this.volumes) {
+      if (c.isMesh) {
+        c.material = glass;
+        c.castShadow = false;
+        c.receiveShadow = false;
+        c.renderOrder = 2;
+      } else if (c.isLineSegments) {
+        c.material = edge;
+        c.userData.volume = true;
+      }
+    }
     if (this.figRoot) this.holder.remove(this.figRoot);
     this.figRoot = root;
     this.holder.add(root);
@@ -138,6 +158,11 @@ export class Stage {
 
   setFigs(on) {
     this.showFigs = on;
+    this.refresh();
+  }
+
+  setVolumes(on) {
+    this.showVolumes = on;
     this.refresh();
   }
 
@@ -153,6 +178,7 @@ export class Stage {
     root.rotation.x = Math.PI; // LDraw tiene la Y hacia abajo
     this.parts = root.children.filter((c) => c.isGroup);
     this.figRoot = null;
+    this.volumes = [];
     this._tune(root);
     this.root = root;
     this.holder.add(root);
@@ -241,6 +267,18 @@ export class Stage {
     this.invalidate();
   }
 
+  // Mira un punto del modelo desde cerca. (x, y, z) en studs/plates/studs del
+  // constructor; dist en studs. Sirve para revisar detalles en las capturas.
+  viewAt(azimuth, elevation, [x, y, z], dist) {
+    const a = (azimuth * Math.PI) / 180, e = (elevation * Math.PI) / 180;
+    const dir = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+    const t = this.controls.target.set(x * 20, y * 8, -z * 20).add(this.root.position);
+    this.camera.position.copy(t).addScaledVector(dir, dist * 20);
+    this.camera.lookAt(t);
+    this.controls.update();
+    this.invalidate();
+  }
+
   setEdges(on) {
     this.showEdges = on;
     this.refresh();
@@ -289,9 +327,11 @@ export class Stage {
       });
     });
     if (this.figRoot) {
-      this.figRoot.visible = this.showFigs;
+      // Minifiguras y volúmenes se prenden por separado.
+      this.figRoot.visible = this.showFigs || this.showVolumes;
+      for (const c of this.figRoot.children) c.visible = this.volumes.includes(c) ? this.showVolumes : this.showFigs;
       this.figRoot.traverse((c) => {
-        if (c.isLineSegments) c.visible = this.showEdges;
+        if (c.isLineSegments) c.visible = c.userData.volume || this.showEdges;
       });
     }
     this.invalidate();

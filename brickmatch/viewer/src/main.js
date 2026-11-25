@@ -18,6 +18,7 @@ const state = {
   selected: [],
   showMissing: true,
   showFigs: true,
+  showVolumes: true,
   spares: false,
   sort: 'exact',
   maxSize: 0,
@@ -106,7 +107,9 @@ function applyStates() {
   stage.setStates(states);
   // Las minifiguras de prueba se ven con el modelo terminado, no en medio del armado.
   const lastStep = state.report.counts.steps - 1;
-  stage.setFigs(state.showFigs && !(state.tab === 'steps' && state.step < lastStep));
+  const building = state.tab === 'steps' && state.step < lastStep;
+  stage.setFigs(state.showFigs && !building);
+  stage.setVolumes(state.showVolumes && !building);
   $('stage-flag').hidden = !flag;
   $('stage-flag').classList.toggle('miss', miss);
   $('stage-flag').innerHTML = flag;
@@ -170,7 +173,7 @@ function renderBrief() {
   const r = state.report;
   const v = r.validation;
   const check = v.ok
-    ? `<span class="fact ok">Armable: sin choques y todo encastrado</span>`
+    ? `<span class="fact ok">Armable: sin choques y ${v.stats.components > 1 ? 'cada módulo bien encastrado' : 'todo encastrado'}</span>`
     : `<span class="fact err">${v.errors.length} problema${v.errors.length === 1 ? '' : 's'} de armado</span>`;
   $('brief').innerHTML = `
     ${r.prompt ? `<span class="eyebrow">Pedido: «${esc(r.prompt)}»</span>` : ''}
@@ -180,8 +183,11 @@ function renderBrief() {
       <span class="fact"><b>${num(r.counts.pieces)}</b> piezas</span>
       <span class="fact"><b>${num(r.counts.lots)}</b> lotes distintos</span>
       <span class="fact"><b>${num(r.counts.steps)}</b> pasos</span>
+      ${r.size ? `<span class="fact">Mide <b>${r.size.join(' × ')} cm</b></span>` : ''}
       ${check}
-      ${r.figs ? `<span class="fact ${r.figs.ok ? 'ok' : 'err'}">${r.figs.ok ? `Entran <b>${num(r.figs.count)}</b> minifiguras sin chocar` : `${r.figs.errors.length} minifigura(s) no entran`}</span>` : ''}
+      ${v.ok && v.stats.components > 1 ? `<span class="fact">Va en <b>${v.stats.components}</b> módulos apoyados en la mesa</span>` : ''}
+      ${r.figs ? `<span class="fact ${r.figs.ok ? 'ok' : 'err'}">${r.figs.ok ? `Entran <b>${num(r.figs.count)}</b> minifiguras sin chocar` : `${r.figs.errors.length} problema(s) con las minifiguras o el vehículo`}</span>` : ''}
+      ${r.figs && r.figs.ok ? (r.figs.volumes || []).map((v) => `<span class="fact ok">Entra un vehículo de <b>${v.cm.map((n) => String(n).replace('.', ',')).join(' × ')} cm</b></span>`).join('') : ''}
     </div>`;
 }
 
@@ -192,14 +198,15 @@ function renderSets() {
   const list = filteredSets();
   const best = list[0];
   const filtered = state.maxSize || state.minYear || state.query.trim();
-  let html = '';
+  const copies = r.sets.copies || 1;
+  let html = copies > 1 ? `<p class="note">Este modelo está pensado para armarse con <b>${copies} cajas iguales</b> del mismo set: los porcentajes de la lista cuentan esa cantidad de cada set.</p>` : '';
 
   if (best) {
     const e = setExact(best);
     html += `<section class="lead">
-      <span class="eyebrow">${filtered ? 'Mejor set con estos filtros' : 'El set que más piezas trae'}</span>
-      <h2>${esc(best.name)}</h2>
-      <span class="meta"><span class="num" style="font-family:var(--font-mono)">${esc(best.num)}</span> · ${best.year} · ${esc(best.theme)} · ${num(best.parts)} piezas</span>
+      <span class="eyebrow">${filtered ? 'Mejor set con estos filtros' : 'El set que más piezas trae'}${copies > 1 ? ` · comprando ${copies} cajas iguales` : ''}</span>
+      <h2>${copies > 1 ? `${copies} × ` : ''}${esc(best.name)}</h2>
+      <span class="meta"><span class="num" style="font-family:var(--font-mono)">${esc(best.num)}</span> · ${best.year} · ${esc(best.theme)} · ${num(best.parts)} piezas${copies > 1 ? ' por caja' : ''}</span>
       <div class="big"><b>${pct(e, total)}</b><span>${num(e)} de ${num(total)} piezas, en el color exacto</span></div>
       <div class="meter"><i class="shape" style="width:${width(best.shape, total)}"></i><i class="exact" style="width:${width(e, total)}"></i></div>
       <div class="row-actions">
@@ -447,6 +454,11 @@ function wire() {
     e.currentTarget.setAttribute('aria-pressed', String(state.showFigs));
     applyStates();
   });
+  $('tool-vol').addEventListener('click', (e) => {
+    state.showVolumes = !state.showVolumes;
+    e.currentTarget.setAttribute('aria-pressed', String(state.showVolumes));
+    applyStates();
+  });
   window.addEventListener('hashchange', () => {
     const id = location.hash.slice(1);
     if (id && id !== state.id) loadModel(id);
@@ -480,11 +492,13 @@ async function loadModel(id) {
     await stage.load(await modelText);
     if (state.id !== id) return;
     if (stage.parts.length !== report.placements.length) throw new Error('El modelo 3D y la lista de piezas no coinciden');
-    $('tool-figs').hidden = !report.figs;
+    const volumes = report.figs ? (report.figs.volumes || []).length : 0;
+    $('tool-figs').hidden = !report.figs || report.figs.count === 0;
+    $('tool-vol').hidden = !volumes;
     if (report.figs) {
       const figText = await fetch(`models/${id}/figs.mpd`).then((r) => (r.ok ? r.text() : null)).catch(() => null);
       if (state.id !== id) return;
-      if (figText) await stage.loadFigs(figText);
+      if (figText) await stage.loadFigs(figText, volumes);
     }
     frame();
     msg.hidden = true;
@@ -513,12 +527,14 @@ async function boot() {
     document.documentElement.classList.add('shot');
     stage.resize();
   };
-  api.shot = ({ azimuth, elevation, zoom = 1, step = null, edges = true, figs = true }) => {
+  api.shot = ({ azimuth, elevation, zoom = 1, step = null, edges = true, figs = true, volumes = true, focus = null }) => {
     stage.setEdges(edges);
     stage.setStates(state.report.placements.map(([, s]) => (step === null || s <= step ? 'normal' : 'hidden')));
     stage.setFigs(figs && step === null);
+    stage.setVolumes(volumes && step === null);
     stage.resize();
-    stage.view(azimuth, elevation, zoom);
+    if (focus) stage.viewAt(azimuth, elevation, focus.slice(0, 3), focus[3] || 40);
+    else stage.view(azimuth, elevation, zoom);
     stage.renderNow();
   };
   wire();

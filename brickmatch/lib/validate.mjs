@@ -120,7 +120,7 @@ export function validate(model, { ground = 0 } = {}) {
   const lib = model.lib;
   const P = model.placements;
   const errors = [], warnings = [];
-  const label = (p) => (p.fig !== undefined ? `minifigura ${p.fig + 1}` : `#${p.index} ${p.def.name} ${p.color.name} (paso ${p.step + 1})`);
+  const label = (p) => (p.fig !== undefined ? p.label || `minifigura ${p.fig + 1}` : `#${p.index} ${p.def.name} ${p.color.name} (paso ${p.step + 1})`);
 
   // Geometría rotada por pieza+orientación (se comparte entre copias).
   const cache = new Map();
@@ -149,6 +149,8 @@ export function validate(model, { ground = 0 } = {}) {
     return out;
   };
 
+  // Pieza inclinada: su caja alineada a los ejes exagera el lugar que ocupa.
+  const skew = (p) => p.matrix.slice(0, 9).some((v) => Math.abs(v) > 0.01 && Math.abs(Math.abs(v) - 1) > 0.01);
   const boxes = P.map((p) => model.boxOf(p));
   const linked = new Set(model.links.map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
   const pairKey = (a, b) => `${Math.min(a, b)}-${Math.max(a, b)}`;
@@ -180,7 +182,7 @@ export function validate(model, { ground = 0 } = {}) {
       const allowed = linked.has(pairKey(a, b)) || (P[a].nest && P[a].nest === P[b].nest);
       if (hit && !allowed) {
         errors.push(`Choque: ${label(P[a])} atraviesa a ${label(P[b])}`);
-      } else if (!hit && !allowed) {
+      } else if (!hit && !allowed && !skew(P[a]) && !skew(P[b])) {
         const vol = (X) => (X.max[0] - X.min[0]) * (X.max[1] - X.min[1]) * (X.max[2] - X.min[2]);
         const inter = [0, 1, 2].reduce((v, k) => v * (max[k] - min[k]), 1);
         if (inter > 0.6 * Math.min(vol(A), vol(B))) {

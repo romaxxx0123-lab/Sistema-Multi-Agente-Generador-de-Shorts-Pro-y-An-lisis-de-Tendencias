@@ -1,4 +1,4 @@
-// Uso: node scripts/budget.mjs <modelo> <set> [--left] [--cat=Plates]
+// Uso: node scripts/budget.mjs <modelo> <set> [--left] [--cat=Plates] [--copies=2]
 // Presupuesto de piezas al diseñar con una caja: qué pide el modelo de más
 // (sobregiros) y, con --left, qué queda sin usar en la caja por categoría.
 import fs from 'node:fs';
@@ -14,6 +14,7 @@ const opt = Object.fromEntries(args.filter((a) => a.startsWith('--')).map((a) =>
 const lib = new LDrawLibrary(defaultLibraryRoot(root));
 const cat = new Catalog(defaultIndexDir(root));
 const report = JSON.parse(fs.readFileSync(path.join(root, 'models', pos[0], 'report.json'), 'utf8'));
+const copies = +(opt.copies || 1);
 const si = cat.sets.findIndex((s) => s[0] === pos[1]);
 if (si < 0) throw new Error(`Set no encontrado: ${pos[1]}`);
 
@@ -22,7 +23,7 @@ const have = new Map();
 for (let r = cat.offsets[si]; r < cat.offsets[si + 1]; r++) {
   const key = `${cat.mold[cat.rowPart[r]]}|${cat.rowColor[r]}`;
   const e = have.get(key) || { part: cat.parts[cat.rowPart[r]], color: cat.colors[cat.rowColor[r]], qty: 0, used: 0 };
-  e.qty += cat.rowQty[r];
+  e.qty += cat.rowQty[r] * copies;
   have.set(key, e);
 }
 let total = 0, over = 0;
@@ -40,7 +41,7 @@ for (const b of report.bom) {
   }
 }
 const s = cat.setInfo(si);
-console.log(`${report.title}: ${total} piezas · ${s.num} ${s.name} cubre ${total - over} (${(((total - over) / total) * 100).toFixed(1)}%)`);
+console.log(`${report.title}: ${total} piezas · ${copies > 1 ? `${copies}× ` : ''}${s.num} ${s.name} cubre ${total - over} (${(((total - over) / total) * 100).toFixed(1)}%)`);
 if (overs.length) console.log(`Sobregiros (${over} piezas):\n${overs.join('\n')}`);
 else console.log('Sin sobregiros: todo sale de la caja.');
 

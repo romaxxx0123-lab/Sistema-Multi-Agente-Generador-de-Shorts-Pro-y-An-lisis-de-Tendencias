@@ -139,18 +139,19 @@ export class Catalog {
   }
 
   // Cantidades que un set aporta a cada línea (exacto) y a cada grupo (forma).
-  have(prep, setIndex) {
+  // copies: cuántas cajas iguales se compran.
+  have(prep, setIndex, copies = 1) {
     const L = prep.lines.length, G = prep.groups.length;
     const exact = new Uint32Array(L), spare = new Uint32Array(L), shape = new Uint32Array(G);
     for (let r = this.offsets[setIndex], end = this.offsets[setIndex + 1]; r < end; r++) {
       const p = this.rowPart[r];
       if (!prep.relevant[p]) continue;
       const g = prep.groupOf.get(this.flex[p]);
-      if (g !== undefined) shape[g] += this.rowQty[r] + this.rowSpare[r];
+      if (g !== undefined) shape[g] += (this.rowQty[r] + this.rowSpare[r]) * copies;
       const li = prep.exactKey.get(this.mold[p] * this.NC + this.rowColor[r]);
       if (li !== undefined) {
-        exact[li] += this.rowQty[r];
-        spare[li] += this.rowSpare[r];
+        exact[li] += this.rowQty[r] * copies;
+        spare[li] += this.rowSpare[r] * copies;
       }
     }
     return { exact, spare, shape };
@@ -158,7 +159,7 @@ export class Catalog {
 
   // Puntúa todos los sets contra el BOM. `need` permite pasar un faltante
   // residual (para buscar el mejor segundo set).
-  score(prep, need = null) {
+  score(prep, need = null, copies = 1) {
     const L = prep.lines.length, G = prep.groups.length;
     const needLine = need || Uint32Array.from(prep.lines.map((l) => l.need));
     const needGroup = new Uint32Array(G);
@@ -173,11 +174,11 @@ export class Catalog {
         if (!prep.relevant[p]) continue;
         touched = true;
         const g = prep.groupOf.get(this.flex[p]);
-        if (g !== undefined) hg[g] += this.rowQty[r] + this.rowSpare[r];
+        if (g !== undefined) hg[g] += (this.rowQty[r] + this.rowSpare[r]) * copies;
         const li = prep.exactKey.get(this.mold[p] * this.NC + this.rowColor[r]);
         if (li !== undefined) {
-          hx[li] += this.rowQty[r];
-          hs[li] += this.rowSpare[r];
+          hx[li] += this.rowQty[r] * copies;
+          hs[li] += this.rowSpare[r] * copies;
         }
       }
       if (!touched) continue;

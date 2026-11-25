@@ -1,14 +1,17 @@
-// Base de Operaciones Ninja: la Base Universal con torres, muros, sala de
-// operaciones y equipo técnico.
+// Base de Operaciones Ninja: la Base Universal convertida en cuartel.
+// Atrás, el edificio con sala de operaciones, torre de control y equipo técnico;
+// adelante, sobre la mesa, un patio de armas amurallado con torres, armería,
+// taller y lugar para un vehículo.
 // Usa la misma caja (set 70751 Temple of Airjitzu): aprovecha piezas que
-// en la base quedaban sin usar.
-import base from '../base-universal/model.mjs';
+// en la base quedaban sin usar (las persianas negras son los techos).
+import base, { watchtower } from '../base-universal/model.mjs';
+import { compose } from '../../lib/ldraw.mjs';
 
 export const meta = {
   order: 4,
   title: 'Base de Operaciones Ninja',
-  prompt: 'Una más detallada: grande, con más estructuras, técnica y con torres. Que parezca de verdad una base de operaciones, con todo para planear, y que use mejor las piezas del set',
-  description: 'La Base Universal ampliada con la misma caja para que funcione como cuartel: sala de operaciones bajo la pagoda (mesa de mapas, pantalla táctica y consolas), torre de control con radar y antenas, torre de defensa con torreta giratoria, torre de vigía, mirador en la roca, muros laterales, armería, sala de reuniones, taller con foso y pista de aterrizaje. Los aleros llevan las tejas redondas del templo original. Solo usa piezas del set 70751 Temple of Airjitzu; las minifiguras son de prueba.',
+  prompt: 'Sigue siendo pequeña y parece más un templo que una base de operaciones: más grande, con lugares para guardar armas y un lugar para el vehículo (el buggy de Jay), sin salir de la estética Ninjago',
+  description: 'Un cuartel amurallado de unos 49 × 54 cm armado con una sola caja. Adelante, el patio de armas: muro con dos torres en las esquinas (vigía y torreta) sobre zócalos de piedra, portón de 16 cm de ancho con estandartes de dragón por donde pasa el vehículo, plataforma de estacionamiento, tarima de combate y sendero al torii. A los lados, dos galerías de postes rojos con techo de persianas negras: la armería, con racks de lanzas y espadas, y el taller del vehículo, con banco, rueda de repuesto y cajón. Atrás, el edificio principal de tres niveles: sala de operaciones bajo la pagoda, torre de control con radar, taller, vivienda, salón del maestro, pista de aterrizaje y jardín. Solo usa piezas del set 70751 Temple of Airjitzu; las minifiguras y el volumen del vehículo son de prueba.',
   target: '70751-1',
 };
 
@@ -28,21 +31,6 @@ export default function build(m, helpers) {
   const stack = (part, color, x, y, z, n, h, opts = {}) => {
     for (let i = 0; i < n; i++) m.add(part, color, x, y + i * h, z, opts);
   };
-
-  // ------------------------------------------------------------------ torres
-  m.step('Torre de defensa con torreta');
-  stack('3003', C.stone, 46, G, 0, 6, 3);
-  m.add('90258', C.stone, 46, G + 18, 0);
-  const D = G + 21;
-  rect('plate', C.stone, 45, D, -1, 4, 4);
-  m.add('4865b', C.ground, 46, D + 1, -1, { face: 'S' });
-  m.add('4865b', C.ground, 46, D + 1, 2, { face: 'N' });
-  m.add('4865b', C.ground, 45, D + 1, 0, { face: 'W' });
-  m.add('4865b', C.ground, 48, D + 1, 0, { face: 'E' });
-  const swivel = m.add('3680', 'Blue', 46, D + 1, 0);
-  const mount = m.add('3679', C.pale, 46, D + 2, 0, { on: swivel });
-  // Cañón de seis bocas apoyado sobre el plato giratorio, apuntando al frente.
-  m.addRaw('18588', C.roof, [1, 0, 0, 0, 1, 0, 0, 0, 1, 47 * 20, -8 * (D + 3) - 4 - 29, 1 * 20], { on: mount });
 
   m.step('Torre de control');
   for (let i = 0; i < 5; i++) rect('brick', C.stone, 2, U + 3 * i, 27, 2, 4);
@@ -123,7 +111,7 @@ export default function build(m, helpers) {
   }
 
   m.step('Juncos, senderos y bancos');
-  for (const [x, z, y] of [[35, 4, G], [35, 7, G], [37, 20, G], [38, 22, G], [43, 13, G], [45, 3, G], [40, 6, G + 1], [39, 13, G + 1], [36, 15, G + 1]]) {
+  for (const [x, z, y] of [[35, 4, G], [35, 7, G], [37, 20, G], [38, 22, G], [43, 13, G], [40, 6, G + 1], [39, 13, G + 1], [36, 15, G + 1]]) {
     m.add('3741', C.reed, x, y, z);
   }
   // Baldosas en L: camino del taller y camino a la vivienda.
@@ -180,13 +168,291 @@ export default function build(m, helpers) {
   rect('tile', 'Sand Blue', 22, G + 5, 23, 4, 2);
   m.add('61780', C.wood, 12, G, 24);
 
-  m.step('Armería');
+  m.step('Armero del salón');
   const hilt = -8 * (G + 4) + 4;
   m.add('30137', C.wood, 16, G, 19, { rot: 1 });
   ['Black', 'Black', 'Flat Silver', 'Black'].forEach((color, i) => {
     const clip = m.add('60897', i === 3 ? C.floor : C.stone, 16, G + 3, 19 + i, { face: 'E' });
     m.addRaw('21459', color, [1, 0, 0, 0, 1, 0, 0, 0, 1, 17.5 * 20, hilt - 7, (19.5 + i) * 20], { on: clip });
   });
+
+  // ============================================================ PATIO DE ARMAS
+  // Delante de los edificios, sobre la mesa: un patio cerrado por el muro del
+  // frente, dos torres en las esquinas y una galería techada a cada lado.
+  const FZ = -30; // fila sur del muro del frente
+
+  m.step('Muro del frente: zapatas y tramos de cerca');
+  m.add('91988', C.stone, 0, 0, FZ);
+  m.add('3020', C.stone, 34, 0, FZ);
+  m.add('3832', C.stone, 38, 0, FZ);
+  for (const x of [0, 4, 8, 36, 40, 44]) m.add('3701', C.wood, x, 1, FZ);
+  // Albardilla trabada sobre las juntas y tejas arriba.
+  for (const x0 of [2, 36]) {
+    rect('plate', C.wood, x0, 4, FZ, 1, 2);
+    for (let i = 0; i < 4; i++) rect('plate', C.ground, x0 + 1 + 2 * i, 4, FZ, 2, 2);
+    rect('plate', C.wood, x0 + 9, 4, FZ, 1, 2);
+  }
+  for (const x of [0, 4, 8, 36, 40, 44]) m.add('3299', C.roof, x, 5, FZ);
+
+  m.step('Portón: pilares con estandarte de dragón');
+  // Entre los pilares quedan 20 studs libres: pasa el buggy.
+  for (const [x, rot, sx, W] of [[12, 0, 12, [0, 0, 1, -1, 0, 0, 0, -1, 0]], [34, 1, 35, [0, 0, -1, -1, 0, 0, 0, 1, 0]]]) {
+    m.add('3685', C.stone, x, 1, FZ, { rot });
+    m.add('3062b', C.red, sx, 10, FZ + 1);
+    m.add('6141', 'White', sx, 13, FZ + 1);
+    const clip = m.add('61252', C.gold, sx, 14, FZ + 1, { face: 'S' });
+    m.add('85975', C.wall, sx, 15, FZ + 1);
+    // El ala negra va tomada del clip por su barra y sube como un estandarte.
+    m.addRaw('6133', C.roof, [...W, (sx + 0.5) * 20, -(14 * 8 + 6), (FZ + 1.5) * 20 - 17], { on: clip });
+  }
+
+  m.step('Bastones en el muro');
+  for (const x of [38, 41, 44]) {
+    const clip = m.add('60897', 'Blue', x, 1, FZ + 1, { face: 'N' });
+    m.addRaw('87618', C.roof, [1, 0, 0, 0, -1, 0, 0, 0, -1, (x + 0.5) * 20, -98.5, (FZ + 1.5) * 20 + 17], { on: clip });
+  }
+
+  m.step('Torre de vigía: zócalo de piedra en cruz');
+  m.add('3020', C.stone, -6, 0, FZ);
+  rect('plate', C.roof, -2, 0, FZ, 2, 2);
+  rect('plate', C.roof, -4, 0, FZ - 2, 2, 2);
+  rect('plate', C.roof, -4, 0, FZ + 2, 2, 2);
+  m.add('2456', C.stone, -6, 1, FZ);
+  m.add('90258', C.stone, -4, 1, FZ - 2);
+  m.add('90258', C.stone, -4, 1, FZ + 2);
+  m.add('2456', C.stone, -4, 4, FZ - 2, { rot: 1 });
+  for (const dz of [0, 1]) m.add('15672', C.stone, -6, 4, FZ + dz, { face: 'W' });
+  for (const dx of [0, 1]) {
+    m.add('15672', C.stone, -4 + dx, 7, FZ - 2, { face: 'S' });
+    m.add('15672', C.stone, -4 + dx, 7, FZ + 2, { face: 'N' });
+  }
+  // Esta placa une el zócalo con la cerca: la torre no se cae al moverla.
+  m.add('3020', C.wood, -2, 4, FZ);
+
+  m.step('Torre de vigía');
+  const P = watchtower(m, helpers, -6, 7, FZ - 2, 5);
+
+  m.step('Torre de defensa: zócalo');
+  m.add('3031', C.stone, 48, 0, FZ - 1);
+  m.add('2357', C.stone, 48, 1, FZ - 1, { rot: 0 });
+  m.add('2357', C.stone, 50, 1, FZ - 1, { rot: 3 });
+  m.add('2357', C.stone, 48, 1, FZ + 1, { rot: 1 });
+  m.add('2357', C.stone, 50, 1, FZ + 1, { rot: 2 });
+  m.add('3003', C.stone, 49, 1, FZ);
+  m.add('3020', C.wood, 46, 4, FZ);
+  rect('plate', C.roof, 50, 4, FZ, 2, 2);
+  rect('plate', C.roof, 48, 4, FZ - 1, 4, 1);
+  rect('plate', C.roof, 48, 4, FZ + 2, 4, 1);
+  for (const x of [48, 50]) {
+    m.add('85984', C.stone, x, 5, FZ - 1, { face: 'S' });
+    m.add('85984', C.stone, x, 5, FZ + 2, { face: 'N' });
+  }
+  m.add('85984', C.stone, 51, 5, FZ, { face: 'E' });
+
+  m.step('Torre de defensa con torreta');
+  stack('3003', C.stone, 49, 5, FZ, 5, 3);
+  m.add('90258', C.stone, 49, 20, FZ);
+  const D = 23;
+  rect('plate', C.stone, 48, D, FZ - 1, 4, 4);
+  m.add('4865b', C.ground, 49, D + 1, FZ - 1, { face: 'S' });
+  m.add('4865b', C.ground, 49, D + 1, FZ + 2, { face: 'N' });
+  m.add('4865b', C.ground, 48, D + 1, FZ, { face: 'W' });
+  m.add('4865b', C.ground, 51, D + 1, FZ, { face: 'E' });
+  const swivel = m.add('3680', 'Blue', 49, D + 1, FZ);
+  const mount = m.add('3679', C.pale, 49, D + 2, FZ, { on: swivel });
+  // Cañón de seis bocas apoyado sobre el plato giratorio, apuntando al frente.
+  m.addRaw('18588', C.roof, [1, 0, 0, 0, 1, 0, 0, 0, 1, 50 * 20, -8 * (D + 3) - 4 - 29, (FZ + 1) * 20], { on: mount });
+
+  // --------------------------------------------------------------- galerías
+  // Galería a un agua: postes rojos y columna de madera al frente, murete atrás
+  // y techo de persianas negras (las del templo original) sobre cabios con
+  // bisagra. El techo baja hacia afuera y cierra el patio por ese lado.
+  const SLATS = 7;
+  const gallery = (name, E, z0, sill, stub) => {
+    const OUT = E ? 54 : -6;
+    const ux = (u, w = 1) => (E ? OUT - u - w : OUT + u); // x mínimo de lo que ocupa u..u+w desde el borde exterior
+    const roofWood = E ? C.wood : C.ground;
+
+    m.step(`${name}: suelo y murete`);
+    // tirantes que unen el murete con los postes
+    rect('plate', C.wood, ux(0, 6), 0, z0, 6, 1);
+    rect('plate', C.wood, ux(0, 6), 0, z0 + 17, 6, 1);
+    rect('plate', E ? C.roof : C.wood, ux(0, 6), 0, z0 + 8, 6, 2);
+    rect('plate', C.wood, ux(0), 0, z0 + 1, 1, 4);
+    rect('plate', C.wood, ux(0), 0, z0 + 5, 1, 3);
+    rect('plate', C.wood, ux(0), 0, z0 + 10, 1, 3);
+    rect('plate', C.wood, ux(0), 0, z0 + 13, 1, 4);
+    // murete
+    sill(ux(0), 1, z0);
+    m.add('4510', C.stone, ux(0), 4, z0, { face: E ? 'E' : 'W' });
+    m.add('4510', C.stone, ux(0), 4, z0 + 8, { face: E ? 'E' : 'W' });
+    rect('plate', C.pale, ux(0), 4, z0 + 16, 1, 2);
+
+    m.step(`${name}: postes, columna y viga`);
+    for (const [v, face] of [[0, 'N'], [17, 'S']]) {
+      if (v) rect('plate', C.ground, ux(5), 1, z0 + v, 1, 6); // sigue hacia el norte: base del tramo de muro
+      else m.add('6141', C.roof, ux(5), 1, z0 + v);
+      m.add('6141', C.roof, ux(5), 2, z0 + v);
+      m.add('87617', C.red, ux(5), 3, z0 + v, { face });
+    }
+    stack('4032a', C.wood, ux(4, 2), 1, z0 + 8, 15, 1);
+    rect('plate', C.wood, ux(5), 16, z0, 1, 10);
+    rect('plate', C.dark, ux(5), 16, z0 + 10, 1, 8);
+    rect('plate', C.dark, ux(5), 17, z0, 1, 8);
+    rect('plate', C.wood, ux(5), 17, z0 + 8, 1, 10);
+
+    m.step(`${name}: muro que cierra el patio`);
+    rect('plate', C.roof, ux(5), 0, z0 + 18, 1, 4);
+    stub(ux(5), 2, z0 + 18);
+    rect('plate', C.wood, ux(5, 2), 5, z0 + 18, 2, 1);
+    rect('plate', C.ground, ux(5, 2), 5, z0 + 19, 2, 2);
+    rect('plate', C.wood, ux(5, 2), 5, z0 + 21, 2, 1);
+    m.add('3299', C.roof, ux(5, 2), 6, z0 + 18, { rot: 1 });
+
+    // El techo se coloca plano y después se gira sobre la bisagra.
+    m.step(`${name}: cabios con bisagra`);
+    const roof = [];
+    const rafters = [];
+    for (const v of [1, 15]) {
+      const hinge = m.add('3937', C.stone, ux(0), 5, z0 + v, { rot: E ? 3 : 1 });
+      const lid = m.addRaw('6134', C.roof, hinge.matrix, { on: hinge });
+      const r = rect('plate', roofWood, ux(0, 8), 8, z0 + v, 8, 2);
+      m.attach(r, lid);
+      roof.push(lid, r);
+      rafters.push(r);
+    }
+    for (const v of [6, 11]) {
+      const r = rect('plate', C.dark, ux(0, 8), 8, z0 + v, 8, 1);
+      roof.push(r);
+      rafters.push(r);
+    }
+    roof.push(rect('plate', C.wood, ux(0), 9, z0 + 1, 1, 10));
+    roof.push(rect('plate', C.wood, ux(0), 9, z0 + 11, 1, 6));
+    const dir = E ? 1 : -1; // hacia dónde baja el techo (x)
+    const lipFace = (E ? OUT - 1 : OUT + 1) * 20;
+    const R = E ? [0, 1, 0, 0, 0, -1, -1, 0, 0] : [0, -1, 0, 0, 0, -1, 1, 0, 0];
+    m.step(`${name}: techo de persianas`);
+    [4.74, 13.26].forEach((c, k) => {
+      for (let i = 0; i < SLATS; i++) {
+        const X = lipFace - dir * (24.4 + 20 * (SLATS - 1 - i));
+        roof.push(m.addRaw('4218', C.roof, [...R, X, -78.6, (z0 + c) * 20], { nest: `techo${E ? 'E' : 'O'}${k}`, on: rafters[k ? 1 : 0] }));
+      }
+    });
+    // Ángulo: el cabio queda apoyado en la arista de la viga del frente.
+    const d = 90, h = 18 * 8 - 54 + 0.6;
+    let lo = 0.3, hi = 1.2;
+    for (let i = 0; i < 50; i++) {
+      const th = (lo + hi) / 2;
+      if (d * Math.tan(th) + 10 / Math.cos(th) < h) lo = th;
+      else hi = th;
+    }
+    const ang = (E ? 1 : -1) * hi;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const X = (E ? OUT - 0.5 : OUT + 0.5) * 20, Y = -54;
+    const T = [c, -s, 0, s, c, 0, 0, 0, 1, X - (c * X - s * Y), Y - (s * X + c * Y), 0];
+    for (const p of roof) p.matrix = compose(T, p.matrix).map((v) => Math.round(v * 1000) / 1000 + 0);
+  };
+
+  gallery('Armería', true, FZ + 5, (x, y, z) => {
+    for (let i = 0; i < 6; i++) rect('brick', C.roof, x, y, z + 3 * i, 1, 3);
+  }, (x, y, z) => {
+    m.add('32064a', C.roof, x, y, z, { rot: 1 });
+    m.add('32064a', C.roof, x, y, z + 2, { rot: 1 });
+  });
+
+  m.step('Armería: racks de lanzas y espadas');
+  // Racks escalonados, como un katana-kake: cada arma descansa acostada en dos clips.
+  const lay = (part, color, x, h, zmm, flip, clips) => {
+    const M = flip ? [-1, 0, 0, 0, 0, -1, 0, -1, 0, x, -h, zmm] : [1, 0, 0, 0, 0, -1, 0, 1, 0, x, -h, zmm];
+    const w = m.addRaw(part, color, M, { on: clips[0] });
+    m.attach(w, clips[1]);
+    return w;
+  };
+  {
+    // lanzas (sur)
+    rect('plate', C.ground, 51, 0, -23, 1, 6);
+    rect('plate', C.ground, 50, 0, -23, 1, 6);
+    rect('plate', C.wood, 50, 1, -18, 2, 2); // traba el rack con el tirante de la galería
+    const tiers = [[51, 2], [50, 1]].map(([x, n]) => [-22, -19].map((z) => {
+      stack('3005', C.red, x, 1, z, n, 3);
+      return m.add('15712', C.wall, x, 1 + 3 * n, z);
+    }));
+    tiers.forEach((clips, i) => lay('93789', C.roof, [1030, 1010][i], [70, 46][i], -440, false, clips));
+    // espadas doradas (norte)
+    rect('plate', C.ground, 51, 0, -15, 1, 6);
+    rect('plate', C.ground, 50, 0, -15, 1, 6);
+    rect('plate', C.wood, 50, 1, -16, 2, 2);
+    // las manijas miran hacia afuera del rack: no pisan studs vecinos
+    const tiers2 = [[51, 2, 'E'], [50, 1, 'W']].map(([x, n, face]) => [-14, -12].map((z) => {
+      stack('2921', C.red, x, 1, z, n, 3, { face });
+      return m.add('15712', C.roof, x, 1 + 3 * n, z);
+    }));
+    tiers2.forEach((clips, i) => lay('11156', C.gold, [1030, 1010][i], [70, 46][i], -280, true, clips));
+  }
+
+  gallery('Taller del vehículo', false, FZ + 5, (x, y, z) => {
+    rect('brick', C.roof, x, y, z, 1, 3);
+    rect('brick', C.roof, x, y, z + 3, 1, 6);
+    m.add('30137', C.wood, x, y, z + 9, { rot: 1 });
+    rect('brick', C.wood, x, y, z + 13, 1, 4);
+    m.add('4070', C.wood, x, y, z + 17, { face: 'E' });
+  }, (x, y, z) => m.add('3701', C.wood, x, y, z, { rot: 1 }));
+
+  m.step('Taller: banco de trabajo, rueda de repuesto y cajón');
+  {
+    m.add('3004', C.stone, -5, 0, -22);
+    m.add('3004', C.stone, -5, 0, -19);
+    m.add('3020', C.wood, -5, 3, -22, { rot: 1 });
+    rect('tile', C.roof, -5, 4, -21, 2, 2);
+    m.add('3899', C.red, -4, 4, -19);
+    // tres ladrillos con perno: dos ganchos y, arriba, la llanta de repuesto
+    m.add('6232', C.stone, -5, 0, -14, { face: 'S' });
+    m.add('6232', C.stone, -5, 3, -14, { face: 'S' });
+    const top = m.add('6232', C.stone, -5, 6, -14, { face: 'E' });
+    m.addRaw('60208', C.stone, [0, 0, -1, 0, 1, 0, 1, 0, 0, top.matrix[9] + 20 + 10.5, top.matrix[10] + 10, top.matrix[11]], { on: top });
+    m.add('30150', C.wood, -5, 0, -11, { rot: 1 });
+  }
+
+  m.step('Sendero del portón al torii');
+  for (let i = 0; i < 13; i++) rect('plate', i % 12 ? C.ground : C.roof, 23, 0, -28 + 2 * i, 2, 2);
+  for (let i = 0; i < 6; i++) m.add('87079', i % 3 === 1 ? C.stone : C.roof, 23, 1, -27 + 4 * i, { rot: 1 });
+  rect('tile', C.pale, 23, 1, -28, 2, 1);
+  rect('tile', C.pale, 23, 1, -3, 2, 1);
+
+  m.step('Tarima de combate');
+  // Plataforma de madera frente a la armería: el centro queda con studs para parar las figuras.
+  rect('plate', C.wood, 31, 0, -20, 10, 6);
+  for (const z of [-20, -15]) {
+    rect('tile', C.roof, 31, 1, z, 6, 1);
+    rect('tile', C.roof, 37, 1, z, 4, 1);
+  }
+  for (const x of [31, 40]) rect('tile', C.roof, x, 1, -19, 1, 4);
+
+  m.step('Faroles de la entrada al patio interior');
+  for (const x of [1, 45]) {
+    m.add('15573', C.roof, x, G, 1);
+    m.add('3062b', C.wood, x + 0.5, G + 1, 1);
+    m.add('6141', 'White', x + 0.5, G + 4, 1);
+    m.add('14769', C.stone, x, G + 5, 0.5);
+  }
+
+  m.step('Plataforma del vehículo');
+  // Cordón de madera en U, abierto hacia el portón: ahí estaciona el buggy.
+  for (const x of [1, 20]) {
+    rect('plate', C.roof, x, 0, -27, 1, 3);
+    rect('plate', C.dark, x, 0, -24, 1, 8);
+    rect('plate', C.dark, x, 0, -16, 1, 8);
+    rect('plate', C.roof, x, 0, -8, 1, 6);
+    for (let i = 0; i < 6; i++) rect('tile', C.dark, x, 1, -25 + 4 * i, 1, 4);
+    m.add('3070b', C.stone, x, 1, -27);
+    m.add('3070b', C.stone, x, 1, -26);
+  }
+  rect('plate', C.roof, 1, 0, -2, 6, 1);
+  rect('plate', C.dark, 7, 0, -2, 8, 1);
+  rect('plate', C.roof, 15, 0, -2, 6, 1);
+  for (let i = 0; i < 4; i++) rect('tile', C.dark, 2 + 4 * i, 1, -2, 4, 1);
+  rect('tile', C.pale, 18, 1, -2, 2, 1);
+  m.envelope(2.25, 0, -27.4, 17.5, 25, 34.4, { label: 'buggy de Jay (volumen de prueba)' });
 
   // -------------------------------------------------- minifiguras de prueba
   const H = '3901', HAT = '93059', HELM = '30175';
@@ -195,8 +461,6 @@ export default function build(m, helpers) {
     [7, G, 11, 'S', 'Red', H, 'Black'], [7, G, 8, 'N', 'Blue', H, 'Dark Brown'],
     [7, G, 21, 'S', 'Dark Red', HAT, 'Tan'], [3, G, 14, 'E', 'Black', HELM, 'Black'],
     [22, G + 1, 5, 'N', 'Green', H, 'Dark Brown'], [24, G + 1, 12, 'S', 'White', H, 'Black'],
-    [17, G + 1, 12, 'S', 'Orange', H, 'Reddish Brown'], [29, G + 1, 12, 'S', 'Dark Blue', H, 'Black'],
-    [23, G, 2, 'S', 'Black', HAT, 'Tan'],
     // jardín
     [39, G + 9, 11, 'S', 'Lime', H, 'Black'], [32, G, 7, 'E', 'Sand Green', H, 'Dark Brown'], [33, G, 15, 'E', 'Tan', HAT, 'Tan'],
     [45, G + 22, 15, 'W', 'Dark Green', H, 'Dark Brown'],
@@ -206,13 +470,17 @@ export default function build(m, helpers) {
     [6, G, 26, 'N', 'Dark Bluish Gray', H, 'Dark Brown'], [9, G, 25, 'S', 'Red', H, 'Reddish Brown'],
     [34, G, 28, 'N', 'Blue', H, 'Black'],
     // torres
-    [2, G + 22, 2, 'S', 'Dark Green', HELM, 'Dark Green'], [3, K + 1, 25, 'N', 'Orange', H, 'Black'],
+    [-4, P + 1, FZ, 'S', 'Dark Green', HELM, 'Dark Green'], [3, K + 1, 25, 'N', 'Orange', H, 'Black'],
     // planta alta
-    [11, U + 1, 26, 'S', 'Black', H, 'Dark Brown'], [12, U, 23, 'S', 'Dark Red', H, 'Black'],
+    [11, U + 1, 26, 'S', 'Black', H, 'Dark Brown'],
     [21, U, 17, 'S', 'Red', H, 'Dark Brown'], [26, U, 17, 'S', 'Blue', HELM, 'Blue'],
     [20, U, 21, 'E', 'Green', H, 'Black'], [27, U, 21, 'W', 'Black', H, 'Reddish Brown'], [23, U, 25, 'S', 'White', H, 'Dark Brown'],
-    [17, U, 25, 'W', 'Dark Blue', H, 'Black'], [30, U, 26, 'E', 'Lime', H, 'Dark Brown'],
     [39, U, 24, 'N', 'Dark Purple', H, 'Reddish Brown'], [33, U, 27, 'E', 'Medium Azure', H, 'Black'], [45, U, 26, 'W', 'Sand Green', HAT, 'Tan'],
+    // patio de armas (sobre la mesa)
+    [33, 1, -18, 'E', 'Orange', H, 'Reddish Brown'], [37, 1, -18, 'W', 'Dark Blue', H, 'Black'],
+    [40, 0, -9, 'S', 'Dark Red', H, 'Black'], [45, 0, -21, 'E', 'Lime', H, 'Dark Brown'],
+    [-2, 0, -22, 'W', 'Dark Blue', H, 'Black'], [29, 0, -26, 'S', 'Black', HAT, 'Tan'],
+    [26, 0, -12, 'N', 'Dark Green', H, 'Dark Brown'],
   ];
   for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
 }

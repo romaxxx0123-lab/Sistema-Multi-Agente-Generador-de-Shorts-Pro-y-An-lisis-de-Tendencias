@@ -58,6 +58,7 @@ export class Model {
     this.props = []; // minifiguras de prueba: no son piezas del modelo
     this.propLinks = [];
     this.figs = 0;
+    this.envelopes = [];
     this.step('Inicio');
   }
 
@@ -178,6 +179,19 @@ export class Model {
     if (hat) parts.push(put(hat, hatColor, 96));
     for (let i = 1; i < parts.length; i++) this.propLinks.push([parts[i], parts[i - 1]]);
     return parts;
+  }
+
+  // Volumen de prueba: una caja del tamaño de algo que el modelo tiene que
+  // alojar (un vehículo). Va con las minifiguras: se comprueba que no choque,
+  // pero no es una pieza. (x, z) esquina mínima en studs, y base en plates;
+  // w, d en studs y h en plates.
+  envelope(x, y, z, w, d, h, { color = 'Trans-Light Blue', label = 'vehículo de prueba' } = {}) {
+    // box.dat es un cubo de lado 2 centrado en el origen.
+    const M = [w * STUD / 2, 0, 0, 0, h * PLATE / 2, 0, 0, 0, d * STUD / 2, (x + w / 2) * STUD, -(y + h / 2) * PLATE, (z + d / 2) * STUD];
+    const p = { index: -1, def: this.partDef('box'), color: this.colorDef(color), matrix: M, step: 0, note: '', nest: null, fig: 1000 + this.envelopes.length, label };
+    this.props.push(p);
+    this.envelopes.push({ label, w, d, h });
+    return p;
   }
 
   // Declara una unión que no es stud-con-encastre (clip, barra, puerta en marco…).

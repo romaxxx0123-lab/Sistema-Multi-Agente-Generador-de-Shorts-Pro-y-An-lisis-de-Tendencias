@@ -3,13 +3,14 @@
 //   exact : misma pieza (o variante de molde) en el mismo color
 //   spare : piezas extra que se cubren gracias a los repuestos de la caja
 //   shape : misma forma en cualquier color (incluye versiones impresas)
-export function matchSets(catalog, bom, { top = 400, topShape = 150, complementsFor = 12, complementsEach = 6 } = {}) {
+//   copies: el modelo está pensado para comprar esa cantidad de cajas iguales
+export function matchSets(catalog, bom, { top = 400, topShape = 150, complementsFor = 12, complementsEach = 6, copies = 1 } = {}) {
   const prep = catalog.prepare(bom.map((b) => ({ part: b.part, color: b.color, qty: b.qty })));
   if (prep.lines.length !== bom.length) {
     throw new Error('El modelo usa dos variantes de molde de la misma pieza en el mismo color; unifícalas en la paleta.');
   }
   const need = Uint32Array.from(prep.lines.map((l) => l.need));
-  const score = catalog.score(prep);
+  const score = catalog.score(prep, null, copies);
   const n = catalog.sets.length;
   const sizeOf = (i) => Math.max(catalog.sets[i][4], catalog.sets[i][5]);
 
@@ -23,7 +24,7 @@ export function matchSets(catalog, bom, { top = 400, topShape = 150, complements
     let e = chosen.get(i);
     if (e) return e;
     const s = catalog.setInfo(i);
-    const h = catalog.have(prep, i);
+    const h = catalog.have(prep, i, copies);
     const x = [], sp = [], g = [];
     let exact = 0, spare = 0, shape = 0;
     for (let l = 0; l < need.length; l++) {
@@ -50,7 +51,7 @@ export function matchSets(catalog, bom, { top = 400, topShape = 150, complements
   // Mejor segundo set para completar lo que le falta a cada uno de los primeros.
   for (const i of byExact.slice(0, complementsFor)) {
     const e = entry(i);
-    const h = catalog.have(prep, i);
+    const h = catalog.have(prep, i, copies);
     const residual = new Uint32Array(need.length);
     let missing = 0;
     for (let l = 0; l < need.length; l++) {
@@ -58,7 +59,7 @@ export function matchSets(catalog, bom, { top = 400, topShape = 150, complements
       missing += residual[l];
     }
     if (!missing) continue;
-    const rs = catalog.score(prep, residual);
+    const rs = catalog.score(prep, residual, copies);
     const order = [];
     for (let j = 0; j < n; j++) if (j !== i && rs.exact[j] > 0) order.push(j);
     order.sort((a, b) => rs.exact[b] - rs.exact[a] || sizeOf(a) - sizeOf(b));
@@ -68,6 +69,7 @@ export function matchSets(catalog, bom, { top = 400, topShape = 150, complements
   const list = [...chosen.values()].sort((a, b) => b.exact - a.exact || b.shape - a.shape || a.parts - b.parts);
   return {
     searched: n,
+    copies,
     total: prep.total,
     groups: prep.groups.map((gr) => gr.lines),
     list,
