@@ -16,7 +16,9 @@ const C = {
 const G = 1; // nivel del patio (arriba de las placas del suelo)
 const U = 20; // nivel de la planta alta
 
-export default function build(m, { rect, row, fill }) {
+// opts.fortress: la Fortaleza Ninja reutiliza esta base y cambia algunas cosas.
+export default function build(m, { rect, row, fill }, opts = {}) {
+  const F = !!opts.fortress;
   // Ventana corrediza con su papel.
   const win = (color, x, y, z, face = 'S') => {
     const f = m.add('60592', color, x, y, z, { face });
@@ -91,12 +93,14 @@ export default function build(m, { rect, row, fill }) {
   // --------------------------------------------- interiores de planta baja
   m.step('Salón del maestro: círculo de reunión');
   m.add('89523', C.floor, 19, G, 19);
-  m.add('92947', C.dark, 23, G + 1, 23);
-  m.add('60474', C.roof, 22, G + 4, 22);
-  m.add('2450', C.wall, 22, G + 1, 19, { rot: 0 });
-  m.add('2450', C.wall, 23, G + 1, 26, { rot: 2 });
-  m.add('2450', C.wall, 19, G + 1, 23, { rot: 1 });
-  m.add('2450', C.wall, 26, G + 1, 22, { rot: 3 });
+  if (!F) {
+    m.add('92947', C.dark, 23, G + 1, 23);
+    m.add('60474', C.roof, 22, G + 4, 22);
+    m.add('2450', C.wall, 22, G + 1, 19, { rot: 0 });
+    m.add('2450', C.wall, 23, G + 1, 26, { rot: 2 });
+    m.add('2450', C.wall, 19, G + 1, 23, { rot: 1 });
+    m.add('2450', C.wall, 26, G + 1, 22, { rot: 3 });
+  }
   const chest = m.add('4738b', C.wood, 17, G, 29);
   m.add('4739a', C.wood, 17, G + 4, 29, { on: chest });
 
@@ -137,13 +141,15 @@ export default function build(m, { rect, row, fill }) {
   for (const [x, z] of [[19, 19], [28, 19], [19, 23], [28, 23]]) m.add('43888', C.wood, x, U, z);
   for (const y of [U, U + 6, U + 12]) for (let i = 0; i < 5; i++) win(C.red, 19 + 2 * i, y, 28);
 
-  m.step('Puesto de mando: consola y mesa de mapas');
-  rect('brick', C.roof, 21, U, 26, 3, 2);
-  rect('brick', C.roof, 24, U, 26, 3, 2);
-  for (let i = 0; i < 6; i++) m.add('3040b', C.roof, 21 + i, U + 3, 26, { face: 'S' });
-  m.add('3003', C.stone, 23, U, 21);
-  rect('plate', C.wood, 22, U + 3, 20, 4, 4);
-  rect('tile', 'Sand Blue', 22, U + 4, 21, 4, 2);
+  if (!F) {
+    m.step('Puesto de mando: consola y mesa de mapas');
+    rect('brick', C.roof, 21, U, 26, 3, 2);
+    rect('brick', C.roof, 24, U, 26, 3, 2);
+    for (let i = 0; i < 6; i++) m.add('3040b', C.roof, 21 + i, U + 3, 26, { face: 'S' });
+    m.add('3003', C.stone, 23, U, 21);
+    rect('plate', C.wood, 22, U + 3, 20, 4, 4);
+    rect('tile', 'Sand Blue', 22, U + 4, 21, 4, 2);
+  }
 
   m.step('Techo del puesto de mando');
   const R = U + 18;
@@ -208,18 +214,22 @@ export default function build(m, { rect, row, fill }) {
   m.add('30503', C.roof, 40, T + 1, 27, { rot: 3 });
   rect('plate', C.roof, 38, T + 2, 25, 4, 4);
 
-  m.step('Aleros de tejas');
-  for (const [x0, z0] of [[0, 21], [16, 15], [32, 21]]) {
-    for (let i = 0; i < 4; i++) {
-      rect('plate', C.stone, x0 + 4 * i, U, z0, 4, 2);
-      m.add('3299', C.roof, x0 + 4 * i, U + 1, z0);
+  if (!F) {
+    m.step('Aleros de tejas');
+    for (const [x0, z0] of [[0, 21], [16, 15], [32, 21]]) {
+      for (let i = 0; i < 4; i++) {
+        rect('plate', C.stone, x0 + 4 * i, U, z0, 4, 2);
+        m.add('3299', C.roof, x0 + 4 * i, U + 1, z0);
+      }
     }
   }
 
   m.step('Pista de aterrizaje');
-  for (const [x, z] of [[1, 25], [14, 25], [1, 30], [14, 30]]) m.add('6141', C.red, x, U, z);
-  m.add('87580', C.stone, 11, U, 28);
-  m.add('15395', 'White', 11, U + 1, 28);
+  for (const [x, z] of F ? [[8, 23], [15, 23], [8, 30], [15, 30]] : [[1, 25], [14, 25], [1, 30], [14, 30]]) m.add('6141', C.red, x, U, z);
+  if (!F) {
+    m.add('87580', C.stone, 11, U, 28);
+    m.add('15395', 'White', 11, U + 1, 28);
+  }
 
   m.step('Barandas de las terrazas');
   const rail = (posts, plate) => {
@@ -240,7 +250,7 @@ export default function build(m, { rect, row, fill }) {
     for (const z of [17, 22]) m.add('3005', C.wall, x, U, z);
     rect('plate', C.wood, x, U + 3, 17, 1, 6);
   }
-  m.add('3957b', C.roof, 0, U + 4, 31);
+  if (!F) m.add('3957b', C.roof, 0, U + 4, 31);
 
   // ----------------------------------------------------------------- patio
   m.step('Tarima de entrenamiento y senderos');
@@ -269,7 +279,7 @@ export default function build(m, { rect, row, fill }) {
   };
   lantern(14, G + 1, 12);
   lantern(32, G + 1, 12);
-  m.add('6083', C.stone, 13, G, 14, { rot: 1 });
+  const climb = m.add('6083', C.stone, 13, G, 14, { rot: 1 });
 
   m.step('Portón torii');
   for (const x of [19, 28]) {
@@ -337,28 +347,31 @@ export default function build(m, { rect, row, fill }) {
   m.add('30504', C.water, 36, G, 3, { rot: 1 });
   m.add('30504', C.water, 36, G, 11, { rot: 3 });
   m.add('14707', C.wood, 34, G, 11);
-  m.add('6083', C.stone, 45, G, 12, { rot: 1 });
+  const rock = m.add('6083', C.stone, 45, G, 12, { rot: 1 });
   lantern(32, G, 2, C.stone);
-  m.add('30145', C.pale, 46, G, 0);
-  m.add('98100', C.pale, 46, G + 9, 0);
-  m.add('6141', 'Yellow', 46.5, G + 12, 0.5);
-  m.add('14769', C.pale, 46, G + 13, 0);
+  if (!F) {
+    m.add('30145', C.pale, 46, G, 0);
+    m.add('98100', C.pale, 46, G + 9, 0);
+    m.add('6141', 'Yellow', 46.5, G + 12, 0.5);
+    m.add('14769', C.pale, 46, G + 13, 0);
+  }
 
   m.step('Árbol de otoño');
-  m.add('87580', C.ground, 45, G, 6);
-  stack('3062b', C.wood, 45.5, G + 1, 6.5, 3, 3);
+  const tx = F ? 44 : 45; // en la fortaleza deja lugar al muro
+  m.add('87580', C.ground, tx, G, 6);
+  stack('3062b', C.wood, tx + 0.5, G + 1, 6.5, 3, 3);
   [[G + 10, 0], [G + 14, 1], [G + 18, 2], [G + 22, 3]].forEach(([y, rot], i) => {
-    m.add('2417', 'Dark Orange', 45.5, y, 6.5, { rot });
-    if (i < 3) m.add('3062b', C.wood, 45.5, y + 1, 6.5);
+    m.add('2417', 'Dark Orange', tx + 0.5, y, 6.5, { rot });
+    if (i < 3) m.add('3062b', C.wood, tx + 0.5, y + 1, 6.5);
   });
-  m.add('85975', C.wall, 45.5, G + 23, 6.5);
+  m.add('85975', C.wall, tx + 0.5, G + 23, 6.5);
 
   m.step('Nenúfares y flores');
   for (const [x, z, flower] of [[41, 8, 1], [42, 5, 0], [38, 10, 0], [37, 13, 0], [38, 15, 1], [41, 12, 0]]) {
     m.add('6141', 'Lime', x, G + 1, z);
     if (flower) m.add('33291', C.red, x, G + 2, z);
   }
-  for (const [x, z] of [[43, 20], [41, 20], [33, 20], [44, 2]]) {
+  for (const [x, z] of F ? [] : [[43, 20], [41, 20], [33, 20], [44, 2]]) {
     m.add('6141', 'Lime', x, G, z);
     m.add('33291', C.red, x, G + 1, z);
   }
@@ -388,5 +401,6 @@ export default function build(m, { rect, row, fill }) {
     [17, U, 25, 'W', 'Dark Blue', H, 'Black'], [30, U, 26, 'E', 'Lime', H, 'Dark Brown'],
     [39, U, 24, 'N', 'Dark Purple', H, 'Reddish Brown'], [33, U, 27, 'E', 'Medium Azure', H, 'Black'], [45, U, 26, 'W', 'Sand Green', HAT, 'Tan'],
   ];
-  for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
+  if (!F) for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
+  return { rock, climb };
 }

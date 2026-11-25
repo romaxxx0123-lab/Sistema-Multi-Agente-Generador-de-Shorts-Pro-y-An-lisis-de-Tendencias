@@ -5,7 +5,7 @@ la mayoría de esas piezas para comprarlo y armar tu diseño en vez del oficial.
 
 Proyecto independiente del resto del repo: vive entero en esta carpeta.
 
-![Base Universal Ninja: 573 piezas del set 70751, con 33 minifiguras de prueba](models/base-universal/renders/hero.jpg)
+![Base de Operaciones Ninja: 741 piezas del set 70751, con 34 minifiguras de prueba](models/fortaleza-ninja/renders/hero.jpg)
 
 | Pabellón Zen: 285 piezas, 100 % con el set 10315 | Templo Zen Ninjago: 307 piezas, diseño libre | Base Ninja: 111 piezas, 100 % con el set 71826 |
 | --- | --- | --- |
@@ -32,10 +32,14 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `templo-zen` (diseño libre) | 307 | 71861 The Old Town (4.852 piezas) | 106 de 307, 34,5 % |
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 | `base-universal` (para 30 minifiguras) | 573 | 70751 Temple of Airjitzu (2.033 piezas) | 573 de 573, **100 %** |
+| `fortaleza-ninja` (base de operaciones con torres) | 741 | 70751 Temple of Airjitzu (2.033 piezas) | 741 de 741, **100 %** |
 
-`base-universal` usa como donante un set retirado: el original se consigue
-usado, y es de los más copiados por marcas alternativas, que es la forma barata
-de conseguir las mismas piezas. El segundo mejor set solo cubre el 22 %.
+`base-universal` y `fortaleza-ninja` usan como donante un set retirado: el
+original se consigue usado, y es de los más copiados por marcas alternativas,
+que es la forma barata de conseguir las mismas piezas. El segundo mejor set
+solo cubre el 20 %. `fortaleza-ninja` reutiliza el código de `base-universal`
+y le suma torres, muros, sala de operaciones y equipo técnico con piezas que en
+la primera quedaban sin usar: se arma con la misma caja.
 
 ## Comandos
 

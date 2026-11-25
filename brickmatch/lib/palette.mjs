@@ -85,6 +85,12 @@ export const PARTS = {
   '3626c': { box: CELL(24) }, // cabeza de minifigura lisa
   '2921': { box: CELL(24), front: S }, // ladrillo 1x1 con manija al frente
   '60897': { box: CELL(8), front: S }, // plate 1x1 con clip vertical al frente
+  pantalla: { ld: '57895', rb: '57895pr0007' }, // vidrio 1x4x6 impreso: se dibuja liso
+  '62930': { box: { min: [-30, 0, -20], max: [30, 32, 20] } }, // ladrillo de luz 2x3: la lente sobresale
+  '41535': { box: { min: [-10, -56, -10], max: [10, 0, 10] } }, // dragón bebé (estatua)
+  '90398': { box: { min: [-10, -38, -10], max: [10, 0, 10] } }, // estatuilla
+  '3741': { box: CELL(16) }, // tallo de flor (junco)
+  '93274': { box: { min: [-40, 0, -10], max: [40, 8, 10] }, front: S }, // escuadra 1x2 - 2x4: la cara con studs cuelga al frente
   '30150': { verified: true }, // cajón con manijas: mismo molde, nombres distintos
 };
 
