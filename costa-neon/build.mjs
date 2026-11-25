@@ -1,4 +1,5 @@
-// Build: empaqueta todo el juego en un único HTML autocontenido (jugable con doble clic, sin servidor).
+// Build: empaqueta el juego en un HTML (código, autos y texturas generadas) más los archivos grandes
+// aparte (cielos fotografiados en build/sky/). Sin servidor, el HTML igual funciona con el cielo procedural.
 import * as esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -34,6 +35,12 @@ async function buildOnce() {
   // 2) Variante para Artifact (el host agrega doctype/head/body)
   const artifact = `${head}\n<style>${css}</style>\n${body}\n<script>${js}</script>\n`;
   fs.writeFileSync(path.join(ROOT, 'build/artifact.html'), artifact);
+  // 3) Archivos aparte: cielos fotografiados (el juego los busca en sky/ junto al HTML)
+  const skyDir = path.join(ROOT, 'build/sky');
+  fs.mkdirSync(skyDir, { recursive: true });
+  for (const f of fs.readdirSync(path.join(ROOT, 'assets/sky'))) {
+    if (/\.(webp|png)$/.test(f)) fs.copyFileSync(path.join(ROOT, 'assets/sky', f), path.join(skyDir, f));
+  }
   const kb = (Buffer.byteLength(full) / 1024).toFixed(0);
   console.log(`[build] ok en ${Date.now() - t0} ms — ${kb} KB`);
 }

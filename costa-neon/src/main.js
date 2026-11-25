@@ -6,6 +6,7 @@ import { CollisionWorld } from './world/collision.js';
 import { generateGroundTextures, generateDetailTextures } from './world/textures.js';
 import { MaterialLib } from './world/materials.js';
 import { Sky } from './world/sky.js';
+import { HdriSky } from './world/hdriSky.js';
 import { CityRenderer } from './world/city.js';
 import { Ocean } from './world/water.js';
 import { Vegetation } from './world/vegetation.js';
@@ -57,6 +58,11 @@ async function boot() {
   setProgress(0.3, 'Encendiendo el cielo…');
   await nextFrame();
   const sky = new Sky(engine);
+  setProgress(0.34, 'Fotografiando el cielo…');
+  const hdri = new HdriSky(engine.renderer);
+  let noHdri = false;
+  try { noHdri = new URLSearchParams(location.search).has('nohdri'); } catch (e) { /* sin query */ }
+  if (!noHdri && await hdri.load()) sky.setHdri(hdri);
   setProgress(0.42, 'Levantando edificios…');
   await nextFrame();
   const city = new CityRenderer(engine, world, lib);

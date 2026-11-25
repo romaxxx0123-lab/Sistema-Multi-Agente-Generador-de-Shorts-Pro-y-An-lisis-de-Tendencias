@@ -37,8 +37,25 @@ uniform float uCloud; uniform float uDark; uniform float uNightK; uniform float 
 uniform float uMoonPhase; uniform float uFlash; uniform float uEnv; uniform vec3 uCityGlow; uniform float uSkyMul;
 uniform vec3 uSunCol; uniform vec3 uCloudAmb; uniform vec2 uWindOff;
 uniform float uFogDensity; uniform float uFogFalloff; uniform vec3 uFogColor; uniform vec3 uFogSunColor;
+uniform float uHdrK; uniform sampler2D uHdrBg0; uniform sampler2D uHdrBg1; uniform sampler2D uHdrBg2;
+uniform sampler2D uHdrEnv0; uniform sampler2D uHdrEnv1; uniform sampler2D uHdrEnv2;
+uniform vec3 uHdrWbg; uniform vec3 uHdrWenv; uniform vec3 uHdrBgOn; uniform vec3 uHdrYaw; uniform vec3 uSunDisk;
 varying vec3 vDir;
 const float PI = 3.141592653589793;
+// cielo fotografiado: fondo equirectangular de +90° a -11,25° (sin costura en el salto del azimut)
+vec3 hdrBg(sampler2D t, vec3 d, float yaw){
+  float u = (atan(d.z, d.x) - yaw) / 6.2831853 + .5;
+  float v = (degrees(asin(clamp(d.y, -1., 1.))) + 11.25) / 101.25;
+  vec2 uv = vec2(fract(u), v), uv2 = vec2(fract(u + .5) - .5, v);
+  vec2 dx = dFdx(uv), dy = dFdy(uv), dx2 = dFdx(uv2), dy2 = dFdy(uv2);
+  if (dot(dx, dx) + dot(dy, dy) > dot(dx2, dx2) + dot(dy2, dy2)) { dx = dx2; dy = dy2; }
+  return textureGrad(t, uv, dx, dy).rgb;
+}
+vec3 hdrEnv(sampler2D t, vec3 d, float yaw){
+  float u = (atan(d.z, d.x) - yaw) / 6.2831853 + .5;
+  float v = (degrees(asin(clamp(d.y, -1., 1.))) + 90.) / 180.;
+  return texture2D(t, vec2(fract(u), v)).rgb;
+}
 const vec3 totalRayleigh = vec3(5.804542996261093E-6, 1.3562911419845635E-5, 3.0265902468824876E-5);
 const vec3 MieConst = vec3(1.8399918514433978E14, 2.7798023919660528E14, 4.0790479543861094E14);
 float h13(vec3 p3){ p3 = fract(p3 * .1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y) * p3.z); }
@@ -126,6 +143,20 @@ void main(){
     cloudCol += vec3(.7, .75, 1.) * uFlash * 6. * cov;
     col = mix(col, cloudCol, clamp(dens * (.65 + .35 * uCloud), 0., 1.));
   }
+  // de día: el cielo fotografiado reemplaza al procedural (que queda para la noche)
+  if (uHdrK > 0.) {
+    vec3 hd;
+    if (uEnv > .5) {
+      hd = uHdrWenv.x * hdrEnv(uHdrEnv0, dir, uHdrYaw.x) + uHdrWenv.y * hdrEnv(uHdrEnv1, dir, uHdrYaw.y) + uHdrWenv.z * hdrEnv(uHdrEnv2, dir, uHdrYaw.z);
+    } else {
+      hd = vec3(0.);
+      if (uHdrWbg.x > 0.) hd += uHdrBgOn.x > .5 ? uHdrWbg.x * hdrBg(uHdrBg0, dir, uHdrYaw.x) : uHdrWenv.x * hdrEnv(uHdrEnv0, dir, uHdrYaw.x);
+      if (uHdrWbg.y > 0.) hd += uHdrBgOn.y > .5 ? uHdrWbg.y * hdrBg(uHdrBg1, dir, uHdrYaw.y) : uHdrWenv.y * hdrEnv(uHdrEnv1, dir, uHdrYaw.y);
+      if (uHdrWbg.z > 0.) hd += uHdrBgOn.z > .5 ? uHdrWbg.z * hdrBg(uHdrBg2, dir, uHdrYaw.z) : uHdrWenv.z * hdrEnv(uHdrEnv2, dir, uHdrYaw.z);
+      hd += uSunDisk * smoothstep(.99995, .99998, dot(dir, uSun));
+    }
+    col = mix(col, hd, uHdrK);
+  }
   col += vec3(.6, .65, .9) * uFlash * 1.5;
   // fundido con la niebla del horizonte
   float b = uFogFalloff;
@@ -177,6 +208,15 @@ function transmittanceJS(sun, turb, ray, mie, out) {
   return out;
 }
 
+/** Color del sol tras la atmósfera (mismo modelo que tools/sky/make_sky.py). */
+function sunColorModel(el, out) {
+  const e = Math.max(el, 0.5);
+  const am = 1 / (Math.sin(e * Math.PI / 180) + 0.50572 * Math.pow(e + 6.07995, -1.6364));
+  const t = [0.65, 0.55, 0.45].map((l) => Math.exp(-am * (0.0088 * Math.pow(l, -4.05) + 0.09)));
+  const m = Math.max(...t);
+  return out.setRGB(t[0] / m, t[1] / m, t[2] / m);
+}
+
 function rotateAround(v, axis, ang, out) {
   const c = Math.cos(ang), s = Math.sin(ang);
   const d = v.dot(axis);
@@ -219,7 +259,12 @@ export class Sky {
       uSunCol: { value: new THREE.Color(1, 1, 1) }, uCloudAmb: { value: new THREE.Color(0.5, 0.55, 0.6) },
       uWindOff: { value: this.windOff },
       uFogDensity: U.uFogDensity, uFogFalloff: U.uFogFalloff, uFogColor: U.uFogColor, uFogSunColor: U.uFogSunColor,
+      uHdrK: { value: 0 }, uHdrBg0: { value: null }, uHdrBg1: { value: null }, uHdrBg2: { value: null },
+      uHdrEnv0: { value: null }, uHdrEnv1: { value: null }, uHdrEnv2: { value: null },
+      uHdrWbg: { value: new THREE.Vector3() }, uHdrWenv: { value: new THREE.Vector3() }, uHdrBgOn: { value: new THREE.Vector3() },
+      uHdrYaw: { value: new THREE.Vector3() }, uSunDisk: { value: new THREE.Color(0, 0, 0) },
     };
+    this.hdri = null;
     const mkMat = (env) => new THREE.ShaderMaterial({
       uniforms: { ...this.uniforms, uEnv: { value: env } },
       vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, fog: false,
@@ -402,6 +447,11 @@ export class Sky {
     fogS.lerp(nightHz, nightK);
     U.uFogColor.value.copy(fogC);
     U.uFogSunColor.value.copy(fogS).lerp(fogC, dark);
+    const H = this._hdriState(elevDeg, nightK);
+    if (H) {
+      U.uFogColor.value.lerp(H.fogC, H.k);
+      U.uFogSunColor.value.lerp(H.fogS, H.k);
+    }
     U.uFogDensity.value = 0.00028 * this.w.fog * (1 + nightK * 0.2);
     U.uFogFalloff.value = 0.012 / Math.sqrt(this.w.fog);
     u.uCloudAmb.value.copy(zenC).multiplyScalar(1.4).lerp(fogC, 0.4);
@@ -414,6 +464,10 @@ export class Sky {
     const lightColor = useMoon ? new THREE.Color(0.55, 0.65, 0.95) : sunCol;
     const lightI = useMoon ? moonI : sunI;
     this.light = { dir: lightDir.clone(), color: lightColor, intensity: lightI };
+    if (H && !useMoon) {
+      this.light.color = lightColor.clone().lerp(H.sunCol, H.k);
+      this.light.intensity = lerp(lightI, H.sunI, H.k);
+    }
     U.uSunDir.value.copy(sun.y > -0.1 ? sun : this.moonDir);
 
     // Hemisférica
@@ -424,7 +478,7 @@ export class Sky {
     groundAmb.lerp(new THREE.Color(0.03, 0.02, 0.014), nightK);
     this.hemi.color.copy(skyAmb);
     this.hemi.groundColor.copy(groundAmb);
-    this.hemi.intensity = lerp(0.28, 0.42, nightK) + this.flash * 4;
+    this.hemi.intensity = lerp(0.28, 0.42, nightK) * (H ? 1 - H.k : 1) + this.flash * 4;
 
     // Uniforms globales
     U.uNight.value = nightK;
@@ -440,7 +494,7 @@ export class Sky {
     // Exposición (adaptación ocular)
     const dayExp = 0.62 / (0.5 + 0.5 * this.w.sun);
     const nightExp = 2.0;
-    U.uExposure.value = lerp(dayExp, nightExp, nightK) * (1 + twilight * 0.25);
+    U.uExposure.value = H ? lerp(H.exp, nightExp, nightK) : lerp(dayExp, nightExp, nightK) * (1 + twilight * 0.25);
 
     // Mapa de entorno
     this.envTimer -= dt;
@@ -452,7 +506,58 @@ export class Sky {
       this._lastEnvW = this.w.cloud + this.w.dark + nightK;
       this._updateEnv();
     }
-    this.engine.scene.environmentIntensity = lerp(0.55 + dark * 0.35, 0.9, nightK);
+    this.engine.scene.environmentIntensity = H ? lerp(1.0, 0.9, nightK) : lerp(0.55 + dark * 0.35, 0.9, nightK);
+  }
+
+  /** Mezcla de cielos fotografiados para este momento: uniforms del cielo y luz/bruma/exposición. */
+  _hdriState(el, nightK) {
+    const hd = this.hdri;
+    const u = this.uniforms;
+    if (!hd || !hd.ready) {
+      u.uHdrK.value = 0;
+      return null;
+    }
+    const weatherK = smoothstep(0.32, 0.75, this.w.cloud);
+    const list = hd.mix(el, this.time < 12, weatherK, this.weatherId).slice(0, 3);
+    const sunAz = Math.atan2(this.sunDir.z, this.sunDir.x);
+    const st = this._hs || (this._hs = { sunCol: new THREE.Color(), fogC: new THREE.Color(), fogS: new THREE.Color(), c: new THREE.Color(), a: new THREE.Color(), s: new THREE.Color() });
+    st.sunCol.setRGB(0, 0, 0);
+    st.fogC.setRGB(0, 0, 0);
+    st.fogS.setRGB(0, 0, 0);
+    let sunI = 0, eg = 0, wsum = 0;
+    const comp = ['x', 'y', 'z'];
+    for (const v of [u.uHdrWbg.value, u.uHdrWenv.value, u.uHdrBgOn.value]) v.set(0, 0, 0);
+    list.forEach((o, i) => {
+      const e = hd.entries[o.id], m = e.meta;
+      const yaw = sunAz - m.sunAzim * Math.PI / 180;
+      const bg = hd.background(o.id);
+      u.uHdrWbg.value[comp[i]] = o.w * o.k / m.bgScale;
+      u.uHdrWenv.value[comp[i]] = o.w * o.k;
+      u.uHdrBgOn.value[comp[i]] = bg ? 1 : 0;
+      u.uHdrYaw.value[comp[i]] = yaw;
+      u['uHdrBg' + i].value = bg;
+      u['uHdrEnv' + i].value = e.env;
+      const si = hd.sunIntensity(o.id, el);
+      sunI += o.w * si;
+      if (m.synthSun) sunColorModel(el, st.c);
+      else st.c.setRGB(m.sunColor[0], m.sunColor[1], m.sunColor[2]);
+      st.sunCol.add(st.c.multiplyScalar(o.w));
+      hd.horizon(o.id, sunAz, yaw, st.s, st.a);
+      st.fogS.add(st.s.multiplyScalar(o.w * o.k));
+      st.fogC.add(st.a.multiplyScalar(o.w * o.k));
+      eg += o.w * (si * Math.max(Math.sin(el * Math.PI / 180), 0) + m.skyIllum * o.k);
+      wsum += o.w;
+    });
+    if (wsum > 0) {
+      const mx = Math.max(st.sunCol.r, st.sunCol.g, st.sunCol.b, 1e-4);
+      st.sunCol.multiplyScalar(1 / mx);
+    }
+    const k = clamp(1 - nightK * 1.15, 0, 1);
+    u.uHdrK.value = k;
+    u.uSunDisk.value.copy(st.sunCol).multiplyScalar(sunI * 600 * smoothstep(-0.6, 0.4, el));
+    // adaptación parcial, como una cámara: el atardecer queda más oscuro que el mediodía
+    const exp = clamp(0.62 * Math.pow(4.9 / Math.max(eg, 1e-3), 0.45), 0.3, 6);
+    return { k, sunI, sunCol: st.sunCol, fogC: st.fogC, fogS: st.fogS, exp };
   }
 
   _updateEnv() {
@@ -460,6 +565,13 @@ export class Sky {
     this.envRT = this.pmrem.fromScene(this.envScene, 0, 0.1, 200);
     this.engine.scene.environment = this.envRT.texture;
     if (old) old.dispose();
+  }
+
+  /** Conecta los cielos fotografiados (ya cargados) y rehace el entorno. */
+  setHdri(h) {
+    this.hdri = h;
+    this._lastEnvW = -1;
+    this.update(0, true);
   }
 
   follow(camera) {

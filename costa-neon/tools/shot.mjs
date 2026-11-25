@@ -3,6 +3,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
+import http from 'node:http';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -23,7 +24,16 @@ page.on('console', (m) => {
   if (t === 'error' || t === 'warning' || t === 'log') logs.push(`[${t}] ${m.text()}`.slice(0, 2000));
 });
 page.on('pageerror', (e) => logs.push('[pageerror] ' + (e.stack || e.message).slice(0, 2000)));
-const url = 'file://' + path.join(ROOT, 'build', 'costa-neon.html') + '?q=' + quality + (process.env.SHOT_EXTRA || '');
+// servidor local del build (los cielos fotografiados se cargan como archivos aparte)
+const TYPES = { '.html': 'text/html', '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.js': 'text/javascript' };
+const server = http.createServer((req, res) => {
+  const p = path.join(ROOT, 'build', decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  if (!p.startsWith(path.join(ROOT, 'build')) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); res.end(); return; }
+  res.writeHead(200, { 'Content-Type': TYPES[path.extname(p)] || 'application/octet-stream' });
+  fs.createReadStream(p).pipe(res);
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const url = 'http://127.0.0.1:' + server.address().port + '/costa-neon.html?q=' + quality + (process.env.SHOT_EXTRA || '');
 const t0 = Date.now();
 await page.goto(url);
 try {
@@ -32,6 +42,7 @@ try {
   console.log('No arrancó a tiempo. Logs:\n' + logs.join('\n'));
   await page.screenshot({ path: path.join(outDir, 'fail.png') });
   await browser.close();
+server.close();
   process.exit(1);
 }
 console.log('arranque ms', Date.now() - t0);
@@ -52,3 +63,4 @@ console.log('--- logs (' + logs.length + ') ---');
 const uniq = [...new Set(logs)];
 console.log(uniq.slice(0, 60).join('\n'));
 await browser.close();
+server.close();

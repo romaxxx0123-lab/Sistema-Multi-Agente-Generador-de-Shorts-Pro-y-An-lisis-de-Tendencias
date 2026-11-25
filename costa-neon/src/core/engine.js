@@ -77,7 +77,7 @@ class GradeEffect extends Effect {
       }
     `, {
       uniforms: new Map([
-        ['grExposure', new THREE.Uniform(1)], ['grSat', new THREE.Uniform(1.16)], ['grContrast', new THREE.Uniform(1.1)],
+        ['grExposure', new THREE.Uniform(1)], ['grSat', new THREE.Uniform(1.0)], ['grContrast', new THREE.Uniform(1.03)],
         ['grTint', new THREE.Uniform(new THREE.Vector3(1, 1, 1))], ['grDesat', new THREE.Uniform(0)], ['grSpeed', new THREE.Uniform(0)],
       ]),
     });

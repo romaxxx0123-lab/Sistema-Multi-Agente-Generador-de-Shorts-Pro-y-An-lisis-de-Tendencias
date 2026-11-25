@@ -1,0 +1,302 @@
+{
+ "alba": {
+  "id": "alba",
+  "sunElev": -2.0,
+  "sunAzim": 34.858,
+  "sunIntensity": 0.0,
+  "sunColor": [
+   1.0,
+   0.2171,
+   0.0044
+  ],
+  "bgScale": 19.16383,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.02229,
+  "globalIllum": 0.02229,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "salida": {
+  "id": "salida",
+  "sunElev": 2.106,
+  "sunAzim": 36.069,
+  "sunIntensity": 0.64348,
+  "sunColor": [
+   1.0,
+   0.3985,
+   0.0381
+  ],
+  "bgScale": 3.40164,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.14506,
+  "globalIllum": 0.1687,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "dorado": {
+  "id": "dorado",
+  "sunElev": 5.277,
+  "sunAzim": 40.52,
+  "sunIntensity": 1.63461,
+  "sunColor": [
+   1.0,
+   0.6187,
+   0.1818
+  ],
+  "bgScale": 2.03229,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.25155,
+  "globalIllum": 0.40188,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "tarde_baja": {
+  "id": "tarde_baja",
+  "sunElev": 11.159,
+  "sunAzim": 36.889,
+  "sunIntensity": 3.02197,
+  "sunColor": [
+   1.0,
+   0.7822,
+   0.418
+  ],
+  "bgScale": 1.21634,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.39307,
+  "globalIllum": 0.97791,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "manana": {
+  "id": "manana",
+  "sunElev": 37.936,
+  "sunAzim": 35.935,
+  "sunIntensity": 3.32426,
+  "sunColor": [
+   1.0,
+   0.9632,
+   0.878
+  ],
+  "bgScale": 0.25315,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.95548,
+  "globalIllum": 3.99916,
+  "weather": 1.0,
+  "synthSun": false
+ },
+ "cumulos_48": {
+  "id": "cumulos_48",
+  "sunElev": 47.879,
+  "sunAzim": 34.265,
+  "sunIntensity": 4.49355,
+  "sunColor": [
+   0.9918,
+   1.0,
+   0.909
+  ],
+  "bgScale": 0.42847,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.56915,
+  "globalIllum": 4.90213,
+  "weather": 1.0,
+  "synthSun": false
+ },
+ "mediodia": {
+  "id": "mediodia",
+  "sunElev": 74.53,
+  "sunAzim": 35.92,
+  "sunIntensity": 5.51258,
+  "sunColor": [
+   1.0,
+   0.9338,
+   0.8579
+  ],
+  "bgScale": 0.41639,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.17055,
+  "globalIllum": 6.4834,
+  "weather": 1.0,
+  "synthSun": false
+ },
+ "cumulos_43": {
+  "id": "cumulos_43",
+  "sunElev": 43.016,
+  "sunAzim": 36.153,
+  "sunIntensity": 4.38676,
+  "sunColor": [
+   1.0,
+   0.7837,
+   0.4403
+  ],
+  "bgScale": 0.37006,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.48593,
+  "globalIllum": 4.47856,
+  "weather": 1.0,
+  "synthSun": false
+ },
+ "tarde": {
+  "id": "tarde",
+  "sunElev": 19.077,
+  "sunAzim": 36.13,
+  "sunIntensity": 3.93108,
+  "sunColor": [
+   1.0,
+   0.8058,
+   0.5712
+  ],
+  "bgScale": 0.65678,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.67452,
+  "globalIllum": 1.95936,
+  "weather": 1.0,
+  "synthSun": false
+ },
+ "ocaso": {
+  "id": "ocaso",
+  "sunElev": 4.182,
+  "sunAzim": 36.453,
+  "sunIntensity": 1.3013,
+  "sunColor": [
+   1.0,
+   0.5604,
+   0.1279
+  ],
+  "bgScale": 5.00652,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.21884,
+  "globalIllum": 0.31373,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "puesta": {
+  "id": "puesta",
+  "sunElev": 2.361,
+  "sunAzim": 37.917,
+  "sunIntensity": 0.7224,
+  "sunColor": [
+   1.0,
+   0.4229,
+   0.0471
+  ],
+  "bgScale": 1.47178,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.15535,
+  "globalIllum": 0.18511,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "crepusculo": {
+  "id": "crepusculo",
+  "sunElev": -2.0,
+  "sunAzim": 37.328,
+  "sunIntensity": 0.0,
+  "sunColor": [
+   1.0,
+   0.2171,
+   0.0044
+  ],
+  "bgScale": 29.53206,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 0.02229,
+  "globalIllum": 0.02229,
+  "weather": 1.0,
+  "synthSun": true
+ },
+ "nublado": {
+  "id": "nublado",
+  "sunElev": 58.647,
+  "sunAzim": 36.057,
+  "sunIntensity": 2.40259,
+  "sunColor": [
+   1.0,
+   0.9971,
+   0.9663
+  ],
+  "bgScale": 0.48584,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.93917,
+  "globalIllum": 3.99093,
+  "weather": 0.7,
+  "synthSun": false
+ },
+ "lluvia": {
+  "id": "lluvia",
+  "sunElev": 35.277,
+  "sunAzim": -11.348,
+  "sunIntensity": 0.00074,
+  "sunColor": [
+   1.0,
+   0.8636,
+   0.691
+  ],
+  "bgScale": 1.35391,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.11993,
+  "globalIllum": 1.12035,
+  "weather": 0.3,
+  "synthSun": false
+ },
+ "niebla": {
+  "id": "niebla",
+  "sunElev": 28.522,
+  "sunAzim": -10.816,
+  "sunIntensity": 0.43531,
+  "sunColor": [
+   0.9236,
+   0.992,
+   1.0
+  ],
+  "bgScale": 0.35283,
+  "bgRows": [
+   90.0,
+   -11.25
+  ],
+  "skyIllum": 1.60681,
+  "globalIllum": 1.81467,
+  "weather": 0.6,
+  "synthSun": false
+ }
+}
