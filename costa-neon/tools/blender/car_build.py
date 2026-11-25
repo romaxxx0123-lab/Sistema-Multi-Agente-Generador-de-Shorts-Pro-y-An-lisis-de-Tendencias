@@ -84,13 +84,12 @@ if mode == 'export':
         body_objs = keep
     groups = ex.collect(body_objs)
     roles = ex.join_groups(groups)
-    # vidrio: superficie suave, se puede aliviar sin perder reflejos (normales del original)
-    if 'glass' in roles and ex.tri_count(roles['glass']) > 2200:
-        src = roles['glass'].copy()
-        src.data = roles['glass'].data.copy()
-        bpy.context.scene.collection.objects.link(src)
-        ex.decimate(roles['glass'], 2200, src)
-        bpy.data.objects.remove(src, do_unlink=True)
+    # vidrio: se deja completo (copiar normales tras simplificarlo rompía el sombreado y los reflejos);
+    # sólo si es enorme se alivia, con normales suaves recalculadas
+    if 'glass' in roles and ex.tri_count(roles['glass']) > 14000:
+        ex.decimate(roles['glass'], 14000, None)
+        roles['glass'].data.use_auto_smooth = True
+        roles['glass'].data.auto_smooth_angle = math.radians(30)
     for r, o in roles.items():
         print('LOD0', r, ex.tri_count(o))
     lo = ex.make_lod(roles, D.get('lod1', {}))

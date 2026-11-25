@@ -468,11 +468,12 @@ class VehicleRenderer {
     const trimMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, metalness: 0.2 });
     lib.register(trimMat, { key: 'vtrim_' + id, lamps: true, uniforms: { uDims: paintMat.userData.patch.uniforms.uDims }, vertexHead: PAINT_HEAD, vertexBegin: PAINT_BEGIN + AO_BEGIN, fragHead: AO_FHEAD + CAR_LAMPS, fragPostLights: LAMPS_POST + AO_POST });
     // depthWrite: la AO en espacio de pantalla necesita ver el vidrio (si no, el piso bajo el auto queda sin oclusión)
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x141b20, roughness: 0.02, metalness: 0, transparent: true, depthWrite: true, premultipliedAlpha: true });
+    // vidrio automotor: verde grisáceo, deja pasar ~40 % de la luz (dos capas ≈ 15 %), refleja más en ángulo rasante
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0c1411, roughness: 0.02, metalness: 0, transparent: true, depthWrite: true, premultipliedAlpha: true });
     lib.register(glassMat, {
       key: 'vglass_' + id,
       lamps: true,
-      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.55 : 0.46 }, uGlassMax: { value: 0.97 } },
+      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.72 : 0.62 }, uGlassMax: { value: 0.97 } },
       vertexHead: GLASS_VHEAD, vertexBegin: PAINT_BEGIN, fragHead: GLASS_FHEAD, fragPostLights: LAMPS_POST, fragOutput: GLASS_OUT,
     });
     // lente clara de las ópticas: casi transparente, deja ver reflectores y LEDs
