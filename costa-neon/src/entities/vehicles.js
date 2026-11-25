@@ -1,19 +1,102 @@
 // Vehículos: render instanciado, física arcade, colisiones, daño, luces, audio y gestión.
 import * as THREE from 'three';
-import { MODELS, PAINTS, buildCar, buildBike, buildWheel } from './vehicleModels.js';
+import { MODELS, PAINTS, METALLIC, buildCar, buildBike, buildWheel } from './vehicleModels.js';
 import { clamp, damp, moveToward, angleDiff, wrapAngle, rand } from '../core/utils.js';
 import { WATER_LEVEL, isRoad } from '../world/map.js';
 import { U } from '../world/shaders.js';
+import { setDynamic } from '../core/layers.js';
 
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _v = new THREE.Vector3();
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const _c = new THREE.Color();
+// Llantas y pinzas por tipo de auto
+const RIMS = {
+  sport: [0x3a3d42, 0x1c1d20, 0x8a6a3a, 0xffffff, 0x9a9ea3],
+  normal: [0xffffff, 0xe8e9ea, 0xb4b7ba, 0x5a5d61],
+  police: [0x2a2b2e],
+  work: [0xffffff, 0x2f3134, 0xd8d9da],
+};
+const CALIPERS = { sport: [0xc4161c, 0xd9a60f, 0x2a2b2d, 0xc4161c], other: [0x2a2b2d, 0x3a3b3d] };
 const CAPACITY = { compacto: 26, sedan: 30, taxi: 14, patrulla: 16, suv: 18, furgon: 12, pickup: 12, muscle: 10, deportivo: 10, superauto: 8, moto: 10 };
 
-const PAINT_HEAD = /* glsl */ `
+const GLASS_VHEAD = /* glsl */ `
 attribute vec4 aDamage;
 uniform vec4 uDims; // L, W, H, clear
 varying vec3 vObj; varying vec4 vDmg;
+`;
+const PAINT_HEAD = GLASS_VHEAD + /* glsl */ `
+attribute float aAO; varying float vAO;
+attribute vec3 aPaint; varying vec3 vPaint;
+`;
+const AO_BEGIN = /* glsl */ `vAO = aAO; vPaint = aPaint;`;
+// Faroles de la calle sobre la carrocería (cualquier orientación): difuso Lambert y dos lóbulos
+// especulares GGX (base y laca). Mismo patrón de faroles que el suelo, así los reflejos coinciden.
+const CAR_LAMPS = /* glsl */ `
+float carGGX(float NoH, float a){ float a2 = a * a; float d = NoH * NoH * (a2 - 1.) + 1.; return a2 / (3.14159 * d * d); }
+vec3 carLamps(vec3 wp, vec3 N, vec3 V, float roughBase, float roughCoat){
+  vec3 acc = vec3(0.);
+  if (uLamps < .01) return acc;
+  float lx = floor((wp.x - L_ORIGIN) / L_CELL + .5) * L_CELL + L_ORIGIN;
+  float lz = floor((wp.z - L_ORIGIN) / L_CELL + .5) * L_CELL + L_ORIGIN;
+  float ab = max(roughBase * roughBase, .003), ac = max(roughCoat * roughCoat, .0015);
+  float sy = L_H + .2;
+  for (int k = 0; k < 2; k++){
+    bool vertical = k == 0;
+    float line = vertical ? lx : lz;
+    float off = vertical ? wp.x - lx : wp.z - lz;
+    if (abs(off) > 34.) continue;
+    if (vertical ? !roadV(lx, wp.z) : !roadH(lz, wp.x)) continue;
+    float kk = floor(((vertical ? wp.z : wp.x) - L_ORIGIN) / L_SP);
+    for (int s = -1; s < 3; s++){
+      float n = kk + float(s);
+      if (mod(n, 4.) < .5) continue;
+      float alongP = L_ORIGIN + n * L_SP;
+      for (int side = 0; side < 2; side++){
+        float o = side == 0 ? -L_OFF : L_OFF;
+        vec3 lp = vertical ? vec3(line + o, sy, alongP) : vec3(alongP, sy, line + o);
+        vec3 d = lp - wp;
+        float r2 = dot(d, d);
+        vec3 L = d * inversesqrt(r2);
+        float fall = pow(max(L.y, 0.), 3.5) * (L_H * L_H) / (r2 + .6);
+        float NoL = max(dot(N, L), 0.);
+        if (NoL <= 0. || fall <= 0.) continue;
+        float NoH = max(dot(N, normalize(L + V)), 0.);
+        acc.x += NoL * fall;
+        acc.y += carGGX(NoH, ab) * NoL * fall * .25;
+        acc.z += carGGX(NoH, ac) * NoL * fall * .25;
+      }
+    }
+  }
+  return acc;
+}
+`;
+const LAMPS_POST = /* glsl */ `
+{
+  vec3 cnNW = inverseTransformDirection(normal, viewMatrix);
+  vec3 cnV = normalize(cameraPosition - vWPos);
+  #ifdef USE_CLEARCOAT
+    float cnCoatR = material.clearcoatRoughness;
+  #else
+    float cnCoatR = .3;
+  #endif
+  vec3 cl = carLamps(vWPos, cnNW, cnV, max(material.roughness, .04), cnCoatR) * uLamps;
+  reflectedLight.directDiffuse += LAMP_COLOR * cl.x * material.diffuseColor * 1.1;
+  reflectedLight.directSpecular += LAMP_COLOR * cl.y * material.specularColor * .8;
+  #ifdef USE_CLEARCOAT
+    float cnF = .04 + .96 * pow(1. - max(dot(cnNW, cnV), 0.), 5.);
+    reflectedLight.directSpecular += LAMP_COLOR * cl.z * cnF * material.clearcoat * .8;
+  #endif
+}
+`;
+// Oclusión precalculada: sólo atenúa la luz indirecta (cielo/entorno), no el sol directo.
+const AO_FHEAD = /* glsl */ `varying float vAO;`;
+const AO_POST = /* glsl */ `
+  reflectedLight.indirectDiffuse *= vAO;
+  reflectedLight.indirectSpecular *= mix(1.0, vAO, 0.65);
+  #ifdef USE_CLEARCOAT
+    clearcoatSpecularIndirect *= mix(1.0, vAO, 0.55);
+  #endif
 `;
 const PAINT_BEGIN = /* glsl */ `
 {
@@ -21,9 +104,9 @@ const PAINT_BEGIN = /* glsl */ `
   float hz = uDims.x * .5, hw = uDims.y * .5;
   float n = sin(position.x * 23.1 + position.y * 17.3) * sin(position.z * 19.7 + position.y * 7.1);
   float f = smoothstep(hz - 1.3, hz, position.z) * aDamage.x;
-  float r = smoothstep(-hz + 1.3, -hz, position.z) * aDamage.y;
+  float r = (1. - smoothstep(-hz, -hz + 1.3, position.z)) * aDamage.y;
   float l = smoothstep(hw - .45, hw + .05, position.x) * aDamage.z;
-  float rr = smoothstep(-hw + .45, -hw - .05, position.x) * aDamage.w;
+  float rr = (1. - smoothstep(-hw - .05, -hw + .45, position.x)) * aDamage.w;
   transformed.z -= f * (.32 + .22 * n);
   transformed.z += r * (.3 + .2 * n);
   transformed.x -= l * (.22 + .15 * n);
@@ -32,8 +115,29 @@ const PAINT_BEGIN = /* glsl */ `
 }
 `;
 const PAINT_FHEAD = /* glsl */ `
-uniform vec4 uDims; uniform vec4 uSeams; uniform float uLivery;
-varying vec3 vObj; varying vec4 vDmg;
+uniform vec4 uDims; uniform vec4 uSeams; uniform float uLivery; uniform vec4 uHood;
+varying vec3 vObj; varying vec4 vDmg; varying float vAO; varying vec3 vPaint;
+float gDirt = 0.0; // suciedad efectiva en este fragmento (color → rugosidad)
+float flakeHash(vec3 p){ p = fract(p * vec3(443.897, 441.423, 437.195)); p += dot(p, p.yzx + 19.19); return fract((p.x + p.y) * p.z); }
+` + CAR_LAMPS;
+// Pintura sólida o metalizada por auto: metalizado con escamas que destellan bajo el barniz
+const PAINT_METAL = /* glsl */ `
+  metalnessFactor = mix(0.0, 0.62, vPaint.x);
+`;
+const PAINT_ROUGH = /* glsl */ `
+  roughnessFactor = mix(mix(0.42, 0.34, vPaint.x), 0.82, gDirt);
+  roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.55, uWet); // película de agua
+`;
+const PAINT_FLAKES = /* glsl */ `
+  {
+    // escamas sólo de cerca (de lejos se promedian en el brillo del metalizado y no titilan)
+    float flakeK = vPaint.y * (1.0 - smoothstep(1.5, 9.0, length(cameraPosition - vWPos)));
+    if (flakeK > 0.01) {
+      vec3 cell = floor(vObj * 300.0);
+      vec3 r = vec3(flakeHash(cell), flakeHash(cell + 17.3), flakeHash(cell + 41.7)) - 0.5;
+      normal = normalize(normal + r * 0.12 * flakeK);
+    }
+  }
 `;
 const PAINT_FRAG = /* glsl */ `
 {
@@ -42,31 +146,76 @@ const PAINT_FRAG = /* glsl */ `
   float seam = 0.;
   for (int i = 0; i < 4; i++) seam = max(seam, 1. - smoothstep(.004, .012, abs(vObj.z - uSeams[i])));
   seam *= side * step(uDims.w + .12, vObj.y) * step(vObj.y, uDims.z * .66);
+  // líneas de capó y baúl sobre las superficies superiores
+  float topF = step(.55, on.y);
+  float lineX = 1. - smoothstep(.003, .009, abs(abs(vObj.x) - uHood.z));
+  seam = max(seam, lineX * topF * step(uHood.x, vObj.z) * step(vObj.z, uHood.w));
+  seam = max(seam, lineX * topF * step(vObj.z, uHood.y) * step(-uHood.w, vObj.z));
   vec3 c = diffuseColor.rgb;
   if (uLivery > .5) {
     float lower = step(vObj.y, uDims.z * .45);
     c = mix(c, vec3(.02, .03, .06), lower);
-    float stripe = smoothstep(.02, .0, abs(vObj.y - uDims.z * .5) - .045) * side;
+    float stripe = (1. - smoothstep(.0, .02, abs(vObj.y - uDims.z * .5) - .045)) * side;
     c = mix(c, vec3(.05, .2, .75), stripe);
   }
   c *= 1. - seam * .75;
   // suciedad baja y daño (rayones)
   float dmg = max(max(vDmg.x, vDmg.y), max(vDmg.z, vDmg.w));
-  c *= 1. - .25 * smoothstep(uDims.w + .35, uDims.w, vObj.y);
-  float sc = step(.82, fract(sin(dot(floor(vObj.xz * 40.), vec2(12.9898, 78.233))) * 43758.5453)) * dmg;
-  c = mix(c, vec3(.35), sc * .6);
+  c *= 1. - .25 * (1. - smoothstep(uDims.w, uDims.w + .35, vObj.y));
+  // suciedad por auto: película de polvo general y barro salpicado en la parte baja
+  {
+    // barro salpicado abajo (más cerca de las ruedas), polvo parejo arriba y chorreaduras en los laterales
+    float low = 1. - smoothstep(uDims.w + .05, uDims.w + .7, vObj.y);
+    float n = fbm3(vObj.xz * 9.0 + vObj.y * 4.0);
+    float splash = low * smoothstep(.35, .8, n + low * .3);
+    float up = smoothstep(.45, .9, on.y);
+    float streak = side * smoothstep(.55, .95, vnoise(vec2(vObj.z * 14.0 + vObj.x * 9.0, vObj.y * 1.5))) * .35;
+    float film = up * (.32 + .1 * vnoise(vObj.xz * 1.7)) + streak + .08;
+    gDirt = clamp(vPaint.z * (splash * .85 + film * .7), 0., .85);
+    c = mix(c, vec3(.33, .3, .26), gDirt);
+    // mojado: la pintura se oscurece levemente
+    c *= 1. - .14 * uWet * (1. - gDirt * .5);
+  }
+  // rayones alargados sólo en la zona golpeada (frente, cola, laterales según cada abolladura)
+  {
+    float hz = uDims.x * .5, hw = uDims.y * .5;
+    float zone = max(max(smoothstep(hz - 1.4, hz, vObj.z) * vDmg.x, smoothstep(-hz + 1.4, -hz, vObj.z) * vDmg.y),
+                     max(smoothstep(hw - .5, hw, vObj.x) * vDmg.z, smoothstep(-hw + .5, -hw, vObj.x) * vDmg.w));
+    vec2 sp = vec2(vObj.z * 3.0 + vObj.x * 1.2, vObj.y * 55.0 + vObj.z * 4.0);
+    float lines = smoothstep(.62, .95, vnoise(sp)) * smoothstep(.3, .7, vnoise(vObj.xz * 4.0 + vObj.y * 2.0));
+    float sc = lines * smoothstep(.15, .7, zone);
+    c = mix(c, vec3(.42, .42, .41), sc * .7);
+    // chapa raspada: menos laca donde hay rayones
+    gDirt = max(gDirt, sc * .5);
+  }
   diffuseColor.rgb = c;
 }
 `;
 
 // Vidrio: transparencia según Fresnel (de frente se ve el interior, de costado refleja) y
 // reflejos sin atenuar (alfa premultiplicado: el color difuso se mezcla, el especular se suma).
-const GLASS_FHEAD = /* glsl */ `uniform float uGlassAlpha;`;
+const GLASS_FHEAD = /* glsl */ `uniform float uGlassAlpha; varying vec3 vObj;
+// gotas de lluvia sobre el vidrio: celdas con gotas de tamaño variable que reflejan el cielo
+float rainDrops(vec3 p, float t){
+  vec2 uv = p.xz * 9.0 + vec2(p.y * 7.0, 0.0);
+  vec2 cell = floor(uv), f = fract(uv) - .5;
+  vec2 h = hash22(cell);
+  float on = step(.35, h.x);
+  vec2 c = (h - .5) * .5;
+  float r = .07 + .16 * h.y;
+  float d = length(f - c);
+  return on * (1. - smoothstep(r * .6, r, d));
+}
+` + CAR_LAMPS;
 const GLASS_OUT = /* glsl */ `
 {
   float cnNV = saturate(dot(geometryNormal, geometryViewDir));
   float cnA = mix(uGlassAlpha, 0.97, pow(1.0 - cnNV, 4.0));
   vec3 cnSpec = max(outgoingLight - totalDiffuse, vec3(0.0));
+  // gotas: más reflejo y algo menos de transparencia
+  float drops = rainDrops(vObj, uTime) * uWet;
+  cnSpec += drops * (0.08 + cnSpec * 1.5);
+  cnA = mix(cnA, 0.85, drops * 0.5);
   outgoingLight = (totalDiffuse * cnA + cnSpec) / cnA;
   diffuseColor.a = cnA;
 }
@@ -106,12 +255,20 @@ class VehicleRenderer {
     this.tailMat = basic('vtail');
     this.extraMat = basic('vextra');
     const wheel = buildWheel();
-    this.tireMat = lib.standard({ color: 0x141414, roughness: 0.9, metalness: 0 }, { key: 'tire' });
-    this.rimMat = lib.standard({ color: 0xb9bdc2, roughness: 0.28, metalness: 0.9 }, { key: 'rim' });
+    // caucho: gris muy oscuro (no negro puro), mate con leve brillo en el flanco
+    this.tireMat = lib.standard({ color: 0x1e1e20, roughness: 0.86, metalness: 0 }, { key: 'tire' });
+    // llanta: colores de vértice (cara pulida, barril oscuro, disco) × color por auto (instancia)
+    this.rimMat = lib.standard({ color: 0xffffff, vertexColors: true, roughness: 0.3, metalness: 0.85 }, { key: 'rim' });
+    this.caliperMat = lib.standard({ color: 0xffffff, roughness: 0.45, metalness: 0.2 }, { key: 'caliper' });
     const maxWheels = Object.values(CAPACITY).reduce((s, c) => s + c * 4, 0);
     this.tires = new THREE.InstancedMesh(wheel.tire, this.tireMat, maxWheels);
     this.rims = new THREE.InstancedMesh(wheel.rim, this.rimMat, maxWheels);
-    for (const m of [this.tires, this.rims]) {
+    this.calipers = new THREE.InstancedMesh(wheel.caliper, this.caliperMat, maxWheels);
+    this.rims.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(maxWheels * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
+    this.calipers.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(maxWheels * 3).fill(0.2), 3).setUsage(THREE.DynamicDrawUsage);
+    for (const m of [this.tires, this.rims, this.calipers]) {
+      for (let i = 0; i < maxWheels; i++) m.setMatrixAt(i, ZERO);
+      setDynamic(m);
       m.frustumCulled = false;
       m.castShadow = true;
       m.receiveShadow = true;
@@ -128,6 +285,7 @@ class VehicleRenderer {
     this.beams.frustumCulled = false;
     this.beams.count = 0;
     this.beams.renderOrder = 4;
+    setDynamic(this.beams);
     this.group.add(this.beams);
     // Neón inferior
     const neonGeo = new THREE.PlaneGeometry(1, 1);
@@ -136,6 +294,7 @@ class VehicleRenderer {
     this.neons = new THREE.InstancedMesh(neonGeo, this.neonMat, 40);
     this.neons.frustumCulled = false;
     this.neons.count = 0;
+    setDynamic(this.neons);
     this.group.add(this.neons);
     // Faros reales del vehículo del jugador
     this.spots = [0, 1].map(() => {
@@ -145,6 +304,21 @@ class VehicleRenderer {
       game.engine.scene.add(s.target);
       return s;
     });
+  }
+
+  /** Mapa de entorno de todos los materiales de vehículos (sonda de reflejos, o null = cielo). */
+  setEnvMap(tex) {
+    this.envMap = tex;
+    const mats = [this.chromeMat, this.tireMat, this.rimMat, this.caliperMat, this.trimMat, this.glassMat];
+    for (const m of Object.values(this.models)) {
+      for (const p of Object.values(m.parts)) mats.push(p.material);
+    }
+    for (const mat of new Set(mats)) {
+      if (!mat || !mat.isMeshStandardMaterial) continue;
+      mat.envMap = tex;
+      mat.envMapIntensity = tex ? 1.0 : 1.0;
+      mat.needsUpdate = true;
+    }
   }
 
   model(id) {
@@ -159,17 +333,25 @@ class VehicleRenderer {
         uDims: { value: new THREE.Vector4(spec.L, spec.W, spec.H, spec.clear) },
         uSeams: { value: new THREE.Vector4(...(spec.doors || [99, 99, 99]).concat([99, 99, 99, 99]).slice(0, 4)) },
         uLivery: { value: spec.livery === 'police' ? 1 : 0 },
+        uHood: { value: new THREE.Vector4(...(geo.hood || [99, -99, 0, 0])) },
       },
+      lamps: true,
       vertexHead: PAINT_HEAD,
-      vertexBegin: PAINT_BEGIN,
+      vertexBegin: PAINT_BEGIN + AO_BEGIN,
       fragHead: PAINT_FHEAD,
       fragColor: PAINT_FRAG,
+      fragRoughness: PAINT_ROUGH,
+      fragMetalness: PAINT_METAL,
+      fragNormal: PAINT_FLAKES,
+      fragPostLights: LAMPS_POST + AO_POST,
     });
     const dmgAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    const paintAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage);
     const parts = {};
     const mk = (name, g, mat, cast = true) => {
       if (!g) return;
       if (name === 'paint' || name === 'trim' || name === 'glass') g.setAttribute('aDamage', dmgAttr);
+      if (name === 'paint' || name === 'trim') g.setAttribute('aPaint', paintAttr);
       const mesh = new THREE.InstancedMesh(g, mat, cap);
       mesh.frustumCulled = false;
       mesh.castShadow = cast;
@@ -177,17 +359,20 @@ class VehicleRenderer {
       mesh.count = 0;
       for (let i = 0; i < cap; i++) mesh.setMatrixAt(i, ZERO);
       if (name === 'paint' || name === 'head' || name === 'tail' || name === 'extra' || name === 'barR' || name === 'barB') mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
+      setDynamic(mesh);
       this.group.add(mesh);
       parts[name] = mesh;
     };
     // Trim y vidrio comparten el desplazamiento de abolladuras
     const trimMat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, metalness: 0.2 });
-    lib.register(trimMat, { key: 'vtrim_' + id, uniforms: { uDims: paintMat.userData.patch.uniforms.uDims }, vertexHead: PAINT_HEAD, vertexBegin: PAINT_BEGIN });
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x18222a, roughness: 0.03, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, depthWrite: false, premultipliedAlpha: true });
+    lib.register(trimMat, { key: 'vtrim_' + id, lamps: true, uniforms: { uDims: paintMat.userData.patch.uniforms.uDims }, vertexHead: PAINT_HEAD, vertexBegin: PAINT_BEGIN + AO_BEGIN, fragHead: AO_FHEAD + CAR_LAMPS, fragPostLights: LAMPS_POST + AO_POST });
+    // depthWrite: la AO en espacio de pantalla necesita ver el vidrio (si no, el piso bajo el auto queda sin oclusión)
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x141b20, roughness: 0.02, metalness: 0, transparent: true, depthWrite: true, premultipliedAlpha: true });
     lib.register(glassMat, {
       key: 'vglass_' + id,
+      lamps: true,
       uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.42 : 0.3 } },
-      vertexHead: PAINT_HEAD, vertexBegin: PAINT_BEGIN, fragHead: GLASS_FHEAD, fragOutput: GLASS_OUT,
+      vertexHead: GLASS_VHEAD, vertexBegin: PAINT_BEGIN, fragHead: GLASS_FHEAD, fragPostLights: LAMPS_POST, fragOutput: GLASS_OUT,
     });
     mk('paint', geo.paint, paintMat);
     mk('trim', geo.trim, trimMat);
@@ -215,8 +400,16 @@ class VehicleRenderer {
       mk('barR', gL, this.extraMat, false);
       mk('barB', gR, this.extraMat, false);
     } else mk('extra', geo.extra, this.extraMat, false);
-    const m = { id, spec, geo, cap, parts, dmgAttr, free: Array.from({ length: cap }, (_, i) => cap - 1 - i), paintMat };
+    const m = { id, spec, geo, cap, parts, dmgAttr, paintAttr, free: Array.from({ length: cap }, (_, i) => cap - 1 - i), paintMat };
     this.models[id] = m;
+    if (this.envMap) {
+      for (const p of Object.values(parts)) {
+        if (p.material.isMeshStandardMaterial) {
+          p.material.envMap = this.envMap;
+          p.material.needsUpdate = true;
+        }
+      }
+    }
     return m;
   }
 
@@ -234,7 +427,12 @@ class VehicleRenderer {
       v.wheelSlots.push(ws);
       this.tires.count = Math.max(this.tires.count, ws + 1);
       this.rims.count = Math.max(this.rims.count, ws + 1);
+      this.calipers.count = Math.max(this.calipers.count, ws + 1);
+      this.rims.setColorAt(ws, _c.set(v.rimColor));
+      this.calipers.setColorAt(ws, _c.set(v.caliperColor));
     }
+    this.rims.instanceColor.needsUpdate = true;
+    this.calipers.instanceColor.needsUpdate = true;
     this.setColor(v, v.color);
     return true;
   }
@@ -250,10 +448,12 @@ class VehicleRenderer {
     for (const ws of v.wheelSlots) {
       this.tires.setMatrixAt(ws, ZERO);
       this.rims.setMatrixAt(ws, ZERO);
+      this.calipers.setMatrixAt(ws, ZERO);
       this.wheelSlots[ws] = null;
     }
     this.tires.instanceMatrix.needsUpdate = true;
     this.rims.instanceMatrix.needsUpdate = true;
+    this.calipers.instanceMatrix.needsUpdate = true;
     v.render = null;
   }
 
@@ -264,6 +464,10 @@ class VehicleRenderer {
     if (v.burnt) c.setRGB(0.06, 0.055, 0.05);
     p.setColorAt(v.slot, c);
     p.instanceColor.needsUpdate = true;
+    // tipo de pintura: metalizada con escamas o sólida; quemada = mate
+    const metal = !v.burnt && (v.metallic ?? METALLIC.has(hex)) ? 1 : 0;
+    v.render.paintAttr.setXYZ(v.slot, metal, metal ? 0.55 : 0, v.burnt ? 0.6 : v.dirt);
+    v.render.paintAttr.needsUpdate = true;
   }
 
   sync(list, cam, nightK) {
@@ -324,16 +528,25 @@ class VehicleRenderer {
         if (!visible) {
           this.tires.setMatrixAt(ws, ZERO);
           this.rims.setMatrixAt(ws, ZERO);
+          this.calipers.setMatrixAt(ws, ZERO);
           continue;
         }
         const steer = w.front ? -v.steerAngle : 0;
-        _e.set(v.wheelSpin, steer, 0, 'YXZ');
-        _q2.setFromEuler(_e);
+        // las ruedas derechas se giran media vuelta para que su cara exterior mire hacia afuera
+        const right = w.side < 0;
+        const yawW = steer + (right ? Math.PI : 0);
         const yOff = w.y + (v.wheelDrop || 0);
-        _m2.compose(_p.set(w.x, yOff, w.z), _q2, _s.set(w.w, w.r, w.r));
-        _m2.premultiply(_m);
+        _p.set(w.x, yOff, w.z);
+        _s.set(w.w, w.r, w.r);
+        _e.set(right ? -v.wheelSpin : v.wheelSpin, yawW, 0, 'YXZ');
+        _q2.setFromEuler(_e);
+        _m2.compose(_p, _q2, _s).premultiply(_m);
         this.tires.setMatrixAt(ws, _m2);
         this.rims.setMatrixAt(ws, _m2);
+        _e.set(0, yawW, 0, 'YXZ');
+        _q2.setFromEuler(_e);
+        _m2.compose(_p, _q2, _s).premultiply(_m);
+        this.calipers.setMatrixAt(ws, _m2);
       }
       // haz de faros sobre el suelo
       if (on && lightsNeeded && !m.spec.bike && beamN < 80) {
@@ -352,6 +565,7 @@ class VehicleRenderer {
     }
     this.tires.instanceMatrix.needsUpdate = true;
     this.rims.instanceMatrix.needsUpdate = true;
+    this.calipers.instanceMatrix.needsUpdate = true;
     this.beams.count = beamN;
     this.beams.instanceMatrix.needsUpdate = true;
     this.beamMat.opacity = 0.32 * Math.max(nightK, U.uWet.value * 0.5);
@@ -430,6 +644,15 @@ export class Vehicle {
     this.nitroOn = false;
     this.upgrades = opts.upgrades || { engine: 0, brakes: 0, armor: 0, turbo: 0, nitro: 0 };
     this.neon = opts.neon || null;
+    const st = this.spec.style;
+    const sporty = st === 'muscle' || st === 'sports' || st === 'super';
+    const rims = modelId === 'patrulla' ? RIMS.police : sporty ? RIMS.sport : st === 'van' || st === 'pickup' ? RIMS.work : RIMS.normal;
+    this.rimColor = opts.rimColor ?? rims[(Math.random() * rims.length) | 0];
+    const cals = sporty ? CALIPERS.sport : CALIPERS.other;
+    this.caliperColor = opts.caliperColor ?? cals[(Math.random() * cals.length) | 0];
+    // nivel de suciedad: la mayoría limpios o con polvo leve, algunos muy sucios (utilitarios más)
+    const r = Math.random();
+    this.dirt = opts.dirt ?? (st === 'van' || st === 'pickup' ? 0.35 + r * 0.55 : r < 0.55 ? r * 0.25 : r < 0.9 ? 0.2 + r * 0.3 : 0.6 + r * 0.35);
     this.persistent = !!opts.persistent;
     this.parked = !!opts.parked;
     this.isPolice = modelId === 'patrulla';
@@ -814,7 +1037,9 @@ export class VehicleManager {
 
   onImpact(v, impact, point, collider) {
     const game = this.game;
-    const dmg = impact * impact * 2.2;
+    // los roces leves casi no dañan; los choques fuertes sí (cuadrático por encima de ~2 m/s)
+    const k = Math.max(0, impact - 2);
+    const dmg = k * k * 2.2 * (v.driver === 'player' ? (game.vehicleDamageMul ?? 0.7) : 1);
     v.damage(dmg, null, point);
     const near = v.driver === 'player' || v.pos.distanceTo(game.engine.camera.position) < 80;
     if (near) {
@@ -869,8 +1094,11 @@ export class VehicleManager {
         b.spin += clamp((Math.random() - 0.5) * impact * 0.15, -2, 2);
         const point = { x: best.px, y: (a.pos.y + b.pos.y) / 2 + 0.6, z: best.pz };
         if (impact > 2) {
-          a.damage(impact * impact * 2.4 * (mb / (ma + mb)) * 2, b.driver === 'player' ? 'player' : null, point);
-          b.damage(impact * impact * 2.4 * (ma / (ma + mb)) * 2, a.driver === 'player' ? 'player' : null, point);
+          const k = Math.max(0, impact - 1.5);
+          const base = k * k * 2.4 * 2;
+          const pm = this.game.vehicleDamageMul ?? 0.7;
+          a.damage(base * (mb / (ma + mb)) * (a.driver === 'player' ? pm : 1), b.driver === 'player' ? 'player' : null, point);
+          b.damage(base * (ma / (ma + mb)) * (b.driver === 'player' ? pm : 1), a.driver === 'player' ? 'player' : null, point);
           this.onImpactPair(a, b, impact, point);
         }
       }

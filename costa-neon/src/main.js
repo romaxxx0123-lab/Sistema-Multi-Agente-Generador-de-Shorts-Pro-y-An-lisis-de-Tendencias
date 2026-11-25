@@ -15,6 +15,7 @@ import { WeatherFX } from './world/weather.js';
 import { PlanarReflection } from './world/reflection.js';
 import { ChunkedInstances } from './world/instancing.js';
 import { U } from './world/shaders.js';
+import { setProbeVisible } from './core/layers.js';
 import { Game } from './game/game.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -70,6 +71,11 @@ async function boot() {
   const landmarks = new Landmarks(engine, world, lib);
   const weather = new WeatherFX(engine, engine.q.density >= 1 ? 6000 : 3000);
   sky.on((ev) => { if (ev.type === 'lightning') weather.strike(engine.camera, ev.distance); });
+  // Lo que refleja la sonda de los autos: edificios, calles, mar, hitos y cielo
+  setProbeVisible(city.group);
+  setProbeVisible(ocean.mesh);
+  setProbeVisible(landmarks.group);
+  setProbeVisible(sky.dome);
   const reflection = new PlanarReflection(engine, 0.5);
   reflection.exclude(...city.flat, ocean.mesh, weather.rain, ...(props.instGroups.lampCones ? props.instGroups.lampCones.meshes : []));
   engine.reflection = reflection;

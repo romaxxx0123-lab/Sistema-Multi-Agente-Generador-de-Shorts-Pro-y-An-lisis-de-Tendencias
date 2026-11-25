@@ -532,29 +532,37 @@ export class TrafficManager {
   }
 
   get target() {
-    return Math.round(26 * this.game.engine.q.density * (this.game.trafficMul ?? 1));
+    return Math.round(36 * this.game.engine.q.density * (this.game.trafficMul ?? 1));
   }
 
-  _spawnOne() {
+  /**
+   * Agrega un auto en un carril cercano. hidden=false permite aparecer a la vista (sólo al
+   * poblar la ciudad al inicio o tras un teletransporte, con la pantalla cubierta).
+   */
+  _spawnOne(hidden = true) {
     const game = this.game;
     const W = game.world;
     const ref = game.player.vehicle ? game.player.vehicle.pos : game.player.pos;
     const cam = game.engine.camera;
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-    for (let tries = 0; tries < 12; tries++) {
+    const minD = hidden ? 55 : 18, maxD = hidden ? 230 : 200;
+    for (let tries = 0; tries < 16; tries++) {
       const n = W.nodes[(Math.random() * W.nodes.length) | 0];
       const d = Math.hypot(n.x - ref.x, n.z - ref.z);
-      if (d < 70 || d > 240) continue;
+      if (d < minD - 60 || d > maxD + 40) continue;
       const e = n.nb[(Math.random() * n.nb.length) | 0];
       const b = W.nodes[e.node];
       const lane = Math.random() < 0.5 ? 0 : 1;
       const g = laneGeom(n, b, lane);
       const s = Math.random() * g.len;
       const x = g.start.x + g.d.x * s, z = g.start.z + g.d.z * s;
+      const pd = Math.hypot(x - ref.x, z - ref.z);
+      if (pd < minD || pd > maxD) continue;
       const dx = x - cam.position.x, dz = z - cam.position.z;
       const dd = Math.hypot(dx, dz);
-      const inFront = (dx * fwd.x + dz * fwd.z) / dd > 0.35;
-      if (inFront && dd < 170) continue;
+      const inFront = (dx * fwd.x + dz * fwd.z) / dd > 0.3;
+      // no aparecer a la vista: detrás de la cámara, o lejos (la bruma y el tamaño lo disimulan)
+      if (hidden && inFront && dd < 120 && game.collision.lineOfSight(cam.position.x, cam.position.y, cam.position.z, x, 1, z)) continue;
       if (this.cars.some((c) => Math.hypot(c.pos.x - x, c.pos.z - z) < 16)) continue;
       if (game.vehicles.list.some((c) => Math.hypot(c.pos.x - x, c.pos.z - z) < 10)) continue;
       const v = game.vehicles.spawn(pickModel(), x, z, Math.atan2(g.d.x, g.d.z), { mode: 'kinematic', engineOn: true, driver: 'npc' });
@@ -573,10 +581,22 @@ export class TrafficManager {
     if (v.ai instanceof LaneDriver) v.ai = null;
   }
 
+  /** Llena la ciudad alrededor del jugador (inicio de partida o tras un salto lejano). */
+  populate() {
+    let guard = 0;
+    while (this.cars.length < this.target && guard++ < this.target * 3) this._spawnOne(false);
+  }
+
   update(dt) {
     const game = this.game;
     // limpiar
     this.cars = this.cars.filter((c) => game.vehicles.list.includes(c) && c.driver === 'npc');
+    const ref = game.player.vehicle ? game.player.vehicle.pos : game.player.pos;
+    if (this.enabled && (!this._lastRef || Math.hypot(ref.x - this._lastRef.x, ref.z - this._lastRef.z) > 150)) {
+      // primer cuadro o teletransporte: poblar de golpe
+      this.populate();
+    }
+    this._lastRef = { x: ref.x, z: ref.z };
     if (this.enabled) {
       this.spawnT -= dt;
       if (this.spawnT <= 0 && this.cars.length < this.target) {
@@ -584,7 +604,6 @@ export class TrafficManager {
         this.spawnT = 0.25;
       }
     }
-    const ref = game.player.vehicle ? game.player.vehicle.pos : game.player.pos;
     for (const v of [...this.cars]) {
       if (v.ai) v.ai.update(dt);
       const d = Math.hypot(v.pos.x - ref.x, v.pos.z - ref.z);

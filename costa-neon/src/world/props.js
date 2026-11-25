@@ -6,6 +6,7 @@ import { RNG } from '../core/utils.js';
 import { DETAIL } from './textures.js';
 import { unitBox } from './city.js';
 import { ChunkedInstances } from './instancing.js';
+import { setDynamic } from '../core/layers.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 const ONE = new THREE.Vector3(1, 1, 1);
@@ -405,6 +406,8 @@ export class StreetProps {
       fog: true,
     });
     this._inst('lampCones', lightConeGeometry(), this.coneMat, lamps, (l) => compose(l.x, lampY(l), l.z, l.yaw), false, { chunk: 360, maxDist: 220, receive: false, renderOrder: 5 });
+    // los conos volumétricos se suman delante de autos y personas (segunda pasada)
+    for (const m of this.instGroups.lampCones.meshes) setDynamic(m);
   }
 
   _trafficLights() {

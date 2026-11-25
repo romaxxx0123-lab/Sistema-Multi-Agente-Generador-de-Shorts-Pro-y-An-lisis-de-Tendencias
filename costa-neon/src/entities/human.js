@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clamp, lerp, damp, RNG } from '../core/utils.js';
+import { setDynamic } from '../core/layers.js';
 
 // ------------------------------------------------------------------ tipos de cuerpo
 export const BODY_TYPES = [
@@ -544,6 +545,7 @@ export class Human {
     mesh.receiveShadow = true;
     mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, bt.h * 0.5, 0), bt.h * 1.2);
     this.mesh = mesh;
+    setDynamic(mesh);
     this.object.add(mesh);
     this.targets = bones.map(() => new THREE.Quaternion());
     this.handR = bones[B.handR];
@@ -567,7 +569,7 @@ export class Human {
   attachWeapon(obj) {
     if (this.weaponObj) this.handR.remove(this.weaponObj);
     this.weaponObj = obj;
-    if (obj) this.handR.add(obj);
+    if (obj) this.handR.add(setDynamic(obj));
   }
 
   dispose() {

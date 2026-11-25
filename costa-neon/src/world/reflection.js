@@ -21,6 +21,7 @@ export class PlanarReflection {
     this.rt.texture.generateMipmaps = false;
     this.rt.texture.minFilter = THREE.LinearFilter;
     this.cam = new THREE.PerspectiveCamera();
+    this.cam.layers.enableAll(); // el reflejo incluye vehículos y personas
     this.enabled = false;
     this.wanted = false;
     this.hidden = [];

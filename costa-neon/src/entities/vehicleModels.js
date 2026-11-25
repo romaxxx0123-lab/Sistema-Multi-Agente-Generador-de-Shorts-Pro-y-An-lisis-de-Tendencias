@@ -29,6 +29,8 @@ export const MODELS = {
 };
 
 export const PAINTS = [0x101418, 0xf2f2f0, 0x8c9399, 0x2b3a55, 0x7a1d1d, 0x1e4d3a, 0xc9c2b2, 0x0e3f73, 0xb83a1f, 0x5b5f66, 0x3a2e28, 0x9fb7c9, 0xe0a91b, 0x1b1b1b, 0x6d1a4a, 0x2f6f73];
+// Pinturas metalizadas (el resto son sólidas): plata, grafito, azules, verdes, bordó, champán
+export const METALLIC = new Set([0x8c9399, 0x2b3a55, 0x1e4d3a, 0xc9c2b2, 0x0e3f73, 0x5b5f66, 0x3a2e28, 0x9fb7c9, 0x6d1a4a, 0x2f6f73, 0x101418, 0x14306e, 0xb8b9ba]);
 
 function interp(points, zn) {
   // Catmull-Rom monótono sobre una lista [z, y] ordenada de mayor a menor z
@@ -90,6 +92,51 @@ function tint(g, c) {
   return g;
 }
 
+/**
+ * Oclusión ambiental precalculada por vértice (atributo aAO, 0..1): cerca del piso, en los arcos
+ * de rueda y dentro del habitáculo. Sólo atenúa la luz indirecta (cielo y reflejos) en el shader.
+ */
+function bakeAO(geo, ctx) {
+  if (!geo) return;
+  const pos = geo.attributes.position;
+  const ao = new Float32Array(pos.count);
+  const { clear, wheelZ, wr, arch, W, cabinZ, ringAt } = ctx;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    // suelo: la parte baja ve menos cielo y más asfalto
+    let a = 0.42 + 0.58 * smooth(clear - 0.02, clear + 0.55, y);
+    // arcos de rueda: el labio y el interior quedan en penumbra
+    for (const wz of wheelZ) {
+      const d = Math.hypot(z - wz, y - wr);
+      if (d < arch + 0.22 && Math.abs(x) > W / 2 - 0.42) a *= 0.32 + 0.68 * smooth(arch - 0.12, arch + 0.22, d);
+    }
+    // habitáculo: espacio cerrado
+    if (cabinZ && z > cabinZ[0] - 0.05 && z < cabinZ[1] + 0.05) {
+      const r = ringAt(z);
+      if (r && r.c > 0.4 && Math.abs(x) < r.hw * 0.86 && y > r.yb + 0.04 && y < r.yt - 0.03) a *= 0.55 + 0.25 * smooth(r.yb, r.yt, y);
+    }
+    ao[i] = a;
+  }
+  geo.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+}
+
+/** AO de una moto: sólo suelo y ruedas. */
+function bakeAOBike(geo, wheels) {
+  if (!geo) return;
+  const pos = geo.attributes.position;
+  const ao = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i), z = pos.getZ(i);
+    let a = 0.5 + 0.5 * smooth(0.1, 0.7, y);
+    for (const w of wheels) {
+      const d = Math.hypot(z - w.z, y - w.y);
+      if (d < w.r + 0.15) a *= 0.6 + 0.4 * smooth(w.r - 0.1, w.r + 0.15, d);
+    }
+    ao[i] = a;
+  }
+  geo.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+}
+
 /** Altura de la cadera del conductor: baja en autos bajos para que la cabeza no toque el techo. */
 function seatHipOf(spec) {
   const base = spec.style === 'van' || spec.style === 'suv' || spec.style === 'pickup' ? 0.55 : 0.36;
@@ -101,15 +148,16 @@ export function buildCar(spec) {
   const S = STYLES[spec.style];
   const L = spec.L, W = spec.W, H = spec.H;
   const hz = L / 2;
-  const NZ = 46, HALF = 9;
+  const NZ = 60, HALF = 9;
   const wheelZ = [spec.wb / 2, -spec.wb / 2];
   const wr = spec.wr, arch = wr + 0.06;
   const clear = spec.clear;
   const yAt = (zn) => interp(S.top, zn) * H;
   const beltAt = (zn) => Math.min(yAt(zn), (S.belt[1] + (S.belt[0] - S.belt[1]) * (zn + 1) / 2) * H);
   const hwAt = (zn, y) => {
-    const end = Math.max(0, (Math.abs(zn) - 0.8) / 0.2);
-    let k = Math.sqrt(Math.max(0.0, 1 - end * end * 0.55));
+    // en planta el auto es romo: mantiene el ancho y redondea sólo los últimos ~25 cm
+    const end = Math.max(0, (Math.abs(zn) - 0.89) / 0.11);
+    let k = Math.sqrt(Math.max(0.0, 1 - end * end * 0.45));
     k *= 1 - 0.04 * smooth(0.3, 1, Math.abs(zn));
     return (W / 2) * k;
   };
@@ -124,9 +172,16 @@ export function buildCar(spec) {
       const dz = z - wz;
       if (Math.abs(dz) < arch) yb = Math.max(yb, wr + Math.sqrt(arch * arch - dz * dz) * 0.92);
     }
-    const yt = yAt(zn);
+    let yt = yAt(zn);
+    // trompa y cola redondeadas: las últimas secciones se cierran en altura (y en ancho vía hwAt)
+    const endR = smooth(0.92, 1.0, Math.abs(zn));
+    if (endR > 0) {
+      const span = yt - yb;
+      yt -= endR * endR * span * 0.16;
+      yb += endR * endR * span * 0.12;
+    }
     const yB = Math.max(yb + 0.12, beltAt(zn));
-    const hw = hwAt(zn, yB);
+    const hw = hwAt(zn, yB) * (1 - endR * endR * 0.12);
     const c = inCabin(zn) * smooth(0.1, 0.25, yt - yB);
     const tw = hw * S.tumble;
     const cabinPts = [
@@ -199,9 +254,7 @@ export function buildCar(spec) {
         quad(glass, i, k);
         continue;
       }
-      const zn = rings[i].zn;
-      const bumper = (Math.abs(zn) > 0.9) && (k <= 2 || k >= RV - 3);
-      quad(isTrimBand(k) || bumper ? trim : paint, i, k);
+      quad(isTrimBand(k) ? trim : paint, i, k);
     }
   // Habitáculo: carcasa interna (orientada hacia adentro), mamparas, butacas, tablero y volante
   const cabin = { p: [], n: [] }, headliner = { p: [], n: [] };
@@ -223,6 +276,7 @@ export function buildCar(spec) {
     };
     for (let i = iRear; i < iFront; i++)
       for (let k = 0; k < RV; k++) {
+        if (glassCell.has(i * RV + k)) continue; // detrás del vidrio: se ve hacia afuera y entra la luz
         const buf = k >= 6 && k <= 9 ? headliner : cabin;
         const a = PI_(i, k), b = PI_(i + 1, k), c = PI_(i + 1, k + 1), d = PI_(i, k + 1);
         pushTri(buf, a, b, c, NI(i, k), NI(i + 1, k), NI(i + 1, k + 1));
@@ -280,8 +334,9 @@ export function buildCar(spec) {
     const nz = end === 0 ? [0, 0, -1] : [0, 0, 1];
     for (let k = 0; k < RV; k++) {
       const a = ring[k], b = ring[(k + 1) % RV];
-      if (end === 0) pushTri(trim, cen, b, a, nz, nz, nz);
-      else pushTri(trim, cen, a, b, nz, nz, nz);
+      // frente y cola del color de la carrocería (el faldón negro se agrega aparte)
+      if (end === 0) pushTri(paint, cen, b, a, nz, nz, nz);
+      else pushTri(paint, cen, a, b, nz, nz, nz);
     }
   }
   const toGeo = (buf) => {
@@ -301,23 +356,128 @@ export function buildCar(spec) {
   const extraParts = [];
   const r0 = rings[NZ], rEnd = rings[0];
   const frontY = yAt(0.96);
-  // Faros
+  // Ópticas, espejos, manijas y molduras
+  const sporty = spec.style === 'muscle' || spec.style === 'sports' || spec.style === 'super';
+  const glassBox = (w, h, d, x, y, z, rx = 0, ry = 0) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    if (rx) g.rotateX(rx);
+    if (ry) g.rotateY(ry);
+    g.translate(x, y, z);
+    const n = g.toNonIndexed();
+    const pa = n.attributes.position, na = n.attributes.normal;
+    for (let i = 0; i < pa.count; i++) {
+      glass.p.push(pa.getX(i), pa.getY(i), pa.getZ(i));
+      glass.n.push(na.getX(i), na.getY(i), na.getZ(i));
+    }
+  };
   for (const s of [-1, 1]) {
-    const hw = hwAt(0.97, frontY);
-    if (spec.style === 'sports' || spec.style === 'super') addBox(headParts, 0.36, 0.055, 0.12, s * hw * 0.66, frontY - 0.06, hz * 0.975, 0.25);
-    else addBox(headParts, 0.3, 0.12, 0.1, s * hw * 0.68, frontY - 0.1, hz * 0.985);
+    // --- faro: carcasa cromada (reflector), proyector y tira LED (emisivos), lente transparente
+    const hwF = hwAt(0.96, frontY);
+    const thin = spec.style === 'sports' || spec.style === 'super';
+    const hW = thin ? 0.38 : spec.style === 'van' ? 0.3 : 0.34, hH = thin ? 0.07 : 0.12;
+    const hx = s * hwF * 0.64, hy = frontY - (thin ? 0.05 : 0.085), hzz = hz * 0.968;
+    const tilt = thin ? 0.42 : 0.22;
+    addBox(chromeParts, hW, hH, 0.09, hx, hy, hzz, tilt, s * -0.12);
+    addBox(trimParts, hW + 0.02, hH + 0.02, 0.05, hx, hy, hzz - 0.04, tilt, s * -0.12);
+    const proj = new THREE.CylinderGeometry(0.036, 0.04, 0.03, 14);
+    proj.rotateX(Math.PI / 2);
+    proj.translate(hx + s * hW * 0.24, hy + 0.003, hzz + 0.04);
+    headParts.push(proj.toNonIndexed());
+    if (!thin) {
+      const proj2 = proj.clone();
+      proj2.translate(-s * hW * 0.36, 0, 0);
+      headParts.push(proj2.toNonIndexed());
+    }
+    addBox(headParts, hW * 0.86, 0.014, 0.012, hx, hy - hH * 0.36, hzz + 0.045, tilt, s * -0.12);
+    glassBox(hW + 0.015, hH + 0.012, 0.016, hx, hy, hzz + 0.052, tilt, s * -0.12);
+    // --- piloto trasero: bloque emisivo principal, segmento interior y reflector de marcha atrás
     const rearY = yAt(-0.97);
-    addBox(tailParts, spec.style === 'van' ? 0.12 : 0.34, spec.style === 'van' ? 0.4 : 0.1, 0.08, s * hwAt(-0.97, rearY) * 0.72, rearY - (spec.style === 'van' ? 0.6 : 0.09), -hz * 0.99);
-    // espejos
-    const mz = (S.ws[0] - 0.03) * hz;
-    const my = beltAt(S.ws[0]) + 0.08;
-    addBox(paintParts, 0.18, 0.1, 0.09, s * (hwAt(S.ws[0], my) + 0.08), my, mz);
+    const hwR = hwAt(-0.97, rearY);
+    const van = spec.style === 'van';
+    const tW = van ? 0.13 : sporty ? 0.42 : 0.36, tH = van ? 0.42 : 0.095;
+    const tx = s * hwR * (van ? 0.86 : 0.7), ty = rearY - (van ? 0.6 : 0.085), tz = -hz * 0.988;
+    // carcasa interior oscura y segmentos LED (el bloque principal envuelve la esquina)
+    addBox(trimParts, tW + 0.03, tH + 0.02, 0.05, tx, ty, tz + 0.012);
+    if (!van) {
+      for (let k = 0; k < 5; k++) addBox(tailParts, tW * 0.17, tH * 0.62, 0.05, tx + s * tW * (0.38 - k * 0.19), ty + tH * 0.08, tz - 0.004);
+      addBox(tailParts, tW * 0.96, tH * 0.16, 0.05, tx, ty - tH * 0.36, tz - 0.004);
+      // envolvente lateral
+      const wrap = new THREE.BoxGeometry(0.05, tH * 0.8, 0.14);
+      wrap.translate(s * (hwR * 0.985), ty, tz + 0.06);
+      tailParts.push(wrap.toNonIndexed());
+      addBox(tailParts, tW * 0.5, tH * 0.32, 0.05, tx - s * tW * 0.66, ty + tH * 0.18, tz + 0.004);
+    } else addBox(tailParts, tW, tH, 0.06, tx, ty, tz);
+    addBox(chromeParts, van ? 0.1 : 0.09, van ? 0.08 : 0.05, 0.03, tx - s * (van ? 0 : tW * 0.28), ty - (van ? tH * 0.36 : tH * 0.15), tz - 0.022);
+    glassBox(tW + 0.012, tH + 0.012, 0.012, tx, ty, tz - 0.034);
+    // --- espejo: brazo, carcasa del color del auto y vidrio
+    const mz = (S.ws[0] - 0.035) * hz;
+    const my = beltAt(S.ws[0]) + 0.075;
+    const mxIn = hwAt(S.ws[0], my);
+    addBox(trimParts, 0.1, 0.035, 0.07, s * (mxIn + 0.045), my - 0.02, mz + 0.02);
+    const housing = new THREE.SphereGeometry(0.5, 14, 10);
+    housing.scale(0.2, 0.115, 0.13);
+    housing.translate(s * (mxIn + 0.12), my + 0.02, mz);
+    paintParts.push(housing.toNonIndexed());
+    addBox(chromeParts, 0.15, 0.08, 0.01, s * (mxIn + 0.12), my + 0.02, mz - 0.062);
+    // --- manijas de puerta (cromo en autos medianos y grandes, negras en los chicos)
+    const seams = spec.doors || [];
+    const handleBuf = spec.style === 'hatch' || S.cargo ? trimParts : chromeParts;
+    for (let d = 1; d < seams.length; d++) {
+      const hz2 = (seams[d] + 0.2) * 1; // por delante de la línea trasera de cada puerta
+      const zn2 = hz2 / hz;
+      const hy2 = beltAt(zn2) - 0.075;
+      addBox(handleBuf, 0.022, 0.03, 0.16, s * (hwAt(zn2, hy2) + 0.012), hy2, hz2);
+    }
+    if (seams.length === 2 || S.cargo) {
+      const hz2 = (seams[seams.length - 1] + 0.2);
+      const zn2 = hz2 / hz;
+      const hy2 = beltAt(zn2) - 0.075;
+      addBox(handleBuf, 0.022, 0.03, 0.16, s * (hwAt(zn2, hy2) + 0.012), hy2, hz2);
+    }
     // escape (doble en deportivos, simple del lado derecho en el resto)
-    const sporty = spec.style === 'muscle' || spec.style === 'sports' || spec.style === 'super';
-    if (spec.style !== 'van' && (sporty || s < 0)) addCyl(chromeParts, sporty ? 0.05 : 0.04, 0.16, s * (sporty ? 0.45 : 0.5), clear + 0.08, -hz - 0.02, 'z', 8);
+    if (spec.style !== 'van' && (sporty || s < 0)) addCyl(chromeParts, sporty ? 0.05 : 0.04, 0.16, s * (sporty ? 0.45 : 0.5), clear + 0.08, -hz - 0.02, 'z', 10);
   }
-  // Parrilla y patentes
-  addBox(trimParts, W * 0.42, 0.13, 0.06, 0, frontY - 0.24, hz * 0.99);
+  // Moldura negra bajo las ventanillas laterales (línea de cintura)
+  for (let i = 0; i < NZ; i++) {
+    for (const [kb, kd] of [[4, 3], [RV - 4, RV - 3]]) {
+      const band = kb === 4 ? 4 : RV - 5;
+      if (!glassCell.has(i * RV + band)) continue;
+      const a = P(i, kb), b = P(i + 1, kb);
+      const na = nrm(i, kb), nb = nrm(i + 1, kb);
+      const o = (p, n, dy) => [p[0] + n[0] * 0.004, p[1] + dy, p[2] + n[2] * 0.004];
+      const a2 = o(a, na, -0.03), b2 = o(b, nb, -0.03), a1 = o(a, na, 0.004), b1 = o(b, nb, 0.004);
+      if (kb === 4) {
+        pushTri(trim, a2, b2, b1, na, nb, nb);
+        pushTri(trim, a2, b1, a1, na, nb, na);
+      } else {
+        pushTri(trim, a2, b1, b2, na, nb, nb);
+        pushTri(trim, a2, a1, b1, na, na, nb);
+      }
+    }
+  }
+  // Guardabarros interiores: medio tubo oscuro sobre cada rueda (se ve por el hueco del arco)
+  for (const wz of wheelZ)
+    for (const sx of [-1, 1]) {
+      const liner = new THREE.CylinderGeometry(arch + 0.03, arch + 0.03, 0.42, 16, 1, true, -Math.PI * 0.04, Math.PI * 1.08);
+      liner.rotateZ(Math.PI / 2);
+      liner.scale(-1, 1, 1); // caras hacia adentro del tubo (visibles desde la rueda)
+      liner.translate(sx * (W / 2 - 0.25), wr, wz);
+      const li = liner.toNonIndexed();
+      const n = li.attributes.normal;
+      for (let i = 0; i < n.count; i++) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i));
+      trimParts.push(tint(li, 0x0b0b0c));
+    }
+  // Faldones inferiores negros delante y detrás (sobre la tapa del paragolpes)
+  for (const end of [0, NZ]) {
+    const r = rings[end];
+    const sgn = end === 0 ? -1 : 1;
+    addBox(trimParts, r.hw * 2 * 0.96, 0.1, 0.05, 0, r.yb + 0.05, r.z + sgn * 0.012);
+  }
+  // Parrilla con lamas y toma inferior
+  const gy = frontY - 0.2;
+  addBox(trimParts, W * 0.44, 0.15, 0.04, 0, gy, hz * 0.985);
+  for (let k = 0; k < 4; k++) addBox(chromeParts, W * 0.42, 0.012, 0.02, 0, gy - 0.055 + k * 0.037, hz * 0.985 + 0.022);
+  addBox(trimParts, W * 0.56, 0.07, 0.04, 0, clear + 0.12, hz * 0.975);
   const plate = new THREE.BoxGeometry(0.42, 0.11, 0.02);
   plate.translate(0, clear + 0.22, hz + 0.005);
   trimParts.push(tint(plate.toNonIndexed(), 0xe8e8e2));
@@ -357,9 +517,16 @@ export function buildCar(spec) {
   const wheels = [];
   const track = W / 2 - 0.12;
   for (const wz of wheelZ) for (const s of [-1, 1]) wheels.push({ x: s * track, y: wr, z: wz, r: wr, w: 0.24 + (spec.style === 'super' || spec.style === 'sports' ? 0.06 : 0), front: wz > 0, side: s });
+  // las piezas de moldura sin color propio son plástico negro satinado
+  const paintGeo = mergeOrEmpty(paintParts), trimGeo = mergeOrEmpty(trimParts.map((g) => (g.attributes.color ? g : tint(g.index ? g.toNonIndexed() : g, 0x131416))));
+  const cabinZ = iRear >= 0 ? [rings[iRear].z, rings[iFront].z] : [0, 0];
+  const ringAt = (z) => rings[Math.max(0, Math.min(NZ, Math.round((z / hz + 1) * NZ / 2)))];
+  const aoCtx = { clear, wheelZ, wr, arch, W, cabinZ, ringAt };
+  bakeAO(paintGeo, aoCtx);
+  bakeAO(trimGeo, aoCtx);
   return {
-    paint: mergeOrEmpty(paintParts),
-    trim: mergeOrEmpty(trimParts),
+    paint: paintGeo,
+    trim: trimGeo,
     glass: toGeo(glass),
     chrome: mergeOrEmpty(chromeParts),
     head: mergeOrEmpty(headParts),
@@ -369,6 +536,8 @@ export function buildCar(spec) {
     seat: { x: W * 0.22, hip: seatHipOf(spec), z: S.ws[0] * hz - 0.95 },
     height: yAt(0) + 0.02,
     noHood: false,
+    // líneas de capó y baúl para el shader: [inicio capó z, fin baúl z, x de la línea, límite z]
+    hood: [S.ws[0] * hz, S.cargo || S.bed ? -99 : S.rw[1] * hz, W * 0.355, hz * 0.94],
   };
 }
 
@@ -401,48 +570,136 @@ export function buildBike(spec) {
   addCyl(chrome, 0.045, 0.7, 0.16, 0.38, -0.35, 'z', 8);
   addBox(head, 0.14, 0.1, 0.06, 0, 0.94, 0.84);
   addBox(tail, 0.12, 0.05, 0.05, 0, 0.83, -0.88);
+  const wheels = [{ x: 0, y: r, z: wb / 2, r, w: 0.13, front: true, side: 0 }, { x: 0, y: r, z: -wb / 2, r, w: 0.16, front: false, side: 0 }];
+  const paintGeo = mergeOrEmpty(paint), trimGeo = mergeOrEmpty(trim.map((g) => tint(g, 0x1a1b1d)));
+  bakeAOBike(paintGeo, wheels);
+  bakeAOBike(trimGeo, wheels);
   return {
-    paint: mergeOrEmpty(paint), trim: mergeOrEmpty(trim.map((g) => tint(g, 0x1a1b1d))), glass: null, chrome: mergeOrEmpty(chrome),
+    paint: paintGeo, trim: trimGeo, glass: null, chrome: mergeOrEmpty(chrome),
     head: mergeOrEmpty(head), tail: mergeOrEmpty(tail), extra: null,
-    wheels: [{ x: 0, y: r, z: wb / 2, r, w: 0.13, front: true, side: 0 }, { x: 0, y: r, z: -wb / 2, r, w: 0.16, front: false, side: 0 }],
+    wheels,
     seat: { x: 0, hip: 0.9, z: -0.22 },
     height: 1.1,
     noHood: true,
   };
 }
 
-/** Rueda unitaria (radio 1, ancho 1) con neumático y llanta; eje en X. */
+/**
+ * Rueda unitaria (radio 1, ancho 1; eje en X, cara exterior hacia +X).
+ * tire: neumático con banda de rodadura, surcos y flancos. rim: llanta de 5 rayos cóncavos con aro,
+ * barril, tuercas, tapa y disco de freno (gira con la rueda). caliper: pinza fija (no gira).
+ * Los colores de vértice de la llanta distinguen cara pulida, barril oscuro y disco.
+ */
 export function buildWheel() {
-  // Perfil del neumático (torno): sección redondeada
+  const RIM = 0.68; // radio del aro relativo al neumático
+  // --- neumático (torno): de la pestaña interior a la exterior pasando por la banda
   const prof = [];
-  const N = 10;
-  for (let i = 0; i <= N; i++) {
-    const a = -Math.PI / 2 + (i / N) * Math.PI;
-    prof.push(new THREE.Vector2(0.72 + Math.cos(a) * 0.28, Math.sin(a) * 0.5));
+  const flank = (t) => 1 - 0.035 * Math.sin(t * Math.PI); // flanco levemente abombado
+  // flanco interior (x negativo) desde el aro hasta el hombro
+  for (let i = 0; i <= 6; i++) {
+    const t = i / 6;
+    const r = RIM + (0.93 - RIM) * t;
+    prof.push(new THREE.Vector2(r, -0.47 * flank(t) - 0.03 * (1 - t)));
   }
-  const tire = new THREE.LatheGeometry(prof, 22);
-  tire.rotateZ(Math.PI / 2);
-  // Llanta: disco con rayos
-  const rimParts = [];
-  const hub = new THREE.CylinderGeometry(0.2, 0.2, 0.62, 12);
-  hub.rotateZ(Math.PI / 2);
-  rimParts.push(hub.toNonIndexed());
-  const barrel = new THREE.CylinderGeometry(0.72, 0.72, 0.7, 22, 1, true);
+  // hombro y banda con 4 surcos
+  const tread = [[-0.44, 0.965], [-0.42, 0.99], [-0.36, 1.0], [-0.27, 1.0], [-0.255, 0.975], [-0.235, 0.975], [-0.22, 1.0], [-0.1, 1.0], [-0.085, 0.975], [-0.065, 0.975], [-0.05, 1.0],
+    [0.05, 1.0], [0.065, 0.975], [0.085, 0.975], [0.1, 1.0], [0.22, 1.0], [0.235, 0.975], [0.255, 0.975], [0.27, 1.0], [0.36, 1.0], [0.42, 0.99], [0.44, 0.965]];
+  for (const [x, r] of tread) prof.push(new THREE.Vector2(r, x));
+  for (let i = 6; i >= 0; i--) {
+    const t = i / 6;
+    const r = RIM + (0.93 - RIM) * t;
+    prof.push(new THREE.Vector2(r, 0.47 * flank(t) + 0.03 * (1 - t)));
+  }
+  // LatheGeometry gira alrededor de Y con (x=radio, y=altura): luego el eje pasa a X
+  const tire = new THREE.LatheGeometry(prof.map((v) => new THREE.Vector2(v.x, v.y)), 40);
+  tire.rotateZ(-Math.PI / 2);
+  tire.computeVertexNormals();
+  // --- llanta
+  const parts = [];
+  const add = (g, c) => {
+    const n = g.index ? g.toNonIndexed() : g;
+    for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal') n.deleteAttribute(k);
+    if (!n.attributes.normal) n.computeVertexNormals();
+    parts.push(tint(n, c));
+  };
+  // aro exterior pulido (labio) y barril
+  const lipP = [new THREE.Vector2(RIM - 0.03, 0.47), new THREE.Vector2(RIM + 0.015, 0.475), new THREE.Vector2(RIM + 0.03, 0.455), new THREE.Vector2(RIM + 0.012, 0.43), new THREE.Vector2(RIM - 0.02, 0.43)];
+  const lip = new THREE.LatheGeometry(lipP, 40);
+  lip.rotateZ(-Math.PI / 2);
+  add(lip, 0xd4d7da);
+  const barrel = new THREE.CylinderGeometry(RIM - 0.02, RIM - 0.02, 0.86, 32, 1, true);
   barrel.rotateZ(Math.PI / 2);
-  rimParts.push(barrel.toNonIndexed());
-  for (let k = 0; k < 6; k++) {
-    const s = new THREE.BoxGeometry(0.08, 0.56, 0.14);
-    s.translate(0, 0.45, 0);
-    s.rotateX((k / 6) * Math.PI * 2);
-    s.translate(0.26, 0, 0);
-    rimParts.push(s.toNonIndexed());
-    const s2 = s.toNonIndexed();
-    s2.translate(-0.52, 0, 0);
-    rimParts.push(s2);
+  barrel.scale(1, 1, 1);
+  const bi = barrel.toNonIndexed();
+  const bn = bi.attributes.normal;
+  for (let i = 0; i < bn.count; i++) bn.setXYZ(i, -bn.getX(i), -bn.getY(i), -bn.getZ(i));
+  // invertir el orden para que la cara interna sea la visible
+  const bp = bi.attributes.position;
+  for (let i = 0; i < bp.count; i += 3) {
+    for (const a of [bp, bn]) {
+      const x = a.getX(i + 1), y = a.getY(i + 1), z = a.getZ(i + 1);
+      a.setXYZ(i + 1, a.getX(i + 2), a.getY(i + 2), a.getZ(i + 2));
+      a.setXYZ(i + 2, x, y, z);
+    }
   }
-  const rim = mergeGeometries(rimParts.map((g) => {
-    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
-    return g;
-  }));
-  return { tire, rim };
+  add(bi, 0x2a2c2f);
+  // 5 rayos cóncavos (de la maza al aro, inclinados hacia adentro en el centro)
+  const spokeShape = new THREE.Shape();
+  spokeShape.moveTo(-0.055, 0.0);
+  spokeShape.lineTo(0.055, 0.0);
+  spokeShape.lineTo(0.1, 0.43);
+  spokeShape.quadraticCurveTo(0.0, 0.47, -0.1, 0.43);
+  spokeShape.lineTo(-0.055, 0.0);
+  for (let k = 0; k < 5; k++) {
+    for (const off of [-0.075, 0.075]) {
+      const g = new THREE.ExtrudeGeometry(spokeShape, { depth: 0.06, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 1, curveSegments: 4 });
+      // forma en el plano XY (Y radial) con espesor en Z -> la pasamos al plano YZ de la rueda
+      g.translate(0, 0.2, -0.03);
+      g.rotateX(0.2); // concavidad: el extremo exterior sale hacia la cara de la rueda
+      g.rotateY(Math.PI / 2); // espesor a lo largo de X (eje)
+      g.translate(0.3, 0, 0);
+      g.rotateX((k / 5) * Math.PI * 2 + off * 2.2);
+      add(g, 0xc9ccd0);
+    }
+  }
+  // maza, tapa central y tuercas
+  const hub = new THREE.CylinderGeometry(0.21, 0.23, 0.12, 20);
+  hub.rotateZ(Math.PI / 2);
+  hub.translate(0.32, 0, 0);
+  add(hub, 0xbfc3c7);
+  const cap = new THREE.SphereGeometry(0.1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  cap.rotateZ(-Math.PI / 2);
+  cap.scale(0.45, 1, 1);
+  cap.translate(0.38, 0, 0);
+  add(cap, 0x9aa0a6);
+  for (let k = 0; k < 5; k++) {
+    const nut = new THREE.CylinderGeometry(0.025, 0.025, 0.05, 6);
+    nut.rotateZ(Math.PI / 2);
+    const a = (k / 5) * Math.PI * 2 + Math.PI / 5;
+    nut.translate(0.4, Math.cos(a) * 0.15, Math.sin(a) * 0.15);
+    add(nut, 0xe0e2e4);
+  }
+  // disco de freno con campana (gira con la rueda)
+  const disc = new THREE.CylinderGeometry(0.56, 0.56, 0.07, 32);
+  disc.rotateZ(Math.PI / 2);
+  disc.translate(0.02, 0, 0);
+  add(disc, 0x6d7074);
+  const hat = new THREE.CylinderGeometry(0.24, 0.24, 0.2, 18);
+  hat.rotateZ(Math.PI / 2);
+  hat.translate(0.12, 0, 0);
+  add(hat, 0x3c3e41);
+  const rim = mergeGeometries(parts);
+  // --- pinza de freno (fija): abraza el borde del disco arriba, detrás de los rayos
+  const cal = new THREE.BoxGeometry(0.17, 0.17, 0.34, 1, 1, 2);
+  // curvar levemente siguiendo el disco
+  const cp = cal.attributes.position;
+  for (let i = 0; i < cp.count; i++) {
+    const z = cp.getZ(i), y = cp.getY(i);
+    cp.setY(i, y - z * z * 0.9);
+  }
+  cal.translate(0.1, 0.53, 0);
+  const caliper = cal.toNonIndexed();
+  caliper.computeVertexNormals();
+  for (const k of Object.keys(caliper.attributes)) if (k !== 'position' && k !== 'normal') caliper.deleteAttribute(k);
+  return { tire, rim, caliper };
 }

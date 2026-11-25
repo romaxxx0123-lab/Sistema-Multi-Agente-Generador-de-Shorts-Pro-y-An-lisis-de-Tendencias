@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { U, FOG_PARS_VERTEX, FOG_VERTEX, FOG_PARS_FRAGMENT } from '../world/shaders.js';
 import { rand, clamp } from '../core/utils.js';
+import { setDynamic } from '../core/layers.js';
 
 const MAX_P = 2400;
 
@@ -91,7 +92,7 @@ class ParticlePool {
     this.mesh = new THREE.Mesh(geo, this.mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = additive ? 8 : 7;
-    scene.add(this.mesh);
+    scene.add(setDynamic(this.mesh)); // humo/fuego por delante de autos y personas
     this.parts = [];
     this.additive = additive;
   }
@@ -387,7 +388,7 @@ export class Effects {
   topple(mesh, pivot, dir, speed) {
     const axis = new THREE.Vector3(dir.z, 0, -dir.x).normalize();
     this.debris.push({ mesh, pivot: pivot.clone(), axis, ang: 0, w: Math.min(3, 0.6 + speed * 0.12), t: 0, max: 25, vel: new THREE.Vector3(dir.x * speed * 0.3, 0, dir.z * speed * 0.3), baseQ: mesh.quaternion.clone() });
-    this.game.engine.scene.add(mesh);
+    this.game.engine.scene.add(setDynamic(mesh));
   }
 
   update(dt) {

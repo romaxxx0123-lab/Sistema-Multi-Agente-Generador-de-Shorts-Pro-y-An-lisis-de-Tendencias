@@ -2,11 +2,12 @@
 import * as THREE from 'three';
 import {
   EffectComposer, RenderPass, EffectPass, BloomEffect, ToneMappingEffect, ToneMappingMode,
-  SMAAEffect, SMAAPreset, Effect, BlendFunction, DepthOfFieldEffect,
+  SMAAEffect, SMAAPreset, Effect, BlendFunction, DepthOfFieldEffect, Pass, Selection,
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { U } from '../world/shaders.js';
+import { LAYER_DYNAMIC } from './layers.js';
 
 export const QUALITY_PRESETS = {
   bajo: { label: 'Bajo', pixelRatio: 0.75, msaa: 0, smaa: true, ao: null, cascades: 2, shadowSize: 1024, shadows: false, shadowFar: 220, viewDist: 650, fogMul: 2.0, density: 0.55, texSize: 512, bloom: true, reflections: false },
@@ -14,6 +15,38 @@ export const QUALITY_PRESETS = {
   alto: { label: 'Alto', pixelRatio: 1.25, msaa: 4, smaa: false, ao: 'Medium', aoHalf: true, cascades: 3, shadowSize: 2048, shadows: true, shadowFar: 420, viewDist: 1300, fogMul: 1.0, density: 1.0, texSize: 1024, bloom: true, reflections: true },
   ultra: { label: 'Ultra', pixelRatio: 2.0, msaa: 4, smaa: false, ao: 'High', aoHalf: false, cascades: 4, shadowSize: 2048, shadows: true, shadowFar: 650, viewDist: 1800, fogMul: 1.0, density: 1.15, texSize: 1024, bloom: true, reflections: true },
 };
+
+// Los objetos dinámicos (vehículos, personas, partículas, lluvia) se dibujan en una segunda pasada,
+// después de la oclusión ambiental en espacio de pantalla: la SSAO sólo ve el mundo estático y no
+// proyecta huellas fantasma alrededor de objetos cercanos a la cámara. Su contacto con el piso lo
+// resuelven sombras de contacto propias.
+export { LAYER_DYNAMIC, setDynamic } from './layers.js';
+
+/** Restaura en el búfer actual la profundidad del mundo copiada tras la primera pasada. */
+class DepthRestorePass extends Pass {
+  constructor(composer) {
+    super('DepthRestorePass');
+    this.composer = composer;
+    this.needsSwap = false;
+    this.fullscreenMaterial = new THREE.ShaderMaterial({
+      uniforms: { tDepth: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 1.0, 1.0); }',
+      fragmentShader: 'uniform highp sampler2D tDepth; varying vec2 vUv; void main(){ gl_FragDepth = texture2D(tDepth, vUv).r; }',
+      depthTest: true,
+      depthWrite: true,
+      depthFunc: THREE.AlwaysDepth,
+      colorWrite: false,
+    });
+  }
+
+  render(renderer, inputBuffer) {
+    const dt = this.composer.stableDepthTexture;
+    if (!dt) return;
+    this.fullscreenMaterial.uniforms.tDepth.value = dt;
+    renderer.setRenderTarget(this.renderToScreen ? null : inputBuffer);
+    renderer.render(this.scene, this.camera);
+  }
+}
 
 class GradeEffect extends Effect {
   constructor() {
@@ -141,6 +174,7 @@ export class Engine {
       l.shadow.normalBias = 0.035;
       l.shadow.radius = 2.5;
     }
+    this.enableLightLayers();
     this.renderer.shadowMap.enabled = q.shadows;
     this.renderer.shadowMap.needsUpdate = true;
     if (this.matLib) this.matLib.setCSM(this.csm);
@@ -150,6 +184,7 @@ export class Engine {
     const q = this.q;
     if (this.composer) this.composer.dispose();
     const composer = new EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType, multisampling: q.msaa });
+    // 1) mundo estático (capa 0)
     composer.addPass(new RenderPass(this.scene, this.camera));
     this.aoPass = null;
     if (q.ao) {
@@ -163,7 +198,17 @@ export class Engine {
       ao.configuration.gammaCorrection = false;
       composer.addPass(ao);
       this.aoPass = ao;
+      // la AO cambió de búfer: se restaura la profundidad del mundo para la pasada dinámica
+      composer.addPass(new DepthRestorePass(composer));
     }
+    // 2) objetos dinámicos sobre el mundo ya sombreado (sin limpiar, sin fondo, sin recalcular sombras)
+    const dyn = new RenderPass(this.scene, this.camera);
+    dyn.selection = new Selection([], LAYER_DYNAMIC);
+    dyn.clearPass.enabled = false;
+    dyn.ignoreBackground = true;
+    dyn.skipShadowMapUpdate = true;
+    composer.addPass(dyn);
+    this.dynamicPass = dyn;
     this.dof = new DepthOfFieldEffect(this.camera, { focusDistance: 8, focusRange: 6, bokehScale: 3, resolutionScale: 0.5 });
     this.dofPass = new EffectPass(this.camera, this.dof);
     this.dofPass.enabled = this.dofEnabled;
@@ -204,6 +249,15 @@ export class Engine {
     this.camera.updateProjectionMatrix();
     if (this.composer && !skipComposer) this.composer.setSize(w, h, false);
     if (this.csm) this.csm.updateFrustums();
+  }
+
+  /** Las luces y las cámaras de sombra deben ver también la capa dinámica. */
+  enableLightLayers() {
+    this.scene.traverse((o) => {
+      if (!o.isLight) return;
+      o.layers.enableAll();
+      if (o.shadow && o.shadow.camera) o.shadow.camera.layers.enableAll();
+    });
   }
 
   setFov(fov) {

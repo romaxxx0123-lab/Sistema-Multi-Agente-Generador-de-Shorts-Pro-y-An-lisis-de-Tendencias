@@ -1,6 +1,7 @@
 // Efectos de clima: lluvia instanciada alrededor de la cámara y rayos durante tormentas.
 import * as THREE from 'three';
 import { U } from './shaders.js';
+import { setDynamic } from '../core/layers.js';
 
 export class WeatherFX {
   constructor(engine, count = 6000) {
@@ -66,7 +67,7 @@ export class WeatherFX {
     this.rain = new THREE.Mesh(geo, this.rainMat);
     this.rain.frustumCulled = false;
     this.rain.renderOrder = 10;
-    engine.scene.add(this.rain);
+    engine.scene.add(setDynamic(this.rain)); // las gotas se dibujan delante de autos y personas
     // Rayo
     this.boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(6, 7, 10), transparent: true, opacity: 0, depthWrite: false, fog: false });
     this.bolt = null;

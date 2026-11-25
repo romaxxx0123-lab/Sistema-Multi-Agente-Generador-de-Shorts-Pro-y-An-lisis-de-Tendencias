@@ -9,6 +9,8 @@ import { Effects } from '../entities/effects.js';
 import { VehicleManager } from '../entities/vehicles.js';
 import { TrafficManager } from '../entities/traffic.js';
 import { VehicleHud } from '../ui/vehicleHud.js';
+import { ContactShadows } from '../entities/contactShadows.js';
+import { ReflectionProbe } from '../world/reflectionProbe.js';
 import { U } from '../world/shaders.js';
 import { AudioSystem } from '../audio/audio.js';
 import { STATIONS } from '../audio/radio.js';
@@ -16,6 +18,7 @@ import { WATER_LEVEL } from '../world/map.js';
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _eul = new THREE.Euler();
+const _probePos = new THREE.Vector3();
 const _obj = new THREE.Object3D();
 const _fwd = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -52,6 +55,10 @@ export class Game {
     this.vehicles = new VehicleManager(this);
     this.traffic = new TrafficManager(this);
     this.vehicleHud = new VehicleHud(this);
+    this.contactShadows = new ContactShadows(this.engine);
+    this.probe = new ReflectionProbe(this.engine, 128);
+    this._probeOn = null;
+    this.engine.onQualityChange(() => this._syncProbe());
     this.enterState = null;
     this.exitState = null;
     this.deathState = null;
@@ -69,6 +76,7 @@ export class Game {
     this.events.on('explosion', (e) => this._onExplosion(e));
     this._overlay();
     this._deathOverlay();
+    this.engine.enableLightLayers(); // faros, destellos y sol iluminan también la capa dinámica
     this._last = performance.now();
     this._frame = this._frame.bind(this);
   }
@@ -84,7 +92,8 @@ export class Game {
     const g = home && home.garage;
     if (!g) return;
     const v = this.vehicles.spawn('muscle', g.x, g.z, g.yaw, {
-      color: 0x14306e, persistent: true, parked: true, engineOn: false, station: 0,
+      color: 0x14306e, persistent: true, parked: true, engineOn: false, station: 0, dirt: 0.04,
+      rimColor: 0x3a3d42, caliperColor: 0xc4161c,
       upgrades: { engine: 1, brakes: 1, armor: 0, turbo: 0, nitro: 1 },
     });
     if (v) {
@@ -201,9 +210,64 @@ export class Game {
       this._ambience(rawDt);
     }
     this.vehicles.render();
+    this._contactShadows();
+    this._updateProbe();
     this.engine.render(rawDt);
     input.endFrame();
     requestAnimationFrame(this._frame);
+  }
+
+  /** Sonda de reflejos: se activa en calidad alta/ultra y sigue al auto del jugador (o a la cámara). */
+  _syncProbe() {
+    this.probe.enabled = !!this.engine.q.reflections;
+    if (!this.probe.enabled) this.probe.ready = false;
+  }
+
+  _updateProbe() {
+    if (this._probeOn === null) this._syncProbe();
+    const probe = this.probe;
+    if (probe.enabled) {
+      const v = this.player.vehicle;
+      const c = this.engine.camera.position;
+      if (v) _probePos.set(v.pos.x, v.pos.y + v.height + 0.5, v.pos.z);
+      else _probePos.set((this.player.pos.x + c.x) / 2, Math.max(this.player.pos.y + 1.4, 0.8), (this.player.pos.z + c.z) / 2);
+      probe.update(_probePos);
+    }
+    const on = probe.enabled && probe.ready;
+    if (on !== this._probeOn) {
+      this._probeOn = on;
+      this.vehicles.renderer.setEnvMap(on ? probe.texture : null);
+    }
+  }
+
+  /** Sombras de contacto de vehículos y personas (reemplazan a la SSAO en la capa dinámica). */
+  _contactShadows() {
+    const cs = this.contactShadows;
+    const cam = this.engine.camera.position;
+    cs.begin();
+    for (const v of this.vehicles.list) {
+      if (v.sunk || !v.render) continue;
+      const dx = v.pos.x - cam.x, dz = v.pos.z - cam.z;
+      if (dx * dx + dz * dz > 170 * 170) continue;
+      const h = Math.max(0, v.pos.y - v.groundY);
+      if (v.spec.bike) cs.add(v.pos.x, v.groundY, v.pos.z, v.yaw, v.fallen ? 1.2 : 0.62, v.length * 1.05, 0.62, 0, h);
+      else cs.add(v.pos.x, v.groundY, v.pos.z, v.yaw, v.width + 0.32, v.length + 0.22, 0.8, 0, h);
+    }
+    const addHuman = (pos, yaw, onGround, lying, deadPose) => {
+      const gy = onGround ? pos.y : this.collision.surfaceBelow(pos.x, pos.z, pos.y + 0.5);
+      const h = Math.max(0, pos.y - gy);
+      if (lying) {
+        const s = deadPose < 0.5 ? -1 : 1; // boca arriba: la cabeza queda hacia atrás
+        cs.add(pos.x + Math.sin(yaw) * 0.85 * s, gy, pos.z + Math.cos(yaw) * 0.85 * s, yaw, 0.75, 1.95, 0.5, 1, h);
+      } else cs.add(pos.x, gy, pos.z, yaw, 0.72, 0.72, 0.5, 1, h);
+    };
+    const p = this.player;
+    if (!p.vehicle && !this.enterState && !this.exitState) {
+      const st = p.human.anim.state;
+      addHuman(p.pos, p.yaw, p.onGround && !p.swimming, st === 'dead' || st === 'down', p.human.anim.deadPose);
+    }
+    if (this.peds && this.peds.contactShadows) this.peds.contactShadows(addHuman);
+    cs.end();
   }
 
   /** Personas con las que chocan los vehículos (jugador y peatones). */
