@@ -15,17 +15,17 @@ const STYLES = {
 };
 
 export const MODELS = {
-  compacto: { name: 'Pulga 1.4', style: 'hatch', L: 4.05, W: 1.76, H: 1.46, wb: 2.56, wr: 0.31, clear: 0.15, mass: 1050, accel: 8.6, top: 42, grip: 9, steer: 0.62, brake: 18, hp: 800, engine: 'car', price: 9500, cls: 'Compacto', doors: [0.95, -0.05] },
-  sedan: { name: 'Delta GL', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1400, accel: 9.6, top: 47, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 18000, cls: 'Sedán', doors: [1.05, 0.0, -1.0] },
-  taxi: { name: 'Delta Taxi', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1420, accel: 9.6, top: 46, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 15000, cls: 'Servicio', fixedColor: 0xf2bf0a, roofSign: true, doors: [1.05, 0.0, -1.0] },
-  patrulla: { name: 'Interceptor', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1650, accel: 13.5, top: 64, grip: 10.5, steer: 0.6, brake: 23, hp: 1500, engine: 'sports', price: 0, cls: 'Emergencia', fixedColor: 0xf4f4f2, livery: 'police', lightbar: true, pushbar: true, doors: [1.05, 0.0, -1.0] },
-  suv: { name: 'Cóndor 4x4', style: 'suv', L: 4.8, W: 1.95, H: 1.8, wb: 2.85, wr: 0.38, clear: 0.22, mass: 2100, accel: 9.2, top: 45, grip: 8.6, steer: 0.55, brake: 18, hp: 1300, engine: 'car', price: 32000, cls: 'SUV', doors: [1.1, 0.0, -1.05] },
-  furgon: { name: 'Carga Van', style: 'van', L: 5.2, W: 2.0, H: 2.3, wb: 3.2, wr: 0.36, clear: 0.2, mass: 2600, accel: 6.6, top: 37, grip: 7.6, steer: 0.52, brake: 15, hp: 1500, engine: 'truck', price: 21000, cls: 'Utilitario', doors: [1.5, 0.55] },
-  pickup: { name: 'Ranchera', style: 'pickup', L: 5.3, W: 1.95, H: 1.8, wb: 3.15, wr: 0.38, clear: 0.22, mass: 2000, accel: 9, top: 46, grip: 8.6, steer: 0.53, brake: 17, hp: 1300, engine: 'truck', price: 26000, cls: 'Utilitario', doors: [1.35, 0.35] },
-  muscle: { name: 'Bravo V8', style: 'muscle', L: 4.9, W: 1.92, H: 1.32, wb: 2.85, wr: 0.34, clear: 0.14, mass: 1600, accel: 13, top: 65, grip: 8.4, steer: 0.55, brake: 20, hp: 1100, engine: 'sports', price: 45000, cls: 'Muscle', doors: [0.95, -0.25] },
-  deportivo: { name: 'Rayo GT', style: 'sports', L: 4.45, W: 1.95, H: 1.22, wb: 2.6, wr: 0.34, clear: 0.11, mass: 1320, accel: 15.5, top: 73, grip: 11.5, steer: 0.55, brake: 24, hp: 900, engine: 'sports', price: 95000, cls: 'Deportivo', doors: [0.75, -0.4] },
-  superauto: { name: 'Vortex X', style: 'super', L: 4.6, W: 2.02, H: 1.13, wb: 2.7, wr: 0.35, clear: 0.1, mass: 1350, accel: 19.5, top: 87, grip: 12.5, steer: 0.52, brake: 27, hp: 900, engine: 'sports', price: 320000, cls: 'Superauto', doors: [0.7, -0.45] },
-  moto: { name: 'Libélula 600', style: 'bike', L: 2.15, W: 0.78, H: 1.15, wb: 1.42, wr: 0.32, clear: 0.12, mass: 230, accel: 14, top: 66, grip: 10.5, steer: 0.7, brake: 22, hp: 450, engine: 'bike', price: 16000, cls: 'Moto', bike: true },
+  compacto: { name: 'Pulga 1.4', style: 'hatch', L: 4.05, W: 1.76, H: 1.46, wb: 2.56, wr: 0.31, clear: 0.15, mass: 1050, accel: 8.6, top: 42, grip: 9, steer: 0.62, brake: 18, hp: 800, engine: 'car', price: 9500, cls: 'Compacto', doors: [0.95, -0.05], rim: 'aero' },
+  sedan: { name: 'Delta GL', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1400, accel: 9.6, top: 47, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 18000, cls: 'Sedán', doors: [1.05, 0.0, -1.0], rim: 'twin5' },
+  taxi: { name: 'Delta Taxi', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1420, accel: 9.6, top: 46, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 15000, cls: 'Servicio', fixedColor: 0xf2bf0a, roofSign: true, doors: [1.05, 0.0, -1.0], rim: 'steel' },
+  patrulla: { name: 'Interceptor', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1650, accel: 13.5, top: 64, grip: 10.5, steer: 0.6, brake: 23, hp: 1500, engine: 'sports', price: 0, cls: 'Emergencia', fixedColor: 0xf4f4f2, livery: 'police', lightbar: true, pushbar: true, doors: [1.05, 0.0, -1.0], rim: 'steel' },
+  suv: { name: 'Cóndor 4x4', style: 'suv', L: 4.8, W: 1.96, H: 1.73, wb: 2.86, wr: 0.375, clear: 0.215, mass: 2100, accel: 9.2, top: 45, grip: 8.6, steer: 0.55, brake: 18, hp: 1300, engine: 'car', price: 32000, cls: 'SUV', doors: [1.1, 0.0, -1.05], rim: 'offroad6' },
+  furgon: { name: 'Carga Van', style: 'van', L: 5.25, W: 2.0, H: 2.29, wb: 3.3, wr: 0.355, clear: 0.22, mass: 2600, accel: 6.6, top: 37, grip: 7.6, steer: 0.52, brake: 15, hp: 1500, engine: 'truck', price: 21000, cls: 'Utilitario', doors: [1.5, 0.55], rim: 'steel' },
+  pickup: { name: 'Ranchera', style: 'pickup', L: 5.25, W: 1.96, H: 1.81, wb: 3.2, wr: 0.385, clear: 0.24, mass: 2000, accel: 9, top: 46, grip: 8.6, steer: 0.53, brake: 17, hp: 1300, engine: 'truck', price: 26000, cls: 'Utilitario', doors: [1.35, 0.35], rim: 'offroad6' },
+  muscle: { name: 'Bravo V8', style: 'muscle', L: 4.9, W: 1.94, H: 1.33, wb: 2.85, wr: 0.355, clear: 0.135, mass: 1600, accel: 13, top: 65, grip: 8.4, steer: 0.55, brake: 20, hp: 1100, engine: 'sports', price: 45000, cls: 'Muscle', doors: [0.95, -0.25], rim: 'deep5' },
+  deportivo: { name: 'Rayo GT', style: 'sports', L: 4.46, W: 1.96, H: 1.24, wb: 2.6, wr: 0.345, clear: 0.115, mass: 1320, accel: 15.5, top: 73, grip: 11.5, steer: 0.55, brake: 24, hp: 900, engine: 'sports', price: 95000, cls: 'Deportivo', doors: [0.75, -0.4], rim: 'mesh' },
+  superauto: { name: 'Vortex X', style: 'super', L: 4.6, W: 2.03, H: 1.13, wb: 2.7, wr: 0.35, clear: 0.1, mass: 1350, accel: 19.5, top: 87, grip: 12.5, steer: 0.52, brake: 27, hp: 900, engine: 'sports', price: 320000, cls: 'Superauto', doors: [0.7, -0.45], rim: 'multi10' },
+  moto: { name: 'Libélula 600', style: 'bike', L: 2.15, W: 0.78, H: 1.15, wb: 1.42, wr: 0.32, clear: 0.12, mass: 230, accel: 14, top: 66, grip: 10.5, steer: 0.7, brake: 22, hp: 450, engine: 'bike', price: 16000, cls: 'Moto', bike: true, rim: 'multi10' },
 };
 
 export const PAINTS = [0x101418, 0xf2f2f0, 0x8c9399, 0x2b3a55, 0x7a1d1d, 0x1e4d3a, 0xc9c2b2, 0x0e3f73, 0xb83a1f, 0x5b5f66, 0x3a2e28, 0x9fb7c9, 0xe0a91b, 0x1b1b1b, 0x6d1a4a, 0x2f6f73];
@@ -764,4 +764,122 @@ export function buildWheel() {
   caliper.computeVertexNormals();
   for (const k of Object.keys(caliper.attributes)) if (k !== 'position' && k !== 'normal') caliper.deleteAttribute(k);
   return { tire, rim, caliper };
+}
+
+// ---------------------------------------------------------------- llantas por estilo
+// Cada modelo usa su propio diseño de llanta (el color lo pone cada auto por instancia).
+export const RIM_STYLES = ['twin5', 'multi10', 'mesh', 'steel', 'offroad6', 'deep5', 'aero'];
+
+export function buildRim(style = 'twin5') {
+  if (style === 'twin5') return buildWheel().rim;
+  const RIM = 0.68;
+  const parts = [];
+  const add = (g, c) => {
+    const n = g.index ? g.toNonIndexed() : g;
+    for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal') n.deleteAttribute(k);
+    if (!n.attributes.normal) n.computeVertexNormals();
+    parts.push(tint(n, c));
+  };
+  const lathe = (pts, c, seg = 40) => {
+    const g = new THREE.LatheGeometry(pts.map(([r, x]) => new THREE.Vector2(r, x)), seg);
+    g.rotateZ(-Math.PI / 2);
+    add(g, c);
+  };
+  const deep = style === 'deep5';
+  // labio pulido (ancho y escalonado en la llanta de plato hondo) y barril oscuro
+  lathe(deep ? [[RIM - 0.1, 0.475], [RIM + 0.015, 0.478], [RIM + 0.03, 0.455], [RIM + 0.012, 0.42], [RIM - 0.1, 0.41]]
+    : [[RIM - 0.03, 0.47], [RIM + 0.015, 0.475], [RIM + 0.03, 0.455], [RIM + 0.012, 0.43], [RIM - 0.02, 0.43]], 0xd4d7da);
+  lathe([[RIM - 0.02, 0.43], [RIM - 0.02, -0.43]], 0x2a2c2f, 32);
+  // rayo extruido: de la maza (len0) al aro, inclinado (tilt) para dar concavidad
+  const spoke = (w0, w1, len0, len1, depth, tilt, x, angle, color) => {
+    const sh = new THREE.Shape();
+    const L = len1 - len0;
+    sh.moveTo(-w0, 0);
+    sh.lineTo(w0, 0);
+    sh.lineTo(w1, L);
+    sh.quadraticCurveTo(0, L + 0.03, -w1, L);
+    sh.lineTo(-w0, 0);
+    const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 1, curveSegments: 4 });
+    g.translate(0, len0, -depth / 2);
+    g.rotateX(tilt);
+    g.rotateY(Math.PI / 2);
+    g.translate(x, 0, 0);
+    g.rotateX(angle);
+    add(g, color);
+  };
+  const TAU = Math.PI * 2;
+  let nuts = 5, capR = 0.1, hubR = 0.21;
+  if (style === 'multi10') {
+    // forjada de diez rayos finos y rectos
+    for (let k = 0; k < 10; k++) spoke(0.03, 0.045, 0.19, 0.63, 0.05, 0.1, 0.32, (k / 10) * TAU, 0xc9ccd0);
+    hubR = 0.18;
+  } else if (style === 'mesh') {
+    // malla de rayos cruzados (pares que se abren hacia el aro)
+    for (let k = 0; k < 14; k++) {
+      for (const o of [-0.13, 0.13]) spoke(0.014, 0.02, 0.2, 0.64, 0.04, 0.08, 0.31, (k / 14) * TAU + o, 0xcfd2d6);
+    }
+    hubR = 0.2;
+  } else if (style === 'offroad6') {
+    // seis rayos anchos y planos de todoterreno
+    for (let k = 0; k < 6; k++) spoke(0.07, 0.11, 0.2, 0.62, 0.08, 0.0, 0.3, (k / 6) * TAU, 0x9da1a6);
+    nuts = 6;
+    hubR = 0.24;
+  } else if (style === 'deep5') {
+    // plato hondo: cinco rayos anchos hundidos detrás de un labio pulido
+    for (let k = 0; k < 5; k++) spoke(0.06, 0.09, 0.19, 0.58, 0.06, 0.05, 0.2, (k / 5) * TAU, 0xc9ccd0);
+    capR = 0.09;
+  } else if (style === 'steel') {
+    // llanta de chapa estampada con ocho ventanas y tapa central
+    lathe([[0.18, 0.31], [0.24, 0.335], [0.33, 0.31], [0.47, 0.27], [0.58, 0.3], [RIM - 0.02, 0.42]], 0x8c9095);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * TAU;
+      const h = new THREE.CylinderGeometry(0.05, 0.05, 0.012, 14);
+      h.rotateZ(Math.PI / 2);
+      h.scale(1, 1, 1.5);
+      h.rotateX(a);
+      h.translate(0.276 + 0.012, Math.cos(a) * 0.43, Math.sin(a) * 0.43);
+      add(h, 0x0b0c0d);
+    }
+    nuts = 4;
+  } else if (style === 'aero') {
+    // disco aerodinámico casi plano con cinco ranuras
+    lathe([[0.1, 0.37], [0.3, 0.36], [0.52, 0.33], [RIM - 0.02, 0.43]], 0xb8bcc1);
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * TAU + 0.3;
+      const s = new THREE.BoxGeometry(0.02, 0.05, 0.17);
+      s.rotateX(a);
+      s.translate(0.345, Math.cos(a) * 0.5, Math.sin(a) * 0.5);
+      add(s, 0x0b0c0d);
+    }
+    nuts = 0;
+  }
+  // maza, tapa central y tuercas
+  if (style !== 'aero') {
+    const hub = new THREE.CylinderGeometry(hubR, hubR + 0.02, 0.12, 20);
+    hub.rotateZ(Math.PI / 2);
+    hub.translate(deep ? 0.22 : 0.32, 0, 0);
+    add(hub, 0xbfc3c7);
+  }
+  const cap = new THREE.SphereGeometry(capR, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  cap.rotateZ(-Math.PI / 2);
+  cap.scale(0.45, 1, 1);
+  cap.translate(style === 'aero' ? 0.37 : deep ? 0.28 : 0.38, 0, 0);
+  add(cap, 0x9aa0a6);
+  for (let k = 0; k < nuts; k++) {
+    const nut = new THREE.CylinderGeometry(0.025, 0.025, 0.05, 6);
+    nut.rotateZ(Math.PI / 2);
+    const a = (k / nuts) * TAU + Math.PI / nuts;
+    nut.translate(deep ? 0.3 : 0.4, Math.cos(a) * 0.15, Math.sin(a) * 0.15);
+    add(nut, 0xe0e2e4);
+  }
+  // disco de freno con campana
+  const disc = new THREE.CylinderGeometry(0.56, 0.56, 0.07, 32);
+  disc.rotateZ(Math.PI / 2);
+  disc.translate(0.02, 0, 0);
+  add(disc, 0x6d7074);
+  const hat = new THREE.CylinderGeometry(0.24, 0.24, 0.2, 18);
+  hat.rotateZ(Math.PI / 2);
+  hat.translate(0.12, 0, 0);
+  add(hat, 0x3c3e41);
+  return mergeGeometries(parts);
 }

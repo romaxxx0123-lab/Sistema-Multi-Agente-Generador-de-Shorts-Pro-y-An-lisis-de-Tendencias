@@ -9,12 +9,30 @@ import sedanMeta from '../../assets/cars/sedan.json';
 import taxiGlb from '../../assets/cars/taxi.glb';
 import compactoGlb from '../../assets/cars/compacto.glb';
 import compactoMeta from '../../assets/cars/compacto.json';
+import suvGlb from '../../assets/cars/suv.glb';
+import suvMeta from '../../assets/cars/suv.json';
+import muscleGlb from '../../assets/cars/muscle.glb';
+import muscleMeta from '../../assets/cars/muscle.json';
+import deportivoGlb from '../../assets/cars/deportivo.glb';
+import deportivoMeta from '../../assets/cars/deportivo.json';
+import superautoGlb from '../../assets/cars/superauto.glb';
+import superautoMeta from '../../assets/cars/superauto.json';
+import pickupGlb from '../../assets/cars/pickup.glb';
+import pickupMeta from '../../assets/cars/pickup.json';
+import furgonGlb from '../../assets/cars/furgon.glb';
+import furgonMeta from '../../assets/cars/furgon.json';
 import patrullaGlb from '../../assets/cars/patrulla.glb';
 
 // base: el modelo comparte la carrocería de otro y el glb sólo trae los agregados (cartel, barra de luces…)
 const SOURCES = {
   sedan: { glb: sedanGlb, meta: sedanMeta },
   compacto: { glb: compactoGlb, meta: compactoMeta },
+  suv: { glb: suvGlb, meta: suvMeta },
+  muscle: { glb: muscleGlb, meta: muscleMeta },
+  deportivo: { glb: deportivoGlb, meta: deportivoMeta },
+  superauto: { glb: superautoGlb, meta: superautoMeta },
+  pickup: { glb: pickupGlb, meta: pickupMeta },
+  furgon: { glb: furgonGlb, meta: furgonMeta },
   taxi: { glb: taxiGlb, meta: sedanMeta, base: 'sedan' },
   patrulla: { glb: patrullaGlb, meta: sedanMeta, base: 'sedan' },
 };

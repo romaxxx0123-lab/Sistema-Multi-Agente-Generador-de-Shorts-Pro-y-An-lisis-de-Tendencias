@@ -5,6 +5,7 @@ import bmesh
 from mathutils import Vector
 from . import parts as P
 from .features import densify, rounded_poly
+from . import styles as ST
 
 
 def fan_point(bvh, ya, th_deg, z, front=True, dist=4.0):
@@ -32,6 +33,9 @@ def headlights(D, info, bvh, clean):
     F = D['features']
     h = F['headlight']
     body = info['body']
+    style = h.get('style', 'slim')
+    if style in ST.HEAD_STYLES:
+        return ST.HEAD_STYLES[style](D, body, clean, h)
     ya = body.y_fc
     objs = []
     poly = h['poly']
@@ -107,15 +111,30 @@ def poly_interp(chain, th):
 def taillights(D, info, bvh, clean):
     F = D['features']
     body = info['body']
+    style = F.get('tail_style', 'bar')
+    if style in ('vertical', 'panel', 'oval', 'slit'):
+        objs = ST.tail_style(D, body, bvh, F['taillights'], style)
+        # giro ámbar y marcha atrás también en estos estilos (abajo del primer piloto)
+        tl = F['taillights'][0]
+        fr, w, hh = ST.lamp_frame(bvh, body, 'rearc', tl['poly'])
+        if fr is not None and style != 'panel':
+            objs += ST.ribbon_pts('blink_r', [fr.at(-w * 0.3, -hh * 0.42, 0.016), fr.at(w * 0.05, -hh * 0.42, 0.016)], fr.n, max(0.008, hh * 0.1), 'blink')
+            objs += ST.ribbon_pts('reverse', [fr.at(w * 0.12, -hh * 0.42, 0.016), fr.at(w * 0.38, -hh * 0.42, 0.016)], fr.n, max(0.008, hh * 0.1), 'reverse')
+        if style == 'panel' and fr is not None:
+            objs += ST.ribbon_pts('blink_r', [fr.at(-w * 0.46, -hh * 0.3, 0.02), fr.at(-w * 0.46, hh * 0.3, 0.02)], fr.n, 0.02, 'blink')
+        return objs
     ya = body.y_rc
     objs = []
     tl = F['taillights'][0]
     poly = tl['poly']
+    ths = [p[0] for p in poly]
+    tmin, tmax = min(ths), max(ths)
+    span = tmax - tmin
     # firma de luz: cinta roja brillante que recorre el contorno por dentro
     top = poly[:3]
     pts, nrms = [], []
     for k in range(21):
-        th = 52 - (52 - 17) * k / 20
+        th = tmax - 1.5 - (span - 3.0) * k / 20
         z = poly_interp(top, th) - 0.014
         loc, nrm = fan_point(bvh, ya, th, z, front=False)
         if loc is None:
@@ -124,8 +143,9 @@ def taillights(D, info, bvh, clean):
         nrms.append(nrm)
     if len(pts) > 2:
         objs.append(P.ribbon('tail_sig', pts, nrms, 0.008, 'tail_lit'))
-    # intermitente (afuera, abajo) y marcha atrás (adentro)
-    for name, (t0, t1), mat in [('blink_r', (18, 29), 'blink'), ('reverse', (43, 52), 'reverse')]:
+    # intermitente (afuera, abajo) y marcha atrás (adentro), dentro del contorno del piloto
+    for name, (t0, t1), mat in [('blink_r', (tmin + span * 0.12, tmin + span * 0.42), 'blink'),
+                                ('reverse', (tmin + span * 0.62, tmin + span * 0.9), 'reverse')]:
         pts, nrms = [], []
         for k in range(7):
             th = t0 + (t1 - t0) * k / 6
@@ -141,6 +161,18 @@ def taillights(D, info, bvh, clean):
 
 
 def grille(D, info, clean_bvh):
+    F = D['features']
+    g = F['grille']
+    st = ST.grille_style(D, info['body'], clean_bvh, g)
+    if st is not None:
+        return st
+    out = grille_hbars(D, info, clean_bvh)
+    if g.get('surround'):
+        out += ST.surround(clean_bvh, info['body'], ST.rounded(g['poly']), 'front', g.get('surround_w', 0.016), g['surround'])
+    return out
+
+
+def grille_hbars(D, info, clean_bvh):
     F = D['features']
     g = F['grille']
     poly = rounded_poly(g['poly'], 0.25)
@@ -167,6 +199,11 @@ def grille(D, info, clean_bvh):
 def intake_bars(D, info, clean_bvh):
     F = D['features']
     g = F['intake']
+    if g.get('style') in ('honeycomb', 'mesh', 'square'):
+        shape = {'honeycomb': 'hex', 'mesh': 'diamond', 'square': 'square'}[g['style']]
+        return ST._cells(clean_bvh, info['body'], g['poly'], g.get('pitch', 0.03), shape, 0.035, g.get('cell_mat', 'trim_gloss'))
+    if g.get('style') == 'none':
+        return []
     poly = rounded_poly(g['poly'], 0.3)
     objs = []
     for z in [0.287, 0.312, 0.337]:
@@ -190,10 +227,15 @@ def mirrors(D, info, bvh):
     F = D['features']
     s0, s1 = F.get('sail', (0.42, 0.54))
     y = (s0 + s1) / 2 - 0.02
-    loc, nrm = P.ray(bvh, (2.0, y, 0.985), (-1, 0, 0))
+    # a la altura de la cintura de ese punto (cada diseño la tiene distinta)
+    zb = info['body'].z[5](y) + F.get('mirror_dz', 0.03)
+    loc, nrm = P.ray(bvh, (2.0, y, zb), (-1, 0, 0))
     if loc is None:
         return []
     base = loc
+    st = ST.mirror_style(F, base, F.get('mirror', 'standard'))
+    if st is not None:
+        return st
     objs = []
     c = Vector((base.x + 0.125, base.y - 0.035, base.z + 0.05))
     vs, fs = P.superellipsoid(0.105, 0.052, 0.062, 0.45, 28, 16, c)
@@ -231,7 +273,10 @@ def handles(D, info, bvh):
 
 def wipers(D, info, bvh):
     G = D['greenhouse']
-    base = sorted([p for p in G['ws_poly'] if p[1] > 0])
+    if G.get('ws_space') == 'front':
+        return wipers_front(D, info, bvh)
+    n = len(G['ws_poly']) // 2
+    base = sorted(G['ws_poly'][n:])  # borde inferior del parabrisas (segunda mitad del polígono)
 
     def ybase(x):
         x = abs(x)
@@ -257,8 +302,29 @@ def wipers(D, info, bvh):
     return objs
 
 
+def wipers_front(D, info, bvh):
+    """Limpiaparabrisas sobre un parabrisas casi vertical (definido en vista frontal)."""
+    G = D['greenhouse']
+    zb = min(p[1] for p in G['ws_poly']) + 0.06
+    objs = []
+    for (xa, xb) in [(0.07, 0.70), (-0.74, -0.08)]:
+        pts = []
+        for k in range(12):
+            x = xa + (xb - xa) * k / 11
+            z = zb + 0.03 * abs(k - 5.5) / 5.5
+            loc, nrm = P.ray(bvh, (abs(x) + 0.0, 6.0, z), (0, -1, 0))
+            if loc is None:
+                continue
+            pts.append(Vector((x, loc.y, loc.z)) + nrm * 0.012 * Vector((1 if x > 0 else -1, 1, 1)))
+        if len(pts) > 2:
+            objs.append(P.tube('wiper', pts, 0.0065, 'trim', 6))
+    return objs
+
+
 def antenna(D, info, bvh):
     y = D['features'].get('antenna_y', -1.30)
+    if y is None:
+        return []
     loc, nrm = P.ray(bvh, (0.0, y, 3.0), (0, 0, -1))
     if loc is None:
         return []
@@ -274,14 +340,19 @@ def antenna(D, info, bvh):
 
 def badges(D, info, bvh, clean_bvh):
     objs = []
-    zb = D['features'].get('badge_front_z', 0.51)
-    loc, nrm = P.ray(clean_bvh, (0.003, 4.0, zb), (0, -1, 0))
-    if loc is not None:
-        c = Vector((0.0, loc.y + 0.004, loc.z))
-        objs += P.cylinder('badge_f', c - Vector((0, 0.012, 0)), c, 0.042, 0.04, 'chrome', 28, False, True)
-    loc, nrm = P.ray(bvh, (0.0, -4.0, 0.875), (0, 1, 0))
-    if loc is not None:
-        objs += P.cylinder('badge_r', loc - nrm * 0.002, loc + nrm * 0.006, 0.036, 0.034, 'chrome', 28, False, True)
+    F = D['features']
+    shape = F.get('badge', 'disc')
+    size = F.get('badge_size', 0.04)
+    zb = F.get('badge_front_z', 0.51)
+    fr = ST.surface(clean_bvh, info['body'], 'front', 0.0, zb, mirror_half=True)
+    if fr is not None:
+        # el emblema va al ras de la superficie original (delante de la parrilla)
+        fr = ST.Frame(Vector((0.0, fr.o.y + 0.004, fr.o.z)), Vector((0, 1, 0.05)))
+        objs += ST.badge(fr, shape, size)
+    zr = F.get('badge_rear_z', 0.875)
+    loc, nrm = P.ray(bvh, (0.0, -4.0, zr), (0, 1, 0))
+    if loc is not None and zr:
+        objs += ST.badge(ST.Frame(loc, Vector((0, -1, 0.05))), shape, size * 0.85)
     return objs
 
 
@@ -367,23 +438,104 @@ def pushbar(D, info, clean_bvh):
     return objs
 
 
+def roof_rails(D, info, bvh):
+    rr = D['features']['roof_rails']
+    x, y0, y1 = rr['x'], rr['y'][0], rr['y'][1]
+    objs = []
+    pts = []
+    for k in range(15):
+        y = y0 + (y1 - y0) * k / 14
+        loc, nrm = P.ray(bvh, (x, y, 4.0), (0, 0, -1))
+        if loc is not None:
+            pts.append(Vector((x, y, loc.z + rr.get('h', 0.045))))
+    if len(pts) > 2:
+        objs.append(P.tube('rail', pts, 0.016, rr.get('mat', 'chrome'), 10))
+        for p in (pts[0], pts[len(pts) // 2], pts[-1]):
+            objs.append(P.box('rail_foot', (0.035, 0.09, rr.get('h', 0.045) + 0.01), (p.x, p.y, p.z - rr.get('h', 0.045) / 2), 'trim', bevel=0.008))
+    return objs
+
+
+def hood_scoop(D, info, bvh):
+    hs = D['features']['hood_scoop']
+    y0 = hs['y']
+    loc, nrm = P.ray(bvh, (0.003, y0, 4.0), (0, 0, -1))
+    if loc is None:
+        return []
+    vs, fs = P.superellipsoid(hs['w'] / 2, hs['l'] / 2, hs['h'], 0.35, 28, 14, (0, 0, 0))
+    out = []
+    for (x, yy, z) in vs:
+        z = max(0.0, z)
+        # se afina hacia atrás y sube hacia adelante (boca abierta adelante)
+        k = (yy + hs['l'] / 2) / hs['l']
+        out.append((x * (0.8 + 0.2 * k), loc.y + yy, loc.z - 0.01 + z * (0.55 + 0.45 * k)))
+    objs = [P.obj_from('scoop', out, fs, 'paint')]
+    objs.append(P.box('scoop_mouth', (hs['w'] * 0.7, 0.01, hs['h'] * 0.55), (0, loc.y + hs['l'] / 2 - 0.005, loc.z + hs['h'] * 0.45), 'trim_gloss', bevel=0.006))
+    return objs
+
+
+def wing(D, info, bvh):
+    w = D['features']['wing']
+    objs = []
+    zt = 0.0
+    for sx in (-1, 1):
+        loc, nrm = P.ray(bvh, (sx * w['pylon_x'] + 0.002, w['y'], 4.0), (0, 0, -1))
+        if loc is None:
+            continue
+        zt = max(zt, loc.z + w['h'])
+        objs.append(P.box('wing_pylon', (0.03, 0.12, w['h'] + 0.02), (sx * w['pylon_x'], w['y'], loc.z + w['h'] / 2), 'trim_gloss', bevel=0.008))
+    if zt:
+        vs, fs = P.superellipsoid(w['span'] / 2, w['chord'] / 2, 0.018, 0.25, 32, 8, (0, w['y'] - 0.02, zt + 0.012))
+        vs = [(x, y, z + (y - (w['y'] - 0.02)) * -0.18) for (x, y, z) in vs]
+        objs.append(P.obj_from('wing_blade', vs, fs, w.get('mat', 'paint')))
+        for sx in (-1, 1):
+            objs.append(P.box('wing_end', (0.012, w['chord'] + 0.04, 0.09), (sx * w['span'] / 2, w['y'] - 0.02, zt + 0.01), 'trim_gloss', bevel=0.004))
+    return objs
+
+
 def dress(D, info, bm):
-    """Agrega todas las piezas; devuelve la lista de objetos del lado derecho y los simétricos."""
+    """Agrega todas las piezas; devuelve la lista de objetos del lado derecho, sus simétricos y los centrales."""
     bvh = P.bvh_of(bm)
     clean_bvh = P.bvh_of(info['clean'])
+    F = D['features']
+    body = info['body']
+    # ---- lado derecho (se espeja)
     right = []
     right += headlights(D, info, bvh, clean_bvh)
     right += taillights(D, info, bvh, clean_bvh)
     right += mirrors(D, info, bvh)
     right += handles(D, info, bvh)
-    right += liners(D, D['wr'] + D['features'].get('arch_gap', 0.045))
+    if 'roof_rails' in F:
+        right += roof_rails(D, info, bvh)
+    if 'fogs' in F:
+        right += ST.fog_lamps(D, body, clean_bvh, F['fogs'])
+    for (x, z) in F.get('amber_front', []):
+        fr = ST.surface(clean_bvh, body, 'front', abs(x), z, mirror_half=True)
+        if fr is not None:
+            right.append(P.box('blink_front', (0.09, 0.012, 0.03), tuple(fr.o + fr.n * 0.002), 'blink', bevel=0.005))
+    right += liners(D, D['wr'] + F.get('arch_gap', 0.045))
     mirrored = [P.mirror_obj(o) for o in right]
+    # ---- centrales (ya simétricos)
     center = []
-    center += grille(D, info, clean_bvh)
-    center += intake_bars(D, info, clean_bvh)
+    if 'grille' in F:
+        center += grille(D, info, clean_bvh)
+    if 'intake' in F:
+        center += intake_bars(D, info, clean_bvh)
     center += wipers(D, info, bvh)
     center += antenna(D, info, bvh)
     center += badges(D, info, bvh, clean_bvh)
+    if 'splitter' in F:
+        center += ST.splitter(D, body, clean_bvh, F['splitter'])
+    if 'tow_hooks' in F:
+        center += ST.tow_hooks(D, body, clean_bvh, F['tow_hooks'])
+    if 'rear_wiper' in F:
+        center += ST.rear_wiper(D, body, bvh, F['rear_wiper'])
+    if 'rear_grille' in F:
+        rg = F['rear_grille']
+        center += ST._cells(clean_bvh, body, rg['poly'], rg.get('pitch', 0.03), 'hex', 0.03, 'trim_gloss', kind='rear')
+    if 'hood_scoop' in F:
+        center += hood_scoop(D, info, bvh)
+    if 'wing' in F:
+        center += wing(D, info, bvh)
     ex = D.get('extras', [])
     if 'roof_sign' in ex:
         center += roof_sign(D, info, bvh)

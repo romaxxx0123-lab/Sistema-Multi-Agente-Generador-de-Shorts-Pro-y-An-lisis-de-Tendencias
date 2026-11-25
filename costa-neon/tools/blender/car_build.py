@@ -53,6 +53,7 @@ LOOK = {
     'dash': ((0.02, 0.02, 0.021), 0.55, 0, 0, 0, None), 'screen': ((0.004, 0.006, 0.01), 0.08, 0, 0, 0, None),
     'carpet': ((0.022, 0.021, 0.02), 0.95, 0, 0, 0, None),
     'extra': ((0.9, 0.75, 0.3), 0.3, 0, 0, 0, None),
+    'alu': ((0.45, 0.46, 0.47), 0.35, 0.8, 0, 0, None), 'hook': ((0.3, 0.02, 0.02), 0.4, 0, 0.5, 0, None),
 }
 for name, (col, rough, metal, coat, trans, emit) in LOOK.items():
     m = P.mat(name)
@@ -116,5 +117,5 @@ else:
             bpy.context.active_object.data.materials.append(rim)
     tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in bpy.context.scene.objects if o.type == 'MESH' and not o.name.startswith(('Cylinder', 'preview')))
     print('triángulos del auto', tris)
-    cam = pv.setup(samples=40, studio=(light == 'studio'))
+    cam = pv.setup(res=(800, 450) if len(views) > 4 or light == 'studio_small' else (960, 540), samples=28 if light == 'studio_small' else 40, studio=light.startswith('studio'))
     pv.shoot(cam, out, {k: pv.VIEWS[k] for k in views})

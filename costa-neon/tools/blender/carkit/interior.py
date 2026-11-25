@@ -73,11 +73,16 @@ def build(D, bm_body, info):
     objs.append(inner_shell(bm_body, I.get('region', (-1.72, 0.64, 0.33)), (M_PAINT, M_TRIM, M_FRAME, M_GAP)))
     for sx in (-1, 1):
         objs += seat(sx * xs, yh, hip)
-    # banqueta trasera
-    objs.append(P.box('bench_c', (1.30, 0.50, 0.12), (0, yr + 0.04, hip - 0.02), 'seat', rot=(math.radians(6), 0, 0), bevel=0.045))
-    objs.append(P.box('bench_b', (1.30, 0.12, 0.56), (0, yr - 0.27, hip + 0.28), 'seat', rot=(math.radians(-24), 0, 0), bevel=0.05))
-    for x in (-0.42, 0.0, 0.42):
-        objs.append(P.box('bench_h', (0.22, 0.08, 0.13), (x, yr - 0.39, hip + 0.63), 'seat', rot=(math.radians(-18), 0, 0), bevel=0.035))
+    # banqueta trasera (no en biplazas ni en furgones de carga)
+    if I.get('rear', True):
+        bw = I.get('bench_w', 1.30)
+        objs.append(P.box('bench_c', (bw, 0.50, 0.12), (0, yr + 0.04, hip - 0.02), 'seat', rot=(math.radians(6), 0, 0), bevel=0.045))
+        objs.append(P.box('bench_b', (bw, 0.12, 0.56), (0, yr - 0.27, hip + 0.28), 'seat', rot=(math.radians(-24), 0, 0), bevel=0.05))
+        for x in (-0.42, 0.0, 0.42):
+            objs.append(P.box('bench_h', (0.22, 0.08, 0.13), (x * bw / 1.3, yr - 0.39, hip + 0.63), 'seat', rot=(math.radians(-18), 0, 0), bevel=0.035))
+    if I.get('partition'):
+        py, pz = I['partition']
+        objs.append(P.box('partition', (1.70, 0.03, pz), (0, py, 0.30 + pz / 2), 'inner'))
     # tablero, instrumentos y pantalla central
     dy = I.get('dash_y', 0.50)
     dz = I.get('dash_z', 0.935)
@@ -115,10 +120,13 @@ def build(D, bm_body, info):
     objs.append(P.box('armrest', (0.19, 0.30, 0.06), (0, yh - 0.12, hip + 0.06), 'seat', bevel=0.025))
     objs.append(P.box('shifter', (0.035, 0.05, 0.08), (0, yh + 0.32, hip + 0.05), 'trim_gloss', bevel=0.012))
     # piso, panel parallamas y bandeja trasera
-    objs.append(P.box('floor', (1.56, 2.30, 0.02), (0, -0.55, 0.27), 'carpet'))
-    objs.append(P.box('firewall', (1.50, 0.02, 0.46), (0, dy + 0.18, 0.50), 'carpet'))
-    pz = I.get('shelf_z', 1.03)
-    py = I.get('shelf_y', (-1.42, -1.98))
-    objs.append(P.box('shelf', (1.40, abs(py[1] - py[0]), 0.02), (0, (py[0] + py[1]) / 2, pz), 'carpet'))
+    fz = I.get('floor_z', 0.27)
+    fy0, fy1 = I.get('floor_y', (dy + 0.18, yr - 0.55))
+    objs.append(P.box('floor', (1.56, abs(fy0 - fy1), 0.02), (0, (fy0 + fy1) / 2, fz), 'carpet'))
+    objs.append(P.box('firewall', (1.50, 0.02, max(0.2, dz - 0.25 - fz)), (0, dy + 0.18, (fz + dz - 0.25) / 2), 'carpet'))
+    if I.get('shelf_y') is not False:
+        pz = I.get('shelf_z', 1.03)
+        py = I.get('shelf_y', (-1.42, -1.98))
+        objs.append(P.box('shelf', (1.40, abs(py[1] - py[0]), 0.02), (0, (py[0] + py[1]) / 2, pz), 'carpet'))
     meta = {'seat': {'x': xs, 'hip': hip, 'z': yh}}
     return objs, meta

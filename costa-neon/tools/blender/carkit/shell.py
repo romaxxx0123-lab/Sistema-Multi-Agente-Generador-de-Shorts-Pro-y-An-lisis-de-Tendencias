@@ -119,7 +119,8 @@ def greenhouse(C, G):
     front = [(b1, 5.0), (a, 5.0), (a, 6.0), (b1, 6.0)]
     rear = [(c0, 5.0), (b0, 5.0), (b0, 6.0), (c1, 6.0)]
     out['side_f'] = glass_region(C, par, front, band)
-    out['side_r'] = glass_region(C, par, rear, band)
+    if abs(c0 - b0) > 1e-3 or abs(c1 - b0) > 1e-3:
+        out['side_r'] = glass_region(C, par, rear, band)
     if 'quarter' in G:
         # ventanilla fija detrás de la puerta trasera (con pilar negro entre ambas)
         q = G['quarter']
@@ -137,8 +138,16 @@ def greenhouse(C, G):
     # parabrisas y luneta (vista superior, sólo caras del techo)
     topf = lambda f: f.material_index in (M_PAINT, M_FRAME, M_GLASS) and C.st(f)[1] > 6.0 - 1e-4 and C.normal(f).z > 0.05
     dt = G.get('pillar_frame_t', 0.03)
-    out['ws'] = glass_cut(C, top, G['ws_poly'], topf, G.get('ws_frame', 0.022), 0.008, [(6.0, 6.0 + dt)])
-    if G.get('rw_kind', 'top') == 'top':
+    if G.get('ws_space') == 'front':
+        # parabrisas casi vertical (furgón): se corta en vista frontal sobre las caras que miran adelante
+        fr = Space('front')
+        frf = lambda f: f.material_index in (M_PAINT, M_FRAME, M_GLASS) and C.st(f)[1] > 6.0 - 1e-4 and C.normal(f).y > 0.05
+        out['ws'] = glass_cut(C, fr, G['ws_poly'], frf, G.get('ws_frame', 0.022), 0.008, [(6.0, 6.0 + dt)])
+    else:
+        out['ws'] = glass_cut(C, top, G['ws_poly'], topf, G.get('ws_frame', 0.022), 0.008, [(6.0, 6.0 + dt)])
+    if G.get('rw_kind', 'top') == 'none':
+        pass
+    elif G.get('rw_kind', 'top') == 'top':
         out['rw'] = glass_cut(C, top, G['rw_poly'], topf, G.get('rw_frame', 0.022), 0.008, [(6.0, 6.0 + dt)])
     else:
         # portón (hatch): la luneta está en la banda P5-P6 de la cola, se corta en vista trasera

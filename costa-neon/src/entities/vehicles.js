@@ -1,6 +1,6 @@
 // Vehículos: render instanciado, física arcade, colisiones, daño, luces, audio y gestión.
 import * as THREE from 'three';
-import { MODELS, PAINTS, METALLIC, buildCar, buildBike, buildWheel, assetGeometry } from './vehicleModels.js';
+import { MODELS, PAINTS, METALLIC, buildCar, buildBike, buildWheel, buildRim, assetGeometry } from './vehicleModels.js';
 import { CAR_ASSETS } from './carAssets.js';
 import { clamp, damp, moveToward, angleDiff, wrapAngle, rand } from '../core/utils.js';
 import { WATER_LEVEL, isRoad } from '../world/map.js';
@@ -344,11 +344,12 @@ class VehicleRenderer {
     this.caliperMat = lib.standard({ color: 0xffffff, roughness: 0.45, metalness: 0.2 }, { key: 'caliper' });
     const maxWheels = Object.values(CAPACITY).reduce((s, c) => s + c * 4, 0);
     this.tires = new THREE.InstancedMesh(wheel.tire, this.tireMat, maxWheels);
-    this.rims = new THREE.InstancedMesh(wheel.rim, this.rimMat, maxWheels);
     this.calipers = new THREE.InstancedMesh(wheel.caliper, this.caliperMat, maxWheels);
-    this.rims.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(maxWheels * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
     this.calipers.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(maxWheels * 3).fill(0.2), 3).setUsage(THREE.DynamicDrawUsage);
-    for (const m of [this.tires, this.rims, this.calipers]) {
+    // llantas: una malla por estilo, con lista compacta que se rearma en cada cuadro
+    this.maxWheels = maxWheels;
+    this.rimSets = {};
+    for (const m of [this.tires, this.calipers]) {
       for (let i = 0; i < maxWheels; i++) m.setMatrixAt(i, ZERO);
       setDynamic(m);
       m.frustumCulled = false;
@@ -358,6 +359,7 @@ class VehicleRenderer {
       this.group.add(m);
     }
     this.wheelSlots = new Array(maxWheels).fill(null);
+    this.rimSet('twin5');
     // Haces de faros proyectados (aditivos)
     const beamGeo = new THREE.PlaneGeometry(1, 1);
     beamGeo.rotateX(-Math.PI / 2);
@@ -386,6 +388,21 @@ class VehicleRenderer {
       game.engine.scene.add(s.target);
       return s;
     });
+  }
+
+  /** Malla instanciada de un estilo de llanta (se crea la primera vez que un modelo la usa). */
+  rimSet(style) {
+    if (this.rimSets[style]) return this.rimSets[style];
+    const mesh = new THREE.InstancedMesh(buildRim(style), this.rimMat, this.maxWheels);
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.maxWheels * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
+    setDynamic(mesh);
+    mesh.frustumCulled = false;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.count = 0;
+    this.group.add(mesh);
+    if (this.envMap) mesh.material.envMap = this.envMap;
+    return (this.rimSets[style] = { mesh, n: 0 });
   }
 
   /** Mapa de entorno de todos los materiales de vehículos (sonda de reflejos, o null = cielo). */
@@ -537,12 +554,10 @@ class VehicleRenderer {
       this.wheelSlots[ws] = v;
       v.wheelSlots.push(ws);
       this.tires.count = Math.max(this.tires.count, ws + 1);
-      this.rims.count = Math.max(this.rims.count, ws + 1);
       this.calipers.count = Math.max(this.calipers.count, ws + 1);
-      this.rims.setColorAt(ws, _c.set(v.rimColor));
       this.calipers.setColorAt(ws, _c.set(v.caliperColor));
     }
-    this.rims.instanceColor.needsUpdate = true;
+    this.rimSet(m.spec.rim || 'twin5');
     this.calipers.instanceColor.needsUpdate = true;
     v.plateSlots = [];
     for (let k = 0; k < (m.geo.plates || []).length; k++) {
@@ -568,12 +583,10 @@ class VehicleRenderer {
     m.free.push(v.slot);
     for (const ws of v.wheelSlots) {
       this.tires.setMatrixAt(ws, ZERO);
-      this.rims.setMatrixAt(ws, ZERO);
       this.calipers.setMatrixAt(ws, ZERO);
       this.wheelSlots[ws] = null;
     }
     this.tires.instanceMatrix.needsUpdate = true;
-    this.rims.instanceMatrix.needsUpdate = true;
     this.calipers.instanceMatrix.needsUpdate = true;
     for (const ps of v.plateSlots || []) {
       this.plates.setMatrixAt(ps, ZERO);
@@ -602,6 +615,7 @@ class VehicleRenderer {
     // nivel de detalle: los más cercanos a la cámara usan el modelo completo
     const nearList = [];
     for (const m of Object.values(this.models)) if (m.near) m.near.n = 0;
+    for (const rs of Object.values(this.rimSets)) rs.n = 0;
     for (const v of list) {
       v.nearIdx = -1;
       if (!v.render || !v.render.near || v.sunk) continue;
@@ -714,7 +728,6 @@ class VehicleRenderer {
         const ws = v.wheelSlots[k];
         if (!visible) {
           this.tires.setMatrixAt(ws, ZERO);
-          this.rims.setMatrixAt(ws, ZERO);
           this.calipers.setMatrixAt(ws, ZERO);
           continue;
         }
@@ -729,7 +742,10 @@ class VehicleRenderer {
         _q2.setFromEuler(_e);
         _m2.compose(_p, _q2, _s).premultiply(_m);
         this.tires.setMatrixAt(ws, _m2);
-        this.rims.setMatrixAt(ws, _m2);
+        const rs = this.rimSet(m.spec.rim || 'twin5');
+        rs.mesh.setMatrixAt(rs.n, _m2);
+        rs.mesh.setColorAt(rs.n, _c.set(v.rimColor));
+        rs.n++;
         _e.set(0, yawW, 0, 'YXZ');
         _q2.setFromEuler(_e);
         _m2.compose(_p, _q2, _s).premultiply(_m);
@@ -755,7 +771,11 @@ class VehicleRenderer {
       for (const mesh of Object.values(m.near.parts)) mesh.count = m.near.n;
     }
     this.tires.instanceMatrix.needsUpdate = true;
-    this.rims.instanceMatrix.needsUpdate = true;
+    for (const rs of Object.values(this.rimSets)) {
+      rs.mesh.count = rs.n;
+      rs.mesh.instanceMatrix.needsUpdate = true;
+      if (rs.mesh.instanceColor) rs.mesh.instanceColor.needsUpdate = true;
+    }
     this.calipers.instanceMatrix.needsUpdate = true;
     this.plates.instanceMatrix.needsUpdate = true;
     this.beams.count = beamN;
