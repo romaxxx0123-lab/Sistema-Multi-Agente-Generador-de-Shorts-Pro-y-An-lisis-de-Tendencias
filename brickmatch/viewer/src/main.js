@@ -187,7 +187,7 @@ function renderBrief() {
       ${check}
       ${v.ok && v.stats.components > 1 ? `<span class="fact">Va en <b>${v.stats.components}</b> módulos apoyados en la mesa</span>` : ''}
       ${r.figs ? `<span class="fact ${r.figs.ok ? 'ok' : 'err'}">${r.figs.ok ? `Entran <b>${num(r.figs.count)}</b> minifiguras sin chocar` : `${r.figs.errors.length} problema(s) con las minifiguras o el vehículo`}</span>` : ''}
-      ${r.figs && r.figs.ok ? (r.figs.volumes || []).map((v) => `<span class="fact ok">Entra un vehículo de <b>${v.cm.map((n) => String(n).replace('.', ',')).join(' × ')} cm</b></span>`).join('') : ''}
+      ${r.figs && r.figs.ok ? (r.figs.volumes || []).map((v) => `<span class="fact ok">Entra ${esc(v.label)}: <b>${v.cm.map((n) => String(n).replace('.', ',')).join(' × ')} cm</b></span>`).join('') : ''}
     </div>`;
 }
 

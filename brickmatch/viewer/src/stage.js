@@ -56,6 +56,7 @@ export class Stage {
     this.figRoot = null;
     this.showFigs = true;
     this.volumes = [];
+    this.volPoints = [];
     this.showVolumes = true;
     this.showEdges = true;
     this.autoRotate = false;
@@ -153,6 +154,15 @@ export class Stage {
     if (this.figRoot) this.holder.remove(this.figRoot);
     this.figRoot = root;
     this.holder.add(root);
+    // Si hay siluetas más grandes que el modelo, el encuadre las incluye.
+    this.volPoints = [];
+    root.updateMatrixWorld(true);
+    const vb = new THREE.Box3();
+    for (const c of this.volumes) {
+      if (!c.isMesh) continue;
+      vb.setFromObject(c);
+      for (const x of [vb.min.x, vb.max.x]) for (const y of [vb.min.y, vb.max.y]) for (const z of [vb.min.z, vb.max.z]) this.volPoints.push(new THREE.Vector3(x, y, z));
+    }
     this.refresh();
   }
 
@@ -179,6 +189,7 @@ export class Stage {
     this.parts = root.children.filter((c) => c.isGroup);
     this.figRoot = null;
     this.volumes = [];
+    this.volPoints = [];
     this._tune(root);
     this.root = root;
     this.holder.add(root);
@@ -239,16 +250,17 @@ export class Stage {
     const pad = Math.min(0.3, padBottom / (this.canvas.clientHeight || 1));
     const tanV = tanFull * (1 - pad);
     const p = new THREE.Vector3();
+    const pts = this.showVolumes && this.volPoints.length ? this.fitPoints.concat(this.volPoints) : this.fitPoints;
     let d = 1;
     for (let pass = 0; pass < 8; pass++) {
       d = 1;
-      for (const corner of this.fitPoints) {
+      for (const corner of pts) {
         p.copy(corner).sub(t);
         const depth = p.dot(dir);
         d = Math.max(d, depth + Math.abs(p.dot(right)) / tanH, depth + Math.abs(p.dot(up)) / tanV);
       }
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-      for (const corner of this.fitPoints) {
+      for (const corner of pts) {
         p.copy(corner).sub(t);
         const w = d - p.dot(dir);
         const sx = p.dot(right) / (w * tanH), sy = p.dot(up) / (w * tanV);
@@ -331,7 +343,7 @@ export class Stage {
       this.figRoot.visible = this.showFigs || this.showVolumes;
       for (const c of this.figRoot.children) c.visible = this.volumes.includes(c) ? this.showVolumes : this.showFigs;
       this.figRoot.traverse((c) => {
-        if (c.isLineSegments) c.visible = c.userData.volume || this.showEdges;
+        if (c.isLineSegments) c.visible = c.userData.volume ? this.showVolumes : this.showEdges;
       });
     }
     this.invalidate();

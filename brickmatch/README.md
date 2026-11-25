@@ -5,7 +5,7 @@ la mayoría de esas piezas para comprarlo y armar tu diseño en vez del oficial.
 
 Proyecto independiente del resto del repo: vive entero en esta carpeta.
 
-![Base de Operaciones Ninja: 1.034 piezas del set 70751, con 35 minifiguras de prueba y el volumen de un vehículo](models/fortaleza-ninja/renders/hero.jpg)
+![Base de Operaciones Ninja: 1.094 piezas del set 70751, con 35 minifiguras de prueba y las siluetas de un buggy y de un mecha de 39 cm](models/fortaleza-ninja/renders/hero.jpg)
 
 | Pabellón Zen: 285 piezas, 100 % con el set 10315 | Templo Zen Ninjago: 307 piezas, diseño libre | Base Ninja: 111 piezas, 100 % con el set 71826 |
 | --- | --- | --- |
@@ -21,8 +21,9 @@ Proyecto independiente del resto del repo: vive entero en esta carpeta.
    de sets. Al elegir un set, el modelo marca en rojo lo que te faltaría.
 4. Si el modelo es para tus minifiguras, se colocan **minifiguras de prueba**:
    el validador confirma que entran sin chocar y el visor las muestra u oculta.
-   Lo mismo con un **volumen de prueba** del tamaño de un vehículo que tiene
-   que entrar: se dibuja como una caja de vidrio.
+   Lo mismo con un **volumen de prueba** del tamaño de algo que tiene que
+   entrar (un vehículo, un mecha de otro set): se dibuja como una silueta de
+   vidrio y se apaga con un botón.
 
 Cuando ningún set cubre lo suficiente, el diseño se adapta a un set concreto.
 Si el pedido es "con un set barato", se elige primero la caja y se diseña solo
@@ -34,22 +35,28 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `templo-zen` (diseño libre) | 307 | 71861 The Old Town (4.852 piezas) | 106 de 307, 34,5 % |
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 | `base-universal` (para 30 minifiguras) | 573 | 70751 Temple of Airjitzu (2.033 piezas) | 573 de 573, **100 %** |
-| `fortaleza-ninja` (cuartel amurallado de 49 × 54 cm) | 1.034 | 70751 Temple of Airjitzu (2.033 piezas) | 1.034 de 1.034, **100 %** |
+| `fortaleza-ninja` (cuartel amurallado de 49 × 54 cm) | 1.094 | 70751 Temple of Airjitzu (2.033 piezas) | 1.094 de 1.094, **100 %** |
 
 `base-universal` y `fortaleza-ninja` usan como donante un set retirado: el
 original se consigue usado, y es de los más copiados por marcas alternativas,
 que es la forma barata de conseguir las mismas piezas. El segundo mejor set
-solo cubre el 24 %. `fortaleza-ninja` reutiliza el código de `base-universal`
+solo cubre el 23 %. `fortaleza-ninja` reutiliza el código de `base-universal`
 y lo convierte en un cuartel con la misma caja: sala de operaciones, torre de
 control y equipo técnico en el edificio y, adelante, un patio de armas
-amurallado con dos torres, armería, taller y lugar para un vehículo. Usa piezas
-que en la primera quedaban sin usar: las 34 persianas negras del set son los
-techos de las galerías. Va en módulos apoyados sobre la mesa, como el patio de
-un castillo.
+amurallado con dos torres, armería, taller, lugar para un vehículo y lugar para
+un mecha grande de otro set (tarima entre sus pies y armero de ejes para sus
+espadas). Usa piezas que en la primera quedaban sin usar: las 34 persianas
+negras del set son los techos de las galerías, y con lo que sobraba salieron el
+gong de alarma, un carro de provisiones, un muñeco de práctica y un farol. Va en
+módulos apoyados sobre la mesa, como el patio de un castillo.
 
 | Armería: racks de lanzas y espadas bajo el techo de persianas | Taller del vehículo: banco, rueda de repuesto y cajón |
 | --- | --- |
 | ![Armería](models/fortaleza-ninja/renders/armeria.jpg) | ![Taller](models/fortaleza-ninja/renders/taller.jpg) |
+
+| Lugar del mecha: tarima, armero de ejes, carro y farol | Gong de alarma en el patio interior |
+| --- | --- |
+| ![Lugar del mecha](models/fortaleza-ninja/renders/titan.jpg) | ![Gong](models/fortaleza-ninja/renders/gong.jpg) |
 
 ## Comandos
 
@@ -109,8 +116,9 @@ vidrios en su marco).
 `m.fig(x, y, z, { face: 'S', color: 'Red', hat: '93059' })` para una minifigura
 de prueba sobre dos studs. No entra en la lista de piezas ni en la búsqueda de
 sets: sirve para comprobar cuántas entran y dónde. Sobre la mesa (y = 0) vale
-parada sin studs. `m.envelope(x, y, z, ancho, fondo, alto)` agrega un volumen de
-prueba (un vehículo que tiene que entrar): se comprueba que no choque con nada.
+parada sin studs. `m.envelope(x, y, z, ancho, fondo, alto, { label })` agrega un
+volumen de prueba (un vehículo que tiene que entrar): se comprueba que no choque
+con nada. Varias cajas con la misma etiqueta forman una sola silueta.
 `meta.order` decide qué modelo abre primero la mini app (el más alto) y
 `meta.copies` cuántas cajas iguales del set se cuentan en la búsqueda.
 

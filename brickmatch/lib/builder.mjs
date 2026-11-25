@@ -182,15 +182,28 @@ export class Model {
   }
 
   // Volumen de prueba: una caja del tamaño de algo que el modelo tiene que
-  // alojar (un vehículo). Va con las minifiguras: se comprueba que no choque,
-  // pero no es una pieza. (x, z) esquina mínima en studs, y base en plates;
-  // w, d en studs y h en plates.
+  // alojar (un vehículo, un mecha). Va con las minifiguras: se comprueba que no
+  // choque, pero no es una pieza. (x, z) esquina mínima en studs, y base en
+  // plates; w, d en studs y h en plates. Varias cajas con la misma etiqueta
+  // forman una sola silueta (pueden tocarse entre sí).
   envelope(x, y, z, w, d, h, { color = 'Trans-Light Blue', label = 'vehículo de prueba' } = {}) {
     // box.dat es un cubo de lado 2 centrado en el origen.
     const M = [w * STUD / 2, 0, 0, 0, h * PLATE / 2, 0, 0, 0, d * STUD / 2, (x + w / 2) * STUD, -(y + h / 2) * PLATE, (z + d / 2) * STUD];
-    const p = { index: -1, def: this.partDef('box'), color: this.colorDef(color), matrix: M, step: 0, note: '', nest: null, fig: 1000 + this.envelopes.length, label };
+    let g = this.envelopes.find((e) => e.label === label);
+    if (!g) this.envelopes.push((g = { label, min: [x, y, z], max: [x + w, y + h, z + d] }));
+    const lo = [x, y, z], hi = [x + w, y + h, z + d];
+    for (let k = 0; k < 3; k++) {
+      g.min[k] = Math.min(g.min[k], lo[k]);
+      g.max[k] = Math.max(g.max[k], hi[k]);
+    }
+    g.w = g.max[0] - g.min[0];
+    g.h = g.max[1] - g.min[1];
+    g.d = g.max[2] - g.min[2];
+    const p = { index: -1, def: this.partDef('box'), color: this.colorDef(color), matrix: M, step: 0, note: '', nest: `vol:${label}`, fig: 1000 + this.envelopes.indexOf(g), label };
     this.props.push(p);
-    this.envelopes.push({ label, w, d, h });
+    // Las cajas de una misma silueta van unidas entre sí: basta con que una toque el piso.
+    if (g.first) this.propLinks.push([p, g.first]);
+    else g.first = p;
     return p;
   }
 

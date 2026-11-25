@@ -99,6 +99,11 @@ export const PARTS = {
   '6232': { box: { min: [-20, 0, -20], max: [20, 24, 20] }, front: [1, 0] }, // ladrillo 2x2 con perno: el frente es el perno
   '3899': { box: CELL(24) }, // taza: el asa sobresale
   '61252': { box: CELL(8), front: S }, // plate 1x1 con clip horizontal al frente
+  '63082': { box: { min: [-20, 0, -20], max: [20, 8, 20] }, front: S }, // plate 2x2 con encastre de rótula al frente
+  '60478': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: [1, 0] }, // plate 1x2 con manija en la punta
+  '92280': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: [1, 0] }, // plate 1x2 con clip arriba: el frente es la mitad del clip
+  '44728': { box: { min: [-20, 0, -10], max: [20, 40, 10] }, front: S }, // escuadra 1x2 - 2x2 hacia abajo: la cara con studs cuelga al frente
+  '4600': { box: { min: [-20, 0, -20], max: [20, 10, 20] } }, // plate 2x2 con pernos de rueda a los lados
 };
 
 // Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.

@@ -72,7 +72,8 @@ if (model.props.length) {
   const labels = ['minifigura', ...model.envelopes.map((v) => v.label)];
   const errors = [...new Set([...loose, ...r.errors.filter((e) => labels.some((l) => e.includes(l)))])];
   // Medidas de los volúmenes de prueba en centímetros (1 stud = 0,8 cm; 1 plate = 0,32 cm).
-  const volumes = model.envelopes.map((v) => ({ label: v.label, cm: [v.d * 0.8, v.w * 0.8, v.h * 0.32].map((n) => Math.round(n * 10) / 10) }));
+  // largo × ancho × alto: el largo es el lado mayor de la huella.
+  const volumes = model.envelopes.map((v) => ({ label: v.label, cm: [Math.max(v.w, v.d) * 0.8, Math.min(v.w, v.d) * 0.8, v.h * 0.32].map((n) => Math.round(n)) }));
   figs = { count: model.figs, ok: errors.length === 0, errors, volumes };
 }
 
@@ -129,7 +130,8 @@ fs.writeFileSync(path.join(dir, 'model.mpd'), packed.text);
 // Las minifiguras van en un archivo aparte: el visor las muestra como capa.
 const figFile = path.join(dir, 'figs.mpd');
 if (figs) {
-  const figColors = [...new Map(model.props.map((p) => [p.color.ld, p.color])).values()];
+  // Negro y blanco siempre: los usan las caras impresas de las minifiguras.
+  const figColors = [...new Map([...model.props.map((p) => p.color), ...['Black', 'White'].map((n) => model.colorDef(n))].map((c) => [c.ld, c])).values()];
   const figLines = model.props.map((p) => `1 ${p.color.ld} ${[9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => p.matrix[i]).join(' ')} ${p.def.ld}.dat`);
   fs.writeFileSync(figFile, lib.pack(figLines, { title: `${model.title} - minifiguras`, colorLines: figColors.map(colorLine) }).text);
 } else if (fs.existsSync(figFile)) {
