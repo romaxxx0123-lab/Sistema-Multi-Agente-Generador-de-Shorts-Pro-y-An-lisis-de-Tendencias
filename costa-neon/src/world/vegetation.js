@@ -222,14 +222,37 @@ function roundTreeVariant(seed) {
   return { trunk: trunkAll, crown, swayBase: h };
 }
 
+/** Follaje hecho con hojas reales escaneadas (veg/leaves.webp, veg/frond.webp; ver tools/vegetation).
+ * Devuelve null si no se pudo cargar (quedan las texturas dibujadas). */
+export async function loadFoliageTextures(base = 'veg/') {
+  try {
+    const load = async (name) => {
+      const r = await fetch(base + name);
+      if (!r.ok) throw new Error(name + ' ' + r.status);
+      const bmp = await createImageBitmap(await r.blob(), { imageOrientation: 'flipY', premultiplyAlpha: 'none' });
+      const t = new THREE.Texture(bmp);
+      t.flipY = false;
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 4;
+      t.needsUpdate = true;
+      return t;
+    };
+    const [leaves, frond] = await Promise.all([load('leaves.webp'), load('frond.webp')]);
+    return { leaves, frond };
+  } catch (e) {
+    console.warn('Follaje escaneado no disponible; quedan las hojas dibujadas.', e && e.message);
+    return null;
+  }
+}
+
 export class Vegetation {
-  constructor(engine, world, lib) {
+  constructor(engine, world, lib, foliage = null) {
     this.group = new THREE.Group();
     this.group.name = 'vegetacion';
     engine.scene.add(this.group);
     this.chunked = [];
-    const frondTex = frondTexture();
-    const leafTex = leafClusterTexture();
+    const frondTex = foliage ? foliage.frond : frondTexture();
+    const leafTex = foliage ? foliage.leaves : leafClusterTexture();
     const bark = lib.detailed(DETAIL.BARK, 0xffffff, { roughness: 0.95 }, 1);
     const barkTree = lib.detailed(DETAIL.BARK, 0x8a7a6a, { roughness: 0.95 }, 1);
     const palms = [palmVariant(11), palmVariant(23), palmVariant(37)];

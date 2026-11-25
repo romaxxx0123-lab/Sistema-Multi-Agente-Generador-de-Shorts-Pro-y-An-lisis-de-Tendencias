@@ -47,6 +47,12 @@ async function buildOnce() {
   for (const f of fs.readdirSync(path.join(ROOT, 'assets/textures'))) {
     if (/\.(webp|jpg)$/.test(f)) fs.copyFileSync(path.join(ROOT, 'assets/textures', f), path.join(texDir, f));
   }
+  // 5) Follaje con hojas reales (veg/)
+  const vegDir = path.join(ROOT, 'build/veg');
+  fs.mkdirSync(vegDir, { recursive: true });
+  for (const f of fs.readdirSync(path.join(ROOT, 'assets/vegetation'))) {
+    if (/\.webp$/.test(f)) fs.copyFileSync(path.join(ROOT, 'assets/vegetation', f), path.join(vegDir, f));
+  }
   const kb = (Buffer.byteLength(full) / 1024).toFixed(0);
   console.log(`[build] ok en ${Date.now() - t0} ms — ${kb} KB`);
 }

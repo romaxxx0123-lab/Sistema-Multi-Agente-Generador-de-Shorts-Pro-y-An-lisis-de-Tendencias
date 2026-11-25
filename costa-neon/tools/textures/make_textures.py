@@ -14,7 +14,7 @@ from PIL import Image
 LAYERS = [
     ('ground', 0, 'asphalt_02', 'abs', 0.12, 1024),             # asfalto gastado por el sol
     ('ground', 1, 'concrete_pavement', 'abs', 0.30, 1024, 0.35),  # vereda de losas de hormigón (gris)
-    ('ground', 2, 'leafy_grass', 'abs', None, 512),
+    ('ground', 2, 'leafy_grass', 'abs', None, 512, 1.0, (0.06, 0.125, 0.032)),  # recoloreado a césped tropical
     ('ground', 3, 'large_square_pattern_01', 'abs', 0.27, 1024),  # losas de plaza
     ('ground', 4, 'coast_sand_01', 'abs', 0.36, 512),            # arena de playa clara
     ('ground', 5, 'concrete_floor_worn_001', 'abs', 0.22, 512),  # playones y estacionamientos
@@ -62,6 +62,7 @@ def main(dl, out, size_max=1024):
     for spec in LAYERS:
         arr, idx, pid, mode, target, res = spec[:6]
         sat = spec[6] if len(spec) > 6 else 1.0
+        recolor = spec[7] if len(spec) > 7 else None
         paths, meta = fetch(dl, pid)
         name = '%s%d' % (arr[0], idx)
         size = min(res, size_max)
@@ -78,6 +79,16 @@ def main(dl, out, size_max=1024):
             # saturación en lineal alrededor de la luminancia de cada píxel
             l = lin @ np.array([0.2126, 0.7152, 0.0722])
             lin = np.clip(l[..., None] + (lin - l[..., None]) * sat, 0, 1)
+            diff = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
+        if recolor is not None:
+            # misma estructura (luminancia relativa), color medio buscado; 25 % del tono original (hojas secas)
+            W = np.array([0.2126, 0.7152, 0.0722])
+            l = lin @ W
+            lmean = float(l.mean())
+            tgt = np.array(recolor)
+            rec = (l / max(lmean, 1e-6))[..., None] * tgt[None, None, :]
+            orig = lin / max(float((lin.reshape(-1, 3).mean(0)) @ W), 1e-6) * float(tgt @ W)
+            lin = np.clip(rec * 0.75 + orig * 0.25, 0, 1)
             diff = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
         mean = lin.reshape(-1, 3).mean(axis=0)
         lum = float(mean @ np.array([0.2126, 0.7152, 0.0722]))

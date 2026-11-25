@@ -9,7 +9,7 @@ import { Sky } from './world/sky.js';
 import { HdriSky } from './world/hdriSky.js';
 import { CityRenderer } from './world/city.js';
 import { Ocean } from './world/water.js';
-import { Vegetation } from './world/vegetation.js';
+import { Vegetation, loadFoliageTextures } from './world/vegetation.js';
 import { StreetProps } from './world/props.js';
 import { Landmarks } from './world/landmarks.js';
 import { WeatherFX } from './world/weather.js';
@@ -74,7 +74,8 @@ async function boot() {
   const ocean = new Ocean(engine, lib);
   setProgress(0.66, 'Plantando palmeras…');
   await nextFrame();
-  const vegetation = new Vegetation(engine, world, lib);
+  const foliage = noScan ? null : await loadFoliageTextures();
+  const vegetation = new Vegetation(engine, world, lib, foliage);
   setProgress(0.76, 'Instalando faroles y semáforos…');
   await nextFrame();
   const props = new StreetProps(engine, world, lib);
