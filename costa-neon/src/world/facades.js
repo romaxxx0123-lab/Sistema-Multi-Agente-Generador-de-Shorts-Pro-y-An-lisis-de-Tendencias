@@ -37,6 +37,8 @@ class Builder {
     this.face = new Float32Array(this.cap * 2);
     this.col = new Float32Array(this.cap * 3);
     this.seed = new Float32Array(this.cap);
+    this.grid = new Float32Array(this.cap * 2);
+    this.cur = [0, 0];
     this.idx = [];
   }
   _grow() {
@@ -44,6 +46,7 @@ class Builder {
     for (const k of ['pos', 'nrm', 'tan', 'col']) { const a = new Float32Array(this.cap * 3); a.set(this[k]); this[k] = a; }
     const f = new Float32Array(this.cap * 2); f.set(this.face); this.face = f;
     const s = new Float32Array(this.cap); s.set(this.seed); this.seed = s;
+    const gr = new Float32Array(this.cap * 2); gr.set(this.grid); this.grid = gr;
   }
   vert(p, n, t, u, v, c, ao, seed) {
     if (this.n >= this.cap) this._grow();
@@ -57,6 +60,8 @@ class Builder {
     this.col[i * 3 + 1] = c.g * ao;
     this.col[i * 3 + 2] = c.b * ao;
     this.seed[i] = seed;
+    this.grid[i * 2] = this.cur[0];
+    this.grid[i * 2 + 1] = this.cur[1];
     return i;
   }
   /** Cuadrilátero (4 puntos en orden antihorario visto desde la normal). */
@@ -76,6 +81,7 @@ class Builder {
     g.setAttribute('aFace', new THREE.BufferAttribute(this.face.slice(0, n * 2), 2));
     g.setAttribute('color', new THREE.BufferAttribute(this.col.slice(0, n * 3), 3));
     g.setAttribute('aSeed', new THREE.BufferAttribute(this.seed.slice(0, n), 1));
+    g.setAttribute('aGrid', new THREE.BufferAttribute(this.grid.slice(0, n * 2), 2));
     g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
     g.computeBoundingSphere();
     return g;
@@ -135,7 +141,7 @@ function at(f, u, v, d) {
 
 /** Muro con huecos + jambas, dinteles, alféizares, tapa y pretil de una cara. */
 function skinFace(B, b, S, f, top) {
-  const { list } = openings(b, S, f);
+  const { list, cw } = openings(b, S, f);
   const c = _c.set(b.color);
   const seed = b.seed;
   const n = f.n, t = f.t, up = [0, 1, 0];
@@ -160,9 +166,11 @@ function skinFace(B, b, S, f, top) {
       u = Math.max(u, e);
     }
     if (f.w + T > u + 1e-4) segs.push([u, f.w + T]);
+    B.cur = [cw, top];
     for (const [u0, u1] of segs) {
       Q([at(f, u0, y0, T), at(f, u1, y0, T), at(f, u1, y1, T), at(f, u0, y1, T)], n, t, [[u0, y0], [u1, y0], [u1, y1], [u0, y1]], [1, 1, 1, 1]);
     }
+    B.cur = [0, top];
   }
   // --- jambas, dintel y piso de cada hueco
   for (const o of list) {
@@ -282,14 +290,15 @@ export class FacadeSkins {
     if (lib.cache.has(key)) return lib.cache.get(key);
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0, vertexColors: true });
     const fl = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
-    m.defines = { DTILE: fl(S.tile), DLAYER: fl(S.detail) };
+    m.defines = { DTILE: fl(S.tile), DLAYER: fl(S.detail), FH: fl(S.fh), WX0: fl(S.wx0), WX1: fl(S.wx1), WY0: fl(S.wy0),
+      STREAK: fl(S.flags.includes('SPARSE') ? 0.4 : 1.0) };
     lib.register(m, {
       key,
       lamps: true,
       uniforms: { uDA: { value: lib.detail.albedo }, uDN: { value: lib.detail.normal } },
-      vertexHead: 'attribute vec2 aFace; attribute vec3 aT; attribute float aSeed; varying vec2 vFace; varying vec3 vT; varying float vSeed;',
-      vertexWorld: 'vFace = aFace; vT = aT; vSeed = aSeed;',
-      fragHead: `uniform sampler2DArray uDA; uniform sampler2DArray uDN; varying vec2 vFace; varying vec3 vT; varying float vSeed;
+      vertexHead: 'attribute vec2 aFace; attribute vec3 aT; attribute float aSeed; attribute vec2 aGrid; varying vec2 vFace; varying vec3 vT; varying float vSeed; varying vec2 vGrid;',
+      vertexWorld: 'vFace = aFace; vT = aT; vSeed = aSeed; vGrid = aGrid;',
+      fragHead: `uniform sampler2DArray uDA; uniform sampler2DArray uDN; varying vec2 vFace; varying vec3 vT; varying float vSeed; varying vec2 vGrid;
         ${GLSL_ARRAY_SAMPLING} ${GLSL_WORLD_TO_VIEW_NORMAL}`,
       fragColor: `
         vec3 sN = normalize(vWNrm);
@@ -303,6 +312,27 @@ export class FacadeSkins {
         alb *= mix(.68, 1., smoothstep(0., 1.4, vFace.y));
         alb *= .9 + .1 * fbm3(vec2(vFace.x * .04, vFace.y * .015) + vSeed * 30.);
         alb *= 1. - .08 * smoothstep(.6, .9, vnoise(vec2(vFace.x * 1.3, vFace.y * .05 + vSeed * 9.)));
+        // desgaste: chorreaduras bajo los extremos de cada alféizar y desde el pretil, mugre al pie,
+        // pintura despareja por sol y repintados
+        float sd = floor(vSeed * 8192. + .5) / 8192.;
+        float dirt = 0.;
+        if (vGrid.x > .1) {
+          float cu = vFace.x / vGrid.x, fu = fract(cu);
+          float cv = vFace.y / FH, fv = fract(cv);
+          float below = (WY0 - fv) * FH;
+          float zone = step(0., below) * step(1., cv);
+          float ends = exp(-pow((fu - WX0) * 16., 2.)) + exp(-pow((fu - WX1) * 16., 2.));
+          float mid = smoothstep(.6, .92, vnoise(vec2(vFace.x * 3.1, floor(cv) * 7.7 + sd * 5.))) * step(WX0, fu) * step(fu, WX1);
+          float streak = (ends * .8 + mid * .55) * exp(-below / 1.15) * zone;
+          streak *= .55 + .45 * vnoise(vec2(vFace.x * 9., vFace.y * .7));
+          float fromTop = vGrid.y - vFace.y;
+          float topS = smoothstep(.45, .85, vnoise(vec2(vFace.x * 1.9 + sd * 31., .5))) * exp(-max(fromTop, 0.) / 2.6);
+          dirt = (streak * .32 + topS * .3) * STREAK;
+        }
+        float base = 1. - smoothstep(0., .9, vFace.y + .3 * vnoise(vec2(vFace.x * 2.3, sd * 9.)));
+        dirt += .22 * base;
+        alb *= 1. - clamp(dirt, 0., .5);
+        alb *= .93 + .12 * fbm3(vec2(vFace.x * .07 + sd * 13., vFace.y * .09));
         alb *= mix(1., .72, uWet);
         diffuseColor.rgb = alb;
         float sRough = dA.a;
