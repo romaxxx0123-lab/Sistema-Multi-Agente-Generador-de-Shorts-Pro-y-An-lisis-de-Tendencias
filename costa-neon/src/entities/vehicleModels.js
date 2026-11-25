@@ -16,9 +16,9 @@ const STYLES = {
 
 export const MODELS = {
   compacto: { name: 'Pulga 1.4', style: 'hatch', L: 3.9, W: 1.72, H: 1.5, wb: 2.45, wr: 0.3, clear: 0.15, mass: 1050, accel: 8.6, top: 42, grip: 9, steer: 0.62, brake: 18, hp: 800, engine: 'car', price: 9500, cls: 'Compacto', doors: [0.95, -0.05] },
-  sedan: { name: 'Delta GL', style: 'sedan', L: 4.65, W: 1.82, H: 1.45, wb: 2.75, wr: 0.32, clear: 0.15, mass: 1400, accel: 9.6, top: 47, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 18000, cls: 'Sedán', doors: [1.05, 0.0, -1.0] },
-  taxi: { name: 'Delta Taxi', style: 'sedan', L: 4.65, W: 1.82, H: 1.45, wb: 2.75, wr: 0.32, clear: 0.15, mass: 1420, accel: 9.6, top: 46, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 15000, cls: 'Servicio', fixedColor: 0xf2bf0a, roofSign: true, doors: [1.05, 0.0, -1.0] },
-  patrulla: { name: 'Interceptor', style: 'sedan', L: 4.75, W: 1.86, H: 1.47, wb: 2.8, wr: 0.33, clear: 0.15, mass: 1650, accel: 13.5, top: 64, grip: 10.5, steer: 0.6, brake: 23, hp: 1500, engine: 'sports', price: 0, cls: 'Emergencia', fixedColor: 0xf4f4f2, livery: 'police', lightbar: true, pushbar: true, doors: [1.05, 0.0, -1.0] },
+  sedan: { name: 'Delta GL', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1400, accel: 9.6, top: 47, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 18000, cls: 'Sedán', doors: [1.05, 0.0, -1.0] },
+  taxi: { name: 'Delta Taxi', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1420, accel: 9.6, top: 46, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 15000, cls: 'Servicio', fixedColor: 0xf2bf0a, roofSign: true, doors: [1.05, 0.0, -1.0] },
+  patrulla: { name: 'Interceptor', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1650, accel: 13.5, top: 64, grip: 10.5, steer: 0.6, brake: 23, hp: 1500, engine: 'sports', price: 0, cls: 'Emergencia', fixedColor: 0xf4f4f2, livery: 'police', lightbar: true, pushbar: true, doors: [1.05, 0.0, -1.0] },
   suv: { name: 'Cóndor 4x4', style: 'suv', L: 4.8, W: 1.95, H: 1.8, wb: 2.85, wr: 0.38, clear: 0.22, mass: 2100, accel: 9.2, top: 45, grip: 8.6, steer: 0.55, brake: 18, hp: 1300, engine: 'car', price: 32000, cls: 'SUV', doors: [1.1, 0.0, -1.05] },
   furgon: { name: 'Carga Van', style: 'van', L: 5.2, W: 2.0, H: 2.3, wb: 3.2, wr: 0.36, clear: 0.2, mass: 2600, accel: 6.6, top: 37, grip: 7.6, steer: 0.52, brake: 15, hp: 1500, engine: 'truck', price: 21000, cls: 'Utilitario', doors: [1.5, 0.55] },
   pickup: { name: 'Ranchera', style: 'pickup', L: 5.3, W: 1.95, H: 1.8, wb: 3.15, wr: 0.38, clear: 0.22, mass: 2000, accel: 9, top: 46, grip: 8.6, steer: 0.53, brake: 17, hp: 1300, engine: 'truck', price: 26000, cls: 'Utilitario', doors: [1.35, 0.35] },
@@ -137,6 +137,50 @@ function bakeAOBike(geo, wheels) {
     ao[i] = a;
   }
   geo.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+}
+
+/** AO por vértice para modelos importados de Blender: suelo y arcos de rueda. */
+function bakeAOAsset(geo, spec) {
+  if (!geo || geo.attributes.aAO) return;
+  const pos = geo.attributes.position;
+  const ao = new Float32Array(pos.count);
+  const archR = spec.wr + 0.05, W = spec.W, clear = spec.clear;
+  const wz = [spec.wb / 2, -spec.wb / 2];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    let a = 0.45 + 0.55 * smooth(clear - 0.02, clear + 0.55, y);
+    for (const w of wz) {
+      const d = Math.hypot(z - w, y - spec.wr);
+      if (d < archR + 0.22 && Math.abs(x) > W / 2 - 0.45) a *= 0.32 + 0.68 * smooth(archR - 0.12, archR + 0.22, d);
+    }
+    ao[i] = a;
+  }
+  geo.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+}
+
+/** Estructura de partes a partir de un modelo de Blender (ver carAssets.js). */
+export function assetGeometry(asset, spec) {
+  const g = asset.geo, m = asset.meta;
+  const parts = (s) => {
+    bakeAOAsset(s.paint, spec);
+    bakeAOAsset(s.trim, spec);
+    return {
+      paint: s.paint, trim: s.trim, glass: s.glass || null, lens: s.lens || null, chrome: s.chrome || null,
+      head: s.head || null, tail: s.tail || null, extra: s.extra || null,
+      blinkL: s.blinkL || null, blinkR: s.blinkR || null,
+    };
+  };
+  return {
+    ...parts(g),
+    // nivel de detalle lejano (también proyecta las sombras de los autos lejanos)
+    lo: g.lo ? parts(g.lo) : null,
+    // Blender: +X = derecha → juego: +x = izquierda
+    wheels: m.wheels.map((w) => ({ ...w, x: -w.x, side: -w.side })),
+    seat: m.seat, height: m.height, noHood: false,
+    hood: [99, -99, 0, 0],
+    plates: m.plates,
+    fromAsset: true,
+  };
 }
 
 /** Altura de la cadera del conductor: baja en autos bajos para que la cabeza no toque el techo. */

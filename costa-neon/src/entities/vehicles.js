@@ -1,6 +1,7 @@
 // Vehículos: render instanciado, física arcade, colisiones, daño, luces, audio y gestión.
 import * as THREE from 'three';
-import { MODELS, PAINTS, METALLIC, buildCar, buildBike, buildWheel } from './vehicleModels.js';
+import { MODELS, PAINTS, METALLIC, buildCar, buildBike, buildWheel, assetGeometry } from './vehicleModels.js';
+import { CAR_ASSETS } from './carAssets.js';
 import { clamp, damp, moveToward, angleDiff, wrapAngle, rand } from '../core/utils.js';
 import { WATER_LEVEL, isRoad } from '../world/map.js';
 import { U } from '../world/shaders.js';
@@ -19,6 +20,32 @@ const RIMS = {
 };
 const CALIPERS = { sport: [0xc4161c, 0xd9a60f, 0x2a2b2d, 0xc4161c], other: [0x2a2b2d, 0x3a3b3d] };
 const CAPACITY = { compacto: 26, sedan: 30, taxi: 14, patrulla: 16, suv: 18, furgon: 12, pickup: 12, muscle: 10, deportivo: 10, superauto: 8, moto: 10 };
+// Nivel de detalle: los autos cercanos usan el modelo completo (lista compacta, sin instancias vacías)
+const NEAR_CAP = 6;
+const NEAR_D2 = 30 * 30;
+const LOD_PARTS = ['paint', 'trim', 'glass', 'lens', 'chrome', 'head', 'tail', 'blinkL', 'blinkR', 'extra', 'barR', 'barB'];
+
+/** Divide una geometría (indexada o no) en dos por el lado del triángulo: x > 0 (izquierda) y x <= 0. */
+function splitBySide(g) {
+  const pos = g.attributes.position;
+  const idx = g.index;
+  const tri = idx ? idx.count / 3 : pos.count / 3;
+  const left = [], right = [];
+  const at = (k) => (idx ? idx.getX(k) : k);
+  for (let t = 0; t < tri; t++) {
+    const a = at(t * 3), b = at(t * 3 + 1), c = at(t * 3 + 2);
+    const cx = (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
+    const dst = cx > 0 ? left : right;
+    for (const v of [a, b, c]) dst.push(pos.getX(v), pos.getY(v), pos.getZ(v));
+  }
+  const mkG = (arr) => {
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    out.computeVertexNormals();
+    return out;
+  };
+  return [mkG(left), mkG(right)];
+}
 
 const GLASS_VHEAD = /* glsl */ `
 attribute vec4 aDamage;
@@ -194,7 +221,7 @@ const PAINT_FRAG = /* glsl */ `
 
 // Vidrio: transparencia según Fresnel (de frente se ve el interior, de costado refleja) y
 // reflejos sin atenuar (alfa premultiplicado: el color difuso se mezcla, el especular se suma).
-const GLASS_FHEAD = /* glsl */ `uniform float uGlassAlpha; varying vec3 vObj;
+const GLASS_FHEAD = /* glsl */ `uniform float uGlassAlpha; uniform float uGlassMax; varying vec3 vObj;
 // gotas de lluvia sobre el vidrio: celdas con gotas de tamaño variable que reflejan el cielo
 float rainDrops(vec3 p, float t){
   vec2 uv = p.xz * 9.0 + vec2(p.y * 7.0, 0.0);
@@ -210,7 +237,7 @@ float rainDrops(vec3 p, float t){
 const GLASS_OUT = /* glsl */ `
 {
   float cnNV = saturate(dot(geometryNormal, geometryViewDir));
-  float cnA = mix(uGlassAlpha, 0.97, pow(1.0 - cnNV, 4.0));
+  float cnA = mix(uGlassAlpha, uGlassMax, pow(1.0 - cnNV, 4.0));
   vec3 cnSpec = max(outgoingLight - totalDiffuse, vec3(0.0));
   // gotas: más reflejo y algo menos de transparencia
   float drops = rainDrops(vObj, uTime) * uWet;
@@ -367,6 +394,7 @@ class VehicleRenderer {
     const mats = [this.chromeMat, this.tireMat, this.rimMat, this.caliperMat, this.trimMat, this.glassMat, this.plateMat];
     for (const m of Object.values(this.models)) {
       for (const p of Object.values(m.parts)) mats.push(p.material);
+      if (m.near) for (const p of Object.values(m.near.parts)) mats.push(p.material);
     }
     for (const mat of new Set(mats)) {
       if (!mat || !mat.isMeshStandardMaterial) continue;
@@ -379,14 +407,15 @@ class VehicleRenderer {
   model(id) {
     if (this.models[id]) return this.models[id];
     const spec = MODELS[id];
-    const geo = spec.bike ? buildBike(spec) : buildCar(spec);
+    // modelo hecho en Blender si existe; si no, el procedural
+    const geo = CAR_ASSETS[id] ? assetGeometry(CAR_ASSETS[id], spec) : spec.bike ? buildBike(spec) : buildCar(spec);
     const cap = CAPACITY[id] || 10;
     const lib = this.game.lib;
     const paintMat = lib.physical({ color: 0xffffff, roughness: 0.3, metalness: 0.45, clearcoat: 1, clearcoatRoughness: 0.035 }, {
       key: 'vpaint_' + id,
       uniforms: {
         uDims: { value: new THREE.Vector4(spec.L, spec.W, spec.H, spec.clear) },
-        uSeams: { value: new THREE.Vector4(...(spec.doors || [99, 99, 99]).concat([99, 99, 99, 99]).slice(0, 4)) },
+        uSeams: { value: new THREE.Vector4(...(geo.fromAsset ? [99, 99, 99, 99] : (spec.doors || [99, 99, 99]).concat([99, 99, 99, 99]).slice(0, 4))) },
         uLivery: { value: spec.livery === 'police' ? 1 : 0 },
         uHood: { value: new THREE.Vector4(...(geo.hood || [99, -99, 0, 0])) },
       },
@@ -405,7 +434,7 @@ class VehicleRenderer {
     const parts = {};
     const mk = (name, g, mat, cast = true) => {
       if (!g) return;
-      if (name === 'paint' || name === 'trim' || name === 'glass') g.setAttribute('aDamage', dmgAttr);
+      if (name === 'paint' || name === 'trim' || name === 'glass' || name === 'lens') g.setAttribute('aDamage', dmgAttr);
       if (name === 'paint' || name === 'trim') g.setAttribute('aPaint', paintAttr);
       const mesh = new THREE.InstancedMesh(g, mat, cap);
       mesh.frustumCulled = false;
@@ -426,38 +455,63 @@ class VehicleRenderer {
     lib.register(glassMat, {
       key: 'vglass_' + id,
       lamps: true,
-      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.42 : 0.3 } },
+      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: spec.livery === 'police' ? 0.42 : 0.3 }, uGlassMax: { value: 0.97 } },
       vertexHead: GLASS_VHEAD, vertexBegin: PAINT_BEGIN, fragHead: GLASS_FHEAD, fragPostLights: LAMPS_POST, fragOutput: GLASS_OUT,
     });
-    mk('paint', geo.paint, paintMat);
-    mk('trim', geo.trim, trimMat);
-    mk('glass', geo.glass, glassMat, false);
+    // lente clara de las ópticas: casi transparente, deja ver reflectores y LEDs
+    const lensMat = new THREE.MeshPhysicalMaterial({ color: 0xeef3f6, roughness: 0.02, metalness: 0, transparent: true, depthWrite: false, premultipliedAlpha: true });
+    lib.register(lensMat, {
+      key: 'vlens_' + id,
+      lamps: true,
+      uniforms: { uDims: paintMat.userData.patch.uniforms.uDims, uGlassAlpha: { value: 0.035 }, uGlassMax: { value: 0.55 } },
+      vertexHead: GLASS_VHEAD, vertexBegin: PAINT_BEGIN, fragHead: GLASS_FHEAD, fragPostLights: LAMPS_POST, fragOutput: GLASS_OUT,
+    });
+    // con modelo de Blender: el juego de instancias por ranura usa el detalle lejano
+    const far = geo.lo || geo;
+    mk('paint', far.paint, paintMat);
+    mk('trim', far.trim, trimMat);
+    mk('glass', far.glass, glassMat, false);
     if (parts.glass) parts.glass.renderOrder = 2;
-    mk('chrome', geo.chrome, this.chromeMat, false);
-    mk('head', geo.head, this.headMat, false);
-    mk('tail', geo.tail, this.tailMat, false);
-    mk('blinkL', geo.blinkL, this.blinkMat, false);
-    mk('blinkR', geo.blinkR, this.blinkMat, false);
-    if (spec.lightbar && geo.extra) {
-      // dividir barra en rojo (izq) y azul (der)
-      const pos = geo.extra.attributes.position;
-      const left = [], right = [];
-      for (let i = 0; i < pos.count; i += 3) {
-        const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
-        const tri = [];
-        for (let k = 0; k < 3; k++) tri.push(pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k));
-        (cx > 0 ? left : right).push(...tri);
-      }
-      const gL = new THREE.BufferGeometry();
-      gL.setAttribute('position', new THREE.Float32BufferAttribute(left, 3));
-      gL.computeVertexNormals();
-      const gR = new THREE.BufferGeometry();
-      gR.setAttribute('position', new THREE.Float32BufferAttribute(right, 3));
-      gR.computeVertexNormals();
+    mk('lens', far.lens, lensMat, false);
+    if (parts.lens) parts.lens.renderOrder = 3;
+    mk('chrome', far.chrome, this.chromeMat, false);
+    mk('head', far.head, this.headMat, false);
+    mk('tail', far.tail, this.tailMat, false);
+    mk('blinkL', far.blinkL, this.blinkMat, false);
+    mk('blinkR', far.blinkR, this.blinkMat, false);
+    if (spec.lightbar && far.extra) {
+      // barra de luces: domo rojo a la izquierda (x > 0) y azul a la derecha
+      const [gL, gR] = splitBySide(far.extra);
       mk('barR', gL, this.extraMat, false);
       mk('barB', gR, this.extraMat, false);
-    } else mk('extra', geo.extra, this.extraMat, false);
-    const m = { id, spec, geo, cap, parts, dmgAttr, paintAttr, free: Array.from({ length: cap }, (_, i) => cap - 1 - i), paintMat };
+    } else mk('extra', far.extra, this.extraMat, false);
+    // juego cercano: modelo completo, lista compacta que se rearma en cada cuadro
+    let near = null;
+    if (geo.lo) {
+      const nearGeo = { ...geo };
+      if (spec.lightbar && geo.extra) [nearGeo.barR, nearGeo.barB] = splitBySide(geo.extra);
+      const nDmg = new THREE.InstancedBufferAttribute(new Float32Array(NEAR_CAP * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      const nPaint = new THREE.InstancedBufferAttribute(new Float32Array(NEAR_CAP * 3), 3).setUsage(THREE.DynamicDrawUsage);
+      const nparts = {};
+      for (const name of LOD_PARTS) {
+        const src = parts[name], g = nearGeo[name];
+        if (!src || !g) continue;
+        if (name === 'paint' || name === 'trim' || name === 'glass' || name === 'lens') g.setAttribute('aDamage', nDmg);
+        if (name === 'paint' || name === 'trim') g.setAttribute('aPaint', nPaint);
+        const mesh = new THREE.InstancedMesh(g, src.material, NEAR_CAP);
+        mesh.frustumCulled = false;
+        mesh.castShadow = src.castShadow;
+        mesh.receiveShadow = true;
+        mesh.renderOrder = src.renderOrder;
+        mesh.count = 0;
+        if (src.instanceColor) mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NEAR_CAP * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
+        setDynamic(mesh);
+        this.group.add(mesh);
+        nparts[name] = mesh;
+      }
+      near = { parts: nparts, dmg: nDmg, paint: nPaint, n: 0 };
+    }
+    const m = { id, spec, geo, cap, parts, near, dmgAttr, paintAttr, free: Array.from({ length: cap }, (_, i) => cap - 1 - i), paintMat };
     this.models[id] = m;
     if (this.envMap) {
       for (const p of Object.values(parts)) {
@@ -545,34 +599,76 @@ class VehicleRenderer {
   sync(list, cam, nightK) {
     let beamN = 0, neonN = 0;
     const lightsNeeded = nightK > 0.35 || U.uWet.value > 0.5;
+    // nivel de detalle: los más cercanos a la cámara usan el modelo completo
+    const nearList = [];
+    for (const m of Object.values(this.models)) if (m.near) m.near.n = 0;
+    for (const v of list) {
+      v.nearIdx = -1;
+      if (!v.render || !v.render.near || v.sunk) continue;
+      const dx = v.pos.x - cam.position.x, dz = v.pos.z - cam.position.z;
+      v.lodD = dx * dx + dz * dz;
+      if (v.lodD < NEAR_D2) nearList.push(v);
+    }
+    nearList.sort((a, b) => a.lodD - b.lodD);
+    for (const v of nearList) {
+      const nr = v.render.near;
+      if (nr.n < NEAR_CAP) v.nearIdx = nr.n++;
+    }
     for (const v of list) {
       if (!v.render) continue;
       const m = v.render;
       const visible = !v.sunk;
+      const nr = v.nearIdx >= 0 ? m.near : null;
+      const k = v.nearIdx;
+      // color por instancia en ambos juegos (lejano por ranura, cercano compacto)
+      const setCol = (name, c) => {
+        const p = m.parts[name];
+        if (p) {
+          p.setColorAt(v.slot, c);
+          p.instanceColor.needsUpdate = true;
+        }
+        const q = nr && nr.parts[name];
+        if (q && q.instanceColor) {
+          q.setColorAt(k, c);
+          q.instanceColor.needsUpdate = true;
+        }
+      };
       // matriz base con cabeceo/rolido
       _e.set(v.pitch, v.yaw, v.roll, 'YXZ');
       _q.setFromEuler(_e);
       _p.set(v.pos.x, v.pos.y + v.bob, v.pos.z);
       _m.compose(_p, _q, _s.set(1, 1, 1));
       for (const [name, mesh] of Object.entries(m.parts)) {
-        if (!visible || (name === 'glass' && v.glassBroken)) mesh.setMatrixAt(v.slot, ZERO);
+        if (!visible || nr || (name === 'glass' && v.glassBroken)) mesh.setMatrixAt(v.slot, ZERO);
         else mesh.setMatrixAt(v.slot, _m);
         mesh.instanceMatrix.needsUpdate = true;
+      }
+      if (nr) {
+        for (const [name, mesh] of Object.entries(nr.parts)) {
+          mesh.setMatrixAt(k, name === 'glass' && v.glassBroken ? ZERO : _m);
+          mesh.instanceMatrix.needsUpdate = true;
+        }
+        const pc = m.parts.paint.instanceColor.array, npc = nr.parts.paint.instanceColor.array;
+        const pa = m.paintAttr.array, npa = nr.paint.array;
+        for (let c = 0; c < 3; c++) {
+          npc[k * 3 + c] = pc[v.slot * 3 + c];
+          npa[k * 3 + c] = pa[v.slot * 3 + c];
+        }
+        nr.parts.paint.instanceColor.needsUpdate = true;
+        nr.paint.needsUpdate = true;
+        nr.dmg.setXYZW(k, v.dents.f, v.dents.r, v.dents.l, v.dents.rt);
+        nr.dmg.needsUpdate = true;
       }
       // luces
       const on = v.engineOn && !v.destroyed;
       const alarm = v.alarmT > 0 && !v.destroyed && Math.floor(v.alarmT * 4.4) % 2 === 0;
-      const head = m.parts.head;
-      if (head) {
+      if (m.parts.head) {
         const hk = alarm ? 6 : on ? (lightsNeeded ? 6 : 0.9) : 0.12;
-        head.setColorAt(v.slot, _v.set(hk, hk * 0.95, hk * 0.86));
-        head.instanceColor.needsUpdate = true;
+        setCol('head', _v.set(hk, hk * 0.95, hk * 0.86));
       }
-      const tail = m.parts.tail;
-      if (tail) {
+      if (m.parts.tail) {
         const tk = alarm ? 4 : v.braking && on ? 5 : on ? (lightsNeeded ? 1.6 : 0.5) : 0.15;
-        tail.setColorAt(v.slot, _v.set(tk, tk * 0.06, tk * 0.05));
-        tail.instanceColor.needsUpdate = true;
+        setCol('tail', _v.set(tk, tk * 0.06, tk * 0.05));
       }
       // intermitentes: giro anunciado por la IA o balizas
       if (m.parts.blinkL) {
@@ -580,10 +676,8 @@ class VehicleRenderer {
         const lOn = !v.destroyed && ph && (v.blink === 'left' || v.hazard || (alarm && v.alarmT > 0));
         const rOn = !v.destroyed && ph && (v.blink === 'right' || v.hazard || (alarm && v.alarmT > 0));
         const dim = 0.14;
-        m.parts.blinkL.setColorAt(v.slot, _v.set(1, 0.5, 0.06).multiplyScalar(lOn ? 5.5 : dim));
-        m.parts.blinkR.setColorAt(v.slot, _v.set(1, 0.5, 0.06).multiplyScalar(rOn ? 5.5 : dim));
-        m.parts.blinkL.instanceColor.needsUpdate = true;
-        m.parts.blinkR.instanceColor.needsUpdate = true;
+        setCol('blinkL', _v.set(1, 0.5, 0.06).multiplyScalar(lOn ? 5.5 : dim));
+        setCol('blinkR', _v.set(1, 0.5, 0.06).multiplyScalar(rOn ? 5.5 : dim));
       }
       // patentes
       const PL = m.geo.plates || [];
@@ -600,18 +694,15 @@ class VehicleRenderer {
       }
       if (m.parts.extra) {
         const ek = v.modelId === 'taxi' ? (on ? (lightsNeeded ? 3.2 : 1.2) : 0.3) : 1;
-        m.parts.extra.setColorAt(v.slot, _v.set(ek, ek * 0.78, ek * 0.25));
-        m.parts.extra.instanceColor.needsUpdate = true;
+        setCol('extra', _v.set(ek, ek * 0.78, ek * 0.25));
       }
       if (m.parts.barR) {
         const t = performance.now() / 1000;
         const ph = Math.floor(t * 6) % 2;
         const s = v.siren && !v.destroyed;
         const r = s ? (ph ? 7 : 0.4) : 0.35, b = s ? (ph ? 0.4 : 7) : 0.35;
-        m.parts.barR.setColorAt(v.slot, _v.set(r, r * 0.05, r * 0.05));
-        m.parts.barB.setColorAt(v.slot, _v.set(b * 0.08, b * 0.25, b));
-        m.parts.barR.instanceColor.needsUpdate = true;
-        m.parts.barB.instanceColor.needsUpdate = true;
+        setCol('barR', _v.set(r, r * 0.05, r * 0.05));
+        setCol('barB', _v.set(b * 0.08, b * 0.25, b));
       }
       // daño (abolladuras)
       m.dmgAttr.setXYZW(v.slot, v.dents.f, v.dents.r, v.dents.l, v.dents.rt);
@@ -658,6 +749,10 @@ class VehicleRenderer {
         this.neons.setColorAt(neonN, new THREE.Color(v.neon).multiplyScalar(1.5 + nightK * 2.5));
         neonN++;
       }
+    }
+    for (const m of Object.values(this.models)) {
+      if (!m.near) continue;
+      for (const mesh of Object.values(m.near.parts)) mesh.count = m.near.n;
     }
     this.tires.instanceMatrix.needsUpdate = true;
     this.rims.instanceMatrix.needsUpdate = true;

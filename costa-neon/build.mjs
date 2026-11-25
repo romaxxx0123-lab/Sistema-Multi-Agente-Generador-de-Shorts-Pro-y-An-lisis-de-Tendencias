@@ -20,6 +20,7 @@ async function buildOnce() {
     legalComments: 'none',
     charset: 'utf8',
     define: { 'process.env.NODE_ENV': '"production"' },
+    loader: { '.glb': 'binary' },
     logLevel: 'warning',
   });
   const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');

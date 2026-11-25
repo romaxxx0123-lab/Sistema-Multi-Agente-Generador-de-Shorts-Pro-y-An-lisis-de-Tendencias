@@ -17,6 +17,7 @@ import { ChunkedInstances } from './world/instancing.js';
 import { U } from './world/shaders.js';
 import { setProbeVisible } from './core/layers.js';
 import { Game } from './game/game.js';
+import { loadCarAssets } from './entities/carAssets.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
@@ -79,6 +80,9 @@ async function boot() {
   const reflection = new PlanarReflection(engine, 0.5);
   reflection.exclude(...city.flat, ocean.mesh, weather.rain, ...(props.instGroups.lampCones ? props.instGroups.lampCones.meshes : []));
   engine.reflection = reflection;
+  setProgress(0.84, 'Trayendo los autos del taller…');
+  await nextFrame();
+  await loadCarAssets();
   setProgress(0.88, 'Despertando a los vecinos…');
   await nextFrame();
   const game = new Game({ engine, world, collision, sky, city, ocean, vegetation, props, landmarks, weather, reflection, lib });
