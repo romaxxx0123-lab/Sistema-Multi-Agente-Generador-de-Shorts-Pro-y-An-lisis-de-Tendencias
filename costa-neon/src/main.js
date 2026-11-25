@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Engine } from './core/engine.js';
 import { createWorld } from './world/map.js';
 import { CollisionWorld } from './world/collision.js';
-import { generateGroundTextures, generateDetailTextures } from './world/textures.js';
+import { generateGroundTextures, generateDetailTextures, loadScannedTextures } from './world/textures.js';
 import { MaterialLib } from './world/materials.js';
 import { Sky } from './world/sky.js';
 import { HdriSky } from './world/hdriSky.js';
@@ -45,10 +45,13 @@ async function boot() {
   engine.scene.fog = new THREE.FogExp2(0x000000, 0.001);
   engine.onQualityChange((q) => { ChunkedInstances.distScale = 0.45 + 0.55 * q.density; });
   engine.setQuality(pickQuality());
-  setProgress(0.06, 'Generando texturas…');
+  setProgress(0.06, 'Cargando superficies escaneadas…');
   await nextFrame();
-  const ground = generateGroundTextures(engine.renderer, engine.q.texSize);
-  const detail = generateDetailTextures(engine.renderer, 512);
+  let noScan = false;
+  try { noScan = new URLSearchParams(location.search).has('noscan'); } catch (e) { /* sin query */ }
+  const scanned = noScan ? null : await loadScannedTextures();
+  const ground = generateGroundTextures(engine.renderer, engine.q.texSize, scanned);
+  const detail = generateDetailTextures(engine.renderer, scanned ? Math.max(512, engine.q.texSize) : 512, scanned);
   const lib = new MaterialLib(engine.renderer, ground, detail);
   engine.setMaterialLib(lib);
   setProgress(0.18, 'Trazando calles de Puerto Índigo…');

@@ -874,6 +874,7 @@ export class Game {
     const t = U.uTime.value;
     this.props.update(rawDt, t, sky.nightK, U.uLamps.value, cam.position, this.time);
     this.vegetation.update(cam.position);
+    this.city.update(cam.position);
     this.landmarks.update(rawDt, t, sky.nightK);
     this.weather.update(rawDt, cam, sky);
     const p = cam.position;

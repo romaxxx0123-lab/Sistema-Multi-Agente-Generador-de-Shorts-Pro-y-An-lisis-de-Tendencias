@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { CURB_H, ISLAND, BRIDGE, PIERS_X, PIER, terrainHeight, bridgeDeckY, isRoad } from './map.js';
 import { DETAIL } from './textures.js';
+import { FacadeSkins } from './facades.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -36,12 +37,18 @@ export class CityRenderer {
     this.flat = []; // superficies reflectantes (se ocultan en el pase de reflejo)
     engine.scene.add(this.group);
     this._buildings();
+    // muros con espesor y ventanas hundidas (no en calidad baja)
+    this.facades = engine.q.density >= 0.6 ? new FacadeSkins(this.group, world, lib) : null;
     this._roofs();
     this._ground();
     this._terrain();
     this._seawalls();
     this._piers();
     this._bridge();
+  }
+
+  update(camPos) {
+    if (this.facades) this.facades.update(camPos, 0.45 + 0.55 * this.engine.q.density);
   }
 
   add(obj, cast = true, receive = true) {

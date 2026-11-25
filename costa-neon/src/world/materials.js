@@ -7,14 +7,14 @@ import { GLSL_PLANAR } from './reflection.js';
 const f = (n) => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 export const FACADE_STYLES = {
-  glass: { cw: 3.2, fh: 3.9, wx0: 0.02, wx1: 0.98, wy0: 0.27, wy1: 0.975, top: 2.4, detail: DETAIL.CONCRETE, tile: 3, depth: 1.0, flags: ['TINTED', 'MULLION'] },
-  round: { cw: 3.0, fh: 3.9, wx0: 0.03, wx1: 0.97, wy0: 0.27, wy1: 0.975, top: 2.4, detail: DETAIL.CONCRETE, tile: 3, depth: 1.0, flags: ['TINTED', 'ROUND', 'MULLION'] },
-  office: { cw: 3.0, fh: 3.6, wx0: 0.18, wx1: 0.82, wy0: 0.3, wy1: 0.86, top: 1.6, detail: DETAIL.CONCRETE, tile: 3, depth: 1.25, flags: ['LEDGE', 'MULLION'] },
-  brick: { cw: 2.7, fh: 3.3, wx0: 0.27, wx1: 0.73, wy0: 0.27, wy1: 0.8, top: 1.2, detail: DETAIL.BRICK, tile: 1.2, depth: 1.1, flags: ['LINTEL'] },
-  pastel: { cw: 3.4, fh: 3.2, wx0: 0.12, wx1: 0.88, wy0: 0.33, wy1: 0.87, top: 1.4, detail: DETAIL.STUCCO, tile: 3, depth: 1.2, flags: ['BALCONY', 'MULLION'] },
-  shop: { cw: 2.8, fh: 3.5, wx0: 0.2, wx1: 0.8, wy0: 0.3, wy1: 0.82, top: 1.2, detail: DETAIL.STUCCO, tile: 3, depth: 1.1, flags: ['STOREFRONT', 'LEDGE'] },
-  house: { cw: 3.6, fh: 3.0, wx0: 0.3, wx1: 0.7, wy0: 0.3, wy1: 0.78, top: 0.45, detail: DETAIL.STUCCO, tile: 3, depth: 0.9, flags: ['SPARSE'] },
-  warehouse: { cw: 6.0, fh: 4.6, wx0: 0.1, wx1: 0.9, wy0: 0.0, wy1: 0.0, top: 0.5, detail: DETAIL.METAL, tile: 2, depth: 1.0, flags: ['WAREHOUSE'] },
+  glass: { cw: 3.2, fh: 3.9, wx0: 0.02, wx1: 0.98, wy0: 0.27, wy1: 0.975, top: 2.4, detail: DETAIL.CONCRETE, tile: 2.7, depth: 1.0, flags: ['TINTED', 'MULLION'] },
+  round: { cw: 3.0, fh: 3.9, wx0: 0.03, wx1: 0.97, wy0: 0.27, wy1: 0.975, top: 2.4, detail: DETAIL.CONCRETE, tile: 2.7, depth: 1.0, flags: ['TINTED', 'ROUND', 'MULLION'] },
+  office: { cw: 3.0, fh: 3.6, wx0: 0.18, wx1: 0.82, wy0: 0.3, wy1: 0.86, top: 1.6, detail: DETAIL.CONCRETE, tile: 2.7, depth: 1.25, flags: ['LEDGE', 'MULLION'] },
+  brick: { cw: 2.7, fh: 3.3, wx0: 0.27, wx1: 0.73, wy0: 0.27, wy1: 0.8, top: 1.2, detail: DETAIL.BRICK, tile: 1.0, depth: 1.1, flags: ['LINTEL'] },
+  pastel: { cw: 3.4, fh: 3.2, wx0: 0.12, wx1: 0.88, wy0: 0.33, wy1: 0.87, top: 1.4, detail: DETAIL.STUCCO, tile: 2.0, depth: 1.2, flags: ['BALCONY', 'MULLION'] },
+  shop: { cw: 2.8, fh: 3.5, wx0: 0.2, wx1: 0.8, wy0: 0.3, wy1: 0.82, top: 1.2, detail: DETAIL.STUCCO, tile: 2.0, depth: 1.1, flags: ['STOREFRONT', 'LEDGE'] },
+  house: { cw: 3.6, fh: 3.0, wx0: 0.3, wx1: 0.7, wy0: 0.3, wy1: 0.78, top: 0.45, detail: DETAIL.STUCCO, tile: 2.0, depth: 0.9, flags: ['SPARSE'] },
+  warehouse: { cw: 6.0, fh: 4.6, wx0: 0.1, wx1: 0.9, wy0: 0.0, wy1: 0.0, top: 0.5, detail: DETAIL.METAL, tile: 1.12, depth: 1.0, flags: ['WAREHOUSE'] },
 };
 
 const FACADE_HEAD = /* glsl */ `
@@ -63,6 +63,8 @@ vec3 roomColor(vec2 cf, vec3 vt, float cw, float fh, float depthM, float seed, v
 `;
 
 const FACADE_FRAG = /* glsl */ `
+// semilla del edificio redondeada: interpolada llega con ruido de precisión que los hash amplifican
+float fSeed = floor(vSeed * 8192. + .5) / 8192.;
 vec3 fN = normalize(vWNrm);
 float fGlass = 0.;
 vec3 fEmit = vec3(0.);
@@ -86,22 +88,22 @@ vec3 T; float u; float facW;
   T = normalize(cross(vec3(0., 1., 0.), fN) + vec3(1e-5, 0., 0.));
 #endif
 float v = vWPos.y - vBC.y; float Hh = vBS.y;
-vec2 duv = vec2(u, v) / DTILE + vSeed * 7.;
-vec4 dA = sampleAlb(uDA, duv, DLAYER);
+vec2 duv = vec2(u, v) / DTILE + fSeed * 7.;
+vec4 dA = sampleDet(uDA, duv, DLAYER);
 vec4 dN = sampleNrm(uDN, duv, DLAYER);
 float colsG = max(1., floor(facW / CW + .5));
 vec2 cuv = vec2(u / (facW / colsG), v / FH);
 vec2 fw = fwidth(cuv);
-vec4 gRoofA = sampleAlb(uGA, vWPos.xz / 3., 6.);
+vec4 gRoofA = sampleAlb(uGA, vWPos.xz / 2.1, 6.);
 if (wallF > .5) {
   float faceId = dot(step(0., fN.xz), vec2(1., 2.)) + (abs(fN.x) > .5 ? 0. : 4.);
   alb = base * dA.rgb;
   fRough = dA.a;
   fNW = normalize(T * dN.x * .7 + vec3(0., 1., 0.) * dN.y * .7 + fN * dN.z);
   alb *= mix(.68, 1., smoothstep(0., 1.4, v));
-  alb *= .9 + .1 * fbm3(vec2(u * .04, v * .015) + vSeed * 30.);
+  alb *= .9 + .1 * fbm3(vec2(u * .04, v * .015) + fSeed * 30.);
   // manchas verticales de escurrimiento
-  alb *= 1. - .08 * smoothstep(.6, .9, vnoise(vec2(u * 1.3, v * .05 + vSeed * 9.)));
+  alb *= 1. - .08 * smoothstep(.6, .9, vnoise(vec2(u * 1.3, v * .05 + fSeed * 9.)));
 
   float cols = colsG;
   float cw = facW / cols;
@@ -118,11 +120,11 @@ if (wallF > .5) {
   #if defined(TINTED) || defined(LEDGE)
     if (cid.y < .5) { wy0 = .04; wy1 = .9; }
   #endif
-  float roomSeed = hash13(vec3(cid, faceId + vSeed * 97.));
+  float roomSeed = hash13(vec3(cid, faceId + fSeed * 97.));
   float hasWin = inGrid;
   float isDoor = 0.;
   #ifdef SPARSE
-    hasWin *= step(.3, hash12(vec2(cid.x + faceId * 11., cid.y * 3. + vSeed * 50.)));
+    hasWin *= step(.3, hash12(vec2(cid.x + faceId * 11., cid.y * 3. + fSeed * 50.)));
     if (cid.y < .5 && abs(cid.x - floor(cols * .5)) < .5) { isDoor = 1.; hasWin = 0.; }
   #endif
   #ifdef WAREHOUSE
@@ -195,8 +197,8 @@ if (wallF > .5) {
   #ifdef WAREHOUSE
     gAvg = 0.;
   #endif
-  float floorLit = step(1. - litFrac * 1.15, hash12(vec2(cid.y * 1.37 + faceId * 3.1, vSeed * 71.)));
-  float cellLit = step(1. - litFrac, hash12(cid + vec2(faceId * 17., vSeed * 33.)));
+  float floorLit = step(1. - litFrac * 1.15, hash12(vec2(cid.y * 1.37 + faceId * 3.1, fSeed * 71.)));
+  float cellLit = step(1. - litFrac, hash12(cid + vec2(faceId * 17., fSeed * 33.)));
   float litMix = mix(cellLit, .2 + .9 * floorLit, smoothstep(.5, 1.2, max(fw.x, fw.y)));
   vec3 avgInt = (vec3(1., .82, .62) * litMix * 1.15 * uNight + vec3(.85, .92, 1.) * uInteriorDay) * .5;
   #ifdef TINTED
@@ -247,7 +249,7 @@ if (wallF > .5) {
     vec3 wint = vec3(.9, .95, 1.) * uInteriorDay * .6 + vec3(1., .85, .6) * uNight * uLitWindows * 1.4;
     fGlass = mix(fGlass, gl * .9, nd);
     fEmit += wint * gl * .9 * nd;
-    float doorCell = step(.55, hash12(vec2(floor(u / 6.5) + faceId * 7., vSeed * 31.)));
+    float doorCell = step(.55, hash12(vec2(floor(u / 6.5) + faceId * 7., fSeed * 31.)));
     float dx = fract(u / 6.5);
     float door = doorCell * step(.12, dx) * step(dx, .88) * step(v, 4.6) * nd;
     float slats = .75 + .25 * step(.5, fract(v * 3.3));
@@ -274,7 +276,7 @@ if (wallF > .5) {
   fNW = normalize(mix(fNW, fN, fGlass));
   alb *= mix(1., .72, uWet * (1. - fGlass));
 } else if (fN.y > .5) {
-  alb = vec3(.36, .36, .35) * gRoofA.rgb * 2.6 * (.85 + .3 * hash11(vSeed * 91.));
+  alb = vec3(.36, .36, .35) * gRoofA.rgb * 2.6 * (.85 + .3 * hash11(fSeed * 91.));
   fRough = gRoofA.a;
   vec2 rel = abs(vWPos.xz - vBC.xz) - vBS.xz * .5 + .5;
   float edge = step(0., max(rel.x, rel.y));
@@ -357,7 +359,7 @@ float rippleField(vec2 p, float t){
 
 const ROAD_FRAG = /* glsl */ `
 vec2 p = vWPos.xz;
-vec2 uv = p / 5.0;
+vec2 uv = p / 3.0;
 vec4 aA = sampleAlb(uGA, uv, 0.);
 vec4 aB = sampleAlb(uGA, vec2(uv.y, -uv.x) * .43 + 3.7, 0.);
 float mv = fbm3(p * .012);
@@ -365,7 +367,7 @@ float mv2 = vnoise(p * .21);
 vec3 alb = mix(aA.rgb, aB.rgb, .38) * (.8 + .34 * mv) * (.94 + .1 * mv2);
 float rough = mix(aA.a, aB.a, .38);
 vec4 nA = sampleNrm(uGN, uv, 0.);
-vec3 nW = normalize(vec3(nA.x, nA.z, -nA.y));
+vec3 nW = normalize(vec3(nA.x, nA.z, nA.y));
 float hgt = sampleHgt(uGN, uv, 0.);
 // parches de reparación
 {
@@ -493,28 +495,28 @@ float gt = floor(vGround + .5);
 bool top = Nn.y > .5;
 vec3 tint = vec3(1.);
 float gRefl = 0.;
-if (!top) { layer = 8.; tile = 2.; }
-else if (vRing > .5 && edge < .32) { layer = 8.; tile = 2.; }
-else if (vRing > .5 && edge < 4.) { layer = 1.; tile = 2.4; }
-else if (gt < .5) { layer = 3.; tile = 4.; }
-else if (gt < 1.5) { layer = 2.; tile = 4.; }
-else if (gt < 2.5) { layer = 4.; tile = 6.; }
-else if (gt < 3.5) { layer = 5.; tile = 8.; }
-else if (gt < 4.5) { layer = 0.; tile = 5.; }
+if (!top) { layer = 8.; tile = 2.5; }
+else if (vRing > .5 && edge < .32) { layer = 8.; tile = 2.5; }
+else if (vRing > .5 && edge < 4.) { layer = 1.; tile = 1.8; }
+else if (gt < .5) { layer = 3.; tile = 3.; }
+else if (gt < 1.5) { layer = 2.; tile = 2.; }
+else if (gt < 2.5) { layer = 4.; tile = 15.; }
+else if (gt < 3.5) { layer = 5.; tile = 3.; }
+else if (gt < 4.5) { layer = 0.; tile = 3.; }
 else if (gt < 5.5) {
   // parque: pasto con senderos de granza en cruz y anillo
   vec2 c = p - vBC.xz; float r = length(c);
   float path = step(min(abs(c.x), abs(c.y)), 2.2) + step(abs(r - 13.), 1.6);
-  if (path > .5) { layer = 6.; tile = 3.; tint = vec3(1.25, 1.12, .95); } else { layer = 2.; tile = 4.; }
+  if (path > .5) { layer = 6.; tile = 2.1; tint = vec3(1.25, 1.12, .95); } else { layer = 2.; tile = 2.; }
 }
-else if (gt < 6.5) { layer = 7.; tile = 3.; }
-else { layer = 5.; tile = 8.; }
+else if (gt < 6.5) { layer = 7.; tile = 1.8; }
+else { layer = 5.; tile = 3.; }
 vec2 suv = (top ? p : (abs(Nn.x) > .5 ? vec2(vWPos.z, vWPos.y) : vec2(vWPos.x, vWPos.y))) / tile;
 vec4 sa = sampleAlb(uGA, suv, layer);
 vec4 sn = sampleNrm(uGN, suv, layer);
 vec3 alb = sa.rgb * tint;
 float rough = sa.a;
-vec3 nW = top ? normalize(vec3(sn.x, sn.z, -sn.y)) : Nn;
+vec3 nW = top ? normalize(vec3(sn.x, sn.z, sn.y)) : Nn;
 if (top) {
   alb *= .9 + .18 * fbm3(p * .03);
   // estacionamiento: líneas de cajones
@@ -547,9 +549,9 @@ vec3 gNW = nW;
 const TERRAIN_FRAG = /* glsl */ `
 vec2 p = vWPos.xz;
 float h = vWPos.y;
-vec4 sa = sampleAlb(uGA, p / 6., 4.);
-vec4 sb = sampleAlb(uGA, p / 8., 9.);
-vec4 na = sampleNrm(uGN, p / 6., 4.);
+vec4 sa = sampleAlb(uGA, p / 15., 4.);
+vec4 sb = sampleAlb(uGA, p / 15., 9.);
+vec4 na = sampleNrm(uGN, p / 15., 4.);
 float wetBand = smoothstep(.15, -.55, h);
 float under = smoothstep(-.7, -1.6, h);
 vec3 alb = mix(sa.rgb, sa.rgb * .62, wetBand);
@@ -560,7 +562,7 @@ float rock = smoothstep(.2, .55, h) * step(700., p.x) * step(p.y, 640.) * step(4
 alb = mix(alb, vec3(.32, .31, .3) * (.7 + .5 * fbm3(p * .4)), rock);
 float rough = mix(sa.a, .35, wetBand * (1. - under));
 rough = mix(rough, .7, rock);
-vec3 nW = normalize(vec3(na.x, na.z, -na.y) * vec3(1., 1., 1.));
+vec3 nW = normalize(vec3(na.x, na.z, na.y));
 nW = normalize(mix(nW, vec3(0., 1., 0.), under * .5));
 alb *= mix(1., .6, uWet * (1. - under));
 diffuseColor.rgb = alb;
@@ -747,7 +749,7 @@ export class MaterialLib {
       key: 'detailed',
       uniforms: { uDA: { value: this.detail.albedo }, uDN: { value: this.detail.normal }, uLayer: { value: layer }, uUVS: { value: uvScale } },
       fragHead: `uniform sampler2DArray uDA; uniform sampler2DArray uDN; uniform float uLayer; uniform float uUVS; ${GLSL_ARRAY_SAMPLING} ${GLSL_WORLD_TO_VIEW_NORMAL}`,
-      fragColor: `vec4 dd = sampleAlb(uDA, vUv * uUVS, uLayer); diffuseColor.rgb *= dd.rgb; float dRough = dd.a; diffuseColor.rgb *= mix(1., .7, uWet);`,
+      fragColor: `vec4 dd = sampleDet(uDA, vUv * uUVS, uLayer); diffuseColor.rgb *= dd.rgb; float dRough = dd.a; diffuseColor.rgb *= mix(1., .7, uWet);`,
       fragRoughness: `roughnessFactor *= dRough / .8; roughnessFactor = mix(roughnessFactor, roughnessFactor * .5, uWet);`,
     });
     this.cache.set(key, m);
@@ -765,7 +767,7 @@ export class MaterialLib {
       fragHead: `uniform sampler2DArray uDA; uniform sampler2DArray uDN; uniform float uLayer; uniform float uTile; ${GLSL_ARRAY_SAMPLING} ${GLSL_WORLD_TO_VIEW_NORMAL}`,
       fragColor: `
         vec3 tn = abs(normalize(vWNrm)); tn /= (tn.x + tn.y + tn.z);
-        vec4 tx = sampleAlb(uDA, vWPos.zy / uTile, uLayer), ty = sampleAlb(uDA, vWPos.xz / uTile, uLayer), tz = sampleAlb(uDA, vWPos.xy / uTile, uLayer);
+        vec4 tx = sampleDet(uDA, vWPos.zy / uTile, uLayer), ty = sampleDet(uDA, vWPos.xz / uTile, uLayer), tz = sampleDet(uDA, vWPos.xy / uTile, uLayer);
         vec4 tt = tx * tn.x + ty * tn.y + tz * tn.z;
         diffuseColor.rgb *= tt.rgb * (.9 + .15 * fbm3(vWPos.xz * .05 + vWPos.y * .1));
         diffuseColor.rgb *= mix(1., .68, uWet);

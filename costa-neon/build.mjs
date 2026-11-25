@@ -41,6 +41,12 @@ async function buildOnce() {
   for (const f of fs.readdirSync(path.join(ROOT, 'assets/sky'))) {
     if (/\.(webp|png)$/.test(f)) fs.copyFileSync(path.join(ROOT, 'assets/sky', f), path.join(skyDir, f));
   }
+  // 4) Texturas escaneadas (tex/)
+  const texDir = path.join(ROOT, 'build/tex');
+  fs.mkdirSync(texDir, { recursive: true });
+  for (const f of fs.readdirSync(path.join(ROOT, 'assets/textures'))) {
+    if (/\.(webp|jpg)$/.test(f)) fs.copyFileSync(path.join(ROOT, 'assets/textures', f), path.join(texDir, f));
+  }
   const kb = (Buffer.byteLength(full) / 1024).toFixed(0);
   console.log(`[build] ok en ${Date.now() - t0} ms — ${kb} KB`);
 }

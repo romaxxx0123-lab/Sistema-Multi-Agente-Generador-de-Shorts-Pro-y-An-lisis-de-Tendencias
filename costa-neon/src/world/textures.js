@@ -1,5 +1,10 @@
-// Texturas procedurales generadas en GPU (arrays de capas: albedo+rugosidad y normal+altura+cavidad).
+// Arrays de capas de texturas (albedo+rugosidad y normal+altura+cavidad) para suelos y fachadas.
+// Cada capa es una textura escaneada de una superficie real (Poly Haven, CC0; ver tools/textures) si se pudo
+// cargar; si no, la versión procedural generada en la placa de video.
+// Detalle de fachadas: se guarda a la mitad (los moduladores pueden pasar de 1, p. ej. la junta del ladrillo);
+// los shaders lo multiplican por 2 al leerlo (sampleDet).
 import * as THREE from 'three';
+import TEXMETA from '../../assets/textures/textures.json';
 
 // Capas del array de suelos
 export const GROUND = { ASPHALT: 0, PAVERS: 1, GRASS: 2, TILES: 3, SAND: 4, CONCRETE: 5, GRAVEL: 6, WOOD: 7, GRANITE: 8, SEABED: 9 };
@@ -230,14 +235,14 @@ vec4 A(vec2 uv, int L){
 
 function makeGenMaterial(funcs, layerCount) {
   return new THREE.ShaderMaterial({
-    uniforms: { uLayer: { value: 0 }, uTexel: { value: 1 / 1024 }, uStrength: { value: 1 } },
+    uniforms: { uLayer: { value: 0 }, uTexel: { value: 1 / 1024 }, uStrength: { value: 1 }, uAlbScale: { value: 1 } },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
       void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }
     `,
     fragmentShader: /* glsl */ `
       precision highp float;
-      uniform int uLayer; uniform float uTexel; uniform float uStrength; uniform int uMode;
+      uniform int uLayer; uniform float uTexel; uniform float uStrength; uniform int uMode; uniform float uAlbScale;
       varying vec2 vUv;
       ${NOISE_P}
       ${funcs}
@@ -246,7 +251,7 @@ function makeGenMaterial(funcs, layerCount) {
         if (uMode == 0) {
           vec4 a = A(uv, uLayer);
           // codificación gamma 2 para conservar precisión en tonos oscuros
-          gl_FragColor = vec4(sqrt(clamp(a.rgb, 0., 1.)), a.a);
+          gl_FragColor = vec4(sqrt(clamp(a.rgb * uAlbScale, 0., 1.)), a.a);
         } else {
           float e = uTexel;
           float hl = H(fract(uv - vec2(e, 0.)), uLayer), hr = H(fract(uv + vec2(e, 0.)), uLayer);
@@ -263,9 +268,40 @@ function makeGenMaterial(funcs, layerCount) {
   });
 }
 
-function genArray(renderer, funcs, layers, size, strengths) {
+/** Empaqueta una capa escaneada: albedo (lineal × ganancia, o modulador si se tiñe) + rugosidad; normal + altura + oclusión. */
+function makePackMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      tA: { value: null }, tN: { value: null }, tR: { value: null }, uMode: { value: 0 },
+      uGain: { value: 1 }, uMean: { value: new THREE.Vector3(1, 1, 1) }, uMod: { value: 0 }, uAlbScale: { value: 1 },
+    },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }',
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform sampler2D tA; uniform sampler2D tN; uniform sampler2D tR;
+      uniform int uMode; uniform float uGain; uniform vec3 uMean; uniform float uMod; uniform float uAlbScale;
+      varying vec2 vUv;
+      void main(){
+        if (uMode == 0) {
+          vec3 lin = texture2D(tA, vUv).rgb;
+          lin = uMod > .5 ? lin / uMean * .92 : lin * uGain;
+          gl_FragColor = vec4(sqrt(clamp(lin * uAlbScale, 0., 1.)), texture2D(tR, vUv).r);
+        } else {
+          vec3 n = texture2D(tN, vUv).rgb;
+          gl_FragColor = vec4(n, texture2D(tR, vUv).g);
+        }
+      }`,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
+function genArray(renderer, funcs, layers, size, strengths, scanned = null, albScale = 1) {
   const mat = makeGenMaterial(funcs, layers);
   mat.uniforms.uMode = { value: 0 };
+  mat.uniforms.uAlbScale.value = albScale;
+  const pack = scanned ? makePackMaterial() : null;
+  if (pack) pack.uniforms.uAlbScale.value = albScale;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
   const mesh = new THREE.Mesh(geo, mat);
@@ -292,6 +328,26 @@ function genArray(renderer, funcs, layers, size, strengths) {
   renderer.autoClear = false;
   mat.uniforms.uTexel.value = 1 / size;
   for (let L = 0; L < layers; L++) {
+    const sc = scanned && scanned[L];
+    if (sc) {
+      // capa escaneada
+      mesh.material = pack;
+      const u = pack.uniforms;
+      u.tA.value = sc.a;
+      u.tN.value = sc.n;
+      u.tR.value = sc.r;
+      u.uGain.value = sc.meta.gain || 1;
+      u.uMean.value.fromArray(sc.meta.mean);
+      u.uMod.value = sc.meta.mode === 'mod' ? 1 : 0;
+      u.uMode.value = 0;
+      renderer.setRenderTarget(albedo, L);
+      renderer.render(scene, cam);
+      u.uMode.value = 1;
+      renderer.setRenderTarget(normal, L);
+      renderer.render(scene, cam);
+      mesh.material = mat;
+      continue;
+    }
     mat.uniforms.uLayer.value = L;
     mat.uniforms.uMode.value = 0;
     renderer.setRenderTarget(albedo, L);
@@ -304,16 +360,58 @@ function genArray(renderer, funcs, layers, size, strengths) {
   renderer.setRenderTarget(prevRT);
   renderer.autoClear = prevAuto;
   mat.dispose();
+  if (pack) pack.dispose();
+  if (scanned) for (const sc of Object.values(scanned)) for (const k of ['a', 'n', 'r']) sc[k].dispose();
   geo.dispose();
   return { albedo: albedo.texture, normal: normal.texture, targets: [albedo, normal] };
 }
 
-export function generateGroundTextures(renderer, size = 1024) {
-  return genArray(renderer, GROUND_FUNCS, GROUND_LAYERS, size, [1.2, 1.6, 1.0, 0.8, 0.7, 0.9, 1.4, 1.5, 0.6, 1.0]);
+export function generateGroundTextures(renderer, size = 1024, scanned = null) {
+  return genArray(renderer, GROUND_FUNCS, GROUND_LAYERS, size, [1.2, 1.6, 1.0, 0.8, 0.7, 0.9, 1.4, 1.5, 0.6, 1.0], scanned && scanned.ground);
 }
 
-export function generateDetailTextures(renderer, size = 512) {
-  return genArray(renderer, DETAIL_FUNCS, DETAIL_LAYERS, size, [0.5, 0.8, 1.4, 1.6, 1.8, 0.4]);
+export function generateDetailTextures(renderer, size = 512, scanned = null) {
+  return genArray(renderer, DETAIL_FUNCS, DETAIL_LAYERS, size, [0.5, 0.8, 1.4, 1.6, 1.8, 0.4], scanned && scanned.detail, 0.5);
+}
+
+async function loadImageTexture(url, srgb) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(url + ' ' + res.status);
+  const bmp = await createImageBitmap(await res.blob(), { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  const t = new THREE.Texture(bmp);
+  t.flipY = false;
+  t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Carga las texturas escaneadas (tex/…); devuelve null si no se pueden cargar (queda lo procedural). */
+export async function loadScannedTextures(base = 'tex/') {
+  try {
+    const out = { ground: {}, detail: {} };
+    const jobs = [];
+    for (const arr of ['ground', 'detail']) {
+      for (const [idx, meta] of Object.entries(TEXMETA[arr])) {
+        jobs.push((async () => {
+          const [a, n, r] = await Promise.all([
+            loadImageTexture(base + meta.file + '_a.webp', true),
+            loadImageTexture(base + meta.file + '_n.jpg', false),
+            loadImageTexture(base + meta.file + '_r.jpg', false),
+          ]);
+          out[arr][idx] = { a, n, r, meta };
+        })());
+      }
+    }
+    await Promise.all(jobs);
+    return out;
+  } catch (e) {
+    console.warn('Texturas escaneadas no disponibles; quedan las procedurales.', e && e.message);
+    return null;
+  }
 }
 
 /** GLSL para muestrear los arrays (decodifica gamma 2 y normal). */
@@ -321,4 +419,5 @@ export const GLSL_ARRAY_SAMPLING = /* glsl */ `
 vec4 sampleAlb(sampler2DArray t, vec2 uv, float layer){ vec4 a = texture(t, vec3(uv, layer)); return vec4(a.rgb * a.rgb, a.a); }
 vec4 sampleNrm(sampler2DArray t, vec2 uv, float layer){ vec4 n = texture(t, vec3(uv, layer)); vec2 xy = n.xy * 2. - 1.; return vec4(xy, sqrt(max(1. - dot(xy, xy), 0.)), n.w); }
 float sampleHgt(sampler2DArray t, vec2 uv, float layer){ return texture(t, vec3(uv, layer)).z; }
+vec4 sampleDet(sampler2DArray t, vec2 uv, float layer){ vec4 a = sampleAlb(t, uv, layer); return vec4(a.rgb * 2., a.a); }
 `;

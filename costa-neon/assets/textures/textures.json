@@ -1,0 +1,214 @@
+{
+ "ground": {
+  "0": {
+   "id": "asphalt_02",
+   "file": "g0",
+   "mode": "abs",
+   "tile": 3.0,
+   "gain": 1.0921,
+   "mean": [
+    0.112,
+    0.1104,
+    0.0983
+   ],
+   "author": "Rob Tuytel"
+  },
+  "1": {
+   "id": "concrete_pavement",
+   "file": "g1",
+   "mode": "abs",
+   "tile": 1.8,
+   "gain": 1.6386,
+   "mean": [
+    0.1946,
+    0.1813,
+    0.1667
+   ],
+   "author": "Charlotte Baglioni"
+  },
+  "2": {
+   "id": "leafy_grass",
+   "file": "g2",
+   "mode": "abs",
+   "tile": 2.0,
+   "gain": 1.0,
+   "mean": [
+    0.3176,
+    0.2336,
+    0.1044
+   ],
+   "author": "Charlotte Baglioni"
+  },
+  "3": {
+   "id": "large_square_pattern_01",
+   "file": "g3",
+   "mode": "abs",
+   "tile": 3.0,
+   "gain": 1.3911,
+   "mean": [
+    0.2081,
+    0.1935,
+    0.1591
+   ],
+   "author": "Rob Tuytel"
+  },
+  "4": {
+   "id": "coast_sand_01",
+   "file": "g4",
+   "mode": "abs",
+   "tile": 15.0,
+   "gain": 2.0079,
+   "mean": [
+    0.2257,
+    0.1726,
+    0.1087
+   ],
+   "author": "Rob Tuytel"
+  },
+  "5": {
+   "id": "concrete_floor_worn_001",
+   "file": "g5",
+   "mode": "abs",
+   "tile": 3.0,
+   "gain": 2.3481,
+   "mean": [
+    0.0932,
+    0.0943,
+    0.0891
+   ],
+   "author": "Dimitrios Savva, Rico Cilliers"
+  },
+  "6": {
+   "id": "gravel_concrete_03",
+   "file": "g6",
+   "mode": "abs",
+   "tile": 2.1,
+   "gain": 2.3606,
+   "mean": [
+    0.1034,
+    0.1026,
+    0.0869
+   ],
+   "author": "Charlotte Baglioni"
+  },
+  "7": {
+   "id": "weathered_brown_planks",
+   "file": "g7",
+   "mode": "abs",
+   "tile": 1.8,
+   "gain": 1.3453,
+   "mean": [
+    0.1204,
+    0.0741,
+    0.0443
+   ],
+   "author": "Dimitrios Savva, Rico Cilliers"
+  },
+  "8": {
+   "id": "brushed_concrete",
+   "file": "g8",
+   "mode": "abs",
+   "tile": 2.5,
+   "gain": 2.4932,
+   "mean": [
+    0.1468,
+    0.1259,
+    0.0985
+   ],
+   "author": "Dario Barresi, Dimitrios Savva"
+  },
+  "9": {
+   "id": "coast_sand_rocks_02",
+   "file": "g9",
+   "mode": "abs",
+   "tile": 15.0,
+   "gain": 1.0,
+   "mean": [
+    0.0748,
+    0.0613,
+    0.0299
+   ],
+   "author": "Rob Tuytel"
+  }
+ },
+ "detail": {
+  "0": {
+   "id": "painted_plaster_wall",
+   "file": "d0",
+   "mode": "mod",
+   "tile": 2.0,
+   "gain": 1.0,
+   "mean": [
+    0.4073,
+    0.3661,
+    0.3509
+   ],
+   "author": "Amal Kumar"
+  },
+  "1": {
+   "id": "concrete_wall_008",
+   "file": "d1",
+   "mode": "mod",
+   "tile": 2.71,
+   "gain": 1.0,
+   "mean": [
+    0.2669,
+    0.2381,
+    0.162
+   ],
+   "author": "Dario Barresi, Charlotte Baglioni"
+  },
+  "2": {
+   "id": "red_brick_03",
+   "file": "d2",
+   "mode": "mod",
+   "tile": 1.0,
+   "gain": 1.0,
+   "mean": [
+    0.1551,
+    0.0998,
+    0.0832
+   ],
+   "author": "Rob Tuytel"
+  },
+  "3": {
+   "id": "corrugated_iron",
+   "file": "d3",
+   "mode": "mod",
+   "tile": 1.12,
+   "gain": 1.0,
+   "mean": [
+    0.4027,
+    0.4502,
+    0.4271
+   ],
+   "author": "Jenelle van Heerden, Dimitrios Savva"
+  },
+  "4": {
+   "id": "palm_tree_bark",
+   "file": "d4",
+   "mode": "abs",
+   "tile": 1.3,
+   "gain": 1.0,
+   "mean": [
+    0.3451,
+    0.2915,
+    0.2338
+   ],
+   "author": "Dimitrios Savva, Rico Cilliers"
+  },
+  "5": {
+   "id": "plastered_wall",
+   "file": "d5",
+   "mode": "mod",
+   "tile": 2.0,
+   "gain": 1.0,
+   "mean": [
+    0.4355,
+    0.3919,
+    0.3347
+   ],
+   "author": "Amal Kumar"
+  }
+ }
+}
