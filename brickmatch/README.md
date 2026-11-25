@@ -5,7 +5,7 @@ la mayoría de esas piezas para comprarlo y armar tu diseño en vez del oficial.
 
 Proyecto independiente del resto del repo: vive entero en esta carpeta.
 
-![Base de Operaciones Ninja: 1.094 piezas del set 70751, con 35 minifiguras de prueba y las siluetas de un buggy y de un mecha de 39 cm](models/fortaleza-ninja/renders/hero.jpg)
+![Base de Operaciones Ninja: 1.094 piezas del set 70751, con 35 minifiguras de prueba y las siluetas de un buggy y de un mecha de 19 cm](models/fortaleza-ninja/renders/hero.jpg)
 
 | Pabellón Zen: 285 piezas, 100 % con el set 10315 | Templo Zen Ninjago: 307 piezas, diseño libre | Base Ninja: 111 piezas, 100 % con el set 71826 |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `templo-zen` (diseño libre) | 307 | 71861 The Old Town (4.852 piezas) | 106 de 307, 34,5 % |
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 | `base-universal` (para 30 minifiguras) | 573 | 70751 Temple of Airjitzu (2.033 piezas) | 573 de 573, **100 %** |
-| `fortaleza-ninja` (cuartel amurallado de 49 × 54 cm) | 1.094 | 70751 Temple of Airjitzu (2.033 piezas) | 1.094 de 1.094, **100 %** |
+| `fortaleza-ninja` (cuartel amurallado de 49 × 54 cm) | 1.088 | 70751 Temple of Airjitzu (2.033 piezas) | 1.088 de 1.088, **100 %** |
 
 `base-universal` y `fortaleza-ninja` usan como donante un set retirado: el
 original se consigue usado, y es de los más copiados por marcas alternativas,
@@ -44,8 +44,8 @@ solo cubre el 23 %. `fortaleza-ninja` reutiliza el código de `base-universal`
 y lo convierte en un cuartel con la misma caja: sala de operaciones, torre de
 control y equipo técnico en el edificio y, adelante, un patio de armas
 amurallado con dos torres, armería, taller, lugar para un vehículo y lugar para
-un mecha grande de otro set (tarima entre sus pies y armero de ejes para sus
-espadas). Usa piezas que en la primera quedaban sin usar: las 34 persianas
+un mecha de otro set (un podio junto al portón, como las estatuas guardianas de
+los templos, y un armero de ejes para su espada). Usa piezas que en la primera quedaban sin usar: las 34 persianas
 negras del set son los techos de las galerías, y con lo que sobraba salieron el
 gong de alarma, un carro de provisiones, un muñeco de práctica y un farol. Va en
 módulos apoyados sobre la mesa, como el patio de un castillo.
@@ -54,9 +54,9 @@ módulos apoyados sobre la mesa, como el patio de un castillo.
 | --- | --- |
 | ![Armería](models/fortaleza-ninja/renders/armeria.jpg) | ![Taller](models/fortaleza-ninja/renders/taller.jpg) |
 
-| Lugar del mecha: tarima, armero de ejes, carro y farol | Gong de alarma en el patio interior |
+| Lugar del mecha: podio junto al portón y armero de ejes | Gong de alarma en el patio interior |
 | --- | --- |
-| ![Lugar del mecha](models/fortaleza-ninja/renders/titan.jpg) | ![Gong](models/fortaleza-ninja/renders/gong.jpg) |
+| ![Lugar del mecha](models/fortaleza-ninja/renders/guardian.jpg) | ![Gong](models/fortaleza-ninja/renders/gong.jpg) |
 
 ## Comandos
 

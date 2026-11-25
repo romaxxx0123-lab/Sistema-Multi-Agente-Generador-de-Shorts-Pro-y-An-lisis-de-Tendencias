@@ -12,7 +12,7 @@ export const meta = {
   order: 4,
   title: 'Base de Operaciones Ninja',
   prompt: 'Que parezca una base de operaciones y no un templo: más grande, con lugares para guardar armas, lugar para el buggy de Jay y para el mecha de Cole, y con el gong; todo dentro de la estética Ninjago',
-  description: 'Un cuartel amurallado de unos 49 × 54 cm armado con una sola caja. Adelante, el patio de armas: muro con dos torres en las esquinas (vigía y torreta) sobre zócalos de piedra, portón de 16 cm de ancho con estandartes de dragón, plataforma para el buggy y, del otro lado, el lugar del mecha: una tarima entre sus pies y un armero de seis ejes para guardar sus espadas. A los lados, dos galerías de postes rojos con techo de persianas negras: la armería, con racks de lanzas y espadas, y el taller del vehículo. Atrás, el edificio principal de tres niveles: sala de operaciones bajo la pagoda, torre de control con radar, taller, vivienda, salón del maestro, pista de aterrizaje y jardín. Con piezas que sobraban se sumaron el gong de alarma, un carro de provisiones, un muñeco de práctica, un farol y las estatuas del torii. Solo usa piezas del set 70751 Temple of Airjitzu. Las minifiguras, el buggy y la silueta del mecha de Cole (set 71821, 39 cm) son de prueba: muestran que entran.',
+  description: 'Un cuartel amurallado de unos 49 × 54 cm armado con una sola caja. Adelante, el patio de armas: muro con dos torres en las esquinas (vigía y torreta) sobre zócalos de piedra, portón de 16 cm de ancho con estandartes de dragón, plataforma para el buggy y, del otro lado, el lugar del mecha: un podio junto al portón, como las estatuas guardianas de los templos, y un armero de ejes para su espada. A los lados, dos galerías de postes rojos con techo de persianas negras: la armería, con racks de lanzas y espadas, y el taller del vehículo. Atrás, el edificio principal de tres niveles: sala de operaciones bajo la pagoda, torre de control con radar, taller, vivienda, salón del maestro, pista de aterrizaje y jardín. Con piezas que sobraban se sumaron el gong de alarma, un carro de provisiones, un muñeco de práctica, un farol y las estatuas del torii. Solo usa piezas del set 70751 Temple of Airjitzu. Las minifiguras, el buggy y la silueta del mecha de Cole (set 71854, 19 cm) son de prueba: muestran que entran.',
   target: '70751-1',
 };
 
@@ -482,7 +482,7 @@ export default function build(m, helpers) {
   m.step('Carro de provisiones');
   // Dos ruedas de carreta, varas para tirar y un cofre. Las ruedas miden 84 LDU:
   // el eje queda a 42 y la caja, fuera de la grilla de plates.
-  placed(33, -24.5, 1, () => {
+  placed(33, -7, 1, () => {
     const Y = 4.625;
     const axle = m.add('4600', C.roof, -1, Y, -1);
     m.addRaw('4489b', C.wood, [0, 0, 1, 0, 1, 0, -1, 0, 0, 34, -42, 0], { on: axle });
@@ -497,7 +497,7 @@ export default function build(m, helpers) {
 
   m.step('Muñeco de práctica');
   {
-    const ox = 44, oz = -24;
+    const ox = 43, oz = -11;
     m.add('60474', C.roof, ox - 2, 0, oz - 2);
     m.add('92947', C.dark, ox - 1, 1, oz - 1);
     m.add('3839b', C.stone, ox - 1, 4, oz - 1, { face: 'S' });
@@ -514,46 +514,44 @@ export default function build(m, helpers) {
   m.add('6141', 'Yellow', 44.5, 12, -5.5);
   m.add('14769', C.pale, 44, 13, -6);
 
-  // ------------------------------------------------------ lugar del titán
-  // El mecha de Cole (set 71821, 39 cm) se para en la mitad este del patio,
-  // a horcajadas de la tarima. No es parte del modelo: va como silueta.
-  m.step('Tarima del titán');
-  rect('plate', C.wood, 34, 0, -20, 6, 10);
-  for (const x of [34, 39]) {
-    rect('tile', C.roof, x, 1, -20, 1, 6);
-    rect('tile', C.roof, x, 1, -14, 1, 4);
+  // ---------------------------------------------------- lugar del guardián
+  // El mecha de Cole (set 71854, 19 cm: tan alto como la pagoda) se para al
+  // lado del portón, como las estatuas guardianas de los templos. No es parte
+  // del modelo: va como silueta.
+  m.step('Podio del guardián');
+  const podium = rect('plate', C.wood, 31, 0, -22, 10, 6);
+  for (const z of [-22, -17]) {
+    rect('tile', C.roof, 31, 1, z, 6, 1);
+    rect('tile', C.roof, 37, 1, z, 4, 1);
   }
-  for (const z of [-20, -11]) rect('tile', C.roof, 35, 1, z, 4, 1);
 
-  m.step('Armero de las espadas del titán');
-  // Seis ejes parados sobre dos placas con agujeros: las espadas grandes del
-  // mecha (pieza 2144, con agujero de eje) se guardan enchufadas ahí.
-  {
-    const rx = 30, rz = -3;
-    m.add('2357', C.red, rx, 0, rz, { rot: 3 });
-    m.add('90258', C.stone, rx + 7, 0, rz);
-    m.add('2357', C.red, rx + 14, 0, rz, { rot: 2 });
-    const shelf = [m.add('3738', C.red, rx, 3, rz), m.add('3738', C.red, rx + 8, 3, rz)];
-    for (const dx of [3, 5, 7, 9, 11, 13]) {
-      m.addRaw('6587', C.ground, [0, -1, 0, 1, 0, 0, 0, 0, 1, (rx + dx) * 20, -(4 * 8 + 30), (rz + 1) * 20], { on: shelf[dx < 8 ? 0 : 1] });
+  m.step('Armero del mecha');
+  // Cuatro ejes parados sobre una placa con agujeros: la espada grande del
+  // mecha (pieza 79895, con agujero de eje) se guarda enchufada ahí.
+  placed(43, -15, 1, () => {
+    m.add('2357', C.red, 0, 0, 0, { rot: 3 });
+    m.add('2357', C.red, 6, 0, 0, { rot: 2 });
+    const shelf = m.add('3738', C.red, 0, 3, 0);
+    for (const dx of [1, 3, 5, 7]) {
+      m.addRaw('6587', C.ground, [0, -1, 0, 1, 0, 0, 0, 0, 1, dx * 20, -(4 * 8 + 30), 20], { on: shelf });
     }
-  }
+  });
 
-  // Silueta aproximada del mecha: solo se conoce su alto (39 cm); el ancho y
-  // los pies están estimados por proporción.
+  // Silueta aproximada del mecha: solo está publicado su alto (19 cm); el
+  // ancho y los pies están estimados por sus piezas.
   {
-    const cx = 37, cz = -15, L = { label: 'el mecha de Cole (silueta aproximada)' };
+    const cx = 36, cz = -19, L = { label: 'el mecha de Cole (silueta aproximada)' };
+    const Y = 1.5; // parado sobre los studs del podio
+    const feet = [-1, 1].map((s) => m.envelope(cx + (s < 0 ? -5 : 1), Y, cz - 2, 4, 4, 5, L));
+    m.propLinks.push([feet[0], podium]);
     for (const s of [-1, 1]) {
-      m.envelope(cx + (s < 0 ? -9 : 3), 0, cz - 6, 6, 10, 6, L); // pies
-      m.envelope(cx + (s < 0 ? -8 : 4), 6, cz - 1, 4, 5, 30, L); // piernas
-      m.envelope(cx + (s < 0 ? -8.5 : 3.5), 36, cz - 3, 5, 6, 24, L); // muslos
-      m.envelope(cx + (s < 0 ? -15.5 : 10.5), 46, cz - 3, 5, 6, 44, L); // brazos
-      m.envelope(cx + (s < 0 ? -15.5 : 8.5), 90, cz - 4, 7, 8, 12, L); // hombreras
+      m.envelope(cx + (s < 0 ? -4.5 : 1.5), Y + 5, cz - 2, 3, 4, 20, L); // piernas
+      m.envelope(cx + (s < 0 ? -9 : 5), Y + 16, cz - 2.5, 4, 5, 26, L); // brazos
+      m.envelope(cx + (s < 0 ? -9.5 : 4.5), Y + 42, cz - 3, 5, 6, 8, L); // hombreras
     }
-    m.envelope(cx - 6, 58, cz - 3, 12, 6, 10, L); // cadera
-    m.envelope(cx - 8, 68, cz - 4, 16, 9, 32, L); // torso
-    m.envelope(cx - 2.5, 100, cz - 3, 5, 5, 12, L); // cabeza
-    m.envelope(cx - 1, 112, cz - 1, 2, 1, 10, L); // cresta
+    m.envelope(cx - 4, Y + 24, cz - 2.5, 8, 5, 6, L); // cadera
+    m.envelope(cx - 5, Y + 30, cz - 3.5, 10, 7, 20, L); // torso
+    m.envelope(cx - 2, Y + 50, cz - 2, 4, 4, 9, L); // cabeza
   }
 
   m.step('Estatuas guardianas del torii');
@@ -589,8 +587,8 @@ export default function build(m, helpers) {
     [20, U, 21, 'E', 'Green', H, 'Black'], [27, U, 21, 'W', 'Black', H, 'Reddish Brown'], [23, U, 25, 'S', 'White', H, 'Dark Brown'],
     [39, U, 24, 'N', 'Dark Purple', H, 'Reddish Brown'], [33, U, 27, 'E', 'Medium Azure', H, 'Black'], [45, U, 26, 'W', 'Sand Green', HAT, 'Tan'],
     // patio de armas (sobre la mesa)
-    [35, 1, -16, 'E', 'Orange', H, 'Reddish Brown'], [38, 1, -16, 'W', 'Dark Blue', H, 'Black'],
-    [29, 0, -8, 'E', 'Dark Red', H, 'Black'], [47, 0, -13, 'E', 'Lime', H, 'Dark Brown'],
+    [28, 0, -13, 'E', 'Orange', H, 'Reddish Brown'], [31, 0, -13, 'W', 'Dark Blue', H, 'Black'],
+    [26, 0, -4, 'E', 'Dark Red', H, 'Black'], [47, 0, -13, 'E', 'Lime', H, 'Dark Brown'],
     [-2, 0, -22, 'W', 'Dark Blue', H, 'Black'], [26, 0, -34, 'S', 'Black', HAT, 'Tan'],
     [26, 0, -24, 'N', 'Dark Green', H, 'Dark Brown'],
   ];
