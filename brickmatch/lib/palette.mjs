@@ -1,0 +1,91 @@
+// Paleta: piezas y colores que usan los modelos.
+//
+// Colores: se escriben con el nombre de Rebrickable/BrickLink; el código LDraw
+// (para dibujar) y el id Rebrickable (para buscar sets) se resuelven solos por
+// nombre al cargar la paleta.
+//
+// Piezas: cualquier número de pieza que exista en LDraw y Rebrickable se puede
+// usar directo ('3001'). Acá solo van las que necesitan algo extra:
+//   ld / rb : cuando el número difiere entre LDraw y Rebrickable
+//   front   : hacia dónde mira el "frente" de la pieza sin rotar, [dx, dz]
+//             (en pendientes, el lado bajo). Permite usar { face: 'S' }.
+
+export const COLOR_NAMES = [
+  'Black', 'White', 'Red', 'Dark Red', 'Tan', 'Dark Tan', 'Light Bluish Gray', 'Dark Bluish Gray',
+  'Reddish Brown', 'Dark Brown', 'Pearl Gold', 'Green', 'Dark Green', 'Bright Green', 'Lime', 'Sand Green',
+  'Olive Green', 'Bright Pink', 'Dark Pink', 'Blue', 'Dark Blue', 'Medium Azure', 'Dark Turquoise',
+  'Yellow', 'Orange', 'Bright Light Orange', 'Dark Orange', 'Medium Nougat', 'Flat Silver',
+  'Trans-Clear', 'Trans-Light Blue', 'Trans-Dark Blue', 'Trans-Yellow', 'Trans-Orange', 'Trans-Red',
+  'Trans-Green', 'Trans-Neon Orange', 'Lavender', 'Magenta', 'Coral', 'Light Aqua', 'Sand Blue',
+];
+
+const S = [0, -1]; // frente local hacia -z
+// Piezas con hojas, garras o salientes: se colocan por la celda de su encastre.
+const CELL = (h) => ({ min: [-10, 0, -10], max: [10, h, 10] });
+
+export const PARTS = {
+  // Pendientes 45°
+  '3040b': { front: S }, // 2x1
+  '3039': { front: S }, // 2x2
+  '3038': { front: S }, // 2x3
+  '3037': { front: S }, // 2x4
+  // Pendientes 33°
+  '4286': { front: S }, // 3x1
+  '3298': { front: S }, // 3x2
+  '3297': { front: S }, // 3x4
+  // Pendientes chicas
+  '54200': { front: S }, // "queso" 1x1x2/3
+  '85984': { front: S }, // 1x2x2/3
+  // Pendiente triple (remate de cumbrera): mismo molde que 3048c
+  '15571': { front: S },
+  // Ventana 1x2x2: el vidrio va del lado del frente
+  '60592': { front: S },
+  // Ladrillos con stud lateral: el frente es hacia donde apunta ese stud
+  '87087': { front: S },
+  '4070': { front: S },
+  // Plantas y adornos
+  '30176': { box: CELL(24) }, // bambú
+  '2417': { box: CELL(8) }, // hojas 6x5
+  '2423': { box: CELL(8) }, // hojas 4x3
+  '24866': { box: CELL(8) }, // flor de 5 pétalos
+  '32607': { box: CELL(8) }, // plate redondo con 3 hojas
+  '33291': { box: CELL(8) }, // flor de 4 pétalos
+  '15070': { box: CELL(8) }, // plate 1x1 con garra hacia abajo
+  '49668': { box: CELL(8), front: S }, // plate 1x1 con diente al frente
+  '2540': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: S }, // plate 1x2 con manija al frente
+  '26047': { box: CELL(8), front: S }, // plate redondo 1x1 con manija
+  '30414': { front: S }, // ladrillo 1x4 con 4 studs laterales
+  '33909': { front: S }, // plate 2x2 con studs solo atrás: el frente es liso
+  '88930': { front: S }, // curva 2x4: baja hacia el frente
+  '15068': { front: S }, // curva 2x2
+  '85975': { box: CELL(16) }, // cono "fez"
+  '33492': { box: CELL(16) }, // cono truncado 1.5
+  '28598': { box: { min: [-20, 0, -20], max: [20, 72, 20] } }, // cono dentado 2x2x3 (pino)
+  '20482': { box: CELL(8) }, // tile redondo con perno
+  '32606': { box: { min: [-10, -16, -10], max: [10, 0, 10] } }, // flor de 7 pétalos
+};
+
+// Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.
+export const CORNER = { SE: 0, SW: 1, NW: 2, NE: 3 };
+
+// Colores cuyo nombre en LDraw no coincide con el de Rebrickable: código LDraw a mano.
+const LD_CODE = { 'Flat Silver': 179 };
+
+const norm = (s) => s.toLowerCase().replace(/grey/g, 'gray').replace(/[^a-z0-9]/g, '');
+
+// Resuelve la paleta contra la librería LDraw y el catálogo Rebrickable.
+export function resolvePalette(lib, catalog) {
+  const ldByName = new Map();
+  for (const c of lib.colors().values()) ldByName.set(norm(c.name), c);
+  const rbByName = new Map(catalog.colors.map((c) => [norm(c.name), c]));
+  const colors = {};
+  for (const name of COLOR_NAMES) {
+    const ld = LD_CODE[name] !== undefined ? lib.colors().get(LD_CODE[name]) : ldByName.get(norm(name));
+    const rb = rbByName.get(norm(name));
+    if (!ld || !rb) throw new Error(`Color "${name}": ${ld ? '' : 'no está en LDraw '}${rb ? '' : 'no está en Rebrickable'}`);
+    colors[name] = { ld: ld.code, rb: rb.id, rgb: `#${rb.rgb}`, trans: !!rb.is_trans, finish: ld.finish, alpha: ld.alpha };
+  }
+  const parts = {};
+  for (const [name, def] of Object.entries(PARTS)) parts[name] = { ld: name, rb: name, ...def };
+  return { colors, parts };
+}

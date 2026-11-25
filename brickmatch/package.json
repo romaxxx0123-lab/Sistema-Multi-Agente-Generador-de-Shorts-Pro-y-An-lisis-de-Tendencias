@@ -1,0 +1,19 @@
+{
+  "name": "brickmatch",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Diseña modelos con piezas LEGO reales, renderízalos en 3D y encuentra qué sets traen esas piezas.",
+  "scripts": {
+    "data": "bash scripts/fetch-data.sh",
+    "index": "node --disable-warning=ExperimentalWarning scripts/build-index.mjs",
+    "model": "node scripts/build-model.mjs",
+    "viewer": "node scripts/build-viewer.mjs",
+    "render": "node scripts/render.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "three": "^0.187.0"
+  }
+}
