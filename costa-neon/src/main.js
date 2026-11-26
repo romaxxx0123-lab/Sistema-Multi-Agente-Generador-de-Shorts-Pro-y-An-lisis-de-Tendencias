@@ -87,6 +87,7 @@ async function boot() {
   setProbeVisible(ocean.mesh);
   setProbeVisible(landmarks.group);
   setProbeVisible(sky.dome);
+  setProbeVisible(vegetation.group);
   const reflection = new PlanarReflection(engine, 0.5);
   reflection.exclude(...city.flat, ocean.mesh, weather.rain, ...(props.instGroups.lampCones ? props.instGroups.lampCones.meshes : []));
   engine.reflection = reflection;
@@ -132,6 +133,7 @@ async function boot() {
       v.actions = new Set(actions);
     },
     teleport(x, z, yaw = 0) { game.player.teleport(x, z, yaw); game.camRig.yaw = yaw; },
+    probeAt(x, y, z) { game.probeOverride = x == null ? null : new THREE.Vector3(x, y, z); },
     spawnCar(id, dist = 6, opts = {}) {
       const p = game.player;
       const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);

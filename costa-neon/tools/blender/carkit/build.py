@@ -20,6 +20,9 @@ def build_body(D, log=print):
     body = Body(D)
     bm = bmesh.new()
     build_half(bm, body)
+    if D.get('sculpt'):
+        from . import sculpt as SC
+        SC.apply(bm, D['sculpt'], log)
     C = Ctx(bm, body)
     F = D.get('features', {})
     shell.classify_base(C)
@@ -88,7 +91,8 @@ def build_body(D, log=print):
             polys.append((ft.densify(ft.rounded_poly(h['poly'], h.get('round', 0.2)), 1.5), hd))
             if 'poly2' in h:
                 polys.append((ft.densify(ft.rounded_poly(h['poly2'], h.get('round', 0.2)), 1.5), hd))
-        info['openings']['head'] = [ft.opening(C, 'frontc', pl, dp, M_INNER, M_INNER, M_LENS, 0.0015, 0.1)
+        hw = M_REFL if F['headlight'].get('chrome_housing') else M_INNER   # carcasa plateada (faros LED modernos)
+        info['openings']['head'] = [ft.opening(C, 'frontc', pl, dp, hw, hw, M_LENS, 0.0015, 0.1)
                                     for (pl, dp) in polys if pl]
     # antinieblas redondos
     if 'fogs' in F:
@@ -131,6 +135,7 @@ def build_body(D, log=print):
         g = F['side_intakes']
         if g.get('xz') and not g.get('_conv'):
             # definida en vista frontal: se pasa al espacio del abanico
+            g['poly_xz'] = list(g['poly'])
             g['poly'] = LM.xz_to_fan(cbvh, body, 'frontc', g['poly'])
             g['_conv'] = True
         poly = ft.densify(ft.rounded_poly(g['poly'], 0.3), 1.0)

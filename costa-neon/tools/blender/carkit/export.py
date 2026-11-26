@@ -6,7 +6,7 @@ import bpy
 import bmesh
 
 ROLE = {'paint': 'paint', 'glass': 'glass', 'lens': 'lens', 'chrome': 'chrome', 'refl': 'chrome', 'reverse': 'chrome',
-        'head': 'head', 'tail': 'tail', 'tail_lit': 'tail', 'blink': 'blink', 'extra': 'extra'}
+        'head': 'head', 'drl': 'drl', 'tail': 'tail', 'tail_lit': 'tail', 'blink': 'blink', 'extra': 'extra'}
 # albedo lineal de las molduras (se hornea en el color de vértice)
 ALBEDO = {
     'under': (0.018, 0.018, 0.019), 'frame': (0.012, 0.012, 0.013), 'trim': (0.014, 0.014, 0.015),
@@ -127,7 +127,7 @@ def tri_count(o):
     return sum(len(p.vertices) - 2 for p in o.data.polygons)
 
 
-LOD1_BUDGET = {'paint': 5200, 'trim': 3600, 'glass': 500, 'lens': 260, 'chrome': 700, 'head': 260, 'tail': 420,
+LOD1_BUDGET = {'paint': 5200, 'trim': 3600, 'glass': 500, 'lens': 260, 'chrome': 700, 'head': 260, 'drl': 160, 'tail': 420,
                'blinkL': 80, 'blinkR': 80, 'extra': 300}
 
 

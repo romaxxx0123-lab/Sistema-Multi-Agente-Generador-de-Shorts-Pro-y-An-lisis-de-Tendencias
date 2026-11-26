@@ -23,7 +23,7 @@ const CAPACITY = { compacto: 26, sedan: 30, taxi: 14, patrulla: 16, suv: 18, fur
 // Nivel de detalle: los autos cercanos usan el modelo completo (lista compacta, sin instancias vacías)
 const NEAR_CAP = 6;
 const NEAR_D2 = 30 * 30;
-const LOD_PARTS = ['paint', 'trim', 'glass', 'lens', 'chrome', 'head', 'tail', 'blinkL', 'blinkR', 'extra', 'barR', 'barB'];
+const LOD_PARTS = ['paint', 'trim', 'glass', 'lens', 'chrome', 'head', 'drl', 'tail', 'blinkL', 'blinkR', 'extra', 'barR', 'barB'];
 
 /** Divide una geometría (indexada o no) en dos por el lado del triángulo: x > 0 (izquierda) y x <= 0. */
 function splitBySide(g) {
@@ -459,7 +459,7 @@ class VehicleRenderer {
       mesh.receiveShadow = true;
       mesh.count = 0;
       for (let i = 0; i < cap; i++) mesh.setMatrixAt(i, ZERO);
-      if (name === 'paint' || name === 'head' || name === 'tail' || name === 'extra' || name === 'barR' || name === 'barB' || name === 'blinkL' || name === 'blinkR') mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
+      if (name === 'paint' || name === 'head' || name === 'drl' || name === 'tail' || name === 'extra' || name === 'barR' || name === 'barB' || name === 'blinkL' || name === 'blinkR') mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
       setDynamic(mesh);
       this.group.add(mesh);
       parts[name] = mesh;
@@ -494,6 +494,7 @@ class VehicleRenderer {
     if (parts.lens) parts.lens.renderOrder = 3;
     mk('chrome', far.chrome, this.chromeMat, false);
     mk('head', far.head, this.headMat, false);
+    mk('drl', far.drl, this.headMat, false);
     mk('tail', far.tail, this.tailMat, false);
     mk('blinkL', far.blinkL, this.blinkMat, false);
     mk('blinkR', far.blinkR, this.blinkMat, false);
@@ -678,8 +679,14 @@ class VehicleRenderer {
       const on = v.engineOn && !v.destroyed;
       const alarm = v.alarmT > 0 && !v.destroyed && Math.floor(v.alarmT * 4.4) % 2 === 0;
       if (m.parts.head) {
-        const hk = alarm ? 6 : on ? (lightsNeeded ? 6 : 0.9) : 0.12;
+        // faros principales: sólo de noche o con lluvia (de día el proyector es vidrio oscuro, como en un auto real)
+        const hk = alarm ? 6 : on && lightsNeeded ? 6 : 0.1;
         setCol('head', _v.set(hk, hk * 0.95, hk * 0.86));
+      }
+      if (m.parts.drl) {
+        // luz diurna LED: encendida con el motor, blanca fría
+        const dk = alarm ? 6 : on ? (lightsNeeded ? 2.2 : 3.2) : 0.08;
+        setCol('drl', _v.set(dk * 0.92, dk * 0.96, dk));
       }
       if (m.parts.tail) {
         const tk = alarm ? 4 : v.braking && on ? 5 : on ? (lightsNeeded ? 1.6 : 0.5) : 0.15;

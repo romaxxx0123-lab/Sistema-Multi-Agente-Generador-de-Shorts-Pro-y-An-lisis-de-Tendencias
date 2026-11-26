@@ -40,7 +40,7 @@ const SOURCES = {
 /** id de modelo → { geo: { paint, trim, glass, lens, chrome, head, tail, blinkL, blinkR, lo: {...} }, meta } */
 export const CAR_ASSETS = {};
 
-const ROLES = ['paint', 'trim', 'glass', 'lens', 'chrome', 'head', 'tail', 'blinkL', 'blinkR', 'extra'];
+const ROLES = ['paint', 'trim', 'glass', 'lens', 'chrome', 'head', 'drl', 'tail', 'blinkL', 'blinkR', 'extra'];
 
 /** Copia los atributos útiles a Float32 (sin cuantización) y gira el modelo al sistema del juego. */
 function normalizeGeometry(src, matrix) {

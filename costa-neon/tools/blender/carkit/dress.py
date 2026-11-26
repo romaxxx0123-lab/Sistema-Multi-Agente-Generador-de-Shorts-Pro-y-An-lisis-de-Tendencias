@@ -248,6 +248,11 @@ def mirrors(D, info, bvh):
     y = (s0 + s1) / 2 - 0.02
     # a la altura de la cintura de ese punto (cada diseño la tiene distinta)
     zb = info['body'].z[5](y) + F.get('mirror_dz', 0.03)
+    if 'mirror_base' in F:          # pie del espejo medido en una foto: (y, z) sobre la puerta [, x fijo]
+        y, zb = F['mirror_base'][:2]
+        if len(F['mirror_base']) > 2:
+            from mathutils import Vector as _V
+            return MR.build(F, _V((F['mirror_base'][2], y, zb)), F.get('mirror', 'standard'))
     loc, nrm = P.ray(bvh, (2.0, y, zb), (-1, 0, 0))
     if loc is None:
         return []
@@ -268,6 +273,8 @@ def handles(D, info, bvh):
 
 def wipers(D, info, bvh):
     G = D['greenhouse']
+    if D['features'].get('hidden_wipers'):
+        return []   # escobillas ocultas bajo el borde del capó (no se ven desde afuera)
     if G.get('ws_space') == 'front':
         return wipers_front(D, info, bvh)
     n = len(G['ws_poly']) // 2
@@ -437,6 +444,24 @@ def roof_rails(D, info, bvh):
     rr = D['features']['roof_rails']
     x, y0, y1 = rr['x'], rr['y'][0], rr['y'][1]
     objs = []
+    if rr.get('flush'):
+        # barra al ras: perfil bajo continuo apoyado sobre el techo, con los extremos que bajan hasta la chapa
+        path, nrm = [], []
+        n = 48
+        for k in range(n + 1):
+            y = y0 + (y1 - y0) * k / n
+            loc, nn = P.ray(bvh, (x, y, 4.0), (0, 0, -1))
+            if loc is None:
+                continue
+            e = min(k, n - k) / 3.0
+            lift = rr.get('h', 0.03) * min(1.0, e) - 0.006
+            path.append(Vector((x, y, loc.z + lift)))
+            nrm.append(Vector((0, 0, 1)))
+        if len(path) > 2:
+            objs.append(P.sweep('rail', path, nrm, P.rrect(rr.get('w', 0.026), 0.012, 0.45, 3), rr.get('mat', 'chrome')))
+            base = [p - Vector((0, 0, 0.012)) for p in path]
+            objs.append(P.sweep('rail_base', base, nrm, P.rrect(rr.get('w', 0.026) + 0.006, 0.014, 0.3, 2), 'trim'))
+        return objs
     pts = []
     for k in range(15):
         y = y0 + (y1 - y0) * k / 14
@@ -526,17 +551,23 @@ def dress(D, info, bm):
         right += roof_rails(D, info, bvh)
     if 'fogs' in F:
         right += ST.fog_lamps(D, body, clean_bvh, F['fogs'])
+    si = F.get('side_intakes', {})
+    if si.get('insert') and si.get('xz'):
+        g = dict(si['insert'], kidney=True, poly=si.get('poly_xz', si['poly']))
+        right += GR.build(D, body, clean_bvh, g)
     if F.get('side_intakes', {}).get('fins'):
         right += side_intake_fins(D, info, clean_bvh)
     for (x, z) in F.get('amber_front', []):
         fr = ST.surface(clean_bvh, body, 'front', abs(x), z, mirror_half=True)
         if fr is not None:
             right.append(P.box('blink_front', (0.09, 0.012, 0.03), tuple(fr.o + fr.n * 0.002), 'blink', bevel=0.005))
+    if F.get('grille', {}).get('kidney'):
+        right += grille(D, info, clean_bvh)
     right += liners(D, D['wr'] + F.get('arch_gap', 0.045))
     mirrored = [P.mirror_obj(o) for o in right]
     # ---- centrales (ya simétricos)
     center = []
-    if 'grille' in F:
+    if 'grille' in F and not F['grille'].get('kidney'):
         center += grille(D, info, clean_bvh)
     if 'intake' in F:
         center += intake_bars(D, info, clean_bvh)

@@ -1302,3 +1302,56 @@ SUV['features']['taillamps'][0].update(
     blocks=[[(0.30, 0.74), (0.78, 0.74)]], block_w=0.04,
     signal=[[(0.30, 0.50), (0.78, 0.50)]], signal_w=0.022,
     reverse=[[(0.30, 0.27), (0.78, 0.27)]], reverse_w=0.03)
+
+
+# ---------------------------------------------------------------- superficies tensas (todas las carrocerías)
+# Comparadas con autos reales, las carrocerías salían infladas (aspecto de juguete/animación): paneles
+# abombados en todos los tramos, uniones suaves y esquinas en planta muy redondas. Un auto real tiene
+# paneles casi planos y quiebres nítidos (hombro, zócalo, borde del capó) con radios de 1 a 3 cm.
+def _scale_table(v, k):
+    if isinstance(v, (int, float)):
+        return v * k if v > 0 else v
+    return [[y, (x * k if x > 0 else x)] for y, x in v]
+
+
+def _max_table(v, m):
+    if isinstance(v, (int, float)):
+        return max(v, m)
+    return [[y, max(x, m)] for y, x in v]
+
+
+def tauten(D, bulge_k=0.42, creases=(3, 4, 5), crease_min=0.85, fan_n=0.45):
+    D['bulge'] = {k: _scale_table(v, bulge_k) for k, v in D['bulge'].items()}
+    for k in creases:
+        if k in D['crease']:
+            D['crease'][k] = _max_table(D['crease'][k], crease_min)
+    # capó más plano: menos combado en la zona delante del parabrisas
+    a = D['greenhouse'].get('a_base', 0.7) + 0.08
+    D['camber'] = [[y, (c * 0.45 if y > a else c)] for y, c in D['camber']]
+    F = D['front']
+    F['bulge'] = {k: (v * 0.3 if k == 5 and v > 0 else v) for k, v in F.get('bulge', {}).items()}
+    F.setdefault('crease', {})
+    for k, m in ((4, 0.8), (5, 0.92), (6, 0.85)):
+        F['crease'][k] = max(F['crease'].get(k, 0.0), m)
+    for end in ('front', 'rear'):
+        E = D[end]
+        E['bulge'] = {k: (v * bulge_k if v > 0 else v) for k, v in E.get('bulge', {}).items()}
+        E['n'] = {k: v + fan_n for k, v in E['n'].items()}
+        cr = E.get('crease', {})
+        for k in (3, 4):
+            if k in cr:
+                cr[k] = max(cr[k], 0.75)
+    return D
+
+
+import os as _os
+if not _os.environ.get('CARS_SIN_TENSAR'):   # para comparar antes/después
+    for _D in (SEDAN, COMPACTO, SUV, MUSCLE, DEPORTIVO, SUPERAUTO, PICKUP, FURGON):
+        tauten(_D)
+
+# parrilla del sedán: marco cromado fino y barras negro brillante (el cromo grueso se leía de juguete)
+SEDAN['features']['grille'].update(frame=dict(w=0.011, d=0.01, mat='chrome'), bar_mat='trim_gloss', count=5)
+
+# familiar copiado de una foto real (ver design_rural.py); no se le aplica tauten: sus formas salen de la foto
+from .design_rural import RURAL
+DESIGNS['rural'] = RURAL

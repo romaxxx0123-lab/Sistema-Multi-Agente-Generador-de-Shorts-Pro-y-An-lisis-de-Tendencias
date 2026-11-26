@@ -166,7 +166,7 @@ export function assetGeometry(asset, spec) {
     bakeAOAsset(s.trim, spec);
     return {
       paint: s.paint, trim: s.trim, glass: s.glass || null, lens: s.lens || null, chrome: s.chrome || null,
-      head: s.head || null, tail: s.tail || null, extra: s.extra || null,
+      head: s.head || null, drl: s.drl || null, tail: s.tail || null, extra: s.extra || null,
       blinkL: s.blinkL || null, blinkR: s.blinkR || null,
     };
   };

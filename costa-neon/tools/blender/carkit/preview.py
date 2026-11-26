@@ -24,7 +24,7 @@ def mat(name, color, rough=0.5, metal=0.0, coat=0.0, transmission=0.0, emit=None
     return m
 
 
-def setup(res=(960, 540), samples=24, zebra=False, sun=(38, 140), studio=False):
+def setup(res=(960, 540), samples=24, zebra=False, sun=(38, 140), studio=False, hdri=None, hdri_rot=0.0, exposure=0.0):
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
     sc.cycles.device = 'CPU'
@@ -40,7 +40,25 @@ def setup(res=(960, 540), samples=24, zebra=False, sun=(38, 140), studio=False):
     world.use_nodes = True
     nt = world.node_tree
     bg = nt.nodes['Background']
-    if zebra:
+    if hdri:
+        # foto HDR real de una calle como luz y fondo; el piso sólo recibe sombras (se ve el asfalto de la foto)
+        env = nt.nodes.new('ShaderNodeTexEnvironment')
+        env.image = bpy.data.images.load(hdri)
+        tc = nt.nodes.new('ShaderNodeTexCoord')
+        mp = nt.nodes.new('ShaderNodeMapping')
+        mp.inputs['Rotation'].default_value = (0, 0, math.radians(hdri_rot))
+        nt.links.new(tc.outputs['Generated'], mp.inputs['Vector'])
+        nt.links.new(mp.outputs['Vector'], env.inputs['Vector'])
+        nt.links.new(env.outputs['Color'], bg.inputs['Color'])
+        bg.inputs['Strength'].default_value = 1.0
+        sc.view_settings.exposure = exposure
+        bpy.ops.mesh.primitive_plane_add(size=80, location=(0, 0, 0))
+        floor = bpy.context.active_object
+        floor.name = 'preview_floor'
+        floor.is_shadow_catcher = True
+        floor.data.materials.append(mat('pv_floor_hdri', (0.12, 0.12, 0.12), 0.8))
+        sc.render.film_transparent = False
+    elif zebra:
         # bandas horizontales: coordenada del rayo → seno de la elevación
         tc = nt.nodes.new('ShaderNodeTexCoord')
         sep = nt.nodes.new('ShaderNodeSeparateXYZ')

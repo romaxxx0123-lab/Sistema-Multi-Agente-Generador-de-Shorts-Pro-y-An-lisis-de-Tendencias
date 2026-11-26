@@ -116,7 +116,7 @@ def head_round(D, body, clean_bvh, h):
             continue
         objs += bowl('head_bowl', fr, r * 0.96, r * 0.45, 0.004, 0.07)
         objs += P.cylinder('head_bulb', fr.o - fr.n * 0.05, fr.o - fr.n * 0.03, r * 0.28, r * 0.28, 'inner', 20, False, True, 'head')
-        objs += ribbon_pts('head_halo', ring_pts(fr, r * 0.8, r * 0.8, 0.012, 32), fr.n, 0.006, 'head')
+        objs += ribbon_pts('head_halo', ring_pts(fr, r * 0.8, r * 0.8, 0.012, 32), fr.n, 0.006, 'drl')
         objs += ribbon_pts('blink_f', ring_pts(fr, r * 0.62, r * 0.62, 0.016, 10, math.radians(200), math.radians(340)), fr.n, 0.008, 'blink')
     return objs
 
@@ -152,7 +152,7 @@ def head_split(D, body, clean_bvh, h):
             pts.append(fr.o - fr.n * 0.01)
             nn = fr.n
     if nn is not None:
-        objs += ribbon_pts('drl', pts, nn, max(0.006, (v1 - v0) * 0.5), 'head')
+        objs += ribbon_pts('drl', pts, nn, max(0.006, (v1 - v0) * 0.5), 'drl')
     # giro: tramo externo de la ranura en ámbar
     fr = surface(clean_bvh, body, 'frontc', u0 + 2.5, (v0 + v1) / 2)
     if fr:
@@ -184,7 +184,7 @@ def head_rect(D, body, clean_bvh, h):
         objs += P.cylinder('head_bulb', f2.o - f2.n * 0.04, f2.o - f2.n * 0.025, r * 0.3, r * 0.3, 'inner', 18, False, True, 'head')
     f3 = Frame(fr.at(-w * 0.36, 0.0, 0.0), fr.n)
     objs += ribbon_pts('blink_f', [f3.at(0, -hh * 0.38, 0.014), f3.at(0, hh * 0.38, 0.014)], f3.n, w * 0.16, 'blink')
-    objs += ribbon_pts('drl', [fr.at(-w * 0.32, -hh * 0.45, 0.012), fr.at(w * 0.42, -hh * 0.45, 0.012)], fr.n, 0.006, 'head')
+    objs += ribbon_pts('drl', [fr.at(-w * 0.32, -hh * 0.45, 0.012), fr.at(w * 0.42, -hh * 0.45, 0.012)], fr.n, 0.006, 'drl')
     return objs
 
 
@@ -204,7 +204,7 @@ def head_cshape(D, body, clean_bvh, h):
     cu, cw = w * 0.42, hh * 0.38
     pts = [fr.at(cu * 0.9, cw, 0.01), fr.at(-cu * 0.7, cw, 0.01), fr.at(-cu, cw * 0.6, 0.01), fr.at(-cu, -cw * 0.6, 0.01),
            fr.at(-cu * 0.7, -cw, 0.01), fr.at(cu * 0.9, -cw, 0.01)]
-    objs += ribbon_pts('drl', pts, fr.n, 0.007, 'head')
+    objs += ribbon_pts('drl', pts, fr.n, 0.007, 'drl')
     objs += ribbon_pts('blink_f', [fr.at(-cu * 0.85, -cw * 0.3, 0.014), fr.at(-cu * 0.85, cw * 0.3, 0.014)], fr.n, 0.012, 'blink')
     return objs
 
@@ -223,11 +223,11 @@ def head_slit(D, body, clean_bvh, h):
             pts.append(fr.o - fr.n * 0.006)
             nn = fr.n
     if nn is not None:
-        objs += ribbon_pts('drl', pts, nn, 0.0045, 'head')
+        objs += ribbon_pts('drl', pts, nn, 0.0045, 'drl')
     # brazo de la Y que baja por el extremo externo
     fa = surface(clean_bvh, body, 'frontc', u0 + 3.0, (v0 + v1) / 2)
     if fa:
-        objs += ribbon_pts('drl_y', [fa.at(0.0, 0.0, 0.006), fa.at(-0.03, -0.06, 0.006)], fa.n, 0.004, 'head')
+        objs += ribbon_pts('drl_y', [fa.at(0.0, 0.0, 0.006), fa.at(-0.03, -0.06, 0.006)], fa.n, 0.004, 'drl')
         objs += ribbon_pts('blink_f', [fa.at(0.01, 0.002, 0.008), fa.at(0.05, 0.004, 0.008)], fa.n, 0.006, 'blink')
     fm = surface(clean_bvh, body, 'frontc', (u0 + u1) / 2, (v0 + v1) / 2)
     if fm:
@@ -248,7 +248,7 @@ def head_oval(D, body, clean_bvh, h):
     f2 = Frame(p, fr.n)
     objs += P.cylinder('proj_ring', p - fr.n * 0.01, p - fr.n * 0.04, r * 1.45, r * 1.05, 'refl', 28, False, False)
     objs += P.cylinder('proj', p - fr.n * 0.012, p - fr.n * 0.06, r, r, 'inner', 24, False, True, 'head')
-    objs += ribbon_pts('drl', ring_pts(fr, rx * 0.86, rz * 0.8, 0.012, 36, h.get('rot', 0.0), h.get('rot', 0.0) + 2 * math.pi), fr.n, 0.006, 'head')
+    objs += ribbon_pts('drl', ring_pts(fr, rx * 0.86, rz * 0.8, 0.012, 36, h.get('rot', 0.0), h.get('rot', 0.0) + 2 * math.pi), fr.n, 0.006, 'drl')
     objs += ribbon_pts('blink_f', ring_pts(fr, rx * 0.7, rz * 0.6, 0.016, 8, math.radians(150), math.radians(210)), fr.n, 0.01, 'blink')
     return objs
 
@@ -404,6 +404,10 @@ def rounded(poly):
 def badge(fr, shape, size, mat='chrome', thick=0.008):
     """Emblema plano con relieve: disco, aro, rombo, escudo, triángulo, paralelogramo, alas o cheurón."""
     s = size
+    if shape == 'roundel_plain':
+        out = P.cylinder('badge', fr.o - fr.n * 0.003, fr.o + fr.n * 0.004, s, s * 0.97, 'chrome', 32, False, True)
+        out += P.cylinder('badge_c', fr.o + fr.n * 0.0035, fr.o + fr.n * 0.0055, s * 0.78, s * 0.74, 'trim_gloss', 32, False, True)
+        return out
     if shape == 'disc':
         return P.cylinder('badge', fr.o - fr.n * 0.004, fr.o + fr.n * thick, s, s * 0.95, mat, 28, False, True)
     if shape == 'ring':

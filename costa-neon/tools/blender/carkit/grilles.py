@@ -8,8 +8,13 @@ from .styles import surface
 from .cut import point_in_poly
 
 
+_WHOLE = [False]   # parrilla partida (riñones): cada mitad es un contorno cerrado propio, no se espeja
+
+
 def full_outline(poly):
     """Contorno simétrico completo a partir de la mitad derecha (x >= 0)."""
+    if _WHOLE[0]:
+        return list(poly)
     right = [(max(0.0, x), z) for (x, z) in poly]
     left = [(-x, z) for (x, z) in reversed(right) if x > 1e-4]
     return right + left
@@ -150,7 +155,15 @@ def cells3d(cbvh, body, kind, poly, pitch, shape, inset, depth, web, mat):
 
 
 def build(D, body, cbvh, g, kind='front'):
-    """Parrilla o toma completa según g: marco, relleno y travesaños."""
+    """Parrilla o toma completa según g: marco, relleno y travesaños (kidney: sólo la mitad derecha)."""
+    _WHOLE[0] = bool(g.get('kidney'))
+    try:
+        return _build(D, body, cbvh, g, kind)
+    finally:
+        _WHOLE[0] = False
+
+
+def _build(D, body, cbvh, g, kind):
     poly = g['poly']
     objs = []
     fr_spec = g.get('frame')
@@ -172,10 +185,16 @@ def build(D, body, cbvh, g, kind='front'):
         pitch = g.get('pitch', 0.045)
         x1 = max(xs)
         vals = []
-        x = pitch / 2
-        while x < x1 - pitch * 0.4:
-            vals += [x, -x]
-            x += pitch
+        if g.get('kidney'):
+            x = min(xs) + pitch * 0.6
+            while x < x1 - pitch * 0.4:
+                vals.append(x)
+                x += pitch
+        else:
+            x = pitch / 2
+            while x < x1 - pitch * 0.4:
+                vals += [x, -x]
+                x += pitch
         objs += bars(cbvh, body, kind, poly, vals, inset, g.get('bar', 0.014), g.get('bar_d', 0.022), g.get('bar_mat', 'chrome'), vertical=True)
     elif ins in ('honeycomb', 'mesh'):
         objs += cells3d(cbvh, body, kind, poly, g.get('pitch', 0.03), 'hex' if ins == 'honeycomb' else 'diamond',

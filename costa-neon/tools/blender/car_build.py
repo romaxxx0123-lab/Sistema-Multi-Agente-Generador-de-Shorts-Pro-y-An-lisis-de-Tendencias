@@ -40,12 +40,13 @@ print('modelo listo en %.1fs' % (time.time() - t0))
 
 # aspecto de los materiales para los renders (el juego usa los suyos)
 LOOK = {
-    'paint': ((0.05, 0.06, 0.075) if light == 'studio' else (0.16, 0.01, 0.012), 0.3, 0.6 if light == 'studio' else 0.0, 1.0, 0, None),
+    'paint': ((0.05, 0.06, 0.075) if light == 'studio' else (0.045, 0.05, 0.056) if light.startswith('hdri') else (0.16, 0.01, 0.012), 0.3, 0.6 if light == 'studio' or light.startswith('hdri') else 0.0, 1.0, 0, None),
     'under': ((0.02, 0.02, 0.02), 0.8, 0, 0, 0, None), 'glass': ((0.01, 0.012, 0.014), 0.03, 0, 0, 0.3, None),
     'frame': ((0.012, 0.012, 0.013), 0.5, 0, 0, 0, None), 'trim': ((0.014, 0.014, 0.015), 0.45, 0, 0, 0, None),
     'trim_gloss': ((0.008, 0.008, 0.009), 0.12, 0, 0.5, 0, None),
     'chrome': ((0.88, 0.88, 0.9), 0.05, 1, 0, 0, None), 'gap': ((0.003, 0.003, 0.003), 0.7, 0, 0, 0, None),
-    'lens': ((0.95, 0.95, 0.95), 0.01, 0, 0, 1.0, None), 'head': ((1, 1, 1), 0.2, 0, 0, 0, ((1, 0.97, 0.92), 4.0)),
+    'lens': ((0.95, 0.95, 0.95), 0.01, 0, 0, 1.0, None), 'head': ((0.6, 0.6, 0.6), 0.2, 0, 0, 0, ((1, 0.97, 0.92), 0.25)),
+    'drl': ((1, 1, 1), 0.2, 0, 0, 0, ((0.92, 0.96, 1.0), 6.0)),
     'tail': ((0.3, 0.004, 0.006), 0.35, 0, 0, 0, None), 'tail_lit': ((0.6, 0.01, 0.01), 0.3, 0, 0, 0, ((1, 0.02, 0.02), 1.5)),
     'blink': ((0.9, 0.42, 0.03), 0.3, 0, 0, 0, None), 'reverse': ((0.85, 0.85, 0.85), 0.15, 0, 0, 0, None),
     'refl': ((0.8, 0.8, 0.82), 0.1, 1, 0, 0, None), 'inner': ((0.045, 0.044, 0.042), 0.7, 0, 0, 0, None),
@@ -130,5 +131,10 @@ else:
     rm = info['body'].r[4](ym) + 0.1
     pv.VIEWS['mirror'] = ((rm + 0.75, ym + 0.85, zm + 0.3), 45, (rm, ym, zm))
     pv.VIEWS['mirror_r'] = ((rm + 0.55, ym - 0.95, zm + 0.25), 45, (rm, ym, zm))
-    cam = pv.setup(res=(800, 450) if len(views) > 4 or light == 'studio_small' else (960, 540), samples=28 if light == 'studio_small' else 40, studio=light.startswith('studio'))
+    hd = light.split(':') if light.startswith('hdri') else None   # hdri:<archivo>:<giro°>:<exposición>
+    pv.VIEWS['street'] = ((2.6, 6.2, 1.62), 40, (0.0, 0.2, 0.62))
+    pv.VIEWS['street_side'] = ((6.5, 0.6, 1.62), 40, (0.0, 0.0, 0.62))
+    cam = pv.setup(res=(800, 450) if len(views) > 4 or light == 'studio_small' else (960, 540), samples=28 if light == 'studio_small' else 40,
+                   studio=light.startswith('studio'), hdri=hd[1] if hd else None, hdri_rot=float(hd[2]) if hd and len(hd) > 2 else 0.0,
+                   exposure=float(hd[3]) if hd and len(hd) > 3 else 0.0)
     pv.shoot(cam, out, {k: pv.VIEWS[k] for k in views})

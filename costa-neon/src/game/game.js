@@ -56,7 +56,9 @@ export class Game {
     this.traffic = new TrafficManager(this);
     this.vehicleHud = new VehicleHud(this);
     this.contactShadows = new ContactShadows(this.engine);
-    this.probe = new ReflectionProbe(this.engine, 128);
+    // reflejos nítidos en la pintura y los vidrios: 512 px por cara (sólo se usa en calidad alta/ultra)
+    this.probe = new ReflectionProbe(this.engine, 512);
+    this.probeOverride = null; // punto fijo para la sonda (fotos y pruebas)
     this._probeOn = null;
     this.engine.onQualityChange(() => this._syncProbe());
     this.enterState = null;
@@ -229,7 +231,8 @@ export class Game {
     if (probe.enabled) {
       const v = this.player.vehicle;
       const c = this.engine.camera.position;
-      if (v) _probePos.set(v.pos.x, v.pos.y + v.height + 0.5, v.pos.z);
+      if (this.probeOverride) _probePos.copy(this.probeOverride);
+      else if (v) _probePos.set(v.pos.x, v.pos.y + v.height + 0.5, v.pos.z);
       else _probePos.set((this.player.pos.x + c.x) / 2, Math.max(this.player.pos.y + 1.4, 0.8), (this.player.pos.z + c.z) / 2);
       probe.update(_probePos);
     }

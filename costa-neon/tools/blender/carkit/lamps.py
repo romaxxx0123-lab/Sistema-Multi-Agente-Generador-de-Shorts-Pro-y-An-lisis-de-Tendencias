@@ -121,9 +121,9 @@ def headlamp(D, body, bvh, spec):
         if fr is not None:
             objs += reflector('refl%d' % k, fr, R)
     for k, pts in enumerate(spec.get('drl', [])):
-        objs += light_pipe('drl%d' % k, lamp, pts, spec.get('drl_depth', 0.014), spec.get('drl_r', 0.0042), 'head')
+        objs += light_pipe('drl%d' % k, lamp, pts, spec.get('drl_depth', 0.014), spec.get('drl_r', 0.0042), 'drl')
     for k, pts in enumerate(spec.get('signal', [])):
-        objs += strip('blink_f%d' % k, lamp, pts, 0.016, spec.get('signal_w', 0.014), 0.006, 'blink')
+        objs += strip('blink_f%d' % k, lamp, pts, 0.016, spec.get('signal_w', 0.014), 0.006, spec.get('signal_mat', 'blink'))
     for k, pts in enumerate(spec.get('chrome', [])):
         objs += strip('head_trim%d' % k, lamp, pts, 0.03, spec.get('chrome_w', 0.008), 0.004, 'refl')
     for k, (pts, w) in enumerate(spec.get('bezels', [])):
@@ -137,7 +137,8 @@ def headlamp(D, body, bvh, spec):
         u = ax.orthogonal().normalized()
         v = ax.cross(u).normalized()
         pts = [c + (u * math.cos(a) + v * math.sin(a)) * R for a in [2 * math.pi * i / 32 for i in range(32)]]
-        objs.append(P.sweep('halo%d' % k, pts, [ax] * len(pts), [(0.0045 * math.cos(a), 0.0045 * math.sin(a)) for a in [2 * math.pi * i / 8 for i in range(8)]], mat, closed=True))
+        hr = spec.get('halo_r', 0.0045)
+        objs.append(P.sweep('halo%d' % k, pts, [ax] * len(pts), [(hr * math.cos(a), hr * math.sin(a)) for a in [2 * math.pi * i / 8 for i in range(8)]], 'drl' if mat == 'head' else mat, closed=True))
     return objs
 
 
