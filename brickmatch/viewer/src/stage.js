@@ -291,6 +291,79 @@ export class Stage {
     this.invalidate();
   }
 
+  // Acerca la cámara a un grupo de piezas (las nuevas de un paso de armado).
+  // Mantiene el ángulo actual salvo que desde ahí queden tapadas: entonces
+  // prueba otros puntos de vista y se queda con el que más piezas deja ver.
+  // Devuelve { azimuth, elevation, turned }.
+  focusParts(indices, { pick = true } = {}) {
+    if (!indices.length || !this.root) return null;
+    const mine = new Set(indices);
+    const box = new THREE.Box3(), pb = new THREE.Box3();
+    const samples = [];
+    for (const i of indices) {
+      pb.setFromObject(this.parts[i]);
+      box.union(pb);
+      if (samples.length < 14) samples.push(pb.getCenter(new THREE.Vector3()));
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const r = Math.max((box.getSize(new THREE.Vector3()).length() / 2) * 1.28, 120);
+    const tanV = Math.tan((this.camera.fov * Math.PI) / 360);
+    const d = r / Math.sin(Math.atan(Math.min(tanV, tanV * this.camera.aspect)));
+    const toDir = (az, el) => {
+      const a = (az * Math.PI) / 180, e = (el * Math.PI) / 180;
+      return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+    };
+    const current = this.camera.position.clone().sub(this.controls.target).normalize();
+    if (current.y < 0.2) current.copy(toDir(-34, 26));
+    let dir = current, turned = false;
+    if (pick) {
+      // Mallas opacas de lo que ya está armado: son las que pueden tapar.
+      const blockers = [];
+      this.parts.forEach((part, i) => {
+        if (!part.visible || mine.has(i)) return;
+        part.traverse((c) => {
+          if (c.isMesh && !(Array.isArray(c.material) ? c.material[0] : c.material).transparent) blockers.push(c);
+        });
+      });
+      const ray = new THREE.Raycaster();
+      const seen = (v) => {
+        if (!blockers.length) return 1;
+        const eye = center.clone().addScaledVector(v, d);
+        let ok = 0;
+        for (const p of samples) {
+          const to = eye.clone().sub(p);
+          const far = to.length();
+          ray.set(p, to.normalize());
+          ray.near = 6;
+          ray.far = far;
+          if (!ray.intersectObjects(blockers, false).length) ok++;
+        }
+        return ok / samples.length;
+      };
+      let best = seen(current);
+      if (best < 0.75) {
+        for (const el of [30, 52, 74]) {
+          for (const az of [-34, 34, -146, 146, -90, 90, 0, 180]) {
+            const v = toDir(az, el);
+            const score = seen(v) + v.dot(current) * 0.04; // a igualdad, el más parecido al actual
+            if (score > best + 0.08) {
+              best = score;
+              dir = v;
+              turned = true;
+            }
+          }
+          if (best >= 0.95) break;
+        }
+      }
+    }
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).addScaledVector(dir, d);
+    this.camera.lookAt(center);
+    this.controls.update();
+    this.invalidate();
+    return { azimuth: (Math.atan2(dir.x, dir.z) * 180) / Math.PI, elevation: (Math.asin(dir.y) * 180) / Math.PI, turned };
+  }
+
   setEdges(on) {
     this.showEdges = on;
     this.refresh();
@@ -301,9 +374,9 @@ export class Stage {
     let v = this.variants.get(key);
     if (!v) {
       v = material.clone();
-      if (kind === 'new') {
-        v.emissive = new THREE.Color(0xffd27a);
-        v.emissiveIntensity = 0.2;
+      if (kind === 'past') {
+        // Lo ya armado se apaga un poco: las piezas nuevas del paso resaltan.
+        v.color = material.color.clone().lerp(new THREE.Color(0xb4bec8), 0.46);
       } else if (kind === 'dim') {
         v.color = material.color.clone().lerp(new THREE.Color(0x9aa3ad), 0.72);
         v.transparent = true;
@@ -315,7 +388,7 @@ export class Stage {
     return v;
   }
 
-  // Estado de cada pieza: 'normal' | 'new' (resaltada) | 'dim' | 'ghost' (falta) | 'hidden'
+  // Estado de cada pieza: 'normal' | 'new' (resaltada) | 'past' (ya armada) | 'dim' | 'ghost' (falta) | 'hidden'
   setStates(states) {
     this.states = states;
     this.refresh();
@@ -330,11 +403,12 @@ export class Stage {
       part.traverse((c) => {
         if (c.isMesh) {
           const base = BASE.get(c);
-          const map = (m) => (st === 'ghost' ? this.ghost : st === 'normal' ? m : this._variant(m, st));
+          // 'new' conserva el color real de la pieza: resalta porque lo demás se apaga.
+          const map = (m) => (st === 'ghost' ? this.ghost : st === 'normal' || st === 'new' ? m : this._variant(m, st));
           c.material = Array.isArray(base) ? base.map(map) : map(base);
-          c.castShadow = st === 'normal' || st === 'new';
+          c.castShadow = st === 'normal' || st === 'new' || st === 'past';
         } else if (c.isLineSegments) {
-          c.visible = this.showEdges && (st === 'normal' || st === 'new');
+          c.visible = this.showEdges && (st === 'normal' || st === 'new' || st === 'past');
         }
       });
     });

@@ -67,10 +67,10 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   const post = (x, y, z) => m.add('14716', C.dark, x, y, z);
 
   // --------------------------------------------------- suelo y planta baja
-  m.step('Suelo del patio');
+  m.step('Suelo del patio', 'Poné las seis placas de 16×16 juntas, en dos filas de tres. Todavía están sueltas: las unen la tarima y el estanque de los pasos que siguen.');
   for (const z of [0, 16]) for (const x of [0, 16, 32]) rect('plate', C.ground, x, 0, z, 16, 16);
 
-  m.step('Salón del maestro: muro de fondo');
+  m.step('Salón del maestro: muro de fondo', 'Cada ventana lleva su vidrio impreso: encajalo en el marco antes de ponerla en el muro.');
   fill('brick', C.wall, 16, G, 31, 16, 1, { sizes: ['1x4'] });
   for (const y of [G + 3, G + 9]) {
     for (const x of [16, 22, 24, 30]) stack('3004', C.wall, x, y, 31, 2, 3);
@@ -80,12 +80,12 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   rect('brick', C.wall, 22, G + 15, 31, 4, 1);
   rect('brick', C.wall, 26, G + 15, 31, 6, 1);
 
-  m.step('Salón del maestro: columnas y portal');
+  m.step('Salón del maestro: columnas y portal', 'El arco apoya en los dos postes; los ladrillos de 1×1 rellenan los hombros hasta la altura del piso de arriba.');
   stack('92947', C.dark, 16, G, 16, 6, 3);
   stack('92947', C.dark, 30, G, 16, 6, 3);
   portal(18, G, 17, [post, post], (x, y, z, n, o) => stack('3005', C.wall, x, y, z, n, 3, o));
 
-  m.step('Taller: muros y portal');
+  m.step('Taller: muros y portal', 'El arco apoya en los dos postes y los ladrillos de 1×1 rellenan los hombros.');
   rect('brick', C.stone, 0, G, 31, 10, 1);
   rect('brick', C.stone, 10, G, 31, 6, 1);
   row('98283', C.pale, 0, G + 3, 31, 8);
@@ -103,7 +103,7 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   stack('92947', C.dark, 14, G, 22, 6, 3);
   portal(2, G, 22, [post, post], (x, y, z, n, o) => stack('4070', C.wood, x, y, z, n, 3, { face: 'S', ...o }));
 
-  m.step('Vivienda: muros y portal');
+  m.step('Vivienda: muros y portal', 'Las ventanas llevan su vidrio impreso: encajalo en el marco antes de ponerlas.');
   fill('brick', C.blue, 32, G, 31, 16, 1, { sizes: ['1x4'] });
   for (const y of [G + 3, G + 9]) {
     for (const x of [32, 38, 40, 46]) stack('3004', C.blue, x, y, 31, 2, 3);
@@ -155,14 +155,14 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   for (const x of [34, 41]) stack('4032a', C.wood, x, G, 25, 2, 1);
 
   // ----------------------------------------------------------- planta alta
-  m.step('Pisos de la planta alta');
+  m.step('Pisos de la planta alta', 'Al presionar, hacelo sobre los muros y las columnas, no sobre el vacío.');
   rect('plate', C.floor, 16, U - 1, 16, 16, 16);
   rect('plate', C.ground, 0, U - 1, 22, 6, 10);
   rect('plate', C.ground, 6, U - 1, 22, 6, 10);
   rect('plate', C.wood, 12, U - 1, 22, 4, 10);
   for (let i = 0; i < 8; i++) rect('plate', i === 7 ? C.roof : C.wood, 32 + 2 * i, U - 1, 22, 2, 10);
 
-  m.step('Puesto de mando');
+  m.step('Puesto de mando', 'Tres hileras de ventanas con su vidrio: armá cada ventana antes de ponerla.');
   for (const [x, z] of [[19, 19], [28, 19], [19, 23], [28, 23]]) m.add('43888', C.wood, x, U, z);
   for (const y of [U, U + 6, U + 12]) for (let i = 0; i < 5; i++) win(C.red, 19 + 2 * i, y, 28);
 
@@ -185,7 +185,7 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   for (const x of [14, 30]) m.add('3299', C.roof, x, R + 1, 23);
   for (const z of [14, 30]) m.add('3299', C.roof, 23, R + 1, z, { rot: 1 });
 
-  m.step('Altillo del maestro');
+  m.step('Altillo del maestro', 'Las esquinas se traban hilada por medio, como una pared de ladrillos. Las cuatro ventanas llevan vidrio.');
   // Anillo de 6x6 con una ventana por lado; las esquinas se traban hilada por medio.
   const A = R + 1;
   const ring = (y, longSidesAlongX, piece) => {
@@ -278,7 +278,7 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   if (!F) m.add('3957b', C.roof, 0, U + 4, 31);
 
   // ----------------------------------------------------------------- patio
-  m.step('Tarima de entrenamiento y senderos');
+  m.step('Tarima de entrenamiento y senderos', 'Estas placas van a caballo de las juntas del suelo: son las que lo dejan firme. La roca de trepar va ahora, antes de que la tape el alero.');
   m.add('92584', C.wood, 14, G, 4, { rot: 1 });
   m.add('92584', C.wood, 24, G, 4, { rot: 0 });
   for (const x of [20, 22, 24, 26]) rect('plate', C.wood, x, G, 14, 2, 3);
@@ -286,16 +286,18 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   rect('plate', C.stone, 31, G, 26, 3, 2);
   rect('plate', C.stone, 5, G, 14, 2, 3);
   rect('plate', C.stone, 9, G, 14, 2, 3);
+  m.add('6083', C.stone, 13, G, 14, { rot: 1 }); // roca de trepar
 
-  m.step('Muñeco de entrenamiento y faroles de la tarima');
+  m.step('Muñeco de entrenamiento y faroles de la tarima', 'La tapa gris del plato giratorio entra a presión dentro de la base azul: el muñeco gira.');
+  // El plato giratorio mide 1 plate en total: la tapa encaja dentro de la base.
   const base = m.add('3680', 'Blue', 23, G + 1, 8);
-  m.add('3679', C.pale, 23, G + 2, 8, { on: base });
-  m.add('92947', C.dark, 23, G + 3, 8);
-  m.add('3839b', C.roof, 23, G + 6, 8, { face: 'S' });
-  m.add('3839b', C.roof, 23, G + 6, 9, { face: 'N' });
-  m.add('92947', C.dark, 23, G + 7, 8);
-  m.add('87580', C.stone, 23, G + 10, 8);
-  m.add('3626c', C.floor, 23.5, G + 11, 8.5);
+  m.add('3679', C.pale, 23, G + 1, 8, { on: base });
+  m.add('92947', C.dark, 23, G + 2, 8);
+  m.add('3839b', C.roof, 23, G + 5, 8, { face: 'S' });
+  m.add('3839b', C.roof, 23, G + 5, 9, { face: 'N' });
+  m.add('92947', C.dark, 23, G + 6, 8);
+  m.add('87580', C.stone, 23, G + 9, 8);
+  m.add('3626c', C.floor, 23.5, G + 10, 8.5);
   const lantern = (x, y, z, baseColor = C.pale) => {
     m.add('87580', baseColor, x, y, z);
     m.add('3062b', C.floor, x + 0.5, y + 1, z + 0.5);
@@ -304,7 +306,6 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   };
   lantern(14, G + 1, 12);
   lantern(32, G + 1, 12);
-  const climb = m.add('6083', C.stone, 13, G, 14, { rot: 1 });
 
   m.step('Portón torii');
   for (const x of [19, 28]) {
@@ -336,7 +337,7 @@ export default function build(m, { rect, row, fill }, opts = {}) {
   m.add('48092', 'Medium Nougat', 4, G, 10, { rot: 2 });
   m.add('48092', 'Medium Nougat', 8, G, 10, { rot: 3 });
 
-  m.step('Armero de katanas');
+  m.step('Armero de katanas', 'Cada katana entra a presión en su clip, por la empuñadura, con el filo hacia arriba.');
   m.add('30137', C.wood, 8, G, 3);
   ['Black', C.gold, 'Black', C.gold].forEach((color, i) => {
     const clip = m.add('60897', C.wood, 8 + i, G + 3, 3, { face: 'N' });
@@ -344,20 +345,23 @@ export default function build(m, { rect, row, fill }, opts = {}) {
     m.addRaw('21459', color, [1, 0, 0, 0, 1, 0, 0, 0, 1, (8 + i + 0.5) * 20, -8 * (G + 4) + 4 - 7, 4.5 * 20], { on: clip });
   });
 
-  m.step('Fragua y yunque');
+  m.step('Fragua y yunque', 'El perno de la llama entra en el stud hueco del ladrillo redondo.');
   rect('brick', C.stone, 1, G, 17, 2, 4);
   rect('brick', C.stone, 3, G, 17, 2, 4);
-  const hearth = m.add('87580', C.stone, 2, G + 3, 17);
-  m.addRaw('6126b', 'Trans-Orange', [1, 0, 0, 0, 0, -1, 0, 1, 0, 60, -8 * (G + 4) - 4, 360], { on: hearth });
+  m.add('87580', C.stone, 2, G + 3, 17);
+  // La llama entra con su perno en el stud hueco de un ladrillo redondo (la
+  // antorcha clásica) hasta que el aro de la base apoya en el stud.
+  m.add('3062b', C.dark, 2.5, G + 4, 17.5);
+  m.addRaw('6126b', 'Trans-Orange', [1, 0, 0, 0, 0, -1, 0, 1, 0, 60, -8 * (G + 7) - 6, 360]);
   m.add('3003', C.stone, 7, G, 18);
   rect('tile', C.roof, 6, G + 3, 18, 4, 2);
 
   // ---------------------------------------------------------------- jardín
-  m.step('Jardín: estanque, puente y roca');
+  m.step('Jardín: estanque, puente y roca', 'Las dos cuñas celestes del estanque también unen las placas del suelo.');
   m.add('30504', C.water, 36, G, 3, { rot: 1 });
   m.add('30504', C.water, 36, G, 11, { rot: 3 });
   m.add('14707', C.wood, 34, G, 11);
-  const rock = m.add('6083', C.stone, 45, G, 12, { rot: 1 });
+  m.add('6083', C.stone, 45, G, 12, { rot: 1 });
   lantern(32, G, 2, C.stone);
   if (!F) {
     m.add('30145', C.pale, 46, G, 0);
@@ -412,5 +416,4 @@ export default function build(m, { rect, row, fill }, opts = {}) {
     [39, U, 24, 'N', 'Dark Purple', H, 'Reddish Brown'], [33, U, 27, 'E', 'Medium Azure', H, 'Black'], [45, U, 26, 'W', 'Sand Green', HAT, 'Tan'],
   ];
   if (!F) for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
-  return { rock, climb };
 }

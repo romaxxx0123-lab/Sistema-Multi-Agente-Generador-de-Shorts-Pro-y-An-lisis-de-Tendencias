@@ -2,6 +2,8 @@
 //  1. detectar piezas que se atraviesan (choques)
 //  2. comprobar cada stud: si la pieza de arriba lo agarra o lo aplasta
 //  3. verificar que todo queda unido y apoyado (nada flotando)
+//  4. comprobar las uniones declaradas a mano (clips, barras, bisagras): las dos
+//     piezas tienen que tocarse y no atravesarse, igual que cualquier otra
 import { transformTris } from './ldraw.mjs';
 
 const EPS = 0.5; // LDU: tolerancia para distinguir "se tocan" de "se atraviesan"
@@ -116,6 +118,51 @@ function clip(poly, h) {
   return out;
 }
 
+// Distancia de un punto a un triángulo.
+function pointTri(px, py, pz, T, j) {
+  const ax = T[j], ay = T[j + 1], az = T[j + 2];
+  const abx = T[j + 3] - ax, aby = T[j + 4] - ay, abz = T[j + 5] - az;
+  const acx = T[j + 6] - ax, acy = T[j + 7] - ay, acz = T[j + 8] - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+  let v = 0, w = 0;
+  if (!(d1 <= 0 && d2 <= 0)) {
+    const d3 = d1 - (abx * abx + aby * aby + abz * abz), d4 = d2 - (acx * abx + acy * aby + acz * abz);
+    if (d3 >= 0 && d4 <= d3) v = 1;
+    else {
+      const vc = d1 * d4 - d3 * d2;
+      if (vc <= 0 && d1 >= 0 && d3 <= 0) v = d1 / (d1 - d3);
+      else {
+        const d5 = d1 - (abx * acx + aby * acy + abz * acz), d6 = d2 - (acx * acx + acy * acy + acz * acz);
+        if (d6 >= 0 && d5 <= d6) w = 1;
+        else {
+          const vb = d5 * d2 - d1 * d6;
+          if (vb <= 0 && d2 >= 0 && d6 <= 0) w = d2 / (d2 - d6);
+          else {
+            const va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { w = (d4 - d3) / (d4 - d3 + (d5 - d6)); v = 1 - w; }
+            else { const den = 1 / (va + vb + vc); v = vb * den; w = vc * den; }
+          }
+        }
+      }
+    }
+  }
+  return Math.hypot(apx - abx * v - acx * w, apy - aby * v - acy * w, apz - abz * v - acz * w);
+}
+
+function meshDistance(A, B) {
+  let best = Infinity;
+  for (const [X, Y] of [[A, B], [B, A]]) {
+    for (let i = 0; i < X.length; i += 3) {
+      for (let j = 0; j < Y.length; j += 9) {
+        const d = pointTri(X[i], X[i + 1], X[i + 2], Y, j);
+        if (d < best) best = d;
+      }
+    }
+  }
+  return best;
+}
+
 export function validate(model, { ground = 0 } = {}) {
   const lib = model.lib;
   const P = model.placements;
@@ -155,6 +202,28 @@ export function validate(model, { ground = 0 } = {}) {
   const linked = new Set(model.links.map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
   const pairKey = (a, b) => `${Math.min(a, b)}-${Math.max(a, b)}`;
 
+  // ¿Todo lo que se cruza entre dos piezas unidas a mano es una barra (radio 4)
+  // dentro del agujero de un stud hueco de la otra?
+  const boreOnly = (a, b, ta, tb) => {
+    for (const [host, th, tg] of [[a, ta, tb], [b, tb, ta]]) {
+      const open = model.studsOf(P[host]).filter((s) => s.kind === 'open');
+      if (!open.length) continue;
+      const crossing = [];
+      for (let j = 0; j < tg.length; j += 9) {
+        for (let i = 0; i < th.length; i += 9) {
+          if (triCross(th, i, tg, j)) { crossing.push(j); break; }
+        }
+      }
+      const inBore = (j) => open.some((s) => [0, 3, 6].every((k) => {
+        const r = [tg[j + k] - s.tip[0], tg[j + k + 1] - s.tip[1], tg[j + k + 2] - s.tip[2]];
+        const h = r[0] * s.axis[0] + r[1] * s.axis[1] + r[2] * s.axis[2];
+        return h >= -14 && Math.hypot(r[0] - h * s.axis[0], r[1] - h * s.axis[1], r[2] - h * s.axis[2]) <= 4.1;
+      }));
+      if (crossing.length && crossing.every(inBore)) return true;
+    }
+    return false;
+  };
+
   // --- 1. duplicados y choques ---------------------------------------------
   let pairsTested = 0;
   for (let a = 0; a < P.length; a++) {
@@ -179,13 +248,20 @@ export function validate(model, { ground = 0 } = {}) {
           if (triCross(ta, i, tb, j)) { hit = true; break outer; }
         }
       }
-      const allowed = linked.has(pairKey(a, b)) || (P[a].nest && P[a].nest === P[b].nest);
-      if (hit && !allowed) {
+      // Una barra metida en un stud hueco entra más hondo de lo que LDraw dibuja
+      // (el agujero real es pasante): eso no es un choque.
+      if (hit && linked.has(pairKey(a, b)) && boreOnly(a, b, ta, tb)) hit = false;
+      const sameNest = P[a].nest && P[a].nest === P[b].nest;
+      // Las partes de una misma minifigura o silueta de prueba se solapan a propósito.
+      const sameProp = sameNest && P[a].fig !== undefined && P[a].fig === P[b].fig;
+      if (hit && !sameProp) {
         errors.push(`Choque: ${label(P[a])} atraviesa a ${label(P[b])}`);
-      } else if (!hit && !allowed && !skew(P[a]) && !skew(P[b])) {
+      } else if (!hit && !sameNest && !linked.has(pairKey(a, b)) && !skew(P[a]) && !skew(P[b])) {
         const vol = (X) => (X.max[0] - X.min[0]) * (X.max[1] - X.min[1]) * (X.max[2] - X.min[2]);
         const inter = [0, 1, 2].reduce((v, k) => v * (max[k] - min[k]), 1);
-        if (inter > 0.6 * Math.min(vol(A), vol(B))) {
+        const va = vol(A), vb = vol(B);
+        // Una pieza chica dentro del hueco de una grande (roca, marco) es normal.
+        if (inter > 0.6 * Math.min(va, vb) && Math.max(va, vb) < 6 * Math.min(va, vb)) {
           warnings.push(`Revisar: ${label(P[a])} y ${label(P[b])} ocupan casi el mismo espacio`);
         }
       }
@@ -196,6 +272,7 @@ export function validate(model, { ground = 0 } = {}) {
   const edges = new Map(); // "a-b" → cantidad de studs que los unen
   const addEdge = (a, b, n = 1) => edges.set(pairKey(a, b), (edges.get(pairKey(a, b)) || 0) + n);
   let studsHeld = 0, studsFree = 0;
+  const grazed = []; // studs que una pieza toca de un solo lado (no cuenta como unión)
   for (let a = 0; a < P.length; a++) {
     for (const s of model.studsOf(P[a])) {
       const q = [s.base[0] + 2 * s.axis[0], s.base[1] + 2 * s.axis[1], s.base[2] + 2 * s.axis[2]];
@@ -212,12 +289,17 @@ export function validate(model, { ground = 0 } = {}) {
         if (b === a) continue;
         const B = boxes[b];
         if (q[0] < B.min[0] - 6.5 || q[0] > B.max[0] + 6.5 || q[1] < B.min[1] - 6.5 || q[1] > B.max[1] + 6.5 || q[2] < B.min[2] - 6.5 || q[2] > B.max[2] + 6.5) continue;
-        if (linked.has(pairKey(a, b))) continue;
+        // Los pies de una minifigura de prueba ya se comprobaron stud por stud.
+        if (P[b].fig !== undefined && linked.has(pairKey(a, b))) continue;
         const tb = trisIn(P[b], [q[0] - 9, q[1] - 9, q[2] - 9], [q[0] + 9, q[1] + 9, q[2] + 9]);
-        let dmin = Infinity;
+        // Una pieza unida a mano (plato giratorio, bisagra) puede tener una cara al
+        // ras de la base del stud; cualquier otra cosa tan abajo lo está aplastando.
+        const lo = linked.has(pairKey(a, b)) ? 0.5 : -0.5;
+        let dmin = Infinity, rmax = 0;
+        const around = []; // ángulos (grados) donde la otra pieza toca el contorno del stud
         for (let j = 0; j < tb.length; j += 9) {
           let poly = [[tb[j], tb[j + 1], tb[j + 2]], [tb[j + 3], tb[j + 4], tb[j + 5]], [tb[j + 6], tb[j + 7], tb[j + 8]]];
-          poly = clip(poly, (p) => height(p) + 0.5);
+          poly = clip(poly, (p) => height(p) - lo);
           if (poly.length < 2) continue;
           poly = clip(poly, (p) => 3.5 - height(p));
           if (poly.length < 2) continue;
@@ -226,20 +308,89 @@ export function validate(model, { ground = 0 } = {}) {
             return [r[0] * e1[0] + r[1] * e1[1] + r[2] * e1[2], r[0] * e2[0] + r[1] * e2[1] + r[2] * e2[2]];
           });
           dmin = Math.min(dmin, originToPolygon(pts));
-          if (dmin < 3) break;
+          for (const pt of pts) rmax = Math.max(rmax, Math.hypot(pt[0], pt[1]));
+          if (dmin < 3 && s.kind !== 'open') break;
+          // Tramo de cada arista que cae dentro del círculo de contacto (radio 6,9).
+          for (let e = 0; e < pts.length; e++) {
+            const [x1, y1] = pts[e], [x2, y2] = pts[(e + 1) % pts.length];
+            const dx = x2 - x1, dy = y2 - y1;
+            const A = dx * dx + dy * dy, B = 2 * (x1 * dx + y1 * dy), C = x1 * x1 + y1 * y1 - 6.9 * 6.9;
+            let t0 = 0, t1 = 1;
+            if (A > 1e-12) {
+              const disc = B * B - 4 * A * C;
+              if (disc < 0) continue;
+              const q = Math.sqrt(disc);
+              t0 = Math.max(0, (-B - q) / (2 * A));
+              t1 = Math.min(1, (-B + q) / (2 * A));
+              if (t0 > t1) continue;
+            } else if (C > 0) continue;
+            for (const t of [t0, (t0 + t1) / 2, t1]) around.push((Math.atan2(y1 + dy * t, x1 + dx * t) * 180) / Math.PI);
+          }
         }
-        if (dmin < 5.2) {
-          errors.push(`Stud aplastado: un stud de ${label(P[a])} choca con ${label(P[b])} (a ${dmin.toFixed(1)} LDU del eje)`);
-        } else if (dmin <= 6.8) {
+        // Una barra (radio 4) dentro de un stud hueco es una unión de verdad.
+        if (dmin < 5.2 && s.kind === 'open' && rmax <= 4.1) {
           held = true;
           addEdge(a, b);
+        } else if (dmin < 5.2) {
+          errors.push(`Stud aplastado: un stud de ${label(P[a])} choca con ${label(P[b])} (a ${dmin.toFixed(1)} LDU del eje)`);
+        } else if (dmin <= 6.8) {
+          // Un stud queda agarrado si lo aprietan de lados opuestos; una sola
+          // pared que lo roza no lo sostiene.
+          around.sort((u, v) => u - v);
+          let gap = 0;
+          for (let k = 0; k < around.length; k++) {
+            const next = k + 1 < around.length ? around[k + 1] : around[0] + 360;
+            gap = Math.max(gap, next - around[k]);
+          }
+          if (around.length >= 2 && gap <= 200) {
+            held = true;
+            addEdge(a, b);
+          } else {
+            grazed.push(`${label(P[a])} ↔ ${label(P[b])}`);
+          }
         }
       }
       if (held) studsHeld++;
       else studsFree++;
     }
   }
-  for (const [a, b] of model.links) addEdge(a, b);
+  // Tapa de cada stud como abanico de triángulos (los studs no están en la malla).
+  const studCaps = (p) => {
+    const out = [];
+    for (const s of model.studsOf(p)) {
+      const u = Math.abs(s.axis[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+      const d = u[0] * s.axis[0] + u[1] * s.axis[1] + u[2] * s.axis[2];
+      const e1 = [u[0] - d * s.axis[0], u[1] - d * s.axis[1], u[2] - d * s.axis[2]];
+      const l1 = Math.hypot(...e1);
+      e1[0] /= l1; e1[1] /= l1; e1[2] /= l1;
+      const e2 = [s.axis[1] * e1[2] - s.axis[2] * e1[1], s.axis[2] * e1[0] - s.axis[0] * e1[2], s.axis[0] * e1[1] - s.axis[1] * e1[0]];
+      const rim = (k) => { const c = 6 * Math.cos((k * Math.PI) / 4), sn = 6 * Math.sin((k * Math.PI) / 4); return [s.tip[0] + c * e1[0] + sn * e2[0], s.tip[1] + c * e1[1] + sn * e2[1], s.tip[2] + c * e1[2] + sn * e2[2]]; };
+      for (let k = 0; k < 8; k++) out.push(...s.tip, ...rim(k), ...rim(k + 1));
+    }
+    return out;
+  };
+
+  // --- 2b. uniones declaradas a mano -------------------------------------------
+  // Un clip con su barra, una bisagra o un vidrio en su marco no se unen por
+  // studs: se declaran. Acá se comprueba que las dos piezas estén en contacto
+  // (que se atraviesen ya lo revisó el paso 1, sin excepciones).
+  let linksChecked = 0;
+  for (const [a, b] of model.links) {
+    addEdge(a, b);
+    if (P[a].fig !== undefined || P[b].fig !== undefined) continue;
+    linksChecked++;
+    const A = boxes[a], B = boxes[b];
+    const min = [0, 1, 2].map((k) => Math.max(A.min[k], B.min[k]) - 6);
+    const max = [0, 1, 2].map((k) => Math.min(A.max[k], B.max[k]) + 6);
+    let gap = Infinity;
+    if (min.every((v, k) => v <= max[k])) {
+      const ta = [...trisIn(P[a], min, max), ...studCaps(P[a])], tb = [...trisIn(P[b], min, max), ...studCaps(P[b])];
+      if (ta.length && tb.length) gap = meshDistance(ta, tb);
+    }
+    if (gap > 1.5) {
+      errors.push(`Unión declarada sin contacto: ${label(P[a])} y ${label(P[b])} ${gap === Infinity ? 'están lejos' : `quedan a ${gap.toFixed(1)} LDU`}`);
+    }
+  }
 
   // --- 3. conectividad -------------------------------------------------------
   const adj = P.map(() => []);
@@ -289,7 +440,8 @@ export function validate(model, { ground = 0 } = {}) {
     ok: errors.length === 0,
     errors,
     warnings,
-    stats: { parts: P.length, pairsTested, connections: edges.size, studsHeld, studsFree, components },
+    grazed,
+    stats: { parts: P.length, pairsTested, connections: edges.size, studsHeld, studsFree, components, linksChecked, resting: (model.rests || []).length },
     edges,
   };
 }

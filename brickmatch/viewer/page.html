@@ -150,6 +150,25 @@
   .stepper h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 18px; text-wrap: balance; }
   .stepper input[type="range"] { width: 100%; accent-color: var(--accent); }
   .stepper .row-actions .btn.ghost { color: var(--callout-ink); border-color: currentColor; }
+  .stepper h2 small { font-family: var(--font-body); font-weight: 600; font-size: 13px; opacity: 0.75; white-space: nowrap; }
+  .stepper .eyebrow { color: inherit; opacity: 0.8; }
+  .stepper .how, .stepper .tag { margin: 0; font-size: 14px; }
+  .stepper .tag { font-weight: 600; border-left: 3px solid currentColor; padding-left: 8px; }
+  .stepper .jump { display: grid; gap: 3px; font-size: 12px; font-weight: 600; }
+  .stepper .jump select { width: 100%; min-width: 0; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 7px 9px; font-size: 14px; }
+  .stepper .jump option, .stepper .jump optgroup { color: var(--ink); background: var(--card); }
+  .stepper .check { color: inherit; }
+  .step-now { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: center; }
+  .step-now .note { margin-top: 4px; }
+  .minimap { width: 92px; height: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  .mm-all { fill: var(--track); }
+  .mm-now { fill: var(--bad); }
+  .mm-ring { fill: none; stroke: var(--bad); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+  .stage-steps { position: absolute; left: var(--gutter-l); right: var(--gutter-r); top: 10px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+  .stage-steps button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 14px; font-weight: 700; font-size: 15px; }
+  .stage-steps button:disabled { opacity: 0.4; cursor: default; }
+  .stage-steps p { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; line-height: 1.25; text-align: center; text-wrap: balance; overflow-wrap: anywhere; min-width: 0; }
+  .stage-steps p b { font-family: var(--font-display); font-weight: 700; }
 
   .foot { color: var(--ink-2); font-size: 12px; margin: 0; }
 
@@ -164,9 +183,10 @@
     .tabs { padding-left: var(--gutter-l); }
     .tab { overflow: visible; padding-left: var(--gutter-l); }
     .models { margin-left: 0; }
+    .building .brief { display: none; }
   }
   /* Modo captura (scripts/render.mjs): solo el escenario, sin controles. */
-  .shot .top, .shot .brief, .shot .panel, .shot .stage-tools, .shot .stage-flag, .shot .stage-msg { display: none; }
+  .shot .top, .shot .brief, .shot .panel, .shot .stage-tools, .shot .stage-flag, .shot .stage-msg, .shot .stage-steps { display: none; }
   .shot .app, .shot .work, .shot .stage-col { display: block; height: 100%; }
   .shot .stage { height: 100%; }
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
@@ -183,6 +203,11 @@
         <canvas id="stage-canvas" aria-label="Vista 3D del modelo. Arrastrá para girar."></canvas>
         <div class="stage-msg" id="stage-msg">Cargando piezas…</div>
         <div class="stage-flag" id="stage-flag" hidden></div>
+        <div class="stage-steps" id="stage-steps" hidden>
+          <button type="button" id="stage-prev" aria-label="Paso anterior">‹</button>
+          <p id="stage-step" aria-live="polite"></p>
+          <button type="button" id="stage-next" aria-label="Paso siguiente">›</button>
+        </div>
         <div class="stage-tools">
           <button type="button" id="tool-spin" aria-pressed="false">Girar solo</button>
           <button type="button" id="tool-edges" aria-pressed="true">Bordes</button>

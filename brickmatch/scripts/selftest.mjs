@@ -65,7 +65,27 @@ check('cerca, pendiente invertida y cono', (m) => {
   m.add('3001', 'Red', 0, 1, 1); m.add('3665', 'Red', 0, 4, 2, { rot: 2 }); m.add('4589', 'Red', 3, 4, 1);
 }, 'ok');
 
+// Uniones que no son por stud: se declaran con { on } y el validador las comprueba.
+const katana = (m, dz) => {
+  m.add('3005', 'Red', 0, 0, 0);
+  const clip = m.add('60897', 'Blue', 0, 3, 0, { face: 'N' });
+  m.addRaw('21459', 'Black', [1, 0, 0, 0, 1, 0, 0, 0, 1, 10, -8 * 4 + 4 - 7, 10 + dz], { on: clip });
+};
+check('katana en su clip', (m) => katana(m, 20), 'ok');
+check('llama en el stud hueco de un ladrillo redondo', (m) => {
+  m.add('3001', 'Red', 0, 0, 0); m.add('3062b', 'Black', 0, 3, 0);
+  m.addRaw('6126b', 'Trans-Orange', [1, 0, 0, 0, 0, -1, 0, 1, 0, 10, -8 * 6 - 6, 10]);
+}, 'ok');
+check('plato giratorio: la tapa dentro de la base', (m) => {
+  m.add('3001', 'Red', 0, 0, 0);
+  const base = m.add('3680', 'Blue', 0, 3, 0);
+  m.add('3679', 'Light Bluish Gray', 0, 3, 0, { on: base });
+  m.add('3003', 'Red', 0, 4, 0);
+}, 'ok');
+
 // --- armados imposibles ------------------------------------------------------
+check('katana corrida 3 LDU del centro del clip', (m) => katana(m, 17), 'Choque');
+check('katana declarada en un clip que no toca', (m) => katana(m, 60), 'Unión declarada sin contacto');
 check('dos ladrillos superpuestos', (m) => { m.add('3001', 'Red', 0, 0, 0); m.add('3001', 'Blue', 1, 0, 0); }, 'Choque');
 check('ladrillo hundido un plate en otro', (m) => { m.add('3001', 'Red', 0, 0, 0); m.add('3001', 'Blue', 0, 2, 0); }, 'Choque');
 check('misma pieza dos veces', (m) => { m.add('3001', 'Red', 0, 0, 0); m.add('3001', 'Red', 0, 0, 0); }, 'Pieza duplicada');

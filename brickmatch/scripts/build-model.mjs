@@ -15,6 +15,7 @@ import { Model } from '../lib/builder.mjs';
 import { helpers } from '../lib/helpers.mjs';
 import { validate } from '../lib/validate.mjs';
 import { matchSets } from '../lib/match.mjs';
+import { planBuild } from '../lib/plan.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -76,6 +77,15 @@ if (model.props.length) {
   const volumes = model.envelopes.map((v) => ({ label: v.label, cm: [Math.max(v.w, v.d) * 0.8, Math.min(v.w, v.d) * 0.8, v.h * 0.32].map((n) => Math.round(n)) }));
   figs = { count: model.figs, ok: errors.length === 0, errors, volumes };
 }
+
+// --- plan de armado: capítulos en orden físico y sub-pasos chicos ------------
+// (después de validar: usa las uniones que encontró el validador)
+// buildOrder (opcional): [[parte, [capítulos…]], …] en el orden de construcción.
+const partOf = new Map();
+(mod.buildOrder || []).forEach(([, list], k) => list.forEach((t) => partOf.set(t, k)));
+const plan = planBuild(model, check.edges, { order: mod.buildOrder ? mod.buildOrder.flatMap(([, list]) => list) : null });
+for (const c of plan.chapters) c.part = partOf.get(c.title) ?? 0;
+for (const issue of plan.issues) check.errors.push(`Orden de armado: ${issue}`);
 
 // --- cada pieza+color tiene que existir de verdad ---------------------------
 const bom = model.bom();
@@ -158,16 +168,34 @@ const report = {
   order: meta.order || 0,
   generated: new Date().toISOString().slice(0, 10),
   data: { source: catalog.source, date: catalog.dataDate, setsSearched: catalog.sets.length },
-  counts: { pieces: model.placements.length, lots: bom.length, steps: model.steps.length },
+  counts: { pieces: model.placements.length, lots: bom.length, steps: model.steps.length, chapters: plan.chapters.length },
   size: sizeCm,
   steps: model.steps,
+  // Capítulos del armado (first/count: sub-pasos que abarca) y, por sub-paso,
+  // a qué capítulo pertenece y si alguna pieza va apoyada en la mesa.
+  parts: mod.buildOrder ? mod.buildOrder.map(([t]) => t) : [],
+  chapters: plan.chapters,
+  // Caja de cada pieza vista desde arriba [x0, z0, x1, z1] en studs: para el plano de ubicación.
+  footprints: model.placements.map((p) => {
+    const b = model.boxOf(p);
+    return [b.min[0], b.min[2], b.max[0], b.max[2]].map((v) => Math.round(v / 2) / 10);
+  }),
+  stepChapter: plan.subs.map((s) => s.chapter),
+  stepTable: plan.subs.map((s) => (s.table ? 1 : 0)),
   placements: model.placements.map((p) => [lineIndex.get(`${p.def.rb}|${p.color.rb}`), p.step]),
   bom: bom.map((b) => ({
     part: b.part, ld: b.ld, name: b.name, category: b.category,
     color: b.color, colorName: b.colorName, rgb: palette.colors[b.colorName].rgb, trans: palette.colors[b.colorName].trans,
     qty: b.qty, sets: b.sets, lastYear: b.lastYear,
   })),
-  validation: { ok: check.ok, errors: check.errors, warnings: check.warnings, notes, stats: check.stats },
+  validation: {
+    ok: check.ok, errors: check.errors, warnings: check.warnings, notes, stats: check.stats,
+    // Piezas que van apoyadas (no encastradas), por lote.
+    resting: [...model.rests.reduce((map, p) => map.set(`${p.def.rb}|${p.color.name}`, (map.get(`${p.def.rb}|${p.color.name}`) || 0) + 1), new Map())].map(([k, qty]) => {
+      const [part, colorName] = k.split('|');
+      return { part, colorName, qty, name: (bom.find((b) => b.part === part && b.colorName === colorName) || {}).name || part };
+    }),
+  },
   figs,
   sets: null,
 };
@@ -176,8 +204,13 @@ fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report));
 
 // --- resumen -----------------------------------------------------------------
 const s = check.stats;
-console.log(`\n${model.title}: ${s.parts} piezas, ${bom.length} lotes, ${model.steps.length} pasos  [${((Date.now() - t0) / 1000).toFixed(1)} s]`);
-console.log(`Validación: ${check.ok ? 'OK' : `${check.errors.length} ERROR(ES)`} · ${s.connections} uniones · ${s.studsHeld} studs agarrados · ${s.components} bloque(s) · ${check.warnings.length} aviso(s)`);
+console.log(`\n${model.title}: ${s.parts} piezas, ${bom.length} lotes, ${plan.chapters.length} capítulos en ${model.steps.length} pasos de armado  [${((Date.now() - t0) / 1000).toFixed(1)} s]`);
+console.log(`Validación: ${check.ok ? 'OK' : `${check.errors.length} ERROR(ES)`} · ${s.connections} uniones · ${s.studsHeld} studs agarrados · ${s.linksChecked} uniones especiales comprobadas · ${s.resting} pieza(s) apoyada(s) · ${s.components} bloque(s) · ${check.warnings.length} aviso(s)`);
+if (flags.has('--plan')) {
+  for (const c of plan.chapters) console.log(`  ${String(c.first + 1).padStart(4)}  ${c.title}  (${c.pieces} pzs en ${c.count} paso${c.count === 1 ? '' : 's'})`);
+  const sizes = plan.subs.map((x) => x.parts);
+  console.log(`  sub-pasos: ${sizes.length} · piezas por paso: media ${(sizes.reduce((a, b) => a + b, 0) / sizes.length).toFixed(1)}, máx ${Math.max(...sizes)}`);
+}
 const show = (title, list, max) => {
   if (!list.length) return;
   console.log(`\n${title}`);

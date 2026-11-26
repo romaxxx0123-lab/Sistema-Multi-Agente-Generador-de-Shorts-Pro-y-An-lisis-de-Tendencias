@@ -55,19 +55,24 @@ export class Model {
     this.placements = [];
     this.steps = [];
     this.links = []; // conexiones declaradas a mano (clips, barras, encastres)
+    this.rests = []; // piezas que van apoyadas (sin encastre): se informan aparte
     this.props = []; // minifiguras de prueba: no son piezas del modelo
     this.propLinks = [];
     this.figs = 0;
     this.envelopes = [];
+    this.notes = []; // indicación de armado de cada paso (opcional)
     this.step('Inicio');
   }
 
   // Empieza un paso de armado nuevo; todo lo que se agregue va en ese paso.
-  step(title) {
+  // note: indicación para quien arma (cómo va una unión, qué queda apoyado…).
+  step(title, note = '') {
     if (this.steps.length && !this.placements.some((p) => p.step === this.steps.length - 1)) {
       this.steps[this.steps.length - 1] = title;
+      this.notes[this.steps.length - 1] = note;
     } else {
       this.steps.push(title);
+      this.notes.push(note);
     }
     return this;
   }
@@ -95,6 +100,7 @@ export class Model {
   // y = altura de su base en plates. Opciones:
   //   rot: cuartos de vuelta (0-3)        face: 'N'|'E'|'S'|'W' hacia dónde mira su frente
   //   note: comentario                   on: pieza a la que se engancha sin studs
+  //   rest: true si además solo va apoyada en esa pieza (por su peso)
   add(part, color, x, y, z, opts = {}) {
     const def = this.partDef(part);
     let rot = opts.rot ?? 0;
@@ -153,6 +159,7 @@ export class Model {
     };
     this.placements.push(p);
     if (opts.on) this.links.push([p.index, opts.on.index]);
+    if (opts.rest) this.rests.push(p);
     return p;
   }
 

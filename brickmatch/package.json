@@ -10,7 +10,8 @@
     "model": "node scripts/build-model.mjs",
     "viewer": "node scripts/build-viewer.mjs",
     "render": "node scripts/render.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "instructions": "node scripts/instructions.mjs"
   },
   "dependencies": {
     "esbuild": "^0.28.2",

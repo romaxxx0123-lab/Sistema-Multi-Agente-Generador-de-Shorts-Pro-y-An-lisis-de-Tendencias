@@ -26,6 +26,8 @@ const state = {
   query: '',
   shown: 25,
   step: 0,
+  follow: true, // la cámara sigue las piezas nuevas de cada paso
+  refocus: false,
   playing: null,
   focusLot: null,
   onlyMissing: false,
@@ -81,7 +83,7 @@ function applyStates() {
   let flag = '', miss = false;
   if (state.tab === 'steps') {
     P.forEach(([, s], i) => {
-      states[i] = s < state.step ? 'normal' : s === state.step ? 'new' : 'hidden';
+      states[i] = s < state.step ? 'past' : s === state.step ? 'new' : 'hidden';
     });
   } else if (state.tab === 'lots' && state.focusLot !== null) {
     P.forEach(([lot], i) => {
@@ -105,14 +107,89 @@ function applyStates() {
       : `Con <b>${esc(state.selected.join(' + '))}</b> armás el modelo completo`;
   }
   stage.setStates(states);
-  // Las minifiguras de prueba se ven con el modelo terminado, no en medio del armado.
-  const lastStep = state.report.counts.steps - 1;
-  const building = state.tab === 'steps' && state.step < lastStep;
+  // Las minifiguras de prueba se ven con el modelo terminado, no durante el armado.
+  const building = state.tab === 'steps';
   stage.setFigs(state.showFigs && !building);
   stage.setVolumes(state.showVolumes && !building);
+  if (building && state.refocus) {
+    state.refocus = false;
+    if (state.follow) stage.focusParts(stepParts(state.step));
+  }
+  renderStageSteps();
   $('stage-flag').hidden = !flag;
   $('stage-flag').classList.toggle('miss', miss);
   $('stage-flag').innerHTML = flag;
+}
+
+// ---------------------------------------------------------------- armado
+const stepParts = (k) => {
+  const out = [];
+  state.report.placements.forEach(([, s], i) => {
+    if (s === k) out.push(i);
+  });
+  return out;
+};
+// Capítulo y parte de un paso (los modelos viejos no traen capítulos).
+function stepInfo(k) {
+  const r = state.report;
+  const ci = r.stepChapter ? r.stepChapter[k] : k;
+  const ch = r.chapters ? r.chapters[ci] : { title: r.steps[k], note: '', first: k, count: 1, part: 0 };
+  return { ci, ch, part: r.parts && r.parts.length ? r.parts[ch.part] : '', table: !!(r.stepTable && r.stepTable[k]) };
+}
+// Plano visto desde arriba (el frente abajo): la huella del modelo en gris y las
+// piezas del paso en color. Sirve para ubicar el paso en un modelo grande.
+function minimap(k) {
+  const r = state.report;
+  const fp = r.footprints;
+  if (!fp || !fp.length) return '';
+  if (!state.plan || state.plan.id !== state.id) {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const [a, b, c, d] of fp) {
+      x0 = Math.min(x0, a); z0 = Math.min(z0, b); x1 = Math.max(x1, c); z1 = Math.max(z1, d);
+    }
+    x0 = Math.floor(x0); z0 = Math.floor(z0);
+    const W = Math.ceil(x1) - x0, H = Math.ceil(z1) - z0;
+    const grid = new Uint8Array(W * H);
+    for (const [a, b, c, d] of fp) {
+      for (let z = Math.floor(b - z0 + 0.01); z < Math.ceil(d - z0 - 0.01); z++) {
+        for (let x = Math.floor(a - x0 + 0.01); x < Math.ceil(c - x0 - 0.01); x++) grid[z * W + x] = 1;
+      }
+    }
+    let path = '';
+    for (let z = 0; z < H; z++) {
+      for (let x = 0; x < W; x++) {
+        if (!grid[z * W + x]) continue;
+        let e = x;
+        while (e < W && grid[z * W + e]) e++;
+        path += `M${x} ${H - 1 - z}h${e - x}v1h${x - e}z`;
+        x = e;
+      }
+    }
+    state.plan = { id: state.id, x0, z0, W, H, path };
+  }
+  const { x0, z0, W, H, path } = state.plan;
+  let now = '', bx0 = Infinity, bz0 = Infinity, bx1 = -Infinity, bz1 = -Infinity;
+  for (const i of stepParts(k)) {
+    const [a, b, c, d] = fp[i];
+    now += `M${(a - x0).toFixed(1)} ${(H - (d - z0)).toFixed(1)}h${(c - a).toFixed(1)}v${(d - b).toFixed(1)}h${(a - c).toFixed(1)}z`;
+    bx0 = Math.min(bx0, a); bz0 = Math.min(bz0, b); bx1 = Math.max(bx1, c); bz1 = Math.max(bz1, d);
+  }
+  // Un aro alrededor de lo nuevo, para encontrarlo aunque sea una sola pieza.
+  const cx = (bx0 + bx1) / 2 - x0, cy = H - ((bz0 + bz1) / 2 - z0);
+  const rad = Math.max(Math.hypot(bx1 - bx0, bz1 - bz0) / 2 + 2, Math.max(W, H) * 0.06);
+  return `<svg class="minimap" viewBox="-2 -2 ${W + 4} ${H + 4}" role="img" aria-label="Plano del modelo visto desde arriba, con el frente abajo: en color, dónde van las piezas de este paso">
+    <path class="mm-all" d="${path}"/><path class="mm-now" d="${now}"/><circle class="mm-ring" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rad.toFixed(1)}"/></svg>`;
+}
+// Barra de pasos encima del visor: en el teléfono se avanza sin dejar de ver el modelo.
+function renderStageSteps() {
+  const bar = $('stage-steps');
+  const on = state.tab === 'steps' && !!state.report;
+  bar.hidden = !on;
+  if (!on) return;
+  const n = state.report.steps.length;
+  $('stage-prev').disabled = state.step === 0;
+  $('stage-next').disabled = state.step === n - 1;
+  $('stage-step').innerHTML = `<b>Paso ${state.step + 1}</b> de ${n} · ${esc(stepInfo(state.step).ch.title)}`;
 }
 
 // ------------------------------------------------------------ miniaturas
@@ -182,10 +259,12 @@ function renderBrief() {
     <div class="facts">
       <span class="fact"><b>${num(r.counts.pieces)}</b> piezas</span>
       <span class="fact"><b>${num(r.counts.lots)}</b> lotes distintos</span>
-      <span class="fact"><b>${num(r.counts.steps)}</b> pasos</span>
+      <span class="fact"><b>${num(r.counts.steps)}</b> pasos de armado</span>
       ${r.size ? `<span class="fact">Mide <b>${r.size.join(' × ')} cm</b></span>` : ''}
       ${check}
       ${v.ok && v.stats.components > 1 ? `<span class="fact">Va en <b>${v.stats.components}</b> módulos apoyados en la mesa</span>` : ''}
+      ${v.ok && v.stats.linksChecked ? `<span class="fact ok"><b>${num(v.stats.linksChecked)}</b> uniones especiales comprobadas (clips, bisagras, ejes)</span>` : ''}
+      ${v.resting && v.resting.length ? `<span class="fact">Van apoyadas, sin presión: ${v.resting.map((x) => `<b>${x.qty}</b> × ${esc(x.name || x.part)}`).join(', ')}</span>` : ''}
       ${r.figs ? `<span class="fact ${r.figs.ok ? 'ok' : 'err'}">${r.figs.ok ? `Entran <b>${num(r.figs.count)}</b> minifiguras sin chocar` : `${r.figs.errors.length} problema(s) con las minifiguras o el vehículo`}</span>` : ''}
       ${r.figs && r.figs.ok ? (r.figs.volumes || []).map((v) => `<span class="fact ok">Entra ${esc(v.label)}: <b>${v.cm.map((n) => String(n).replace('.', ',')).join(' × ')} cm</b></span>`).join('') : ''}
     </div>`;
@@ -311,27 +390,51 @@ function renderLots() {
 function renderSteps() {
   const r = state.report;
   const n = r.steps.length;
+  const k = state.step;
+  const { ci, ch, part, table } = stepInfo(k);
   const lots = new Map();
+  let pieces = 0;
   r.placements.forEach(([lot, s]) => {
-    if (s === state.step) lots.set(lot, (lots.get(lot) || 0) + 1);
+    if (s !== k) return;
+    lots.set(lot, (lots.get(lot) || 0) + 1);
+    pieces++;
   });
+  const chapters = r.chapters || [];
+  const groups = r.parts && r.parts.length ? r.parts.map((t, p) => [t, chapters.map((c, i) => [c, i]).filter(([c]) => c.part === p)]) : [['', chapters.map((c, i) => [c, i])]];
+  const option = ([c, i]) => `<option value="${c.first}" ${i === ci ? 'selected' : ''}>${esc(c.title)}</option>`;
+  const jump = chapters.length > 1
+    ? `<label class="jump">Ir a un capítulo<select id="step-jump">${groups.map(([t, list], p) => (t ? `<optgroup label="${p + 1} · ${esc(t)}">${list.map(option).join('')}</optgroup>` : list.map(option).join(''))).join('')}</select></label>`
+    : '';
   return `<section class="stepper">
-      <div class="count"><b>${state.step + 1}</b><span>de ${n}</span></div>
-      <h2>${esc(r.steps[state.step])}</h2>
-      <input type="range" id="step-range" min="0" max="${n - 1}" value="${state.step}" aria-label="Paso de armado">
+      <span class="eyebrow">${part ? `Parte ${ch.part + 1} de ${r.parts.length} · ${esc(part)}` : `Capítulo ${ci + 1} de ${chapters.length || n}`}</span>
+      <div class="count"><b>${k + 1}</b><span>de ${n} pasos</span></div>
+      <h2>${esc(ch.title)}${ch.count > 1 ? ` <small>· ${k - ch.first + 1} de ${ch.count}</small>` : ''}</h2>
+      ${table ? `<p class="tag">Sobre la mesa: estas piezas no encastran en lo anterior, van apoyadas en su lugar.</p>` : ''}
+      ${ch.note ? `<p class="how">${esc(ch.note)}</p>` : ''}
+      <input type="range" id="step-range" min="0" max="${n - 1}" value="${k}" aria-label="Paso de armado">
       <div class="row-actions">
-        <button type="button" class="btn ghost" id="step-prev" ${state.step === 0 ? 'disabled' : ''}>Anterior</button>
-        <button type="button" class="btn" id="step-next" ${state.step === n - 1 ? 'disabled' : ''}>Siguiente</button>
+        <button type="button" class="btn ghost" id="step-prev" ${k === 0 ? 'disabled' : ''}>Anterior</button>
+        <button type="button" class="btn" id="step-next" ${k === n - 1 ? 'disabled' : ''}>Siguiente</button>
         <button type="button" class="btn ghost" id="step-play">${state.playing ? 'Pausar' : 'Reproducir'}</button>
       </div>
+      ${jump}
+      <label class="check"><input type="checkbox" id="step-follow" ${state.follow ? 'checked' : ''}> La cámara sigue las piezas nuevas</label>
     </section>
-    <h3 class="section-title">Piezas de este paso</h3>
+    <div class="step-now">
+      ${minimap(k)}
+      <div>
+        <h3 class="section-title">Piezas de este paso · ${pieces}</h3>
+        <p class="note">En el modelo se ven en color pleno; lo ya armado queda apagado. En el plano, dónde van (el frente del modelo está abajo).</p>
+      </div>
+    </div>
     <div class="lots">${[...lots].map(([l, q]) => lotCard(l, { qty: q })).join('')}</div>
-    <p class="foot">Las piezas nuevas de cada paso aparecen iluminadas en el modelo. El archivo model.ldr del proyecto abre estos mismos pasos en BrickLink Studio o LeoCAD.</p>`;
+    <p class="foot">Los pasos siguen el orden en que conviene construir: cada pieza entra cuando ya tiene dónde encastrar. El archivo model.ldr del proyecto abre estos mismos pasos en BrickLink Studio o LeoCAD.</p>`;
 }
 
 function renderTab() {
   for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === state.tab));
+  // En el teléfono, mientras se arma, el cuaderno queda pegado al visor.
+  document.querySelector('.work').classList.toggle('building', state.tab === 'steps');
   const body = $('tab-body');
   body.setAttribute('aria-labelledby', `tab-${state.tab}`);
   const keep = document.activeElement && document.activeElement.id;
@@ -358,6 +461,7 @@ function togglePick(n) {
 }
 function setStep(s) {
   state.step = Math.max(0, Math.min(state.report.steps.length - 1, s));
+  state.refocus = true;
   refresh();
 }
 function stopPlay() {
@@ -374,8 +478,24 @@ function wire() {
     const b = e.target.closest('[data-tab]');
     if (!b) return;
     stopPlay();
+    const was = state.tab;
     state.tab = b.dataset.tab;
+    state.refocus = state.tab === 'steps';
     refresh();
+    if (was === 'steps' && state.tab !== 'steps') frame();
+  });
+  $('stage-prev').addEventListener('click', () => {
+    stopPlay();
+    setStep(state.step - 1);
+  });
+  $('stage-next').addEventListener('click', () => {
+    stopPlay();
+    setStep(state.step + 1);
+  });
+  window.addEventListener('keydown', (e) => {
+    if (state.tab !== 'steps' || e.altKey || e.ctrlKey || e.metaKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.key === 'ArrowRight') setStep(state.step + 1);
+    else if (e.key === 'ArrowLeft') setStep(state.step - 1);
   });
   const body = $('tab-body');
   body.addEventListener('click', (e) => {
@@ -411,8 +531,9 @@ function wire() {
         state.playing = setInterval(() => {
           if (state.step >= state.report.steps.length - 1) stopPlay();
           else state.step++;
+          state.refocus = true;
           refresh();
-        }, 1400);
+        }, 1800);
       }
       refresh();
     }
@@ -436,7 +557,13 @@ function wire() {
     else if (t.id === 'set-spares') state.spares = t.checked;
     else if (t.id === 'show-missing') state.showMissing = t.checked;
     else if (t.id === 'only-missing') state.onlyMissing = t.checked;
-    else return;
+    else if (t.id === 'step-jump') return setStep(Number(t.value));
+    else if (t.id === 'step-follow') {
+      state.follow = t.checked;
+      state.refocus = t.checked;
+      if (!t.checked) frame();
+      return applyStates();
+    } else return;
     state.shown = 25;
     refresh();
   });
@@ -484,7 +611,7 @@ async function loadModel(id) {
       return r.json();
     });
     // El cuaderno (sets, piezas, pasos) se muestra enseguida; el 3D llega después.
-    Object.assign(state, { id, report, selected: [], step: 0, focusLot: null, onlyMissing: false, shown: 25, query: '', thumbs: new Map() });
+    Object.assign(state, { id, report, selected: [], step: 0, focusLot: null, onlyMissing: false, shown: 25, query: '', thumbs: new Map(), refocus: state.tab === 'steps' });
     state.setByNum = new Map((report.sets ? report.sets.list : []).map((s) => [s.num, s]));
     renderModels();
     renderBrief();
@@ -536,6 +663,28 @@ async function boot() {
     if (focus) stage.viewAt(azimuth, elevation, focus.slice(0, 3), focus[3] || 40);
     else stage.view(azimuth, elevation, zoom);
     stage.renderNow();
+  };
+  // Para el cuadernillo de instrucciones (scripts/instructions.mjs).
+  api.stepShot = (k, { follow = true } = {}) => {
+    stage.setEdges(true);
+    stage.setStates(state.report.placements.map(([, s]) => (s < k ? 'past' : s === k ? 'new' : 'hidden')));
+    stage.setFigs(false);
+    stage.setVolumes(false);
+    stage.resize();
+    const view = follow ? stage.focusParts(stepParts(k)) : null;
+    stage.renderNow();
+    return view;
+  };
+  api.minimap = (k) => minimap(k);
+  api.allThumbs = () => {
+    const shooter = new Thumbnailer(160);
+    const first = new Map();
+    state.report.placements.forEach(([lot], i) => {
+      if (!first.has(lot)) first.set(lot, i);
+    });
+    const out = state.report.bom.map((_, lot) => (first.has(lot) ? shooter.shot(stage.parts[first.get(lot)]) : ''));
+    shooter.dispose();
+    return out;
   };
   wire();
   try {
