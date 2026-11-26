@@ -20,6 +20,9 @@ Proyecto independiente del resto del repo: vive entero en esta carpeta.
 3. Lo ves en la mini app: modelo 3D, **instrucciones de armado paso a paso**,
    lista de piezas y ranking de sets. Al elegir un set, el modelo marca en rojo
    lo que te faltaría. Las mismas instrucciones salen en un cuadernillo PDF.
+   El botón **Instrucciones** está sobre el visor y retoma en el paso donde
+   quedaste; **Vista real** muestra el modelo como se vería armado, sin los
+   bordes dibujados ni las siluetas de vidrio.
 4. Si el modelo es para tus minifiguras, se colocan **minifiguras de prueba**:
    el validador confirma que entran sin chocar y el visor las muestra u oculta.
    Lo mismo con un **volumen de prueba** del tamaño de algo que tiene que
@@ -56,8 +59,8 @@ color, sin contar los repuestos. Las 105 uniones que no son stud con stud
 (clips, bisagras, ejes, vidrios en su marco) se comprobaron una por una: las
 dos piezas se tocan y ninguna atraviesa a la otra. Lo único que va apoyado y no
 a presión son las 32 persianas de los techos, que quedan calzadas entre los
-studs de los cabios. Las instrucciones de armado (154 pasos en 72 capítulos)
-están en la pestaña Armado de la mini app y en
+studs de los cabios. Las instrucciones de armado (220 pasos en 72 capítulos)
+están en el botón Instrucciones de la mini app y en
 [`models/fortaleza-ninja/instrucciones.pdf`](models/fortaleza-ninja/instrucciones.pdf).
 
 | Armería: racks de lanzas y espadas bajo el techo de persianas | Taller del vehículo: banco, rueda de repuesto y cajón |
@@ -69,6 +72,8 @@ están en la pestaña Armado de la mini app y en
 | ![Lugar del mecha](models/fortaleza-ninja/renders/guardian.jpg) | ![Gong](models/fortaleza-ninja/renders/gong.jpg) |
 
 ![Torreta giratoria: el cañón de seis bocas va enchufado en un eje que atraviesa la cuna y el gatillo](models/fortaleza-ninja/renders/torreta_vacia.jpg)
+
+![Vista real: el mismo modelo sin bordes dibujados ni siluetas de vidrio](models/fortaleza-ninja/renders/hero_vacia_real.jpg)
 
 ## Comandos
 
@@ -82,6 +87,7 @@ npm run instructions -- fortaleza-ninja   # cuadernillo PDF: una página por pas
 npm run render -- pabellon-zen   # capturas para revisar (hero, lado, frente, atras, arriba, detalle)
 npm run render -- base-universal --no-figs   # lo mismo, sin las minifiguras de prueba
 npm run render -- fortaleza-ninja --no-vol   # sin el volumen de prueba del vehículo
+npm run render -- fortaleza-ninja --real     # vista real: sin bordes dibujados ni siluetas de vidrio
 npm run render -- fortaleza-ninja --views=-70:18:1 --focus=50,6,-16,30 --name=armeria   # de cerca: punto (studs, plates, studs) y distancia
 ```
 
@@ -177,16 +183,46 @@ Después de validar, `lib/plan.mjs` arma el plan con las uniones que encontró e
 validador:
 
 - **Capítulos**: los pasos con nombre del modelo, en el orden de `buildOrder`.
-- **Pasos**: cada capítulo se parte en tandas de unas 6 a 10 piezas, de abajo
-  hacia arriba. Una pieza solo entra cuando ya tiene dónde encastrar, así que en
-  ningún paso queda algo flotando. Las pilas de piezas iguales y lo que va
-  unido a mano (el vidrio con su marco, la katana con su clip) van juntos. Si
-  a una pieza la sostiene algo de un capítulo posterior, espera hasta ahí.
+- **Pasos**: cada capítulo se parte en tandas de 3 a 6 piezas (hasta 8 si son
+  todas iguales), de abajo hacia arriba. Una pieza solo entra cuando ya tiene
+  dónde encastrar, así que en ningún paso queda algo flotando. Las pilas de
+  piezas iguales y lo que va unido a mano (el vidrio con su marco, la katana
+  con su clip) van juntos. Si a una pieza la sostiene algo de un capítulo
+  posterior, espera hasta ahí.
 
-La pestaña Armado de la mini app muestra cada paso en 3D: las piezas nuevas en
-su color y lo ya armado apagado, con la cámara siguiéndolas, la lista de piezas
-del paso y un plano de ubicación. `npm run instructions` genera lo mismo en PDF,
-con el inventario completo al final.
+En la mini app, el botón **Instrucciones** del visor abre el armado en el paso
+donde quedaste (se recuerda en el navegador). Cada paso muestra, sobre el
+modelo, un recuadro con las piezas que hacen falta y su cantidad; una flecha
+roja señala cada pieza nueva, que se ve en su color, y lo ya armado queda
+apagado. La vista es la de tres cuartos de siempre y no se mueve mientras los
+pasos sean de la misma zona; solo gira si las piezas nuevas quedarían tapadas.
+
+`npm run instructions` genera lo mismo en PDF con formato de manual: dos pasos
+por página, el recuadro de piezas al costado y un plano de ubicación. Cada
+parte abre con la lista de piezas que usa, para separarlas antes de empezar, y
+al final va el inventario completo.
+
+## El visor
+
+Un modelo de mil piezas dibujado pieza por pieza son miles de llamadas a la
+placa de video por cuadro, y en un teléfono se traba. `viewer/src/stage.js`
+agrupa todo:
+
+- Las mallas van en tres lotes (`BatchedMesh`: plástico, metal y transparente)
+  que comparten la geometría de las piezas repetidas. El color, la posición y
+  si se ve o no cada pieza van por instancia, así que los pasos de armado y la
+  comparación con un set no rompen los lotes.
+- Los bordes se dibujan por instancias: una llamada por tipo de pieza.
+- Las sombras se recalculan solo cuando cambia el modelo, no en cada cuadro.
+- Si aun así el equipo no llega a unos 30 cuadros por segundo, los bordes se
+  apagan mientras se mueve el modelo y vuelven al soltar.
+
+En la Base de Operaciones (1.099 piezas más 35 minifiguras) eso baja de unas
+5.900 llamadas por cuadro a unas 300, y a 5 en la vista real.
+
+La **vista real** saca los bordes dibujados y las siluetas de vidrio, le da
+más brillo al plástico y achica cada pieza un 0,6 % para que se vean las
+juntas, como en el modelo armado.
 
 ## Cómo se rankean los sets
 

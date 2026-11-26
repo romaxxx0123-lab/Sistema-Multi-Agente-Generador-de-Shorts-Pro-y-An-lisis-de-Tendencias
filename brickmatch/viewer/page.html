@@ -164,11 +164,25 @@
   .mm-all { fill: var(--track); }
   .mm-now { fill: var(--bad); }
   .mm-ring { fill: none; stroke: var(--bad); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-  .stage-steps { position: absolute; left: var(--gutter-l); right: var(--gutter-r); top: 10px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
-  .stage-steps button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 14px; font-weight: 700; font-size: 15px; }
-  .stage-steps button:disabled { opacity: 0.4; cursor: default; }
-  .stage-steps p { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; line-height: 1.25; text-align: center; text-wrap: balance; overflow-wrap: anywhere; min-width: 0; }
-  .stage-steps p b { font-family: var(--font-display); font-weight: 700; }
+  /* Modo instrucciones: barra de pasos y recuadro de piezas encima del visor. */
+  .stage-steps { position: absolute; left: var(--gutter-l); right: var(--gutter-r); top: 10px; display: grid; gap: 8px; justify-items: start; pointer-events: none; }
+  .stage-steps > * { pointer-events: auto; }
+  .stage-steps .bar { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+  .stage-steps button { min-width: 46px; min-height: 42px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 4px 14px; font-weight: 700; font-size: 22px; line-height: 1; }
+  .stage-steps button:disabled { opacity: 0.35; cursor: default; }
+  .stage-steps .bar p { margin: 0; min-height: 42px; display: grid; align-content: center; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; font-size: 13px; line-height: 1.25; text-align: center; text-wrap: balance; overflow-wrap: anywhere; min-width: 0; }
+  .stage-steps .bar p b { font-family: var(--font-display); font-weight: 700; }
+  .callout { max-width: min(100%, 460px); background: var(--card); border: 2px solid var(--ink); border-radius: 10px; padding: 6px 8px; display: grid; gap: 4px; }
+  .callout .need { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .callout .chip { display: flex; align-items: center; gap: 3px; }
+  .callout .chip img, .callout .chip .ph { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; background: var(--chip); }
+  .callout .chip b { font-family: var(--font-display); font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .callout p { margin: 0; font-size: 12.5px; line-height: 1.3; }
+  .callout .tag { font-weight: 700; color: var(--bad); }
+  .stage-tools button.main { background: var(--ink); color: var(--bg); border-color: var(--ink); font-size: 14px; padding: 7px 14px; }
+  .stage-tools button.main[aria-pressed="true"] { background: var(--card); color: var(--ink); border-color: var(--ink); }
+  .stage-tools button:disabled { opacity: 0.45; cursor: default; }
+  .stage-tools button.off { display: none; }
 
   .foot { color: var(--ink-2); font-size: 12px; margin: 0; }
 
@@ -184,6 +198,7 @@
     .tab { overflow: visible; padding-left: var(--gutter-l); }
     .models { margin-left: 0; }
     .building .brief { display: none; }
+    .building .stage { height: min(128vw, 580px); }
   }
   /* Modo captura (scripts/render.mjs): solo el escenario, sin controles. */
   .shot .top, .shot .brief, .shot .panel, .shot .stage-tools, .shot .stage-flag, .shot .stage-msg, .shot .stage-steps { display: none; }
@@ -204,14 +219,18 @@
         <div class="stage-msg" id="stage-msg">Cargando piezas…</div>
         <div class="stage-flag" id="stage-flag" hidden></div>
         <div class="stage-steps" id="stage-steps" hidden>
-          <button type="button" id="stage-prev" aria-label="Paso anterior">‹</button>
-          <p id="stage-step" aria-live="polite"></p>
-          <button type="button" id="stage-next" aria-label="Paso siguiente">›</button>
+          <div class="bar">
+            <button type="button" id="stage-prev" aria-label="Paso anterior">‹</button>
+            <p id="stage-step" aria-live="polite"></p>
+            <button type="button" id="stage-next" aria-label="Paso siguiente">›</button>
+          </div>
+          <div class="callout" id="stage-callout"></div>
         </div>
         <div class="stage-tools">
-          <button type="button" id="tool-spin" aria-pressed="false">Girar solo</button>
-          <button type="button" id="tool-edges" aria-pressed="true">Bordes</button>
+          <button type="button" id="tool-build" class="main" aria-pressed="false">Instrucciones</button>
+          <button type="button" id="tool-real" aria-pressed="false">Vista real</button>
           <button type="button" id="tool-fit">Reencuadrar</button>
+          <button type="button" id="tool-spin" aria-pressed="false">Girar solo</button>
           <button type="button" id="tool-figs" aria-pressed="true" hidden>Minifiguras</button>
           <button type="button" id="tool-vol" aria-pressed="true" hidden>Vehículos</button>
         </div>
@@ -222,7 +241,7 @@
       <div class="tabs" role="tablist" aria-label="Cuaderno de armado">
         <button type="button" role="tab" id="tab-sets" data-tab="sets" aria-selected="true">Sets</button>
         <button type="button" role="tab" id="tab-lots" data-tab="lots" aria-selected="false">Piezas</button>
-        <button type="button" role="tab" id="tab-steps" data-tab="steps" aria-selected="false">Armado</button>
+        <button type="button" role="tab" id="tab-steps" data-tab="steps" aria-selected="false">Instrucciones</button>
       </div>
       <div class="tab" id="tab-body" role="tabpanel"></div>
     </aside>

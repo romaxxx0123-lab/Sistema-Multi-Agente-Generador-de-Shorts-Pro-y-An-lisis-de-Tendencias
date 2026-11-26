@@ -103,17 +103,19 @@ function applyStates() {
     });
     miss = missing > 0;
     flag = missing
-      ? `En rojo translúcido: <b>${num(missing)} pieza${missing === 1 ? '' : 's'}</b> que no trae ${esc(state.selected.join(' + '))}`
+      ? `En rojo: <b>${num(missing)} pieza${missing === 1 ? '' : 's'}</b> que no trae ${esc(state.selected.join(' + '))}`
       : `Con <b>${esc(state.selected.join(' + '))}</b> armás el modelo completo`;
   }
-  stage.setStates(states);
+  stage.setStates(states, { highlight: state.tab === 'steps' });
   // Las minifiguras de prueba se ven con el modelo terminado, no durante el armado.
   const building = state.tab === 'steps';
   stage.setFigs(state.showFigs && !building);
   stage.setVolumes(state.showVolumes && !building);
   if (building && state.refocus) {
+    // sticky: si las piezas nuevas ya se ven bien, la cámara no se mueve.
+    renderStageSteps(); // primero el recuadro: su alto define cuánto visor queda libre
+    if (state.follow) stage.focusParts(stepParts(state.step), { sticky: state.refocus !== 'force', context: stepContext(state.step), padTop: coveredTop() });
     state.refocus = false;
-    if (state.follow) stage.focusParts(stepParts(state.step));
   }
   renderStageSteps();
   $('stage-flag').hidden = !flag;
@@ -128,6 +130,54 @@ const stepParts = (k) => {
     if (s === k) out.push(i);
   });
   return out;
+};
+// Piezas del mismo capítulo que quedan cerca de las del paso (aunque todavía
+// no estén puestas): la cámara encuadra esa zona de trabajo, y así los pasos
+// seguidos se ven desde el mismo lugar.
+function stepContext(k) {
+  const r = state.report;
+  const fp = r.footprints;
+  if (!fp || !r.stepChapter) return null;
+  const mine = stepParts(k);
+  let cx = 0, cz = 0;
+  for (const i of mine) {
+    cx += (fp[i][0] + fp[i][2]) / 2;
+    cz += (fp[i][1] + fp[i][3]) / 2;
+  }
+  cx /= mine.length || 1;
+  cz /= mine.length || 1;
+  const ci = r.stepChapter[k];
+  const out = [];
+  r.placements.forEach(([, s], i) => {
+    if (r.stepChapter[s] !== ci) return;
+    if (Math.hypot((fp[i][0] + fp[i][2]) / 2 - cx, (fp[i][1] + fp[i][3]) / 2 - cz) <= 9) out.push(i);
+  });
+  return out;
+}
+// Fracción de arriba del visor que tapan la barra de pasos y el recuadro de piezas.
+function coveredTop() {
+  const bar = $('stage-steps'), box = $('stage-canvas').getBoundingClientRect();
+  if (bar.hidden || !box.height) return 0;
+  return Math.min(0.45, Math.max(0, bar.getBoundingClientRect().bottom - box.top) / box.height);
+}
+// El paso donde quedó cada modelo se recuerda en este navegador.
+const memory = {
+  key: () => `brickmatch.paso.${state.id}.${state.report.steps.length}`,
+  load() {
+    try {
+      const v = Number(localStorage.getItem(this.key()));
+      return Number.isInteger(v) && v > 0 && v < state.report.steps.length ? v : 0;
+    } catch {
+      return 0;
+    }
+  },
+  save(step) {
+    try {
+      localStorage.setItem(this.key(), String(step));
+    } catch {
+      // sin almacenamiento (ventana privada): se arranca del paso 1
+    }
+  },
 };
 // Capítulo y parte de un paso (los modelos viejos no traen capítulos).
 function stepInfo(k) {
@@ -185,11 +235,28 @@ function renderStageSteps() {
   const bar = $('stage-steps');
   const on = state.tab === 'steps' && !!state.report;
   bar.hidden = !on;
+  // Botonera: durante el armado quedan solo los botones que sirven.
+  const build = $('tool-build');
+  build.setAttribute('aria-pressed', String(on));
+  build.textContent = on ? 'Cerrar instrucciones' : state.step > 0 ? `Instrucciones · paso ${state.step + 1}` : 'Instrucciones';
+  $('tool-fit').textContent = on ? 'Centrar el paso' : 'Reencuadrar';
+  for (const id of ['tool-spin', 'tool-figs', 'tool-vol']) $(id).classList.toggle('off', on);
   if (!on) return;
-  const n = state.report.steps.length;
-  $('stage-prev').disabled = state.step === 0;
-  $('stage-next').disabled = state.step === n - 1;
-  $('stage-step').innerHTML = `<b>Paso ${state.step + 1}</b> de ${n} · ${esc(stepInfo(state.step).ch.title)}`;
+  const r = state.report;
+  const n = r.steps.length;
+  const k = state.step;
+  const { ch, table } = stepInfo(k);
+  $('stage-prev').disabled = k === 0;
+  $('stage-next').disabled = k === n - 1;
+  $('stage-step').innerHTML = `<b>Paso ${k + 1}</b> de ${n} · ${esc(ch.title)}`;
+  // Recuadro de piezas del paso, como en un manual: imagen y cantidad.
+  const lots = new Map();
+  r.placements.forEach(([lot, s]) => {
+    if (s === k) lots.set(lot, (lots.get(lot) || 0) + 1);
+  });
+  const first = k === ch.first;
+  $('stage-callout').innerHTML = `<div class="need">${[...lots].map(([l, q]) => `<span class="chip" title="${esc(r.bom[l].part)} · ${esc(r.bom[l].colorName)}">${thumbHtml(l)}<b>${q}×</b></span>`).join('')}</div>
+    ${table ? `<p class="tag">Sobre la mesa</p>` : ''}${first && ch.note ? `<p class="how">${esc(ch.note)}</p>` : ''}`;
 }
 
 // ------------------------------------------------------------ miniaturas
@@ -418,17 +485,17 @@ function renderSteps() {
         <button type="button" class="btn ghost" id="step-play">${state.playing ? 'Pausar' : 'Reproducir'}</button>
       </div>
       ${jump}
-      <label class="check"><input type="checkbox" id="step-follow" ${state.follow ? 'checked' : ''}> La cámara sigue las piezas nuevas</label>
+      <label class="check"><input type="checkbox" id="step-follow" ${state.follow ? 'checked' : ''}> La cámara acompaña cada paso</label>
     </section>
     <div class="step-now">
       ${minimap(k)}
       <div>
         <h3 class="section-title">Piezas de este paso · ${pieces}</h3>
-        <p class="note">En el modelo se ven en color pleno; lo ya armado queda apagado. En el plano, dónde van (el frente del modelo está abajo).</p>
+        <p class="note">En el modelo, una flecha roja señala cada pieza nueva, que se ve en su color; lo ya armado queda apagado. En el plano, dónde van (el frente del modelo está abajo).</p>
       </div>
     </div>
     <div class="lots">${[...lots].map(([l, q]) => lotCard(l, { qty: q })).join('')}</div>
-    <p class="foot">Los pasos siguen el orden en que conviene construir: cada pieza entra cuando ya tiene dónde encastrar. El archivo model.ldr del proyecto abre estos mismos pasos en BrickLink Studio o LeoCAD.</p>`;
+    <p class="foot">Los pasos siguen el orden en que conviene construir: cada pieza entra cuando ya tiene dónde encastrar. El paso donde quedaste se recuerda en este navegador. El archivo model.ldr del proyecto abre estos mismos pasos en BrickLink Studio o LeoCAD.</p>`;
 }
 
 function renderTab() {
@@ -462,7 +529,17 @@ function togglePick(n) {
 function setStep(s) {
   state.step = Math.max(0, Math.min(state.report.steps.length - 1, s));
   state.refocus = true;
+  memory.save(state.step);
   refresh();
+}
+// Abre o cierra las instrucciones desde el botón del visor.
+function toggleBuild() {
+  stopPlay();
+  const open = state.tab !== 'steps';
+  state.tab = open ? 'steps' : 'sets';
+  state.refocus = open ? 'force' : false;
+  refresh();
+  if (!open) frame();
 }
 function stopPlay() {
   if (state.playing) clearInterval(state.playing);
@@ -480,7 +557,7 @@ function wire() {
     stopPlay();
     const was = state.tab;
     state.tab = b.dataset.tab;
-    state.refocus = state.tab === 'steps';
+    state.refocus = state.tab === 'steps' ? 'force' : false;
     refresh();
     if (was === 'steps' && state.tab !== 'steps') frame();
   });
@@ -560,7 +637,7 @@ function wire() {
     else if (t.id === 'step-jump') return setStep(Number(t.value));
     else if (t.id === 'step-follow') {
       state.follow = t.checked;
-      state.refocus = t.checked;
+      state.refocus = t.checked ? 'force' : false;
       if (!t.checked) frame();
       return applyStates();
     } else return;
@@ -571,11 +648,17 @@ function wire() {
     stage.autoRotate = !stage.autoRotate;
     e.currentTarget.setAttribute('aria-pressed', String(stage.autoRotate));
   });
-  $('tool-edges').addEventListener('click', (e) => {
-    stage.setEdges(!stage.showEdges);
-    e.currentTarget.setAttribute('aria-pressed', String(stage.showEdges));
+  $('tool-real').addEventListener('click', (e) => {
+    stage.setReal(!stage.real);
+    e.currentTarget.setAttribute('aria-pressed', String(stage.real));
+    // En la vista real no hay siluetas de vidrio: su botón no hace nada.
+    $('tool-vol').disabled = stage.real;
   });
-  $('tool-fit').addEventListener('click', frame);
+  $('tool-fit').addEventListener('click', () => {
+    if (state.tab !== 'steps') return frame();
+    stage.focusParts(stepParts(state.step), { context: stepContext(state.step), padTop: coveredTop() });
+  });
+  $('tool-build').addEventListener('click', toggleBuild);
   $('tool-figs').addEventListener('click', (e) => {
     state.showFigs = !state.showFigs;
     e.currentTarget.setAttribute('aria-pressed', String(state.showFigs));
@@ -611,7 +694,8 @@ async function loadModel(id) {
       return r.json();
     });
     // El cuaderno (sets, piezas, pasos) se muestra enseguida; el 3D llega después.
-    Object.assign(state, { id, report, selected: [], step: 0, focusLot: null, onlyMissing: false, shown: 25, query: '', thumbs: new Map(), refocus: state.tab === 'steps' });
+    Object.assign(state, { id, report, selected: [], step: 0, focusLot: null, onlyMissing: false, shown: 25, query: '', thumbs: new Map(), refocus: state.tab === 'steps' ? 'force' : false });
+    state.step = memory.load(); // retoma donde quedó el armado
     state.setByNum = new Map((report.sets ? report.sets.list : []).map((s) => [s.num, s]));
     renderModels();
     renderBrief();
@@ -654,8 +738,9 @@ async function boot() {
     document.documentElement.classList.add('shot');
     stage.resize();
   };
-  api.shot = ({ azimuth, elevation, zoom = 1, step = null, edges = true, figs = true, volumes = true, focus = null }) => {
+  api.shot = ({ azimuth, elevation, zoom = 1, step = null, edges = true, figs = true, volumes = true, focus = null, real = false }) => {
     stage.setEdges(edges);
+    stage.setReal(real);
     stage.setStates(state.report.placements.map(([, s]) => (step === null || s <= step ? 'normal' : 'hidden')));
     stage.setFigs(figs && step === null);
     stage.setVolumes(volumes && step === null);
@@ -667,11 +752,12 @@ async function boot() {
   // Para el cuadernillo de instrucciones (scripts/instructions.mjs).
   api.stepShot = (k, { follow = true } = {}) => {
     stage.setEdges(true);
-    stage.setStates(state.report.placements.map(([, s]) => (s < k ? 'past' : s === k ? 'new' : 'hidden')));
+    stage.setReal(false);
+    stage.setStates(state.report.placements.map(([, s]) => (s < k ? 'past' : s === k ? 'new' : 'hidden')), { highlight: true });
     stage.setFigs(false);
     stage.setVolumes(false);
     stage.resize();
-    const view = follow ? stage.focusParts(stepParts(k)) : null;
+    const view = follow ? stage.focusParts(stepParts(k), { sticky: true, context: stepContext(k) }) : null;
     stage.renderNow();
     return view;
   };

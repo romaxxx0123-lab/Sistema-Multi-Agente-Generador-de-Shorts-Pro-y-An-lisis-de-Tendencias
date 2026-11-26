@@ -2,11 +2,11 @@
 // pueden seguir con las manos.
 //   1. Capítulos: los pasos con nombre del modelo, en el orden en que conviene
 //      construirlos (`order`; sin él, el orden en que se escribieron).
-//   2. Sub-pasos: cada capítulo se parte en tandas chicas, de abajo hacia
-//      arriba. Una pieza solo entra cuando ya tiene dónde encastrar: en ningún
-//      sub-paso queda algo flotando.
+//   2. Sub-pasos: cada capítulo se parte en tandas chicas (como un manual de
+//      Lego: de 3 a 6 piezas), de abajo hacia arriba. Una pieza solo entra
+//      cuando ya tiene dónde encastrar: en ningún sub-paso queda algo flotando.
 // Reordena model.placements (y sus uniones) y deja un título por sub-paso.
-export function planBuild(model, edges, { order = null, max = 10, target = 6, maxSame = 18, ground = 0 } = {}) {
+export function planBuild(model, edges, { order = null, max = 6, target = 4, maxSame = 8, ground = 0 } = {}) {
   const P = model.placements;
   const n = P.length;
   const adj = P.map(() => []);
@@ -60,29 +60,41 @@ export function planBuild(model, edges, { order = null, max = 10, target = 6, ma
         ready = [i];
       }
       ready.sort((a, b) => bottom[a] - bottom[b] || (lot[a] < lot[b] ? -1 : lot[a] > lot[b] ? 1 : 0) || box[a].min[2] - box[b].min[2] || box[a].min[0] - box[b].min[0]);
+      // Cuánto ocupa una pieza en la tanda: ella más lo que lleva unido a mano.
+      const weight = (i) => 1 + kids[i].filter((c) => !placed[c] && rest.includes(c)).length;
+      const fit = (list, limit) => {
+        const out = [];
+        let w = 0;
+        for (const i of list) {
+          if (out.length && w + weight(i) > limit) break;
+          out.push(i);
+          w += weight(i);
+        }
+        return out;
+      };
       let take;
       if (ready.every((i) => lot[i] === lot[ready[0]])) {
-        // Todas iguales (una fila de tejas, un paño de persianas): van juntas.
-        take = ready.slice(0, maxSame);
+        // Todas iguales (una fila de tejas, un paño de persianas): van juntas,
+        // de a grupos vecinos: se ordenan a lo largo de donde más se extienden.
+        const spread = [0, 2, 1].map((k) => Math.max(...ready.map((i) => box[i].min[k])) - Math.min(...ready.map((i) => box[i].min[k])));
+        const axis = [0, 2, 1][spread.indexOf(Math.max(...spread))];
+        const other = axis === 0 ? 2 : 0;
+        ready.sort((a, b) => box[a].min[axis] - box[b].min[axis] || box[a].min[other] - box[b].min[other] || bottom[a] - bottom[b]);
+        take = fit(ready, maxSame);
       } else {
         // La capa más baja; si son muy pocas, se suma la que sigue.
         const y0 = bottom[ready[0]];
         let layer = ready.filter((i) => bottom[i] <= y0 + 0.5);
         if (layer.length < 3) layer = ready.filter((i) => bottom[i] <= y0 + 24.5);
-        take = layer.slice(0, max);
-        if (take.every((i) => lot[i] === lot[take[0]])) {
-          take = [];
-          for (const i of layer) {
-            if (lot[i] !== lot[layer[0]] || take.length >= maxSame) break;
-            take.push(i);
-          }
-        }
+        take = fit(layer, max);
+        if (take.every((i) => lot[i] === lot[take[0]])) take = fit(layer.filter((i) => lot[i] === lot[layer[0]]), maxSame);
       }
-      // Una o dos piezas sueltas al final del capítulo se suman a esta tanda.
+      const load = () => take.reduce((w, i) => w + weight(i), 0);
+      // Una pieza suelta al final del capítulo se suma a esta tanda.
       {
         const set = new Set(take);
         const tail = rest.filter((i) => !set.has(i));
-        if (tail.length && tail.length <= 2 && tail.every((i) => onTable[i] || adj[i].some((j) => placed[j]))) take.push(...tail);
+        if (tail.length === 1 && weight(tail[0]) === 1 && (onTable[tail[0]] || adj[tail[0]].some((j) => placed[j]))) take.push(tail[0]);
       }
       // Si la tanda quedó chica, crece hacia arriba con lo que apoya en ella: una
       // pila de piezas iguales va entera, y un farol o un poste, de una vez.
@@ -94,8 +106,8 @@ export function planBuild(model, edges, { order = null, max = 10, target = 6, ma
         const uniform = take.every((i) => lot[i] === lot[take[0]]);
         const twins = cand.filter((i) => lot[i] === lot[take[0]]);
         let add;
-        if (uniform && twins.length && take.length < maxSame) add = twins.slice(0, maxSame - take.length);
-        else if (take.length < target) add = cand.filter((i) => bottom[i] <= bottom[cand[0]] + 0.5).slice(0, max - take.length);
+        if (uniform && twins.length && load() < maxSame) add = fit(twins, maxSame - load());
+        else if (load() < target) add = fit(cand.filter((i) => bottom[i] <= bottom[cand[0]] + 0.5), max - load());
         else break;
         if (!add.length) break;
         for (const i of add) {
