@@ -1355,3 +1355,7 @@ SEDAN['features']['grille'].update(frame=dict(w=0.011, d=0.01, mat='chrome'), ba
 # familiar copiado de una foto real (ver design_rural.py); no se le aplica tauten: sus formas salen de la foto
 from .design_rural import RURAL
 DESIGNS['rural'] = RURAL
+from .design_pulga import PULGA
+DESIGNS['pulga'] = PULGA
+# el compacto del juego pasa a ser el urbano calcado de la foto (el diseño anterior queda como COMPACTO)
+DESIGNS['compacto'] = PULGA

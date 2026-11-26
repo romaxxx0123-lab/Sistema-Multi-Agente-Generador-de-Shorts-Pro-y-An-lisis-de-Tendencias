@@ -364,7 +364,18 @@ def liners(D, R):
     for ya in (D['wb'] / 2, -D['wb'] / 2):
         verts, faces = [], []
         n = 36
-        x0, x1 = 0.46, 0.905
+        # el revestimiento termina dentro de la carrocería (en autos angostos no puede asomar por el costado)
+        r3 = D['r'][3]
+        if isinstance(r3, (list, tuple)):
+            pts = sorted(r3)
+            rb = pts[0][1] if ya <= pts[0][0] else pts[-1][1]
+            for (y0_, v0), (y1_, v1) in zip(pts[:-1], pts[1:]):
+                if y0_ <= ya <= y1_:
+                    rb = v0 + (v1 - v0) * (ya - y0_) / ((y1_ - y0_) or 1e-9)
+        else:
+            rb = r3
+        x1 = min(0.905, rb - 0.012)
+        x0 = x1 - 0.445
         for i in range(n + 1):
             a = math.radians(-28 + 236 * i / n)
             y = ya + (R + 0.006) * math.cos(a)

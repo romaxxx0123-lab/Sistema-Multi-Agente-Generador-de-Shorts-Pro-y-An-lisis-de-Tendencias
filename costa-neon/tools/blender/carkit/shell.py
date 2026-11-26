@@ -125,11 +125,12 @@ def greenhouse(C, G):
         # ventanilla fija detrás de la puerta trasera (con pilar negro entre ambas)
         q = G['quarter']
         out['quarter'] = glass_region(C, par, q, band)
-        cp = [(c0 - 0.0001, 5.0), (q[0][0], 5.0), (q[3][0], 6.0), (c1 - 0.0001, 6.0)]
-        cut(C, par, cp, True, band)
-        for f in select(C, par, cp, band):
-            if f.material_index == M_PAINT:
-                f.material_index = M_TRIM
+        if len(q) == 4:
+            cp = [(c0 - 0.0001, 5.0), (q[0][0], 5.0), (q[3][0], 6.0), (c1 - 0.0001, 6.0)]
+            cut(C, par, cp, True, band)
+            for f in select(C, par, cp, band):
+                if f.material_index == M_PAINT:
+                    f.material_index = M_TRIM
     # pilar B negro brillante
     pil = [(b0, 5.0), (b1, 5.0), (b1, 6.0), (b0, 6.0)]
     cut(C, par, pil, True, band)
