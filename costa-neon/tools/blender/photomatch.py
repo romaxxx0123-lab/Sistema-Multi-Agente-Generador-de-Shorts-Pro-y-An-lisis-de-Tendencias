@@ -316,3 +316,58 @@ px = np.empty(W * H * 4, np.float32)
 img.pixels.foreach_get(px)
 np.save(out, px.reshape(H, W, 4)[::-1])
 print('render listo', out)
+
+# NORMALS=1: segunda pasada con las normales de la pintura en coordenadas del auto (x afuera a la derecha,
+# y adelante, z arriba), codificadas 0,5 + 0,5·n; lo que no es pintura queda en negro. Sirve para calibrar
+# cómo se ve cada inclinación de chapa bajo esta luz y leer la forma real en la foto.
+if os.environ.get('NORMALS'):
+    inv3 = root.matrix_world.inverted().to_3x3()
+    nm = bpy.data.materials.new('pv_normal')
+    nm.use_nodes = True
+    t = nm.node_tree
+    t.nodes.clear()
+    o_ = t.nodes.new('ShaderNodeOutputMaterial')
+    g_ = t.nodes.new('ShaderNodeNewGeometry')
+    vt = t.nodes.new('ShaderNodeVectorTransform')     # mundo → objeto raíz no existe: se rota a mano abajo
+    mp = t.nodes.new('ShaderNodeVectorMath')
+    mp.operation = 'MULTIPLY_ADD'
+    mp.inputs[1].default_value = (0.5, 0.5, 0.5)
+    mp.inputs[2].default_value = (0.5, 0.5, 0.5)
+    # rotación del rumbo: n_auto = Rz(-rumbo) · n_mundo
+    a = -root.rotation_euler.z
+    rx = t.nodes.new('ShaderNodeVectorRotate')
+    rx.rotation_type = 'Z_AXIS'
+    rx.inputs['Angle'].default_value = a
+    t.links.new(g_.outputs['Normal'], rx.inputs['Vector'])
+    t.links.new(rx.outputs['Vector'], mp.inputs[0])
+    em = t.nodes.new('ShaderNodeEmission')
+    em.inputs['Strength'].default_value = 1.0
+    t.links.new(mp.outputs['Vector'], em.inputs['Color'])
+    t.links.new(em.outputs['Emission'], o_.inputs['Surface'])
+    black = bpy.data.materials.new('pv_black')
+    black.use_nodes = True
+    bt = black.node_tree
+    bt.nodes.clear()
+    bo = bt.nodes.new('ShaderNodeOutputMaterial')
+    be = bt.nodes.new('ShaderNodeEmission')
+    be.inputs['Color'].default_value = (0, 0, 0, 1)
+    bt.links.new(be.outputs['Emission'], bo.inputs['Surface'])
+    paint = P.mat('paint')
+    for o in sc.objects:
+        if o.type != 'MESH' or o is floor:
+            continue
+        for i, slot in enumerate(o.material_slots):
+            slot.material = nm if slot.material == paint else black
+    floor.hide_render = True
+    sc.world = None
+    sc.cycles.samples = 4
+    sc.cycles.max_bounces = 0
+    sc.render.filter_size = 0.01
+    exr2 = out.replace('.npy', '_n.exr')
+    sc.render.filepath = exr2
+    bpy.ops.render.render(write_still=True)
+    img2 = bpy.data.images.load(exr2)
+    px2 = np.empty(W * H * 4, np.float32)
+    img2.pixels.foreach_get(px2)
+    np.save(out.replace('.npy', '_n.npy'), px2.reshape(H, W, 4)[::-1])
+    print('normales listas')
