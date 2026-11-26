@@ -648,7 +648,8 @@ export default function build(m, helpers, opts = {}) {
     [-2, 0, -22, 'W', 'Dark Blue', H, 'Black'], [26, 0, -34, 'S', 'Black', HAT, 'Tan'],
     [26, 0, -24, 'N', 'Dark Green', H, 'Dark Brown'],
   ];
-  // La ampliación coloca las minifiguras ella misma (cambia algunas de lugar).
-  if (!B) for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
+  // La ampliación coloca las minifiguras ella misma (cambia algunas de lugar);
+  // opts.noFigs hace lo mismo para una variante que reutiliza esta base.
+  if (!B && !opts.noFigs) for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
   return { figs, FZ, G, P, D };
 }

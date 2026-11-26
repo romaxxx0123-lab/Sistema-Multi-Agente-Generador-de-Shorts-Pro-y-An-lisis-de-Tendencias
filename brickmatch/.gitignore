@@ -2,3 +2,5 @@ node_modules/
 data/
 dist/
 *.log
+# variantes de prueba del piso: se comparan y solo la elegida pasa al modelo
+models/_piso-*/
