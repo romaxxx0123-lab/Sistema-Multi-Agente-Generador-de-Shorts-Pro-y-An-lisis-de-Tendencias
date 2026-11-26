@@ -31,6 +31,11 @@ for (const id of fs.readdirSync(path.join(root, 'models')).sort()) {
   if (!fs.existsSync(path.join(dir, 'report.json')) || !fs.existsSync(path.join(dir, 'model.mpd'))) continue;
   const report = JSON.parse(fs.readFileSync(path.join(dir, 'report.json'), 'utf8'));
   const out = path.join(dist, 'models', id);
+  // Los modelos archivados (meta.archived) no van a la mini app.
+  if (report.archived) {
+    fs.rmSync(out, { recursive: true, force: true });
+    continue;
+  }
   fs.mkdirSync(out, { recursive: true });
   fs.copyFileSync(path.join(dir, 'model.mpd'), path.join(out, 'model.mpd'));
   fs.copyFileSync(path.join(dir, 'report.json'), path.join(out, 'report.json'));

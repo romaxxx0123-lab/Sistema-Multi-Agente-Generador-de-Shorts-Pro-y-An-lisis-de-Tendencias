@@ -199,6 +199,8 @@ const report = {
   figs,
   // Cajas con las que está pensado el modelo, cuando son más de una.
   donors: meta.donors || null,
+  // Variante descartada: se conserva, pero la mini app no la lista.
+  archived: !!meta.archived,
   sets: null,
 };
 if (!flags.has('--no-sets')) report.sets = matchSets(catalog, report.bom, { copies: meta.copies || 1, include: meta.donors || [] });

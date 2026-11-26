@@ -40,7 +40,7 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 | `base-universal` (para 30 minifiguras) | 574 | 70751 Temple of Airjitzu (2.033 piezas) | 574 de 574, **100 %** |
 | `fortaleza-ninja` (cuartel amurallado de 50 × 54 cm) | 1.099 | 70751 Temple of Airjitzu (2.033 piezas) | 1.099 de 1.099, **100 %** |
-| `ciudadela-ninja` (la base ampliada, dos cajas, 73 × 57 cm) | 1.855 | 70751 Temple of Airjitzu + 71848 The Temple Bounty | 1.855 de 1.855, **100 %** entre las dos |
+| `ciudadela-ninja` (variante **archivada**: la base ampliada con un segundo set, 73 × 57 cm) | 1.855 | 70751 Temple of Airjitzu + 71848 The Temple Bounty | 1.855 de 1.855, **100 %** entre las dos |
 
 `base-universal` y `fortaleza-ninja` usan como donante un set retirado: el
 original se consigue usado, y es de los más copiados por marcas alternativas,
@@ -76,7 +76,14 @@ están en el botón Instrucciones de la mini app y en
 
 ![Vista real: el mismo modelo sin bordes dibujados ni siluetas de vidrio](models/fortaleza-ninja/renders/hero_vacia_real.jpg)
 
-### La ampliación: Ciudadela Ninja (dos cajas)
+### Variante archivada: Ciudadela Ninja (dos cajas)
+
+> **Descartada.** Para armarla había que desarmar el Temple Bounty, y se
+> decidió dejarlo armado. La variante lleva `meta.archived`: no aparece en la
+> mini app, pero el código, los renders y las instrucciones quedan acá. Para
+> retomarla alcanza con sacar esa línea de `models/ciudadela-ninja/model.mjs` y
+> correr `npm run model -- ciudadela-ninja` y `npm run viewer`. El modelo
+> vigente es `fortaleza-ninja`, que se arma con una sola caja.
 
 `ciudadela-ninja` es la misma base con lo que suma un segundo set desarmado, el
 71848 The Temple Bounty. Reutiliza el código de `fortaleza-ninja` (le saca el
@@ -115,7 +122,7 @@ muro del frente, el portón y los cierres laterales) y la lleva de 1.099 a
 | ![Casa de té](models/ciudadela-ninja/renders/casa_de_te_vacia.jpg) | ![Aljibe y jardín](models/ciudadela-ninja/renders/jardin_vacia.jpg) |
 
 Las 1.855 piezas salen de las dos cajas sin repuestos (`meta.donors` las
-declara, y la mini app abre con las dos ya comparadas). Las instrucciones son
+declara, y la mini app abre un modelo así con las dos ya comparadas). Las instrucciones son
 355 pasos en 99 capítulos:
 [`models/ciudadela-ninja/instrucciones.pdf`](models/ciudadela-ninja/instrucciones.pdf).
 
@@ -208,6 +215,7 @@ con nada. Varias cajas con la misma etiqueta forman una sola silueta.
 `meta.copies` cuántas cajas iguales del set se cuentan en la búsqueda y
 `meta.donors` (una lista de números de set) declara que el modelo está pensado
 para varias cajas distintas: la mini app y el PDF muestran lo que cubren juntas.
+`meta.archived` deja un modelo fuera de la mini app sin borrarlo.
 
 Una pieza ya colocada se puede inclinar cambiando su matriz (así están hechos
 los techos con bisagra de `fortaleza-ninja`): el validador trabaja con la

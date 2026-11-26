@@ -7,7 +7,11 @@ import { compose } from '../../lib/ldraw.mjs';
 import { rotY } from '../../lib/builder.mjs';
 import { teaHouse, well, gardenPaths, gardenLanterns, lantern, westOrder } from './tea.mjs';
 
+// ARCHIVADA: se decidió dejar el Temple Bounty armado, así que esta variante no
+// se arma y no aparece en la mini app (meta.archived). El código, los renders y
+// las instrucciones se conservan por si se retoma.
 export const meta = {
+  archived: true,
   order: 5,
   title: 'Ciudadela Ninja',
   prompt: 'Sumarle a la Base de Operaciones todo lo que se pueda con las piezas del Temple Bounty, siempre que la haga ver mejor',
