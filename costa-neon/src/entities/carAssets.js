@@ -22,6 +22,9 @@ import pickupMeta from '../../assets/cars/pickup.json';
 import furgonGlb from '../../assets/cars/furgon.glb';
 import furgonMeta from '../../assets/cars/furgon.json';
 import patrullaGlb from '../../assets/cars/patrulla.glb';
+import ruralGlb from '../../assets/cars/rural.glb';
+import ruralMeta from '../../assets/cars/rural.json';
+import wheelsGlb from '../../assets/cars/wheels.glb';
 
 // base: el modelo comparte la carrocería de otro y el glb sólo trae los agregados (cartel, barra de luces…)
 const SOURCES = {
@@ -33,12 +36,15 @@ const SOURCES = {
   superauto: { glb: superautoGlb, meta: superautoMeta },
   pickup: { glb: pickupGlb, meta: pickupMeta },
   furgon: { glb: furgonGlb, meta: furgonMeta },
+  rural: { glb: ruralGlb, meta: ruralMeta },
   taxi: { glb: taxiGlb, meta: sedanMeta, base: 'sedan' },
   patrulla: { glb: patrullaGlb, meta: sedanMeta, base: 'sedan' },
 };
 
 /** id de modelo → { geo: { paint, trim, glass, lens, chrome, head, tail, blinkL, blinkR, lo: {...} }, meta } */
 export const CAR_ASSETS = {};
+/** Ruedas hechas en Blender (normalizadas: radio 1, ancho 1): { tire, caliper, rims: { estilo: geometría } } */
+export const WHEEL_ASSETS = { rims: {} };
 
 const ROLES = ['paint', 'trim', 'glass', 'lens', 'chrome', 'head', 'drl', 'tail', 'blinkL', 'blinkR', 'extra'];
 
@@ -125,6 +131,22 @@ export async function loadCarAssets(onProgress) {
       console.warn('[autos] no se pudo cargar', id, e);
     }
     if (onProgress) onProgress((k + 1) / ids.length);
+  }
+  try {
+    const buf = wheelsGlb.buffer.slice(wheelsGlb.byteOffset, wheelsGlb.byteOffset + wheelsGlb.byteLength);
+    const gltf = await loader.parseAsync(buf, '');
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      let name = null;
+      for (let p = o; p && !name; p = p.parent) if (/^(tire|caliper|rim_\w+)/.test(p.name || '')) name = p.name.match(/^(tire|caliper|rim_[a-z0-9]+)/)[1];
+      if (!name) return;
+      const g = normalizeGeometry(o.geometry, o.matrixWorld);
+      if (name.startsWith('rim_')) WHEEL_ASSETS.rims[name.slice(4)] = g;
+      else WHEEL_ASSETS[name] = g;
+    });
+  } catch (e) {
+    console.warn('[autos] ruedas de Blender no disponibles', e);
   }
   return CAR_ASSETS;
 }

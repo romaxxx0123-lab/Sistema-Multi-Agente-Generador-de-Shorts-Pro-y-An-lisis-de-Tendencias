@@ -91,6 +91,14 @@ if mode == 'export':
         ex.decimate(roles['glass'], 14000, None)
         roles['glass'].data.use_auto_smooth = True
         roles['glass'].data.auto_smooth_angle = math.radians(30)
+    # diseños con malla densa (relieves finos): LOD0 con presupuesto, normales copiadas de la malla completa
+    for r, b in D.get('lod0_budget', {}).items():
+        if r in roles and ex.tri_count(roles[r]) > b:
+            src = roles[r].copy()
+            src.data = roles[r].data.copy()
+            bpy.context.scene.collection.objects.link(src)
+            ex.decimate(roles[r], b, src)
+            bpy.data.objects.remove(src, do_unlink=True)
     for r, o in roles.items():
         print('LOD0', r, ex.tri_count(o))
     lo = ex.make_lod(roles, D.get('lod1', {}))

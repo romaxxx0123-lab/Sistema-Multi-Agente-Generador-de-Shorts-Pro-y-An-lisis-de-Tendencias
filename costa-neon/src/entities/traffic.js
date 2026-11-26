@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { LANES } from '../world/map.js';
 import { clamp, damp, moveToward, angleDiff, wrapAngle, rand } from '../core/utils.js';
 
-const TRAFFIC_MIX = [['sedan', 30], ['compacto', 25], ['suv', 15], ['taxi', 10], ['furgon', 7], ['pickup', 6], ['muscle', 3], ['deportivo', 2], ['moto', 2]];
+const TRAFFIC_MIX = [['sedan', 24], ['rural', 12], ['compacto', 23], ['suv', 15], ['taxi', 10], ['furgon', 7], ['pickup', 6], ['muscle', 3], ['deportivo', 2], ['moto', 2]];
 
 function pickModel() {
   let tot = TRAFFIC_MIX.reduce((s, m) => s + m[1], 0), r = Math.random() * tot;

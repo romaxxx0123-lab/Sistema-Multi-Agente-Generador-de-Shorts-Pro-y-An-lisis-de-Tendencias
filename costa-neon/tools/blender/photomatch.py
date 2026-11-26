@@ -151,6 +151,23 @@ gnt.links.new(tr.outputs['BSDF'], mx.inputs[1])
 gnt.links.new(gl.outputs['BSDF'], mx.inputs[2])
 gnt.links.new(mx.outputs['Shader'], out_n.inputs['Surface'])
 
+# vidrio privado (oscuro) detrás del pilar B: misma construcción, tinte mucho más oscuro
+gd = P.mat('glass_dark')
+gd.use_nodes = True
+gd.node_tree.nodes.clear()
+o2 = gd.node_tree.nodes.new('ShaderNodeOutputMaterial')
+t2 = gd.node_tree.nodes.new('ShaderNodeBsdfTransparent')
+t2.inputs['Color'].default_value = (*D.get('glass_dark_tint', (0.12, 0.13, 0.13)), 1)
+g2 = gd.node_tree.nodes.new('ShaderNodeBsdfGlossy')
+g2.inputs['Roughness'].default_value = 0.0
+f2 = gd.node_tree.nodes.new('ShaderNodeFresnel')
+f2.inputs['IOR'].default_value = 1.52
+m2 = gd.node_tree.nodes.new('ShaderNodeMixShader')
+gd.node_tree.links.new(f2.outputs['Fac'], m2.inputs['Fac'])
+gd.node_tree.links.new(t2.outputs['BSDF'], m2.inputs[1])
+gd.node_tree.links.new(g2.outputs['BSDF'], m2.inputs[2])
+gd.node_tree.links.new(m2.outputs['Shader'], o2.inputs['Surface'])
+
 # ruedas: las del diseño (carkit.wheels) si existen, si no un neumático y un disco simples
 car_objs = [o for o in sc.objects]  # (la patente se agrega antes de armar la pose)
 try:

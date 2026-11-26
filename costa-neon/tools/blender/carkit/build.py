@@ -46,6 +46,13 @@ def build_body(D, log=print):
             f.material_index = M_TRIM
     G = D['greenhouse']
     gh = shell.greenhouse(C, G)
+    # vidrios oscuros (privados) detrás del pilar B
+    if G.get('privacy'):
+        from .features import M_GLASS_DARK
+        yb = G['bpillar'][0]
+        for f in bm.faces:
+            if f.material_index == M_GLASS and f.calc_center_median().y < yb:
+                f.material_index = M_GLASS_DARK
     info = {'body': body, 'openings': {}, 'clean': bm.copy()}
     # vela del espejo: triángulo negro en la punta delantera de la ventanilla
     if 'sail' in F:

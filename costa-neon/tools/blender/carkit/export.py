@@ -5,7 +5,7 @@ import json
 import bpy
 import bmesh
 
-ROLE = {'paint': 'paint', 'glass': 'glass', 'lens': 'lens', 'chrome': 'chrome', 'refl': 'chrome', 'reverse': 'chrome',
+ROLE = {'paint': 'paint', 'glass': 'glass', 'glass_dark': 'glass', 'lens': 'lens', 'chrome': 'chrome', 'refl': 'chrome', 'reverse': 'chrome',
         'head': 'head', 'drl': 'drl', 'tail': 'tail', 'tail_lit': 'tail', 'blink': 'blink', 'extra': 'extra'}
 # albedo lineal de las molduras (se hornea en el color de vértice)
 ALBEDO = {

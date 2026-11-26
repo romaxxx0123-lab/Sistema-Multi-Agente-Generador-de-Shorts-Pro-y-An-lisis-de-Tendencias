@@ -8,7 +8,8 @@ from .shell import M_PAINT, M_UNDER, M_GLASS, M_FRAME, M_TRIM, M_CHROME, M_GAP
 
 # materiales extra de la carrocería (después de los de shell)
 M_LENS, M_HEAD, M_TAIL, M_BLINK, M_REFL, M_INNER, M_ALU = 7, 8, 9, 10, 11, 12, 13
-EXTRA_MATS = ['lens', 'head', 'tail', 'blink', 'refl', 'inner', 'alu']
+EXTRA_MATS = ['lens', 'head', 'tail', 'blink', 'refl', 'inner', 'alu', 'glass_dark']
+M_GLASS_DARK = 7 + EXTRA_MATS.index('glass_dark')
 
 
 def flt(C, kind, mats=(M_PAINT,)):

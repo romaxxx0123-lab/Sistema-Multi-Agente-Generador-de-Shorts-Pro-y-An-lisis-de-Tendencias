@@ -1,7 +1,7 @@
 // Vehículos: render instanciado, física arcade, colisiones, daño, luces, audio y gestión.
 import * as THREE from 'three';
 import { MODELS, PAINTS, METALLIC, buildCar, buildBike, buildWheel, buildRim, assetGeometry } from './vehicleModels.js';
-import { CAR_ASSETS } from './carAssets.js';
+import { CAR_ASSETS, WHEEL_ASSETS } from './carAssets.js';
 import { clamp, damp, moveToward, angleDiff, wrapAngle, rand } from '../core/utils.js';
 import { WATER_LEVEL, isRoad } from '../world/map.js';
 import { U } from '../world/shaders.js';
@@ -19,7 +19,9 @@ const RIMS = {
   work: [0xffffff, 0x2f3134, 0xd8d9da],
 };
 const CALIPERS = { sport: [0xc4161c, 0xd9a60f, 0x2a2b2d, 0xc4161c], other: [0x2a2b2d, 0x3a3b3d] };
-const CAPACITY = { compacto: 26, sedan: 30, taxi: 14, patrulla: 16, suv: 18, furgon: 12, pickup: 12, muscle: 10, deportivo: 10, superauto: 8, moto: 10 };
+// estilos de llanta del juego que tienen versión modelada en Blender
+const RIM_FROM_BLENDER = { twin5: 'double5', multi10: 'multi10', deep5: 'five' };
+const CAPACITY = { rural: 16, compacto: 26, sedan: 30, taxi: 14, patrulla: 16, suv: 18, furgon: 12, pickup: 12, muscle: 10, deportivo: 10, superauto: 8, moto: 10 };
 // Nivel de detalle: los autos cercanos usan el modelo completo (lista compacta, sin instancias vacías)
 const NEAR_CAP = 6;
 const NEAR_D2 = 30 * 30;
@@ -148,11 +150,13 @@ float gDirt = 0.0; // suciedad efectiva en este fragmento (color → rugosidad)
 float flakeHash(vec3 p){ p = fract(p * vec3(443.897, 441.423, 437.195)); p += dot(p, p.yzx + 19.19); return fract((p.x + p.y) * p.z); }
 ` + CAR_LAMPS;
 // Pintura sólida o metalizada por auto: metalizado con escamas que destellan bajo el barniz
+// Pintura con barniz: el reflejo nítido es del barniz (clearcoat); la base es casi toda pigmento difuso.
+// El metalizado son escamas bajo el barniz: poco metal y brillo ancho (con más metal se ve metal líquido).
 const PAINT_METAL = /* glsl */ `
-  metalnessFactor = mix(0.0, 0.62, vPaint.x);
+  metalnessFactor = mix(0.0, 0.22, vPaint.x);
 `;
 const PAINT_ROUGH = /* glsl */ `
-  roughnessFactor = mix(mix(0.42, 0.34, vPaint.x), 0.82, gDirt);
+  roughnessFactor = mix(mix(0.46, 0.40, vPaint.x), 0.85, gDirt);
   roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.55, uWet); // película de agua
 `;
 const PAINT_FLAKES = /* glsl */ `
@@ -336,7 +340,8 @@ class VehicleRenderer {
     setDynamic(this.plates);
     this.group.add(this.plates);
     this.plateSlots = new Array(maxPlates).fill(null);
-    const wheel = buildWheel();
+    // ruedas modeladas en Blender si están (neumático con perfil real, llanta, disco y pinza); si no, las de JS
+    const wheel = WHEEL_ASSETS.tire && WHEEL_ASSETS.caliper ? { tire: WHEEL_ASSETS.tire, caliper: WHEEL_ASSETS.caliper } : buildWheel();
     // caucho: gris muy oscuro (no negro puro), mate con leve brillo en el flanco
     this.tireMat = lib.standard({ color: 0x1e1e20, roughness: 0.86, metalness: 0 }, { key: 'tire' });
     // llanta: colores de vértice (cara pulida, barril oscuro, disco) × color por auto (instancia)
@@ -393,7 +398,8 @@ class VehicleRenderer {
   /** Malla instanciada de un estilo de llanta (se crea la primera vez que un modelo la usa). */
   rimSet(style) {
     if (this.rimSets[style]) return this.rimSets[style];
-    const mesh = new THREE.InstancedMesh(buildRim(style), this.rimMat, this.maxWheels);
+    const asset = WHEEL_ASSETS.rims[RIM_FROM_BLENDER[style]];
+    const mesh = new THREE.InstancedMesh(asset || buildRim(style), this.rimMat, this.maxWheels);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.maxWheels * 3).fill(1), 3).setUsage(THREE.DynamicDrawUsage);
     setDynamic(mesh);
     mesh.frustumCulled = false;
@@ -428,7 +434,7 @@ class VehicleRenderer {
     const geo = CAR_ASSETS[id] ? assetGeometry(CAR_ASSETS[id], spec) : spec.bike ? buildBike(spec) : buildCar(spec);
     const cap = CAPACITY[id] || 10;
     const lib = this.game.lib;
-    const paintMat = lib.physical({ color: 0xffffff, roughness: 0.3, metalness: 0.45, clearcoat: 1, clearcoatRoughness: 0.035 }, {
+    const paintMat = lib.physical({ color: 0xffffff, roughness: 0.42, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.035, specularIntensity: 0.3 }, {
       key: 'vpaint_' + id,
       uniforms: {
         uDims: { value: new THREE.Vector4(spec.L, spec.W, spec.H, spec.clear) },
@@ -825,7 +831,8 @@ export class Vehicle {
     this.id = VID++;
     this.modelId = modelId;
     this.spec = MODELS[modelId];
-    this.color = opts.color ?? this.spec.fixedColor ?? PAINTS[(Math.random() * PAINTS.length) | 0];
+    const pal = this.spec.palette || PAINTS;
+    this.color = opts.color ?? this.spec.fixedColor ?? pal[(Math.random() * pal.length) | 0];
     this.pos = new THREE.Vector3(x, 0, z);
     this.yaw = yaw;
     this.vel = new THREE.Vector3();
@@ -867,7 +874,8 @@ export class Vehicle {
     const st = this.spec.style;
     const sporty = st === 'muscle' || st === 'sports' || st === 'super';
     const rims = modelId === 'patrulla' ? RIMS.police : sporty ? RIMS.sport : st === 'van' || st === 'pickup' ? RIMS.work : RIMS.normal;
-    this.rimColor = opts.rimColor ?? rims[(Math.random() * rims.length) | 0];
+    const rimPal = this.spec.rimColors || rims;
+    this.rimColor = opts.rimColor ?? rimPal[(Math.random() * rimPal.length) | 0];
     const cals = sporty ? CALIPERS.sport : CALIPERS.other;
     this.caliperColor = opts.caliperColor ?? cals[(Math.random() * cals.length) | 0];
     // nivel de suciedad: la mayoría limpios o con polvo leve, algunos muy sucios (utilitarios más)
@@ -1406,7 +1414,7 @@ export class VehicleManager {
         continue;
       }
       if (d < 170 && d > 25 && Math.random() < 0.55 * density) {
-        const pool = s.poi === 'policia' ? ['patrulla'] : s.poi === 'concesionaria' ? ['deportivo', 'muscle', 'suv', 'superauto', 'sedan'] : ['sedan', 'compacto', 'suv', 'pickup', 'compacto', 'sedan', 'muscle', 'moto'];
+        const pool = s.poi === 'policia' ? ['patrulla'] : s.poi === 'concesionaria' ? ['deportivo', 'muscle', 'suv', 'superauto', 'sedan'] : ['sedan', 'compacto', 'suv', 'pickup', 'compacto', 'rural', 'sedan', 'rural', 'muscle', 'moto'];
         const id = pool[(Math.random() * pool.length) | 0];
         const v = this.spawn(id, s.x, s.z, s.yaw + (Math.random() < 0.5 ? Math.PI : 0), { parked: true, engineOn: false });
         if (v) s.vehicle = v;

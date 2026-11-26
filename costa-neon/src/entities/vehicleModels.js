@@ -19,6 +19,7 @@ export const MODELS = {
   sedan: { name: 'Delta GL', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1400, accel: 9.6, top: 47, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 18000, cls: 'Sedán', doors: [1.05, 0.0, -1.0], rim: 'twin5' },
   taxi: { name: 'Delta Taxi', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1420, accel: 9.6, top: 46, grip: 9.4, steer: 0.58, brake: 19, hp: 1000, engine: 'car', price: 15000, cls: 'Servicio', fixedColor: 0xf2bf0a, roofSign: true, doors: [1.05, 0.0, -1.0], rim: 'steel' },
   patrulla: { name: 'Interceptor', style: 'sedan', L: 4.86, W: 1.87, H: 1.44, wb: 2.82, wr: 0.335, clear: 0.14, mass: 1650, accel: 13.5, top: 64, grip: 10.5, steer: 0.6, brake: 23, hp: 1500, engine: 'sports', price: 0, cls: 'Emergencia', fixedColor: 0xf4f4f2, livery: 'police', lightbar: true, pushbar: true, doors: [1.05, 0.0, -1.0], rim: 'steel' },
+  rural: { name: 'Rural Touring', style: 'sedan', L: 4.63, W: 1.81, H: 1.42, wb: 2.81, wr: 0.331, clear: 0.135, mass: 1620, accel: 11, top: 58, grip: 10, steer: 0.58, brake: 21, hp: 1150, engine: 'car', price: 38000, cls: 'Familiar', doors: [0.97, -0.12, -0.95], rim: 'twin5', rimColors: [0xc8cbcf, 0xc8cbcf, 0x9a9ea3], palette: [0x3f454c, 0x3f454c, 0x101418, 0xf2f2f0, 0x1f3f8a, 0xb8b9ba, 0x2b3a55] },
   suv: { name: 'Cóndor 4x4', style: 'suv', L: 4.8, W: 1.96, H: 1.73, wb: 2.86, wr: 0.375, clear: 0.215, mass: 2100, accel: 9.2, top: 45, grip: 8.6, steer: 0.55, brake: 18, hp: 1300, engine: 'car', price: 32000, cls: 'SUV', doors: [1.1, 0.0, -1.05], rim: 'offroad6' },
   furgon: { name: 'Carga Van', style: 'van', L: 5.25, W: 2.0, H: 2.29, wb: 3.3, wr: 0.355, clear: 0.22, mass: 2600, accel: 6.6, top: 37, grip: 7.6, steer: 0.52, brake: 15, hp: 1500, engine: 'truck', price: 21000, cls: 'Utilitario', doors: [1.5, 0.55], rim: 'steel' },
   pickup: { name: 'Ranchera', style: 'pickup', L: 5.25, W: 1.96, H: 1.81, wb: 3.2, wr: 0.385, clear: 0.24, mass: 2000, accel: 9, top: 46, grip: 8.6, steer: 0.53, brake: 17, hp: 1300, engine: 'truck', price: 26000, cls: 'Utilitario', doors: [1.35, 0.35], rim: 'offroad6' },
@@ -30,7 +31,7 @@ export const MODELS = {
 
 export const PAINTS = [0x101418, 0xf2f2f0, 0x8c9399, 0x2b3a55, 0x7a1d1d, 0x1e4d3a, 0xc9c2b2, 0x0e3f73, 0xb83a1f, 0x5b5f66, 0x3a2e28, 0x9fb7c9, 0xe0a91b, 0x1b1b1b, 0x6d1a4a, 0x2f6f73];
 // Pinturas metalizadas (el resto son sólidas): plata, grafito, azules, verdes, bordó, champán
-export const METALLIC = new Set([0x8c9399, 0x2b3a55, 0x1e4d3a, 0xc9c2b2, 0x0e3f73, 0x5b5f66, 0x3a2e28, 0x9fb7c9, 0x6d1a4a, 0x2f6f73, 0x101418, 0x14306e, 0xb8b9ba]);
+export const METALLIC = new Set([0x3f454c, 0x1f3f8a, 0x8c9399, 0x2b3a55, 0x1e4d3a, 0xc9c2b2, 0x0e3f73, 0x5b5f66, 0x3a2e28, 0x9fb7c9, 0x6d1a4a, 0x2f6f73, 0x101418, 0x14306e, 0xb8b9ba]);
 
 function interp(points, zn) {
   // Catmull-Rom monótono sobre una lista [z, y] ordenada de mayor a menor z

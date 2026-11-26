@@ -11,6 +11,8 @@ from mathutils import Vector, Matrix
 from . import parts as P
 
 TAU = 2 * math.pi
+# calidad: 1.0 para renders; el juego usa menos segmentos (cientos de ruedas instanciadas)
+QUALITY = {'lathe': 1.0, 'spoke': (16, 6)}
 
 
 def _mesh(name, verts, faces, mats, face_mats, smooth_angle=40):
@@ -31,6 +33,7 @@ def _mesh(name, verts, faces, mats, face_mats, smooth_angle=40):
 
 def lathe(name, prof, mat, seg=96, smooth_angle=50):
     """Superficie de revolución de un perfil [(r, x)] alrededor del eje X."""
+    seg = max(16, int(seg * QUALITY['lathe']))
     verts, faces = [], []
     n = len(prof)
     for i in range(seg):
@@ -83,8 +86,10 @@ def rim_lip(Rr, Wr):
     return [a, a2, b]
 
 
-def spoke(name, r0, r1, ang, half_w, dish, thick, crown=0.003, nt=16, nu=6):
+def spoke(name, r0, r1, ang, half_w, dish, thick, crown=0.003, nt=None, nu=None):
     """Rayo como cinta gruesa: ang(t) y half_w(t) dan el eje y el semiancho; dish(t) la profundidad de la cara."""
+    nt = nt or QUALITY['spoke'][0]
+    nu = nu or QUALITY['spoke'][1]
     verts, faces, fm = [], [], []
     rows = []
     for i in range(nt + 1):

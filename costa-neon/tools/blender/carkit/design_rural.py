@@ -76,7 +76,7 @@ R.update(
         ws_poly=band(-0.02, 0.76, lambda x: 0.12 - 0.04 * (x / 0.70) ** 2, lambda x: 0.70 - 0.10 * (x / 0.80) ** 2),
         rw_kind='rear',
         rw_poly=[(-0.02, 1.01), (0.58, 1.01), (0.575, 1.16), (0.56, 1.28), (0.54, 1.32), (0.51, 1.335), (-0.02, 1.335)],
-        quarter=[(-1.93, 5.0), (-0.97, 5.0), (-1.27, 6.0), (-1.80, 6.0)],
+        quarter=[(-1.93, 5.0), (-0.97, 5.0), (-1.27, 6.0), (-1.80, 6.0)], privacy=True,
     ),
     interior=dict(hip=0.50, front_y=-0.42, front_x=0.38, rear_y=-1.25, dash_y=0.32, dash_z=0.98,
                   region=(-2.20, 0.55, 0.35), shelf_y=(-1.85, -2.25), shelf_z=1.0),
@@ -85,6 +85,7 @@ R.update(
           'frame': ((0.006, 0.006, 0.007), 0.06, 0, 1.0, 0, None), 'trim': ((0.008, 0.008, 0.009), 0.1, 0, 0.8, 0, None),
           'alu': ((0.62, 0.63, 0.64), 0.28, 1.0, 0, 0, None), 'drl': ((0.8, 0.8, 0.8), 0.45, 0, 0, 0, None), 'seat': ((0.30, 0.25, 0.19), 0.55, 0, 0, 0, None)},
     dust=dict(top=0.24, side=0.07, color=(0.26, 0.265, 0.27), scale=9.0),
+    lod0_budget={'paint': 52000, 'trim': 30000, 'chrome': 5000},   # el vidrio no: copiarle normales lo rompe
     wheel=dict(style='double5', rim_d=0.4826, tire_w=0.235, face='machined', paint=(0.16, 0.165, 0.175), spoke_w=(0.011, 0.019)),
 )
 F = R['features']
@@ -96,7 +97,8 @@ F.update(
                   (0.62, 0.972)]),
         ('side', [(-0.10, 0.20), (-0.11, 0.55), (-0.125, 0.85), (-0.14, 1.0)]),
         # puerta trasera: rodea el arco de la rueda trasera y sube al pilar C
-        ('side', [(-0.96, 0.20)] + _arc(-1.405, 0.331, 0.42, 2, 70, 12) + [(-0.99, 0.84), (-0.965, 0.93), (-0.93, 1.0)]),
+        ('side', [(-0.975, 0.20)] + _arc(-1.405, 0.331, 0.42, 5, 58, 12) + [(-1.13, 0.74), (-1.075, 0.83), (-1.0, 0.92),
+                                                                              (-0.955, 0.975), (-0.94, 0.995)]),
         # capó: línea sobre el guardabarros y borde trasero delante del torpedo
         ('band56', [(0.78, 5.6), (2.80, 5.6)]),
         ('top', [(-0.01, 0.78), (0.80, 0.78)]),
