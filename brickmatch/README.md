@@ -40,6 +40,7 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 | `base-universal` (para 30 minifiguras) | 574 | 70751 Temple of Airjitzu (2.033 piezas) | 574 de 574, **100 %** |
 | `fortaleza-ninja` (cuartel amurallado de 50 × 54 cm) | 1.099 | 70751 Temple of Airjitzu (2.033 piezas) | 1.099 de 1.099, **100 %** |
+| `ciudadela-ninja` (la base ampliada, dos cajas) | 1.501 | 70751 Temple of Airjitzu + 71848 The Temple Bounty | 1.501 de 1.501, **100 %** entre las dos |
 
 `base-universal` y `fortaleza-ninja` usan como donante un set retirado: el
 original se consigue usado, y es de los más copiados por marcas alternativas,
@@ -75,6 +76,50 @@ están en el botón Instrucciones de la mini app y en
 
 ![Vista real: el mismo modelo sin bordes dibujados ni siluetas de vidrio](models/fortaleza-ninja/renders/hero_vacia_real.jpg)
 
+### La ampliación: Ciudadela Ninja (dos cajas)
+
+`ciudadela-ninja` es la misma base con lo que suma un segundo set desarmado, el
+71848 The Temple Bounty. Reutiliza el código de `fortaleza-ninja` (le saca el
+muro del frente, el portón y los cierres laterales) y la lleva de 1.099 a
+1.501 piezas:
+
+- **Muralla**: dos paños de troncos claros con entramado oscuro, una franja de
+  cuatro ventanas con celosía dorada, albardilla negra y crestería de rejas.
+- **Portón de templo**: postes de troncos de 2×2, viga de tres capas con ocho
+  ménsulas, y un techo cóncavo de veinte tejas (los parabrisas negros del
+  barco, dados vuelta y abrochados por su barra al alero), con cumbrera de
+  lingotes dorados y un rulo dorado en cada punta. Abajo siguen pasando los 20
+  studs × 36 plates del vehículo.
+- **Explanada y avenida** con ocho faroles (la luz es una cabeza celeste),
+  diez katanas doradas en clips del lado de adentro de la muralla y dos pasos
+  laterales con arco entre las galerías y el edificio.
+
+![Ciudadela Ninja: la base ampliada con las piezas del Temple Bounty](models/ciudadela-ninja/renders/hero.jpg)
+
+| De frente | Vista real, sin minifiguras |
+| --- | --- |
+| ![Ciudadela de frente](models/ciudadela-ninja/renders/frente.jpg) | ![Ciudadela, vista real](models/ciudadela-ninja/renders/hero_vacia_real.jpg) |
+
+| El portón: techo de tejas, cumbrera dorada y faroles | La avenida, vista desde el patio | Diez katanas doradas del lado de adentro |
+| --- | --- | --- |
+| ![Portón](models/ciudadela-ninja/renders/porton_vacia.jpg) | ![Avenida](models/ciudadela-ninja/renders/avenida_vacia.jpg) | ![Katanas](models/ciudadela-ninja/renders/katanas_vacia.jpg) |
+
+Las 1.501 piezas salen de las dos cajas sin repuestos (`meta.donors` las
+declara, y la mini app abre con las dos ya comparadas). Las instrucciones son
+287 pasos en 83 capítulos:
+[`models/ciudadela-ninja/instrucciones.pdf`](models/ciudadela-ninja/instrucciones.pdf).
+
+**Cuánto del segundo set se aprovecha.** Del Temple Bounty entran 419 de sus
+2.388 piezas (18 %); la lista está en
+[`models/ciudadela-ninja/piezas-del-bounty.csv`](models/ciudadela-ninja/piezas-del-bounty.csv).
+El resto no mejora un edificio: 254 piezas son Technic (el mecanismo del
+barco), 174 son escuadras y 112 son placas de un stud centrado que van por
+dentro, y además están el casco, las velas de tela y seis minifiguras. Quedaron
+afuera a propósito las dos puertas de empalizada: ninguna pieza de las dos
+cajas las deja colgadas sin chocar en el modelo 3D, y no se dibuja nada que no
+esté comprobado. Tampoco hay geometría LDraw para las velas, la cabeza de
+dragón ni algunas pendientes nuevas.
+
 ## Comandos
 
 ```bash
@@ -106,6 +151,8 @@ node scripts/set-usable.mjs 71826-1            # piezas de construcción de un s
 node scripts/set-colors.mjs 71826-1            # inventario de un set agrupado por color
 node scripts/budget.mjs base-universal 70751-1 --left   # sobregiros y qué queda sin usar en la caja
 node scripts/budget.mjs <modelo> <set> --copies=2       # lo mismo contando dos cajas iguales
+node scripts/budget.mjs ciudadela-ninja 70751-1+71848-1 --left --from=71848-1   # dos cajas distintas: qué queda de la segunda
+node scripts/budget.mjs ciudadela-ninja 70751-1+71848-1 --taken=71848-1 --csv=lista.csv   # qué piezas salen de la segunda caja
 node scripts/selftest.mjs                      # pruebas del validador
 ```
 
@@ -146,8 +193,10 @@ sets: sirve para comprobar cuántas entran y dónde. Sobre la mesa (y = 0) vale
 parada sin studs. `m.envelope(x, y, z, ancho, fondo, alto, { label })` agrega un
 volumen de prueba (un vehículo que tiene que entrar): se comprueba que no choque
 con nada. Varias cajas con la misma etiqueta forman una sola silueta.
-`meta.order` decide qué modelo abre primero la mini app (el más alto) y
-`meta.copies` cuántas cajas iguales del set se cuentan en la búsqueda.
+`meta.order` decide qué modelo abre primero la mini app (el más alto),
+`meta.copies` cuántas cajas iguales del set se cuentan en la búsqueda y
+`meta.donors` (una lista de números de set) declara que el modelo está pensado
+para varias cajas distintas: la mini app y el PDF muestran lo que cubren juntas.
 
 Una pieza ya colocada se puede inclinar cambiando su matriz (así están hechos
 los techos con bisagra de `fortaleza-ninja`): el validador trabaja con la
@@ -253,7 +302,8 @@ dist/       mini app construida (no se versiona)
 
 - La librería de piezas 3D es la edición 2023-03 de LDraw (la del paquete de
   Ubuntu): no hay piezas posteriores. Con `LDRAW_DIR` se puede apuntar a una más nueva.
-- Las piezas impresas se dibujan sin el dibujo; los modelos de ejemplo no usan ninguna.
+- Las piezas impresas se dibujan sin el dibujo (los vidrios de las ventanas shoji
+  y las tejuelas con dragón de los modelos grandes, por ejemplo).
 - La base de sets no trae precios ni disponibilidad en tiendas: el precio de un
   set candidato se busca aparte y `donors.mjs` usa el tamaño de la caja como guía.
 

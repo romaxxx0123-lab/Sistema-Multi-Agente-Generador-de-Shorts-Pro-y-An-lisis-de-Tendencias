@@ -346,6 +346,11 @@ function renderSets() {
   const filtered = state.maxSize || state.minYear || state.query.trim();
   const copies = r.sets.copies || 1;
   let html = copies > 1 ? `<p class="note">Este modelo está pensado para armarse con <b>${copies} cajas iguales</b> del mismo set: los porcentajes de la lista cuentan esa cantidad de cada set.</p>` : '';
+  const donors = (r.donors || []).filter((n) => state.setByNum.has(n));
+  const isDonors = donors.length > 1 && donors.length === state.selected.length && donors.every((n) => state.selected.includes(n));
+  if (donors.length > 1) {
+    html += `<p class="note">Este modelo está pensado para armarse con <b>${donors.length} cajas distintas</b>: ${donors.map((n) => `${esc(n)} ${esc(state.setByNum.get(n).name)}`).join(' + ')}. ${isDonors ? 'Abajo ya están elegidas en la comparación.' : ''}</p>`;
+  }
 
   if (best) {
     const e = setExact(best);
@@ -378,7 +383,7 @@ function renderSets() {
         .join('')}</div>`;
     }
     html += `<section class="lead missing">
-      <span class="eyebrow">Tu comparación: ${esc(state.selected.join(' + '))}</span>
+      <span class="eyebrow">${isDonors ? 'Las cajas del modelo' : 'Tu comparación'}: ${esc(state.selected.join(' + '))}</span>
       <div class="big"><b>${pct(c.exact, total)}</b><span>${num(c.exact)} de ${num(total)} piezas${missing.length ? ` · faltan ${num(total - c.exact)}` : ''}</span></div>
       <div class="meter"><i class="shape" style="width:${width(c.shape, total)}"></i><i class="exact" style="width:${width(c.exact, total)}"></i></div>
       <label class="check"><input type="checkbox" id="show-missing" ${state.showMissing ? 'checked' : ''}> Marcar en el modelo 3D lo que falta</label>
@@ -697,6 +702,8 @@ async function loadModel(id) {
     Object.assign(state, { id, report, selected: [], step: 0, focusLot: null, onlyMissing: false, shown: 25, query: '', thumbs: new Map(), refocus: state.tab === 'steps' ? 'force' : false });
     state.step = memory.load(); // retoma donde quedó el armado
     state.setByNum = new Map((report.sets ? report.sets.list : []).map((s) => [s.num, s]));
+    // Un modelo pensado para varias cajas abre con esas cajas ya comparadas.
+    if (report.donors && report.donors.length > 1) state.selected = report.donors.filter((n) => state.setByNum.has(n));
     renderModels();
     renderBrief();
     renderTab();

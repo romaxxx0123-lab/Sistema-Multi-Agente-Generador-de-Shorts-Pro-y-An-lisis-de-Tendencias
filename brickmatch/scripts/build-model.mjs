@@ -197,9 +197,11 @@ const report = {
     }),
   },
   figs,
+  // Cajas con las que está pensado el modelo, cuando son más de una.
+  donors: meta.donors || null,
   sets: null,
 };
-if (!flags.has('--no-sets')) report.sets = matchSets(catalog, report.bom, { copies: meta.copies || 1 });
+if (!flags.has('--no-sets')) report.sets = matchSets(catalog, report.bom, { copies: meta.copies || 1, include: meta.donors || [] });
 fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report));
 
 // --- resumen -----------------------------------------------------------------

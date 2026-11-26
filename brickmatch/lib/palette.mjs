@@ -104,6 +104,16 @@ export const PARTS = {
   '92280': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: [1, 0] }, // plate 1x2 con clip arriba: el frente es la mitad del clip
   '44728': { box: { min: [-20, 0, -10], max: [20, 40, 10] }, front: S }, // escuadra 1x2 - 2x2 hacia abajo: la cara con studs cuelga al frente
   '4600': { box: { min: [-20, 0, -20], max: [20, 10, 20] } }, // plate 2x2 con pernos de rueda a los lados
+  // Set 71848 The Temple Bounty y parecidos
+  '60470b': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: S }, // plate 1x2 con dos clips al frente
+  '63868': { box: { min: [-20, 0, -10], max: [20, 8, 10] }, front: [1, 0] }, // plate 1x2 con clip en la punta
+  '28621': { box: CELL(24) }, // cabeza de minifigura con stud ventilado (farol)
+  '4740': { box: { min: [-20, 0, -20], max: [20, 8, 20] } }, // plato 2x2 invertido
+  '99563': { front: S }, // lingote 1x2
+  '4287c': { front: S }, // pendiente invertida 3x1 (ménsula): el frente es el voladizo
+  '32932': { box: { min: [-40, 0, -10], max: [40, 48, 10] } }, // reja de celosía 1x4x2
+  '59900': { box: CELL(24) }, // cono 1x1
+  dragon: { ld: '3069b', rb: '3069bpr9910' }, // tile 1x2 con dragón impreso: se dibuja liso
 };
 
 // Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.

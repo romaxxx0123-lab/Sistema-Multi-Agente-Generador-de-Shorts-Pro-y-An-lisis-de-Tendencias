@@ -111,6 +111,17 @@ const card = (lot, qty, name = false) => {
 };
 const v = report.validation;
 const best = report.sets && report.sets.list[0];
+// Modelo pensado para varias cajas: cuánto cubren entre todas.
+const donors = report.sets && report.donors && report.donors.length > 1
+  ? report.donors.map((n) => report.sets.list.find((s) => s.num === n)).filter(Boolean)
+  : [];
+const donorCover = (() => {
+  if (!donors.length) return 0;
+  const have = new Array(report.bom.length).fill(0);
+  for (const s of donors) for (let i = 0; i < s.x.length; i += 2) have[s.x[i]] += s.x[i + 1];
+  return report.bom.reduce((a, b, l) => a + Math.min(b.qty, have[l]), 0);
+})();
+const boxSize = donors.length ? donors.reduce((a, s) => a + s.parts, 0) : best ? best.parts : 0;
 const resting = (v.resting || []).map((x) => `${x.qty} × pieza ${x.part} (${x.name})`).join(', ');
 const head = (left) => `<header><span>${left}</span><span>${esc(report.title)}</span></header>`;
 
@@ -221,7 +232,9 @@ const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>
   <p class="lead">${esc(report.description)}</p>
   <img src="tapa.jpg" alt="">
   <div class="facts"><span><b>${num(report.counts.pieces)}</b> piezas</span><span><b>${num(report.counts.lots)}</b> tipos de pieza</span><span><b>${num(total)}</b> pasos</span>${report.size ? `<span>Mide <b>${report.size.join(' × ')} cm</b></span>` : ''}${v.stats.components > 1 ? `<span><b>${v.stats.components}</b> módulos</span>` : ''}</div>
-  ${best && best.exact === report.counts.pieces ? `<p class="box"><b>Caja donante: ${esc(best.num)} ${esc(best.name)}</b> (${num(best.parts)} piezas). Todas las piezas del modelo salen de esa sola caja, en la pieza y el color exactos, sin usar los repuestos.</p>` : ''}
+  ${donors.length
+    ? `<p class="box"><b>Cajas donantes: ${donors.map((d) => `${esc(d.num)} ${esc(d.name)}`).join(' + ')}</b> (${num(boxSize)} piezas entre las ${donors.length}). ${donorCover === report.counts.pieces ? `Todas las piezas del modelo salen de esas ${donors.length} cajas, en la pieza y el color exactos, sin usar los repuestos.` : `Entre las ${donors.length} cubren ${num(donorCover)} de las ${num(report.counts.pieces)} piezas.`}</p>`
+    : best && best.exact === report.counts.pieces ? `<p class="box"><b>Caja donante: ${esc(best.num)} ${esc(best.name)}</b> (${num(best.parts)} piezas). Todas las piezas del modelo salen de esa sola caja, en la pieza y el color exactos, sin usar los repuestos.</p>` : ''}
   <footer><span>Generado el ${report.generated.split('-').reverse().join('/')}</span></footer>
 </section>
 <section class="page">
@@ -236,7 +249,7 @@ const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>
   </ul>
   <h2>Lo que conviene saber</h2>
   <ul>
-    <li>Cada parte abre con la lista de piezas que usa. Separalas antes de empezar: de una caja de ${best ? num(best.parts) : 'muchas'} piezas es lo que más tiempo ahorra.</li>
+    <li>Cada parte abre con la lista de piezas que usa. Separalas antes de empezar: ${donors.length ? `de ${donors.length} cajas que suman ${num(boxSize)}` : `de una caja de ${best ? num(best.parts) : 'muchas'}`} piezas es lo que más tiempo ahorra.</li>
     ${v.stats.components > 1 ? `<li>El edificio principal queda en un solo bloque. El resto son <b>${v.stats.components - 1} módulos que van apoyados sobre la mesa</b> (muros, torres, galerías y muebles sueltos): los pasos marcados «Sobre la mesa» empiezan uno o le suman piezas a nivel del piso.</li>` : ''}
     ${resting ? `<li>Van <b>apoyadas, sin presión</b>: ${esc(resting)}. El capítulo donde aparecen explica cómo quedan calzadas en su lugar.</li>` : ''}
     ${report.figs ? `<li>Las minifiguras${(report.figs.volumes || []).length ? ' y las siluetas transparentes (lo que el modelo tiene que alojar)' : ''} de la tapa son de prueba: no forman parte del modelo.</li>` : ''}

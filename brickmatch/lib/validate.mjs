@@ -226,6 +226,7 @@ export function validate(model, { ground = 0 } = {}) {
 
   // --- 1. duplicados y choques ---------------------------------------------
   let pairsTested = 0;
+  const crowded = []; // pares cuyas cajas casi coinciden sin tocarse: se avisan si tampoco encastran
   for (let a = 0; a < P.length; a++) {
     for (let b = a + 1; b < P.length; b++) {
       const A = boxes[a], B = boxes[b];
@@ -262,7 +263,7 @@ export function validate(model, { ground = 0 } = {}) {
         const va = vol(A), vb = vol(B);
         // Una pieza chica dentro del hueco de una grande (roca, marco) es normal.
         if (inter > 0.6 * Math.min(va, vb) && Math.max(va, vb) < 6 * Math.min(va, vb)) {
-          warnings.push(`Revisar: ${label(P[a])} y ${label(P[b])} ocupan casi el mismo espacio`);
+          crowded.push([a, b]);
         }
       }
     }
@@ -394,6 +395,11 @@ export function validate(model, { ground = 0 } = {}) {
 
   // --- 3. conectividad -------------------------------------------------------
   const adj = P.map(() => []);
+  // Dos piezas que encastran por sus studs no "ocupan el mismo espacio" aunque
+  // sus cajas se pisen (un clip que sube al lado de la pieza de arriba).
+  for (const [a, b] of crowded) {
+    if (!edges.has(pairKey(a, b))) warnings.push(`Revisar: ${label(P[a])} y ${label(P[b])} ocupan casi el mismo espacio`);
+  }
   for (const key of edges.keys()) {
     const [a, b] = key.split('-').map(Number);
     adj[a].push(b);

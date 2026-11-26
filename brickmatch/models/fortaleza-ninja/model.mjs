@@ -64,7 +64,10 @@ const G = 1; // nivel del patio
 const U = 20; // nivel de la planta alta
 const R = U + 18; // techo grande del puesto de mando
 
-export default function build(m, helpers) {
+// opts.bounty: la ampliación con el Temple Bounty reutiliza esta base y
+// reemplaza el muro del frente, el portón y los cierres laterales del patio.
+export default function build(m, helpers, opts = {}) {
+  const B = !!opts.bounty;
   const { rect } = helpers;
   base(m, helpers, { fortress: true });
 
@@ -221,35 +224,37 @@ export default function build(m, helpers) {
   // frente, dos torres en las esquinas y una galería techada a cada lado.
   const FZ = -30; // fila sur del muro del frente
 
-  m.step('Muro del frente: zapatas y tramos de cerca', 'Son dos tramos sueltos, uno a cada lado del sendero, apoyados en la mesa. Entre los dos queda el portón, de 20 studs.');
-  m.add('91988', C.stone, 0, 0, FZ);
-  m.add('3020', C.stone, 34, 0, FZ);
-  m.add('3832', C.stone, 38, 0, FZ);
-  for (const x of [0, 4, 8, 36, 40, 44]) m.add('3701', C.wood, x, 1, FZ);
-  // Albardilla trabada sobre las juntas y tejas arriba.
-  for (const x0 of [2, 36]) {
-    rect('plate', C.wood, x0, 4, FZ, 1, 2);
-    for (let i = 0; i < 4; i++) rect('plate', C.ground, x0 + 1 + 2 * i, 4, FZ, 2, 2);
-    rect('plate', C.wood, x0 + 9, 4, FZ, 1, 2);
-  }
-  for (const x of [0, 4, 8, 36, 40, 44]) m.add('3299', C.roof, x, 5, FZ);
+  if (!B) {
+    m.step('Muro del frente: zapatas y tramos de cerca', 'Son dos tramos sueltos, uno a cada lado del sendero, apoyados en la mesa. Entre los dos queda el portón, de 20 studs.');
+    m.add('91988', C.stone, 0, 0, FZ);
+    m.add('3020', C.stone, 34, 0, FZ);
+    m.add('3832', C.stone, 38, 0, FZ);
+    for (const x of [0, 4, 8, 36, 40, 44]) m.add('3701', C.wood, x, 1, FZ);
+    // Albardilla trabada sobre las juntas y tejas arriba.
+    for (const x0 of [2, 36]) {
+      rect('plate', C.wood, x0, 4, FZ, 1, 2);
+      for (let i = 0; i < 4; i++) rect('plate', C.ground, x0 + 1 + 2 * i, 4, FZ, 2, 2);
+      rect('plate', C.wood, x0 + 9, 4, FZ, 1, 2);
+    }
+    for (const x of [0, 4, 8, 36, 40, 44]) m.add('3299', C.roof, x, 5, FZ);
 
-  m.step('Portón: pilares con estandarte de dragón', 'El ala negra se abrocha por su barra al clip dorado y sube como un estandarte.');
-  // Entre los pilares quedan 20 studs libres: pasa el buggy.
-  for (const [x, rot, sx, W] of [[12, 0, 12, [0, 0, 1, -1, 0, 0, 0, -1, 0]], [34, 1, 35, [0, 0, -1, -1, 0, 0, 0, 1, 0]]]) {
-    m.add('3685', C.stone, x, 1, FZ, { rot });
-    m.add('3062b', C.red, sx, 10, FZ + 1);
-    m.add('6141', 'White', sx, 13, FZ + 1);
-    const clip = m.add('61252', C.gold, sx, 14, FZ + 1, { face: 'S' });
-    m.add('85975', C.wall, sx, 15, FZ + 1);
-    // El ala negra va tomada del clip por su barra y sube como un estandarte.
-    m.addRaw('6133', C.roof, [...W, (sx + 0.5) * 20, -(14 * 8 + 6), (FZ + 1.5) * 20 - 20], { on: clip });
-  }
+    m.step('Portón: pilares con estandarte de dragón', 'El ala negra se abrocha por su barra al clip dorado y sube como un estandarte.');
+    // Entre los pilares quedan 20 studs libres: pasa el buggy.
+    for (const [x, rot, sx, W] of [[12, 0, 12, [0, 0, 1, -1, 0, 0, 0, -1, 0]], [34, 1, 35, [0, 0, -1, -1, 0, 0, 0, 1, 0]]]) {
+      m.add('3685', C.stone, x, 1, FZ, { rot });
+      m.add('3062b', C.red, sx, 10, FZ + 1);
+      m.add('6141', 'White', sx, 13, FZ + 1);
+      const clip = m.add('61252', C.gold, sx, 14, FZ + 1, { face: 'S' });
+      m.add('85975', C.wall, sx, 15, FZ + 1);
+      // El ala negra va tomada del clip por su barra y sube como un estandarte.
+      m.addRaw('6133', C.roof, [...W, (sx + 0.5) * 20, -(14 * 8 + 6), (FZ + 1.5) * 20 - 20], { on: clip });
+    }
 
-  m.step('Bastones en el muro', 'Cada bastón entra a presión en su clip azul y apoya la punta en la mesa.');
-  for (const x of [38, 41, 44]) {
-    const clip = m.add('60897', 'Blue', x, 1, FZ + 1, { face: 'N' });
-    m.addRaw('87618', C.roof, [1, 0, 0, 0, -1, 0, 0, 0, -1, (x + 0.5) * 20, -98.5, (FZ + 1.5) * 20 + 20], { on: clip });
+    m.step('Bastones en el muro', 'Cada bastón entra a presión en su clip azul y apoya la punta en la mesa.');
+    for (const x of [38, 41, 44]) {
+      const clip = m.add('60897', 'Blue', x, 1, FZ + 1, { face: 'N' });
+      m.addRaw('87618', C.roof, [1, 0, 0, 0, -1, 0, 0, 0, -1, (x + 0.5) * 20, -98.5, (FZ + 1.5) * 20 + 20], { on: clip });
+    }
   }
 
   m.step('Torre de vigía: zócalo de piedra en cruz');
@@ -354,13 +359,15 @@ export default function build(m, helpers) {
     rect('plate', C.dark, ux(5), 17, z0, 1, 8);
     rect('plate', C.wood, ux(5), 17, z0 + 8, 1, 10);
 
-    m.step(`${name}: muro que cierra el patio`);
-    rect('plate', C.roof, ux(5), 0, z0 + 18, 1, 4);
-    stub(ux(5), 2, z0 + 18);
-    rect('plate', C.wood, ux(5, 2), 5, z0 + 18, 2, 1);
-    rect('plate', C.ground, ux(5, 2), 5, z0 + 19, 2, 2);
-    rect('plate', C.wood, ux(5, 2), 5, z0 + 21, 2, 1);
-    m.add('3299', C.roof, ux(5, 2), 6, z0 + 18, { rot: 1 });
+    if (!B) {
+      m.step(`${name}: muro que cierra el patio`);
+      rect('plate', C.roof, ux(5), 0, z0 + 18, 1, 4);
+      stub(ux(5), 2, z0 + 18);
+      rect('plate', C.wood, ux(5, 2), 5, z0 + 18, 2, 1);
+      rect('plate', C.ground, ux(5, 2), 5, z0 + 19, 2, 2);
+      rect('plate', C.wood, ux(5, 2), 5, z0 + 21, 2, 1);
+      m.add('3299', C.roof, ux(5, 2), 6, z0 + 18, { rot: 1 });
+    }
 
     // El techo se coloca plano y después se gira sobre las bisagras.
     // Tres cabios, cada uno con su bisagra: los de las puntas son placas 2x8 y
@@ -546,7 +553,7 @@ export default function build(m, helpers) {
 
   m.step('Muñeco de práctica');
   {
-    const ox = 43, oz = -11;
+    const ox = B ? 40 : 43, oz = B ? -8 : -11;
     m.add('60474', C.roof, ox - 2, 0, oz - 2);
     m.add('92947', C.dark, ox - 1, 1, oz - 1);
     m.add('3839b', C.stone, ox - 1, 4, oz - 1, { face: 'S' });
@@ -568,8 +575,9 @@ export default function build(m, helpers) {
   // lado del portón, como las estatuas guardianas de los templos. No es parte
   // del modelo: va como silueta.
   m.step('Podio del guardián', 'Va apoyado en la mesa, al lado del portón. Arriba se para el mecha.');
-  const podium = rect('plate', C.wood, 31, 0, -22, 10, 6);
-  for (const z of [-22, -17]) {
+  const PZ = B ? -19 : -22; // con el portón techado, el guardián se para 3 studs más adentro
+  const podium = rect('plate', C.wood, 31, 0, PZ, 10, 6);
+  for (const z of [PZ, PZ + 5]) {
     rect('tile', C.roof, 31, 1, z, 6, 1);
     rect('tile', C.roof, 37, 1, z, 4, 1);
   }
@@ -577,7 +585,7 @@ export default function build(m, helpers) {
   m.step('Armero del mecha', 'Cada eje entra por la punta con stud en un agujero de la placa roja. En los ejes se enchufa la espada del mecha.');
   // Cuatro ejes parados sobre una placa con agujeros: la espada grande del
   // mecha (pieza 79895, con agujero de eje) se guarda enchufada ahí.
-  placed(43, -15, 1, () => {
+  placed(43, PZ + 7, 1, () => {
     m.add('2357', C.red, 0, 0, 0, { rot: 3 });
     m.add('2357', C.red, 6, 0, 0, { rot: 2 });
     m.add('3738', C.red, 0, 3, 0);
@@ -588,7 +596,7 @@ export default function build(m, helpers) {
   // Silueta aproximada del mecha: solo está publicado su alto (19 cm); el
   // ancho y los pies están estimados por sus piezas.
   {
-    const cx = 36, cz = -19, L = { label: 'el mecha de Cole (silueta aproximada)' };
+    const cx = 36, cz = PZ + 3, L = { label: 'el mecha de Cole (silueta aproximada)' };
     const Y = 1.5; // parado sobre los studs del podio
     const feet = [-1, 1].map((s) => m.envelope(cx + (s < 0 ? -5 : 1), Y, cz - 2, 4, 4, 5, L));
     m.propLinks.push([feet[0], podium]);
@@ -640,5 +648,7 @@ export default function build(m, helpers) {
     [-2, 0, -22, 'W', 'Dark Blue', H, 'Black'], [26, 0, -34, 'S', 'Black', HAT, 'Tan'],
     [26, 0, -24, 'N', 'Dark Green', H, 'Dark Brown'],
   ];
-  for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
+  // La ampliación coloca las minifiguras ella misma (cambia algunas de lugar).
+  if (!B) for (const [x, y, z, face, color, hat, hatColor] of figs) m.fig(x, y, z, { face, color, hat, hatColor });
+  return { figs, FZ, G, P, D };
 }

@@ -4,7 +4,9 @@
 //   spare : piezas extra que se cubren gracias a los repuestos de la caja
 //   shape : misma forma en cualquier color (incluye versiones impresas)
 //   copies: el modelo está pensado para comprar esa cantidad de cajas iguales
-export function matchSets(catalog, bom, { top = 400, topShape = 150, complementsFor = 12, complementsEach = 6, copies = 1 } = {}) {
+// include: números de set que tienen que estar en la lista sí o sí (las cajas
+// con las que está pensado el modelo), aunque no entren entre los primeros.
+export function matchSets(catalog, bom, { top = 400, topShape = 150, complementsFor = 12, complementsEach = 6, copies = 1, include = [] } = {}) {
   const prep = catalog.prepare(bom.map((b) => ({ part: b.part, color: b.color, qty: b.qty })));
   if (prep.lines.length !== bom.length) {
     throw new Error('El modelo usa dos variantes de molde de la misma pieza en el mismo color; unifícalas en la paleta.');
@@ -47,6 +49,11 @@ export function matchSets(catalog, bom, { top = 400, topShape = 150, complements
 
   for (const i of byExact.slice(0, top)) entry(i);
   for (const i of byShape.slice(0, topShape)) entry(i);
+  for (const num of include) {
+    const i = catalog.sets.findIndex((s) => s[0] === num);
+    if (i < 0) throw new Error(`Set donante no encontrado: ${num}`);
+    entry(i);
+  }
 
   // Mejor segundo set para completar lo que le falta a cada uno de los primeros.
   for (const i of byExact.slice(0, complementsFor)) {
