@@ -2,70 +2,130 @@ cantidad,pieza,color,nombre,categoria
 4,32932,Black,Fence 1 x 4 x 2 Ornamental Asian Lattice Square with 4 Studs,"Bars, Ladders and Fences"
 2,28870,Pearl Gold,Curled Decorative Ornament / Plant Vine with Bar,"Bars, Ladders and Fences"
 2,32932,Pearl Gold,Fence 1 x 4 x 2 Ornamental Asian Lattice Square with 4 Studs,"Bars, Ladders and Fences"
-34,3005,Dark Brown,Brick 1 x 1,Bricks
+44,3005,Dark Brown,Brick 1 x 1,Bricks
+12,3005,Tan,Brick 1 x 1,Bricks
+10,3005,Reddish Brown,Brick 1 x 1,Bricks
+10,3005,Black,Brick 1 x 1,Bricks
 6,14716,Dark Brown,Brick 1 x 1 x 3,Bricks
-4,3005,Tan,Brick 1 x 1,Bricks
+4,3004,Dark Red,Brick 1 x 2,Bricks
+4,3010,Black,Brick 1 x 4,Bricks
+2,14716,Reddish Brown,Brick 1 x 1 x 3,Bricks
+2,2454b,Black,Brick 1 x 2 x 5 with Hollow Studs,Bricks
 2,3003,Reddish Brown,Brick 2 x 2,Bricks
+2,3004,Black,Brick 1 x 2,Bricks
 2,3008,Black,Brick 1 x 8,Bricks
+2,3009,Reddish Brown,Brick 1 x 6,Bricks
+2,3622,Black,Brick 1 x 3,Bricks
 2,6112,Black,Brick 1 x 12,Bricks
 1,2456,Black,Brick 2 x 6,Bricks
 1,3001,Black,Brick 2 x 4,Bricks
 1,3006,Black,Brick 2 x 10,Bricks
+1,3010,Reddish Brown,Brick 1 x 4,Bricks
 2,11290,Black,Brick Curved 2 x 8 x 2 Double,Bricks Curved
 8,3062b,Black,Brick Round 1 x 1 Open Stud,Bricks Round and Cones
 6,59900,Pearl Gold,Cone 1 x 1 [Top Groove],Bricks Round and Cones
-46,30136,Tan,Brick Special 1 x 2 Palisade [aka Log],Bricks Special
+4,4460b,Tan,Brick Sloped 75° 2 x 1 x 3 with Hollow Stud,Bricks Sloped
+65,30136,Tan,Brick Special 1 x 2 Palisade [aka Log],Bricks Special
 30,30136,Dark Brown,Brick Special 1 x 2 Palisade [aka Log],Bricks Special
 8,30136,Black,Brick Special 1 x 2 Palisade [aka Log],Bricks Special
 4,30136,Reddish Brown,Brick Special 1 x 2 Palisade [aka Log],Bricks Special
+2,86876,Black,"Brick Special 1 x 2 with 1 Center Stud on 1 Side, Bottom Stud Holder",Bricks Special
+2,61780,Reddish Brown,Container Box 2 x 2 x 2 - Top Opening,Containers
 2,64644,Pearl Gold,"Equipment Telescope / Torch / Spyglass, Support Round 1 x 1 x 1 2/3",Minifig Accessories
-8,28621,Light Aqua,Minifig Head [Plain] [Vented Stud - 2 Holes],Minifig Heads
+2,64644,Black,"Equipment Telescope / Torch / Spyglass, Support Round 1 x 1 x 1 2/3",Minifig Accessories
+1,23986,White,Equipment Teapot,Minifig Accessories
+1,38799,White,Equipment Cup / Teacup Saucer with Recessed Stud on Top [Plain],Minifig Accessories
+1,95228,Trans-Clear,Equipment Bottle,Minifig Accessories
+11,28621,Light Aqua,Minifig Head [Plain] [Vented Stud - 2 Holes],Minifig Heads
 10,21459,Pearl Gold,Weapon Sword / Katana / Shamshir with Capped Pommel [Square Guard],"Minifig Shields, Weapons, & Tools"
-2,24866,Pearl Gold,"Plant, Flower, Plate Round 1 x 1 with 5 Petals",Plants & Trees
-6,3020,Reddish Brown,Plate 2 x 4,Plates
+16,18910,Reddish Brown,Panel 3 x 4 x 3 Curved,Panels
+12,24866,Pearl Gold,"Plant, Flower, Plate Round 1 x 1 with 5 Petals",Plants & Trees
+19,3460,Dark Brown,Plate 1 x 8,Plates
+17,3022,Dark Bluish Gray,Plate 2 x 2,Plates
+10,3024,Dark Brown,Plate 1 x 1,Plates
+8,3023,Black,Plate 1 x 2,Plates
+7,3020,Reddish Brown,Plate 2 x 4,Plates
+6,3023,Dark Brown,Plate 1 x 2,Plates
+6,3024,Tan,Plate 1 x 1,Plates
+6,3710,Tan,Plate 1 x 4,Plates
+5,3020,Dark Tan,Plate 2 x 4,Plates
 5,3034,Reddish Brown,Plate 2 x 8,Plates
 5,3710,Dark Tan,Plate 1 x 4,Plates
 5,60479,Black,Plate 1 x 12,Plates
-4,3020,Dark Tan,Plate 2 x 4,Plates
+4,3020,Tan,Plate 2 x 4,Plates
 4,3022,Dark Brown,Plate 2 x 2,Plates
-4,3023,Dark Brown,Plate 1 x 2,Plates
 4,3460,Black,Plate 1 x 8,Plates
 4,3795,Black,Plate 2 x 6,Plates
 4,3795,Dark Tan,Plate 2 x 6,Plates
 4,4282,Reddish Brown,Plate 2 x 16,Plates
 3,2445,Black,Plate 2 x 12,Plates
-2,3030,Dark Tan,Plate 4 x 10,Plates
-2,3460,Dark Brown,Plate 1 x 8,Plates
+3,3030,Dark Tan,Plate 4 x 10,Plates
+3,3710,Dark Brown,Plate 1 x 4,Plates
+2,2420,Dark Brown,Plate 2 x 2 Corner,Plates
+2,3031,Dark Red,Plate 4 x 4,Plates
+2,3032,Black,Plate 4 x 6,Plates
+2,3033,Reddish Brown,Plate 6 x 10,Plates
+2,3666,Red,Plate 1 x 6,Plates
+2,3666,Black,Plate 1 x 6,Plates
 2,3795,Reddish Brown,Plate 2 x 6,Plates
+2,3832,Reddish Brown,Plate 2 x 10,Plates
+2,78329,Black,Plate 1 x 5,Plates
+2,78329,Tan,Plate 1 x 5,Plates
 2,91988,Black,Plate 2 x 14,Plates
 1,2445,Dark Tan,Plate 2 x 12,Plates
+1,2445,Reddish Brown,Plate 2 x 12,Plates
+1,3020,Dark Brown,Plate 2 x 4,Plates
 1,3020,Black,Plate 2 x 4,Plates
-1,3022,Dark Bluish Gray,Plate 2 x 2,Plates
 1,3023,Dark Tan,Plate 1 x 2,Plates
+1,3029,Dark Tan,Plate 4 x 12,Plates
+1,3031,Reddish Brown,Plate 4 x 4,Plates
 1,3034,Dark Tan,Plate 2 x 8,Plates
 1,3034,Black,Plate 2 x 8,Plates
-1,3832,Reddish Brown,Plate 2 x 10,Plates
+1,3036,Dark Bluish Gray,Plate 6 x 8,Plates
+1,3666,Reddish Brown,Plate 1 x 6,Plates
 1,3832,Dark Tan,Plate 2 x 10,Plates
+1,3958,Reddish Brown,Plate 6 x 6,Plates
+1,3958,Dark Bluish Gray,Plate 6 x 6,Plates
 1,4477,Black,Plate 1 x 10,Plates
 1,91988,Reddish Brown,Plate 2 x 14,Plates
-8,4740,Black,Dish 2 x 2 Inverted [Radar],Plates Round Curved and Dishes
-4,6141,Black,Plate Round 1 x 1 with Solid Stud,Plates Round Curved and Dishes
+22,6141,Black,Plate Round 1 x 1 with Solid Stud,Plates Round Curved and Dishes
+20,35480,Tan,Plate Special 1 x 2 Rounded with 2 Open Studs,Plates Round Curved and Dishes
+11,4740,Black,Dish 2 x 2 Inverted [Radar],Plates Round Curved and Dishes
+6,35480,Black,Plate Special 1 x 2 Rounded with 2 Open Studs,Plates Round Curved and Dishes
+2,6141,Trans-Clear,Plate Round 1 x 1 with Solid Stud,Plates Round Curved and Dishes
+1,4032a,Dark Bluish Gray,Plate Round 2 x 2 with Axle Hole Type 1 (+ Opening),Plates Round Curved and Dishes
+1,6141,Trans-Light Blue,Plate Round 1 x 1 with Solid Stud,Plates Round Curved and Dishes
+1,6141,Bright Green,Plate Round 1 x 1 with Solid Stud,Plates Round Curved and Dishes
+18,15573,Black,Plate Special 1 x 2 with 1 Stud with Groove and Inside Stud Holder (Jumper),Plates Special
+9,41740,Black,Plate Special 1 x 4 with 2 Studs with Groove [New Underside],Plates Special
 8,60470b,Black,Plate Special 1 x 2 with Clips Horizontal [Open O Clips],Plates Special
 8,63868,Black,Plate Special 1 x 2 with Clip Horizontal on End,Plates Special
-6,41740,Black,Plate Special 1 x 4 with 2 Studs with Groove [New Underside],Plates Special
 5,60470b,Dark Bluish Gray,Plate Special 1 x 2 with Clips Horizontal [Open O Clips],Plates Special
 4,61252,Black,Plate Special 1 x 1 with Clip Horizontal [Thick Open O Clip],Plates Special
+4,64799,Black,Plate Special 4 x 4 with 2 x 2 Opening,Plates Special
 2,18674,Black,Plate Special Round 2 x 2 with Center Stud (Jumper Plate),Plates Special
 2,60897,Tan,Plate Special 1 x 1 with Clip Vertical [Thick Open O Clip],Plates Special
 2,60897,Black,Plate Special 1 x 1 with Clip Vertical [Thick Open O Clip],Plates Special
 2,60897,Light Bluish Gray,Plate Special 1 x 1 with Clip Vertical [Thick Open O Clip],Plates Special
 2,61252,Dark Brown,Plate Special 1 x 1 with Clip Horizontal [Thick Open O Clip],Plates Special
+2,6180,Dark Red,"Plate Special 4 x 6, Studs on 3 Edges",Plates Special
+11,6636,Black,Tile 1 x 6 with Groove,Tiles
 8,3069b,Reddish Brown,Tile 1 x 2 with Groove,Tiles
-8,6636,Black,Tile 1 x 6 with Groove,Tiles
+5,2431,Black,Tile 1 x 4 with Groove,Tiles
 5,87079,Black,Tile 2 x 4 with Groove,Tiles
 4,3069bpr9910,Dark Red,"Tile 1 x 2 with White/Blue Dragon Shape on Dark Blue Background, Gold Decorations Print",Tiles
+2,3070b,Black,Tile 1 x 1 with Groove,Tiles
+2,4162,Black,Tile 1 x 8 with Groove,Tiles
+1,2431,Dark Brown,Tile 1 x 4 with Groove,Tiles
+1,3069b,Black,Tile 1 x 2 with Groove,Tiles
 24,99563,Black,Tile Special 1 x 2 with Sloped Walls AKA Money / Gold Bar [Ingot],Tiles Special
 24,99563,Pearl Gold,Tile Special 1 x 2 with Sloped Walls AKA Money / Gold Bar [Ingot],Tiles Special
+8,2432,Tan,Tile Special 1 x 2 with Handle,Tiles Special
 8,38320,Pearl Gold,Window Pane Latticed 1 x 2 x 2,Windows and Doors
 8,60592,Dark Brown,Window 1 x 2 x 2 Flat Front,Windows and Doors
+2,60594,Dark Brown,Window 1 x 4 x 3 without Shutter Tabs,Windows and Doors
+1,60593,Dark Brown,Window 1 x 2 x 3 Flat Front,Windows and Doors
+1,60596,Dark Brown,Door Frame 1 x 4 x 6 Type 2,Windows and Doors
+1,60596,Tan,Door Frame 1 x 4 x 6 Type 2,Windows and Doors
+1,60602,Dark Brown,Glass for Window 1 x 2 x 3 Flat Front,Windows and Doors
 20,92474,Black,Windscreen 6 x 2 x 2 with Handle,Windscreens and Fuselage

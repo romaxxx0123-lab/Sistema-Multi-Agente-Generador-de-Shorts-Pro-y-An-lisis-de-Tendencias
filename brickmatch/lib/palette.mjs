@@ -114,6 +114,12 @@ export const PARTS = {
   '32932': { box: { min: [-40, 0, -10], max: [40, 48, 10] } }, // reja de celosía 1x4x2
   '59900': { box: CELL(24) }, // cono 1x1
   dragon: { ld: '3069b', rb: '3069bpr9910' }, // tile 1x2 con dragón impreso: se dibuja liso
+  '18910': { box: { min: [-40, 0, -10], max: [40, 8, 10] }, front: S }, // panel curvo 3x4x3: la caja es solo la barra de arriba; el frente es hacia donde cuelga
+  '86876': { front: S }, // ladrillo 1x2 con un stud centrado al costado
+  '60593': { front: S }, // ventana 1x2x3
+  '38799': { box: CELL(8) }, // platito con stud hueco
+  '4460b': { front: S }, // pendiente 75° 2x1x3: el frente es la cara inclinada
+  '44375b': { box: { min: [-60, 0, -60], max: [60, 16, 60] } }, // plato 6x6 (pila de la fuente)
 };
 
 // Esquinas de techo (3675, 3045): rot según qué esquina del techo ocupan.

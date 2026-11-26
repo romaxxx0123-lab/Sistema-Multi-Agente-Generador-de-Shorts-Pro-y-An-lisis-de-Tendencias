@@ -40,7 +40,7 @@ con lo que trae. Los modelos de ejemplo muestran la diferencia:
 | `base-ninja` (set barato) | 111 | 71826 Dragon Spinjitzu Battle Pack (186 piezas) | 111 de 111, **100 %** |
 | `base-universal` (para 30 minifiguras) | 574 | 70751 Temple of Airjitzu (2.033 piezas) | 574 de 574, **100 %** |
 | `fortaleza-ninja` (cuartel amurallado de 50 × 54 cm) | 1.099 | 70751 Temple of Airjitzu (2.033 piezas) | 1.099 de 1.099, **100 %** |
-| `ciudadela-ninja` (la base ampliada, dos cajas) | 1.501 | 70751 Temple of Airjitzu + 71848 The Temple Bounty | 1.501 de 1.501, **100 %** entre las dos |
+| `ciudadela-ninja` (la base ampliada, dos cajas, 73 × 57 cm) | 1.855 | 70751 Temple of Airjitzu + 71848 The Temple Bounty | 1.855 de 1.855, **100 %** entre las dos |
 
 `base-universal` y `fortaleza-ninja` usan como donante un set retirado: el
 original se consigue usado, y es de los más copiados por marcas alternativas,
@@ -81,7 +81,7 @@ están en el botón Instrucciones de la mini app y en
 `ciudadela-ninja` es la misma base con lo que suma un segundo set desarmado, el
 71848 The Temple Bounty. Reutiliza el código de `fortaleza-ninja` (le saca el
 muro del frente, el portón y los cierres laterales) y la lleva de 1.099 a
-1.501 piezas:
+1.855 piezas:
 
 - **Muralla**: dos paños de troncos claros con entramado oscuro, una franja de
   cuatro ventanas con celosía dorada, albardilla negra y crestería de rejas.
@@ -93,6 +93,12 @@ muro del frente, el portón y los cierres laterales) y la lleva de 1.099 a
 - **Explanada y avenida** con ocho faroles (la luz es una cabeza celeste),
   diez katanas doradas en clips del lado de adentro de la muralla y dos pasos
   laterales con arco entre las galerías y el edificio.
+- **Ala oeste** (`tea.mjs`), a la que se sale por el paso lateral: la **casa
+  de té**, con techo de paja hecho con doce de los paneles curvos del casco,
+  cumbrera con rollizos y flores doradas, dos mostradores de cajones (tejuelas
+  con manija sobre escuadras), tarima roja con la mesa y la tetera, y una
+  terraza con baranda roja; un **aljibe techado** con los otros cuatro paneles;
+  senderos con piedras para pisar y tres faroles.
 
 ![Ciudadela Ninja: la base ampliada con las piezas del Temple Bounty](models/ciudadela-ninja/renders/hero.jpg)
 
@@ -104,17 +110,22 @@ muro del frente, el portón y los cierres laterales) y la lleva de 1.099 a
 | --- | --- | --- |
 | ![Portón](models/ciudadela-ninja/renders/porton_vacia.jpg) | ![Avenida](models/ciudadela-ninja/renders/avenida_vacia.jpg) | ![Katanas](models/ciudadela-ninja/renders/katanas_vacia.jpg) |
 
-Las 1.501 piezas salen de las dos cajas sin repuestos (`meta.donors` las
+| La casa de té: techo de paja con los paneles del casco | El aljibe y el fondo de la casa de té |
+| --- | --- |
+| ![Casa de té](models/ciudadela-ninja/renders/casa_de_te_vacia.jpg) | ![Aljibe y jardín](models/ciudadela-ninja/renders/jardin_vacia.jpg) |
+
+Las 1.855 piezas salen de las dos cajas sin repuestos (`meta.donors` las
 declara, y la mini app abre con las dos ya comparadas). Las instrucciones son
-287 pasos en 83 capítulos:
+355 pasos en 99 capítulos:
 [`models/ciudadela-ninja/instrucciones.pdf`](models/ciudadela-ninja/instrucciones.pdf).
 
-**Cuánto del segundo set se aprovecha.** Del Temple Bounty entran 419 de sus
-2.388 piezas (18 %); la lista está en
+**Cuánto del segundo set se aprovecha.** Del Temple Bounty entran 744 de sus
+2.388 piezas (31 %); la lista está en
 [`models/ciudadela-ninja/piezas-del-bounty.csv`](models/ciudadela-ninja/piezas-del-bounty.csv).
-El resto no mejora un edificio: 254 piezas son Technic (el mecanismo del
-barco), 174 son escuadras y 112 son placas de un stud centrado que van por
-dentro, y además están el casco, las velas de tela y seis minifiguras. Quedaron
+Con la primera versión, sin el ala oeste, eran 419 (18 %). Lo que sigue
+quedando afuera no mejora un edificio: 254 piezas son Technic (el mecanismo del
+barco), unas 170 son escuadras y unas 85 son placas de un stud centrado que van
+por dentro, y además están las velas de tela y seis minifiguras. Quedaron
 afuera a propósito las dos puertas de empalizada: ninguna pieza de las dos
 cajas las deja colgadas sin chocar en el modelo 3D, y no se dibuja nada que no
 esté comprobado. Tampoco hay geometría LDraw para las velas, la cabeza de

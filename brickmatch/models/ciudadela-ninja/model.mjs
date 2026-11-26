@@ -5,12 +5,13 @@
 import fortress, { buildOrder as baseOrder } from '../fortaleza-ninja/model.mjs';
 import { compose } from '../../lib/ldraw.mjs';
 import { rotY } from '../../lib/builder.mjs';
+import { teaHouse, well, gardenPaths, gardenLanterns, lantern, westOrder } from './tea.mjs';
 
 export const meta = {
   order: 5,
   title: 'Ciudadela Ninja',
   prompt: 'Sumarle a la Base de Operaciones todo lo que se pueda con las piezas del Temple Bounty, siempre que la haga ver mejor',
-  description: 'La Base de Operaciones Ninja ampliada con las piezas del set 71848 The Temple Bounty. El frente pasa a ser una muralla revocada con ventanas de celosía dorada y crestería, y un portón de templo: postes de troncos, ménsulas y un techo de veinte tejas curvas con cumbrera de lingotes dorados. Se suman la explanada y la avenida con ocho faroles celestes, diez katanas doradas en la muralla y dos pasos laterales con arco. Se arma con dos cajas: 70751 Temple of Airjitzu (la base) y 71848 The Temple Bounty (la ampliación).',
+  description: 'La Base de Operaciones Ninja ampliada con las piezas del set 71848 The Temple Bounty. El frente pasa a ser una muralla revocada con ventanas de celosía dorada y crestería, y un portón de templo: postes de troncos, ménsulas y un techo de veinte tejas curvas con cumbrera de lingotes dorados. Se suman la explanada y la avenida con ocho faroles celestes, diez katanas doradas en la muralla y dos pasos laterales con arco. Por el paso del oeste se sale a un ala nueva: la casa de té, con techo de paja hecho con los paneles curvos del casco del barco, mostradores de cajones y terraza, un aljibe techado y un jardín con senderos y faroles. Se arma con dos cajas: 70751 Temple of Airjitzu (la base) y 71848 The Temple Bounty (la ampliación).',
   donors: ['70751-1', '71848-1'],
 };
 
@@ -32,6 +33,7 @@ export const buildOrder = [
     'Explanada y umbral del portón', 'Avenida del portón al torii', 'Faroles de la avenida', 'Faroles de la explanada',
     'Pasos laterales: postes', 'Pasos laterales: dintel y arco',
   ]],
+  westOrder,
 ];
 
 // ================================================================== muralla
@@ -212,17 +214,6 @@ export function wallRacks(m, FZ) {
 }
 
 // ========================================================= avenida y faroles
-// Farol de piedra: poste negro, cabeza celeste que hace de luz, platito negro
-// de alero y remate dorado.
-function lantern(m, x, y, z, { post = '3062b', postColor = C.roof, top = '59900' } = {}) {
-  m.add('6141', C.roof, x, y, z);
-  const h = post === '3062b' ? 3 : 5;
-  m.add(post, postColor, x, y + 1, z);
-  m.add('28621', 'Light Aqua', x, y + 1 + h, z);
-  m.add('4740', C.roof, x - 0.5, y + 4 + h, z - 0.5);
-  m.add(top, C.gold, x, y + 5 + h, z);
-}
-
 export function avenue(m, { rect }, FZ) {
   m.step('Explanada y umbral del portón', 'Las cinco tejuelas negras largas unen la explanada de afuera con el umbral que queda entre los postes.');
   rect('plate', C.ground, 14, 0, FZ - 4, 10, 4);
@@ -282,10 +273,19 @@ export default function build(m, helpers) {
   wallRacks(m, FZ);
   avenue(m, helpers, FZ);
   sideGates(m, helpers, G);
+  // El ala oeste, afuera de la galería del taller: se llega por el paso lateral.
+  teaHouse(m, helpers, -36, -26);
+  well(m, helpers, -18, -13);
+  gardenPaths(m, helpers);
+  gardenLanterns(m, helpers, [[-6, -2], [-9, -22], [-23, -9]]);
   // Tres figuras del patio se corren: donde estaban ahora hay avenida o explanada.
   const moved = { '26,0,-4': [28, 0, -5], '26,0,-24': [28, 0, -24], '26,0,-34': [24, 1, -33] };
   for (const [x, y, z, face, color, hat, hatColor] of figs) {
     const [fx, fy, fz] = moved[`${x},${y},${z}`] || [x, y, z];
     m.fig(fx, fy, fz, { face, color, hat, hatColor });
   }
+  // Tres más en el ala oeste: un cliente frente al mostrador, otro en la puerta de la casa de té y uno junto al aljibe.
+  m.fig(-29, 0, -29, { face: 'N', color: 'Dark Blue', hat: '3901', hatColor: 'Black' });
+  m.fig(-26, 2, -26, { face: 'S', color: 'Dark Red', hat: '93059', hatColor: 'Tan' });
+  m.fig(-22, 0, -6, { face: 'E', color: 'Green', hat: '3901', hatColor: 'Dark Brown' });
 }
