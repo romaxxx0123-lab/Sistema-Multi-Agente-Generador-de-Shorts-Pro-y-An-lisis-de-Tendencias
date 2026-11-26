@@ -81,6 +81,7 @@ P.update(
           'frame': ((0.006, 0.006, 0.007), 0.3, 0, 0.3, 0, None), 'trim': ((0.012, 0.012, 0.013), 0.5, 0, 0, 0, None)},
     dust=dict(top=0.12, side=0.04, color=(0.32, 0.32, 0.32), scale=9.0),
     wheel=dict(style='multi10', rim_d=0.3556, tire_w=0.155, paint=(0.55, 0.56, 0.57), spoke_w=(0.007, 0.011)),
+    smooth_angle=20,
     lod0_budget={'paint': 42000, 'trim': 24000, 'chrome': 4000},
 )
 

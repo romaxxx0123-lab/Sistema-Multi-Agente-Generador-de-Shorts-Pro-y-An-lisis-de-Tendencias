@@ -34,7 +34,7 @@ for n in MAT_NAMES:
 for p in me.polygons:
     p.use_smooth = True
 me.use_auto_smooth = True
-me.auto_smooth_angle = math.radians(35)
+me.auto_smooth_angle = math.radians(D.get('smooth_angle', 35))   # pliegues de carrocería: con 35° se borran
 for o in parts + iobjs:
     if o.type == 'MESH':
         o.data.use_auto_smooth = True
@@ -66,6 +66,9 @@ LOOK.update({
     'disc_hat': ((0.05, 0.05, 0.05), 0.6, 0.3, 0, 0, None), 'caliper': ((0.045, 0.045, 0.05), 0.45, 0.3, 0.3, 0, None),
 })
 LOOK.update(D.get('look', {}))
+if os.environ.get('PAINT'):   # prueba: PAINT='r,g,b,rugosidad,metal,barniz,ior_base'
+    v = [float(t) for t in os.environ['PAINT'].split(',')]
+    LOOK['paint'] = ((v[0], v[1], v[2]), v[3], v[4], v[5], 0, None, v[6])
 for name, v in LOOK.items():
     col, rough, metal, coat, trans, emit = v[:6]
     m = P.mat(name)

@@ -31,7 +31,7 @@ for n in MAT_NAMES:
 for p in me.polygons:
     p.use_smooth = True
 me.use_auto_smooth = True
-me.auto_smooth_angle = math.radians(35)
+me.auto_smooth_angle = math.radians(D.get('smooth_angle', 35))   # pliegues de carrocería: con 35° se borran
 for o in parts + iobjs:
     if o.type == 'MESH':
         o.data.use_auto_smooth = True
