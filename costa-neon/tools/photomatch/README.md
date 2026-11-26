@@ -41,3 +41,24 @@ panorámica `urban_street_04` de Poly Haven (CC0). Sin logos ni letras de la mar
 - Pintura con barniz: el brillo es del barniz; la base casi no refleja (si no, se ve plástico satinado).
   El auto de la foto tenía polvo: capa difusa más espesa arriba.
 - Todo lo que rodea al auto se refleja en él: el piso atrapasombras tiene que ser asfalto, no blanco.
+
+## Suavidad de la chapa: análisis de cebra contra modelos de referencia
+
+`tools/blender/zebra.py` vuelve espejo la pintura y la ilumina con franjas paralelas (el control de
+superficies que usa la industria automotriz). En una chapa suave las franjas se doblan en curvas continuas;
+en una arista se quiebran; en una ondulación se tuercen; si quedan rectas y paralelas, la chapa es una
+extrusión (igual en todo el largo), y eso se ve falso aunque la sección sea correcta.
+
+    blender -b --python tools/blender/zebra.py -- design:rural /tmp/z/rural            # un diseño de carkit
+    blender -b --python tools/blender/zebra.py -- referencia.glb /tmp/z/ref "Paint"    # un glb (regex de pintura)
+
+Referencias usadas sólo para medir (no se distribuyen ni entran al juego): el auto conceptual de las
+muestras de glTF de Khronos (CC-BY 4.0) y el auto deportivo de los ejemplos de three.js (comprimido con
+Draco: se descomprime con `gltf-transform copy`). Lo que mostraron:
+
+- Los pliegues de un auto real tienen radio: el reflejo dibuja una línea, pero la chapa no se quiebra.
+  Con `crease` 1.0 y suavizado de 20° los relieves quedaban facetados (aspecto de pick-up de aristas
+  vivas); se usan `crease` 0.4-0.8 y `smooth_angle` 40.
+- La chapa se curva en las dos direcciones: abombado en planta (el centro de la puerta 1-2,5 cm más
+  afuera que sus extremos) y secciones que cambian a lo largo (la puerta trasera se mete más que la
+  delantera, la línea baja sube hacia la cadera).
